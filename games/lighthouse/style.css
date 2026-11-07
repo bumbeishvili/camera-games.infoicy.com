@@ -1,0 +1,44 @@
+/* The Lighthouse Keeper. */
+:root { --meter-size: clamp(72px, 8.5vw, 108px); }
+
+.hands-bar {
+  left: 0;
+  right: 0;
+  transform: none;
+  justify-content: space-between;
+  padding: 0 12px;
+  pointer-events: none;
+}
+
+body[data-hands='right'] .hands-bar { justify-content: flex-end; }
+body[data-hands='left'] .hands-bar { justify-content: flex-start; }
+.meter-caption { font-size: clamp(11px, 1vw, 13px); }
+
+/* A little film: an open hand wiping mud off glass, from side to side. */
+.film-glass { fill: #8fd2fa; }
+.film-mud { fill: #6b4a2b; animation: film-mud 5s ease-in-out infinite; }
+.film-wiper rect { fill: #3ddc84; stroke: var(--ink); stroke-width: 3; }
+.film-wiper path { fill: none; stroke: #3ddc84; stroke-width: 10; stroke-linecap: round; }
+.film-wiper { animation: film-wiper 5s ease-in-out infinite; }
+
+@keyframes film-wiper {
+  0% { transform: translate(-12px, -36px); }
+  20% { transform: translate(108px, -36px); }
+  40% { transform: translate(-12px, 6px); }
+  60% { transform: translate(108px, 6px); }
+  80% { transform: translate(-12px, 48px); }
+  100% { transform: translate(-12px, -36px); }
+}
+
+/* The mud comes off from the top as the hand goes down. */
+@keyframes film-mud {
+  0%, 8% { clip-path: inset(0 0 0 0); }
+  25% { clip-path: inset(35% 0 0 0); }
+  55% { clip-path: inset(68% 0 0 0); }
+  85%, 94% { clip-path: inset(100% 0 0 0); }
+  100% { clip-path: inset(0 0 0 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .film-mud, .film-wiper { animation-duration: 7.5s; }
+}

@@ -1,0 +1,88 @@
+/* Joze's Long Walk Home: the land, then Joze, then the tree, fruit and glove on top of him. */
+:root { --meter-size: clamp(72px, 8.5vw, 108px); }
+
+#backdrop, #game {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#joze-stage {
+  position: fixed;
+  bottom: 2vh;
+  height: 88vh;
+  aspect-ratio: 0.72;
+  display: block;
+}
+
+/* On the other side from the tree, so feeding him is a reach across. */
+body[data-side='right'] #joze-stage { left: 17vw; }
+body[data-side='left'] #joze-stage { right: 17vw; }
+
+/* Down here, as his mouth is where the child is looking. */
+body[data-screen='playing'] .prompt { top: auto; bottom: 58px; }
+
+.hands-bar {
+  left: 0;
+  right: 0;
+  transform: none;
+  justify-content: space-between;
+  padding: 0 12px;
+  pointer-events: none;
+}
+
+body[data-hands='right'] .hands-bar { justify-content: flex-end; }
+body[data-hands='left'] .hands-bar { justify-content: flex-start; }
+.meter-caption { font-size: clamp(11px, 1vw, 13px); }
+
+/* How far along the way home he's come. */
+.map {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  left: 50%;
+  bottom: 14px;
+  width: min(44vw, 520px);
+  height: 34px;
+  transform: translateX(-50%);
+}
+
+body[data-screen='playing'] .map { display: block; }
+.map .race-progress { position: absolute; left: 0; right: 0; top: 10px; width: 100%; }
+.map-joze { position: absolute; top: -8px; font-size: 32px; transform: translateX(-50%); transition: left 0.5s ease; }
+.map-home { position: absolute; right: -14px; top: -8px; font-size: 32px; }
+
+/* A little film: a hand closing on a fruit, carrying it across, and opening at a mouth. */
+.film-mouth { fill: #ffcf5c; stroke: var(--ink); stroke-width: 4; }
+.film-smile { fill: none; stroke: var(--ink); stroke-width: 4; stroke-linecap: round; }
+.film-fruit { fill: #e8433f; stroke: var(--ink); stroke-width: 4; animation: film-fruit 4s ease-in-out infinite; }
+.film-hand rect { fill: #3ddc84; stroke: var(--ink); stroke-width: 3; }
+.film-finger { fill: none; stroke: #3ddc84; stroke-width: 10; stroke-linecap: round; transform-box: fill-box; transform-origin: bottom center; animation: film-finger 4s ease-in-out infinite; }
+.film-hand { animation: film-carry 4s ease-in-out infinite; }
+
+@keyframes film-carry {
+  0%, 15% { transform: translate(0, 0); }
+  25%, 35% { transform: translate(0, -32px); }
+  62%, 78% { transform: translate(-118px, -8px); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes film-finger {
+  0%, 22% { transform: scaleY(1); }
+  32%, 66% { transform: scaleY(0.4); }
+  76%, 100% { transform: scaleY(1); }
+}
+
+@keyframes film-fruit {
+  0%, 30% { transform: translate(0, 0); opacity: 1; }
+  62%, 72% { transform: translate(-118px, 26px); opacity: 1; }
+  80% { transform: translate(-126px, 40px); opacity: 0; }
+  92% { transform: translate(0, 0); opacity: 0; }
+  100% { transform: translate(0, 0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .film-fruit, .film-finger, .film-hand { animation-duration: 6s; }
+}

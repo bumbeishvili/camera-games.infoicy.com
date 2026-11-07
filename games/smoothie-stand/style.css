@@ -1,0 +1,94 @@
+/* Joze's Smoothie Stand. The gloves roam the screen, so the meter keeps out of the way in a corner. */
+:root { --meter-size: clamp(72px, 8.5vw, 108px); }
+
+.hands-bar {
+  left: 0;
+  right: 0;
+  transform: none;
+  justify-content: space-between;
+  padding: 0 12px;
+  pointer-events: none;
+}
+
+body[data-hands='right'] .hands-bar { justify-content: flex-end; }
+body[data-hands='left'] .hands-bar { justify-content: flex-start; }
+.meter-caption { font-size: clamp(11px, 1vw, 13px); }
+
+/* The customer's ticket, under what they say. */
+.order {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  left: 12px;
+  top: calc(106px + clamp(92px, 13vw, 150px));
+  gap: 8px;
+  flex-wrap: wrap;
+  max-width: min(34vw, 420px);
+}
+
+body[data-screen='playing'] .order { display: flex; }
+
+.order-item {
+  display: grid;
+  justify-items: center;
+  padding: 4px 10px 6px;
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  font-size: clamp(18px, 2.2vw, 28px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.order-item img { width: clamp(40px, 5.4vw, 72px); height: clamp(40px, 5.4vw, 72px); display: block; }
+.order-item.is-done { background: #c9f5d8; }
+
+/* A little film: an open hand swiping up through an apple, which falls in two. */
+.film-apple circle { fill: #e8433f; stroke: var(--ink); stroke-width: 4; }
+.film-apple path { fill: none; stroke: var(--ink); stroke-width: 4; stroke-linecap: round; }
+.film-half-a, .film-half-b { fill: #e8433f; stroke: var(--ink); stroke-width: 4; opacity: 0; }
+.film-swipe { fill: none; stroke: #fff; stroke-width: 9; stroke-linecap: round; stroke-dasharray: 260; stroke-dashoffset: 260; }
+.film-hand rect { fill: #3ddc84; stroke: var(--ink); stroke-width: 3; }
+.film-hand path { fill: none; stroke: #3ddc84; stroke-width: 10; stroke-linecap: round; }
+
+.film-apple { animation: film-apple 3s linear infinite; }
+.film-half-a { animation: film-half-a 3s ease-in infinite; }
+.film-half-b { animation: film-half-b 3s ease-in infinite; }
+.film-swipe { animation: film-swipe 3s ease-in-out infinite; }
+.film-hand { animation: film-hand 3s ease-in-out infinite; }
+
+@keyframes film-hand {
+  0%, 15% { transform: translate(0, 0); }
+  45%, 60% { transform: translate(125px, -125px); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes film-swipe {
+  0%, 15% { stroke-dashoffset: 260; opacity: 1; }
+  45% { stroke-dashoffset: 0; opacity: 1; }
+  60%, 100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+@keyframes film-apple {
+  0%, 34% { opacity: 1; }
+  35%, 92% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes film-half-a {
+  0%, 34% { opacity: 0; transform: translate(0, 0); }
+  35% { opacity: 1; transform: translate(0, 0); }
+  70% { opacity: 1; transform: translate(-18px, 40px); }
+  75%, 100% { opacity: 0; transform: translate(-18px, 40px); }
+}
+
+@keyframes film-half-b {
+  0%, 34% { opacity: 0; transform: translate(0, 0); }
+  35% { opacity: 1; transform: translate(0, 0); }
+  70% { opacity: 1; transform: translate(18px, 60px); }
+  75%, 100% { opacity: 0; transform: translate(18px, 60px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .film-apple, .film-half-a, .film-half-b, .film-swipe, .film-hand { animation-duration: 4.5s; }
+}

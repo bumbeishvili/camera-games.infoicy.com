@@ -1,0 +1,12 @@
+[
+  {"id": "open-to-wipe", "text": "Open your hand to wipe!", "ka": "გაშალე ხელი, რომ გაწმინდო!"},
+  {"id": "finish", "text": "You saved every ship!", "ka": "ყველა გემი გადაარჩინე!"},
+  {"id": "frost-ask", "text": "Frost here! I can’t see! Wipe the mud off the window!", "ka": "ფროსტი ვარ! ვერაფერს ვხედავ! ფანჯარას ტალახი მოაცილე!", "voice": "bf_emma", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 18},
+  {"id": "frost-thanks", "text": "Safe! Thank you!", "ka": "გადავრჩი! გმადლობ!", "voice": "bf_emma", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 18},
+  {"id": "kit-ask", "text": "Kit here! I’m lost in the dark! Wipe it clean!", "ka": "კიტი ვარ! სიბნელეში დავიკარგე! გაწმინდე ფანჯარა!", "voice": "af_nicole", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 6},
+  {"id": "kit-thanks", "text": "I’m home! You’re the best!", "ka": "სახლში ვარ! საუკეთესო ხარ!", "voice": "af_nicole", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 6},
+  {"id": "widget-ask", "text": "Widget here! Beep! Light my way!", "ka": "ვიჯეტი ვარ! ბიპ! გზა გამინათე!", "voice": "am_echo", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -6},
+  {"id": "widget-thanks", "text": "Thank you! Boop!", "ka": "გმადლობ! ბუპ!", "voice": "am_echo", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -6},
+  {"id": "bramble-ask", "text": "Bramble here! The waves are huge! One last window!", "ka": "ბრემბლი ვარ! უზარმაზარი ტალღებია! ბოლო ფანჯარა!", "voice": "bm_george", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -18},
+  {"id": "bramble-thanks", "text": "Honey for everyone!", "ka": "თაფლი ყველას!", "voice": "bm_george", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -18}
+]

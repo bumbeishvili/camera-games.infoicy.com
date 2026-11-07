@@ -1,0 +1,254 @@
+/* Sky Wings' own display. What the body games share is in core/body/style.css. */
+
+/* ---------- which pieces each screen shows ---------- */
+.sky-top,
+.wing-meter,
+.lesson-bar { display: none; }
+
+body[data-screen='countdown'] .sky-top,
+body[data-screen='fly'] .sky-top,
+body[data-screen='finishing'] .sky-top { display: flex; }
+
+body[data-screen='countdown'] .camera-frame,
+body[data-screen='fly'] .camera-frame,
+body[data-screen='lesson'] .camera-frame { display: block; }
+
+body[data-screen='fly'] .wing-meter,
+body[data-screen='lesson'] .wing-meter { display: block; }
+
+body[data-screen='lesson'] .lesson-bar { display: flex; }
+
+body[data-screen='fly'] .coach.is-visible,
+body[data-screen='lesson'] .coach.is-visible { display: flex; }
+
+/* Big enough for a child across the room to see their arms in. */
+.body-frame { --camera-small: clamp(190px, 25vw, 350px); }
+
+/* ---------- choosing ---------- */
+.choose-tip {
+  font-size: clamp(16px, 1.7vw, 21px);
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--ink-soft);
+}
+
+/* ---------- the lesson: the child's own picture, then the film, then their plane ---------- */
+body[data-screen='lesson'] .body-frame {
+  --lesson-width: min(38vw, calc((100vh - 200px) * var(--camera-aspect)));
+  top: 70px;
+  bottom: auto;
+  left: 12px;
+  width: var(--lesson-width);
+}
+
+body[data-screen='lesson'] .coach {
+  top: 70px;
+  bottom: auto;
+  right: auto;
+  left: calc(12px + 38vw + 16px);
+}
+
+body[data-screen='lesson'] .wing-meter {
+  left: 12px;
+  bottom: 12px;
+}
+
+.lesson-bar {
+  position: fixed;
+  z-index: 3;
+  right: 14px;
+  bottom: 12px;
+  gap: 12px;
+  align-items: center;
+}
+
+.lesson-count {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 2px 0 rgba(18, 48, 77, 0.8);
+}
+
+/* ---------- how the arms are being read: a little pair of wings that tips with them ---------- */
+.wing-meter {
+  position: fixed;
+  z-index: 3;
+  left: calc(12px + clamp(190px, 25vw, 350px) + 14px);
+  bottom: 12px;
+  width: clamp(120px, 15vw, 190px);
+  aspect-ratio: 1;
+  background: rgba(255, 255, 255, 0.9);
+  border: 4px solid #fff;
+  border-radius: 50%;
+  box-shadow: var(--shadow);
+}
+
+.wing-meter svg { display: block; width: 100%; height: 100%; }
+.wing-pair { transform-box: view-box; transform-origin: 60px 60px; }
+.wing-line { fill: none; stroke: var(--ink-soft); stroke-width: 10; stroke-linecap: round; }
+.wing-meter[data-out='yes'] .wing-line { stroke: var(--good); }
+.wing-body { fill: var(--ink); }
+.wing-mid { stroke: var(--line); stroke-width: 3; stroke-dasharray: 5 6; }
+
+/* ---------- along the top ---------- */
+.sky-top {
+  position: fixed;
+  z-index: 3;
+  top: 8px;
+  left: 10px;
+  right: 66px;
+  align-items: center;
+  gap: clamp(8px, 1.6vw, 20px);
+  pointer-events: none;
+}
+
+.sky-chips { display: flex; gap: 6px; flex: none; }
+.sky-left .chip-value { color: var(--accent); }
+.sky-hearts .chip-value { color: #e8433f; letter-spacing: 1px; }
+
+/* A little shake when hearts are lost. The picture itself doesn't change. */
+#hearts.is-hurt { animation: hearts-hurt 0.45s ease; display: inline-block; }
+
+@keyframes hearts-hurt {
+  20% { transform: translateX(-5px); }
+  50% { transform: translateX(5px); }
+  80% { transform: translateX(-2px); }
+}
+
+.finish-place { font-size: clamp(38px, 6vw, 68px); font-weight: 700; line-height: 1.05; }
+
+/* ---------- the ring: what's inside it gets fired at ---------- */
+.aim {
+  display: none;
+  position: fixed;
+  z-index: 2;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+body[data-screen='countdown'] .aim,
+body[data-screen='fly'] .aim { display: block; }
+
+.aim svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.aim-under { fill: none; stroke: rgba(18, 48, 77, 0.65); stroke-width: 9; }
+.aim-ring { fill: none; stroke: #ffffff; stroke-width: 5; }
+.aim-ticks { fill: none; stroke: #ffffff; stroke-width: 5; stroke-linecap: round; }
+.aim-dot { fill: #ffffff; stroke: rgba(18, 48, 77, 0.65); stroke-width: 2; }
+
+.aim[data-locked='yes'] .aim-ring { stroke: #4dff8f; stroke-width: 8; }
+.aim[data-locked='yes'] .aim-ticks { stroke: #4dff8f; }
+.aim[data-locked='yes'] .aim-dot { fill: #4dff8f; }
+.aim[data-locked='yes'] svg { animation: aim-closes 0.5s ease-in-out infinite alternate; }
+
+@keyframes aim-closes {
+  to { transform: scale(0.94); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aim[data-locked='yes'] svg { animation: none; }
+}
+
+/* ---------- where the other planes are ---------- */
+.marks { display: none; }
+
+body[data-screen='countdown'] .marks,
+body[data-screen='fly'] .marks { display: block; }
+
+.mark {
+  position: fixed;
+  z-index: 2;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.mark[data-where='none'] { display: none; }
+
+.mark-box {
+  position: absolute;
+  left: -28px;
+  top: -28px;
+  width: 56px;
+  height: 56px;
+  border: 3px solid #ffd23f;
+  border-radius: 12px;
+  box-shadow: 0 0 0 2px rgba(18, 48, 77, 0.5);
+}
+
+.mark[data-hunting='yes'] .mark-box { border-color: #ff5a4f; }
+.mark[data-locked='yes'] .mark-box { border-color: #4dff8f; }
+
+.mark-bar {
+  position: absolute;
+  left: -28px;
+  top: -42px;
+  width: 56px;
+  height: 8px;
+  background: rgba(18, 48, 77, 0.7);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.mark-fill { display: block; height: 100%; width: 100%; background: #ffd23f; border-radius: 999px; }
+.mark[data-hunting='yes'] .mark-fill { background: #ff5a4f; }
+.mark[data-locked='yes'] .mark-fill { background: #4dff8f; }
+
+.mark-face {
+  position: absolute;
+  left: 32px;
+  top: -24px;
+  width: 42px;
+  height: 42px;
+  background: #fff;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(18, 48, 77, 0.35);
+}
+
+.mark-arrow { display: none; }
+
+/* Off the screen: the character's face, and an arrow saying which way to turn. */
+.mark[data-where='off'] .mark-box,
+.mark[data-where='off'] .mark-bar { display: none; }
+
+.mark[data-where='off'] .mark-face {
+  left: -30px;
+  top: -30px;
+  width: 60px;
+  height: 60px;
+  border-color: #ffd23f;
+}
+
+.mark[data-where='off'][data-hunting='yes'] .mark-face { border-color: #ff5a4f; }
+
+.mark[data-where='off'] .mark-arrow {
+  display: block;
+  position: absolute;
+  left: -46px;
+  top: -46px;
+  width: 92px;
+  height: 92px;
+}
+
+.mark[data-where='off'] .mark-arrow::after {
+  content: '';
+  position: absolute;
+  right: -14px;
+  top: 28px;
+  border-style: solid;
+  border-width: 18px 0 18px 26px;
+  border-color: transparent transparent transparent #ffd23f;
+}
+
+.mark[data-where='off'][data-hunting='yes'] .mark-arrow::after { border-left-color: #ff5a4f; }
+
+/* There's no hand to choose here, as both arms do the flying. */
+fieldset:has(input[name='hands']) { display: none; }
+
+@media (max-width: 620px) {
+  .sky-top { flex-wrap: wrap; right: 10px; }
+}

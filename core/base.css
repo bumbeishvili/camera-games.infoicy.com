@@ -1,0 +1,978 @@
+@font-face {
+  font-family: 'Fredoka';
+  src: url('../vendor/fonts/fredoka.woff2') format('woff2');
+  font-weight: 300 700;
+  font-display: swap;
+}
+
+/* Fredoka has no Georgian letters, so those come from here. */
+@font-face {
+  font-family: 'Noto Sans Georgian';
+  src: url('../vendor/fonts/noto-sans-georgian.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+  unicode-range: U+10A0-10FF, U+1C90-1CBF, U+2D00-2D2F;
+}
+
+:root {
+  --ink: #12304d;
+  --ink-soft: #46607c;
+  --surface: #ffffff;
+  --surface-soft: #f1f6fa;
+  --line: #d9e3ec;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --neutral: #93a3b3;
+  --accent: #2a78d6;
+  --accent-track: #cde2fb;
+  --sun: #ffd23f;
+  --sun-deep: #dba500;
+  --shadow: 0 10px 30px rgba(18, 48, 77, 0.2);
+  --camera-aspect: 1.7778;
+  --camera-small: clamp(170px, 20vw, 300px);
+  --meter-size: clamp(92px, 12.5vw, 150px);
+  font-family: 'Fredoka', 'Noto Sans Georgian', ui-rounded, 'Arial Rounded MT Bold', system-ui, sans-serif;
+  color: var(--ink);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #bfe6ff;
+}
+
+h1, h2, h3, p { margin: 0; }
+
+button { font: inherit; color: inherit; cursor: pointer; }
+
+#game {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ---------- which pieces each screen shows ---------- */
+.screen,
+.camera-frame,
+.hud-top,
+.hands-bar,
+.check-progress,
+.gear { display: none; }
+
+body[data-screen='welcome'] #screen-welcome,
+body[data-screen='loading'] #screen-loading,
+body[data-screen='problem'] #screen-problem,
+body[data-screen='finish'] #screen-finish { display: grid; }
+
+body[data-screen='check'] .camera-frame,
+body[data-screen='countdown'] .camera-frame,
+body[data-screen='playing'] .camera-frame { display: block; }
+
+body[data-screen='check'] .hands-bar,
+body[data-screen='countdown'] .hands-bar,
+body[data-screen='playing'] .hands-bar { display: flex; }
+
+body[data-screen='playing'] .hud-top { display: flex; }
+body[data-screen='check'] .check-progress { display: block; }
+body:not([data-screen='loading']) .gear { display: grid; }
+
+/* With one hand in play, everything about the other one goes. */
+body[data-hands='left'] #meter-right,
+body[data-hands='right'] #meter-left,
+body[data-hands='left'] .panel-hand[data-side='right'],
+body[data-hands='right'] .panel-hand[data-side='left'],
+body[data-hands='left'] .summary tr > :nth-child(3),
+body[data-hands='right'] .summary tr > :nth-child(2) { display: none; }
+
+/* ---------- title, loading and problem screens ---------- */
+.screen {
+  position: fixed;
+  inset: 0;
+  place-items: center;
+  padding: 20px;
+  overflow: auto;
+}
+
+.card {
+  background: var(--surface);
+  border-radius: 32px;
+  box-shadow: var(--shadow);
+  padding: clamp(20px, 3.4vw, 40px);
+  text-align: center;
+}
+
+.title-card {
+  width: min(600px, 100%);
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+}
+
+h1 {
+  font-size: clamp(38px, 6vw, 68px);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.5px;
+}
+
+h2 {
+  font-size: clamp(26px, 3.6vw, 40px);
+  font-weight: 700;
+  line-height: 1.12;
+}
+
+.tagline {
+  font-size: clamp(20px, 2.5vw, 28px);
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.big-button {
+  border: 0;
+  border-radius: 999px;
+  background: var(--sun);
+  box-shadow: 0 7px 0 var(--sun-deep);
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 700;
+  padding: 16px 44px 18px;
+  margin-bottom: 7px;
+}
+
+.big-button:hover { background: #ffdb62; }
+
+.big-button:active {
+  transform: translateY(5px);
+  box-shadow: 0 2px 0 var(--sun-deep);
+}
+
+:focus-visible {
+  outline: 4px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.small-print {
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+
+.problem-detail {
+  font-size: 19px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+
+/* ---------- mirror view ---------- */
+.camera-frame {
+  position: fixed;
+  z-index: 2;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: var(--camera-small);
+  aspect-ratio: var(--camera-aspect);
+  border-radius: 18px;
+  overflow: hidden;
+  background: #27384b;
+  border: 4px solid var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.camera-frame video,
+.camera-frame canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.camera-frame[data-ready='open'] { border-color: var(--good); }
+
+/* The picture is a mirror, so moving your left hand moves the hand on the left. */
+.camera-frame video {
+  transform: scaleX(-1);
+  object-fit: cover;
+}
+
+/* During the hand check the mirror is the main thing on screen. */
+body[data-screen='check'] .camera-frame {
+  top: 90px;
+  width: min(82vw, calc((100dvh - var(--meter-size) - 90px - 116px) * var(--camera-aspect)));
+  border-width: 6px;
+  border-radius: 26px;
+}
+
+.hand-guide {
+  display: none;
+  position: absolute;
+  top: 25%;
+  height: 50%;
+  aspect-ratio: 66 / 80;
+  opacity: 0.55;
+  fill: var(--surface);
+  stroke: var(--surface);
+  stroke-width: 9;
+  stroke-linecap: round;
+}
+
+.hand-guide rect { stroke-width: 0; }
+
+.hand-guide-left { left: 27%; transform: translateX(-50%); }
+.hand-guide-right { left: 73%; transform: translateX(-50%); }
+
+body[data-screen='check'] .hand-guide.is-wanted { display: block; }
+
+.check-progress {
+  position: fixed;
+  z-index: 3;
+  left: 50%;
+  bottom: calc(var(--meter-size) + 58px);
+  transform: translateX(-50%);
+  width: min(420px, 62vw);
+  height: 18px;
+  background: var(--accent-track);
+  border-radius: 999px;
+  box-shadow: 0 0 0 4px var(--surface);
+  overflow: hidden;
+}
+
+#check-progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+/* ---------- who's speaking, in the games with a story ---------- */
+.story {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  left: 12px;
+  top: 106px;
+  width: min(26vw, 350px);
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 14px 8px 8px;
+  background: var(--surface);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+}
+
+body[data-screen='playing'] .story.is-visible { display: grid; }
+
+.story-face {
+  width: clamp(48px, 5.4vw, 76px);
+  height: clamp(48px, 5.4vw, 76px);
+  border-radius: 16px;
+  background: #dff1ff;
+  object-fit: cover;
+}
+
+.story-name { font-size: clamp(14px, 1.4vw, 18px); }
+.story-line { margin: 2px 0 0; font-size: clamp(14px, 1.45vw, 19px); font-weight: 500; line-height: 1.25; }
+
+/* A prompt goes beside the story while one is showing, so that neither hides the other. */
+body[data-screen='playing']:has(.story.is-visible) .prompt {
+  left: calc((12px + min(26vw, 350px) + 100vw) / 2);
+  max-width: calc(100vw - min(26vw, 350px) - 36px);
+}
+
+/* The film a story game shows until the child has got the idea. */
+.film {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  left: 16px;
+  bottom: 16px;
+  width: min(22vw, 34vh);
+  min-width: 120px;
+  background: linear-gradient(#cfeeff, #f4fbff);
+  border: 5px solid var(--sun);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+body[data-film='on'][data-screen='playing'] .film { display: block; }
+.film svg { display: block; width: 100%; height: auto; }
+
+/* ---------- a little film of what the hand should do ---------- */
+.hand-demo {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  left: 16px;
+  bottom: 16px;
+  width: min(19vw, 30vh);
+  min-width: 110px;
+  background: linear-gradient(#cfeeff, #f4fbff);
+  border: 5px solid var(--sun);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+}
+
+body[data-screen='check'] .hand-demo,
+body[data-screen='playing'][data-steer-hint] .hand-demo { display: block; }
+
+.hand-demo svg { display: block; width: 100%; height: auto; }
+.hand-demo rect { fill: var(--good); stroke: var(--ink); stroke-width: 3; }
+.hand-demo-finger { fill: none; stroke: var(--good); stroke-width: 10; stroke-linecap: round; transform-box: fill-box; transform-origin: bottom center; animation: hand-opens 2.4s ease-in-out infinite; }
+.hand-demo-thumb { transform-origin: bottom left; }
+.hand-demo-hand { transform-box: fill-box; transform-origin: center; }
+
+/* Closed, opening wide, and held open. */
+@keyframes hand-opens {
+  0%, 12% { transform: scale(0.45); }
+  42%, 86% { transform: scale(1); }
+  100% { transform: scale(0.45); }
+}
+
+/* Steering: an open hand going from side to side. */
+body[data-steer-hint] .hand-demo-finger { animation: none; }
+body[data-steer-hint] .hand-demo-hand { animation: hand-steers 2.4s ease-in-out infinite; }
+
+@keyframes hand-steers {
+  0%, 100% { transform: translateX(-16px) rotate(-8deg); }
+  50% { transform: translateX(16px) rotate(8deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hand-demo-finger, .hand-demo-hand { animation-duration: 3.6s; }
+}
+
+/* ---------- prompts ---------- */
+.prompt {
+  position: fixed;
+  z-index: 4;
+  left: 50%;
+  top: calc(12px + var(--camera-small) / var(--camera-aspect) + 18px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: calc(100vw - 32px);
+  width: max-content;
+  padding: 10px 26px 12px;
+  background: var(--surface);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  font-size: clamp(22px, 3.3vw, 42px);
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  visibility: hidden;
+}
+
+.prompt.is-visible { visibility: visible; }
+
+body[data-screen='check'] .prompt {
+  top: 12px;
+}
+
+body:not([data-screen='check'], [data-screen='playing']) .prompt { display: none; }
+
+.prompt-arrow {
+  display: none;
+  color: var(--ink);
+  font-size: 0.85em;
+}
+
+.prompt-arrow.is-visible {
+  display: inline;
+  animation: nudge 1.1s ease-in-out infinite;
+}
+
+#prompt-arrow-right.is-visible { animation-name: nudge-right; }
+
+@keyframes nudge {
+  50% { transform: translateX(-6px); }
+}
+
+@keyframes nudge-right {
+  50% { transform: translateX(6px); }
+}
+
+/* ---------- countdown ---------- */
+.count {
+  position: fixed;
+  z-index: 3;
+  left: 50%;
+  top: 44%;
+  transform: translate(-50%, -50%);
+  font-size: clamp(90px, 18vw, 220px);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--surface);
+  -webkit-text-stroke: 3px var(--ink);
+  paint-order: stroke fill;
+  pointer-events: none;
+}
+
+.count.pop { animation: pop 0.45s ease-out; }
+
+@keyframes pop {
+  from { transform: translate(-50%, -50%) scale(0.6); opacity: 0.2; }
+  to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+body:not([data-screen='countdown'], [data-screen='playing']) .count { display: none; }
+
+/* ---------- race chips ---------- */
+.hud-top {
+  position: fixed;
+  z-index: 2;
+  top: 12px;
+  left: 12px;
+  flex-direction: column;
+  gap: 8px;
+  width: max-content;
+}
+
+.chips {
+  display: flex;
+  gap: 6px;
+}
+
+.chip {
+  display: grid;
+  justify-items: center;
+  min-width: clamp(58px, 7vw, 92px);
+  padding: 6px 12px 8px;
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: 0 4px 14px rgba(18, 48, 77, 0.18);
+}
+
+.chip-label {
+  font-size: clamp(12px, 1.2vw, 15px);
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.chip-value {
+  font-size: clamp(19px, 2.3vw, 30px);
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.race-progress {
+  height: 10px;
+  background: var(--accent-track);
+  border-radius: 999px;
+  box-shadow: 0 0 0 3px var(--surface);
+  overflow: hidden;
+}
+
+.race-progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.gear {
+  position: fixed;
+  z-index: 5;
+  top: 12px;
+  right: 12px;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgba(18, 48, 77, 0.18);
+}
+
+.gear svg {
+  width: 26px;
+  height: 26px;
+  fill: var(--ink-soft);
+  fill-rule: evenodd;
+}
+
+/* ---------- hand meters ---------- */
+.hands-bar {
+  position: fixed;
+  z-index: 2;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  align-items: center;
+  gap: clamp(8px, 2vw, 24px);
+}
+
+.meter {
+  width: var(--meter-size);
+  display: grid;
+  gap: 2px;
+  background: var(--surface);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+  padding: 8px 8px 6px;
+}
+
+.meter svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.meter-track,
+.meter-fill {
+  fill: none;
+  stroke-width: 9;
+}
+
+.meter-track { stroke: var(--line); }
+
+.meter-fill {
+  stroke: var(--warning);
+  stroke-linecap: round;
+  transition: stroke 0.15s linear;
+}
+
+.meter-tick {
+  stroke: var(--ink);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.meter-tick.is-hidden,
+.meter-fill.is-hidden { display: none; }
+
+.meter-hand {
+  color: var(--ink);
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 9;
+  stroke-linecap: round;
+}
+
+.meter-hand rect { stroke-width: 0; }
+
+.meter-mark {
+  font-size: 22px;
+  font-weight: 700;
+  fill: var(--surface);
+  transform: translateY(15px);
+}
+
+.meter-caption {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px;
+  padding: 0 4px;
+  font-size: clamp(12px, 1.25vw, 16px);
+  line-height: 1.15;
+}
+
+.meter-name { color: var(--ink-soft); }
+.meter-word { font-weight: 700; text-align: right; }
+
+.meter[data-state='open'] .meter-fill { stroke: var(--good); }
+.meter[data-state='open'] .meter-hand { color: var(--good); }
+
+.meter[data-state='closed'] {
+  animation: breathe 1.3s ease-in-out infinite;
+}
+
+.meter[data-state='missing'] .meter-hand { color: var(--neutral); }
+.meter[data-state='missing'] .meter-track { stroke-dasharray: 8 8; }
+
+@keyframes breathe {
+  50% { transform: scale(1.05); }
+}
+
+.wheel {
+  width: clamp(46px, 6vw, 74px);
+  flex: none;
+  background: var(--surface);
+  border-radius: 50%;
+  padding: 4px;
+  box-shadow: var(--shadow);
+}
+
+.wheel svg {
+  display: block;
+  width: 100%;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.wheel .wheel-hub { fill: var(--ink); stroke-width: 0; }
+.wheel.is-auto { display: none; }
+
+/* ---------- finish ---------- */
+#screen-finish { z-index: 6; }
+
+#confetti {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.finish-card {
+  position: relative;
+  width: min(640px, 100%);
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+
+.finish-hero {
+  font-size: clamp(30px, 4.4vw, 52px);
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.hero-mark { color: var(--sun-deep); }
+
+.all-games {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.finish-open {
+  font-size: 17px;
+  color: var(--ink-soft);
+}
+
+.summary {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6px;
+  font-size: clamp(15px, 1.7vw, 18px);
+  text-align: left;
+}
+
+.summary th,
+.summary td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.summary tbody tr:last-child th,
+.summary tbody tr:last-child td { border-bottom: 0; }
+
+.summary thead th {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.summary tbody th {
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.summary td {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  width: 34%;
+}
+
+.thin-meter {
+  display: block;
+  height: 8px;
+  margin-top: 6px;
+  background: var(--accent-track);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.thin-meter span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.finish-actions {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px 24px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- grown-ups' panel ---------- */
+.panel {
+  width: min(820px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  border: 0;
+  border-radius: 24px;
+  padding: clamp(16px, 2.6vw, 28px);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.panel::backdrop { background: rgba(18, 48, 77, 0.45); }
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.panel-head h2 { font-size: 28px; }
+
+.panel-close,
+.soft-button {
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  box-shadow: inset 0 0 0 2px var(--line);
+  font-size: 17px;
+  font-weight: 600;
+  padding: 9px 20px 10px;
+}
+
+.panel-close { background: var(--sun); box-shadow: none; }
+
+/* The way back to all the games, from anywhere in a game. */
+.panel-link {
+  margin-left: auto;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  box-shadow: inset 0 0 0 2px var(--line);
+  color: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  padding: 9px 20px 10px;
+  text-decoration: none;
+}
+
+.panel-link:hover { background: var(--surface); }
+
+.panel-lead {
+  margin-top: 6px;
+  font-size: 16px;
+  color: var(--ink-soft);
+}
+
+.panel-hands {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 14px;
+  margin: 16px 0;
+}
+
+.panel-hand {
+  background: var(--surface-soft);
+  border-radius: 18px;
+  padding: 14px 16px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.panel-hand h3 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.panel-state {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.panel-state[data-state='open'] { color: #006300; }
+
+.live-bar {
+  position: relative;
+  height: 14px;
+  background: var(--accent-track);
+  border-radius: 999px;
+}
+
+.live-bar-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.live-bar-target {
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  width: 4px;
+  margin-left: -2px;
+  border-radius: 2px;
+  background: var(--ink);
+  box-shadow: 0 0 0 2px var(--surface-soft);
+}
+
+.live-numbers {
+  font-size: 15px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.finger-bars {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.finger-bar {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.finger-track {
+  position: relative;
+  width: 14px;
+  height: 46px;
+  background: var(--accent-track);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.finger-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.strictness {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  margin-top: 4px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.strictness input {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.strictness output {
+  grid-column: 2;
+  grid-row: 1;
+  color: var(--ink-soft);
+  font-weight: 400;
+}
+
+.panel-note {
+  display: none;
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--ink);
+  background: #fff4d6;
+  border-radius: 12px;
+  padding: 8px 10px;
+}
+
+.panel-note.is-visible { display: block; }
+
+.choice {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 0;
+  padding: 12px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  font-size: 16px;
+}
+
+.choice legend {
+  float: left;
+  width: 100%;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  padding: 0;
+  margin-bottom: 6px;
+}
+
+.choice label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}
+
+.choice input { accent-color: var(--accent); width: 18px; height: 18px; margin: 0; }
+
+.panel-actions {
+  border-top: 1px solid var(--line);
+  padding: 14px 0;
+}
+
+@media (max-height: 560px) {
+  :root {
+    --meter-size: clamp(76px, 15vh, 100px);
+    --camera-small: clamp(130px, 17vw, 200px);
+  }
+  .meter-caption {
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    font-size: 11px;
+  }
+  .meter-word { text-align: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .count.pop,
+  .prompt-arrow.is-visible,
+  .meter[data-state='closed'] { animation: none; }
+}
+
+@media (forced-colors: active) {
+  .meter-fill { stroke: Highlight; }
+  .thin-meter span,
+  .race-progress-fill,
+  .live-bar-fill,
+  .finger-fill,
+  #check-progress-fill { background: Highlight; }
+}

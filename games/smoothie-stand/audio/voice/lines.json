@@ -1,0 +1,14 @@
+[
+  {"id": "how", "text": "Swipe through the fruit!", "ka": "ხელი გადაუსვი ხილს!"},
+  {"id": "sticky", "text": "Yuck! Keep your hand open to shake it off!", "ka": "ფუ! ხელი გაშლილი გეჭიროს, რომ მოიშორო!"},
+  {"id": "open-left", "text": "Open your left hand to slice!", "ka": "გაშალე მარცხენა ხელი, რომ დაჭრა!"},
+  {"id": "open-right", "text": "Open your right hand to slice!", "ka": "გაშალე მარჯვენა ხელი, რომ დაჭრა!"},
+  {"id": "won", "text": "You won the Golden Cup!", "ka": "ოქროს თასი მოიგე!"},
+  {"id": "truffle-hello", "text": "Four apples, please!", "ka": "ოთხი ვაშლი, თუ შეიძლება!", "voice": "am_puck", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 12},
+  {"id": "mochi-hello", "text": "Five oranges, please!", "ka": "ხუთი ფორთოხალი, თუ შეიძლება!", "voice": "af_sky", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 24},
+  {"id": "frost-hello", "text": "Four pears and three oranges, please!", "ka": "ოთხი მსხალი და სამი ფორთოხალი, თუ შეიძლება!", "voice": "bf_emma", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 18},
+  {"id": "widget-hello", "text": "Six bananas, please! Beep!", "ka": "ექვსი ბანანი, თუ შეიძლება! ბიპ!", "voice": "am_echo", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -6},
+  {"id": "kit-hello", "text": "Five peaches! Watch out for rotten fruit!", "ka": "ხუთი ატამი! ფრთხილად, დამპალი ხილია!", "voice": "af_nicole", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 6},
+  {"id": "bramble-hello", "text": "Four apples, four bananas and four plums, please!", "ka": "ოთხი ვაშლი, ოთხი ბანანი და ოთხი ქლიავი, თუ შეიძლება!", "voice": "bm_george", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -18},
+  {"id": "bramble-thanks", "text": "The Golden Cup goes to Joze’s stand!", "ka": "ოქროს თასი ჯოზეს ჯიხურს ეკუთვნის!", "voice": "bm_george", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -18}
+]

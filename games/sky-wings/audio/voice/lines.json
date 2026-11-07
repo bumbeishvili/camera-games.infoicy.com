@@ -1,0 +1,16 @@
+[
+  {"id": "choose", "text": "Who’s flying today?", "ka": "დღეს ვინ მიფრინავს?"},
+  {"id": "practise", "text": "Let’s learn to fly!", "ka": "ჯერ ვისწავლოთ ფრენა!"},
+  {"id": "wings", "text": "Hold your arms out like wings!", "ka": "ხელები გაშალე ფრთებივით!"},
+  {"id": "tip-right", "text": "Tip your wings to the right!", "ka": "ფრთები მარჯვნივ დახარე!"},
+  {"id": "tip-left", "text": "Tip your wings to the left!", "ka": "ფრთები მარცხნივ დახარე!"},
+  {"id": "climb-up", "text": "Raise both arms to fly up!", "ka": "ორივე ხელი ასწიე, რომ მაღლა აფრინდე!"},
+  {"id": "dive-down", "text": "Lower both arms to fly down!", "ka": "ორივე ხელი დაუშვი, რომ დაბლა დაფრინდე!"},
+  {"id": "ready", "text": "That’s it! You’re ready to fly!", "ka": "ასეა! მზად ხარ გასაფრენად!"},
+  {"id": "start", "text": "Sky pirates! Get them inside the ring!", "ka": "ცის მეკობრეები! რგოლში მოაქციე ისინი!"},
+  {"id": "behind", "text": "Behind you! Turn around!", "ka": "უკან გყავს! მობრუნდი!"},
+  {"id": "one-left", "text": "One more to go!", "ka": "კიდევ ერთი დარჩა!"},
+  {"id": "limit", "text": "Back to the island!", "ka": "კუნძულისკენ დაბრუნდი!"},
+  {"id": "won", "text": "You dropped them all!", "ka": "ყველა ჩამოაგდე!", "voice": "am_fenrir", "kaVoice": "ka-GE-GiorgiNeural"},
+  {"id": "lost", "text": "So close! Fly again!", "ka": "ცოტაც და! კიდევ სცადე!", "voice": "am_fenrir", "kaVoice": "ka-GE-GiorgiNeural"}
+]

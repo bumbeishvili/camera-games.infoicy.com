@@ -1,0 +1,17 @@
+{
+  "name": "camera-games",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "python3 tools/serve.py",
+    "voice": "arch -arm64 $HOME/.cache/explainer-video/venv/bin/python tools/render_voice.py",
+    "voice:import": "python3 tools/import_voice.py",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "node --test \"test/unit/*.test.js\"",
+    "test:e2e": "playwright test",
+    "voice:ka": "python3 tools/render_voice_ka.py"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.60.0"
+  }
+}

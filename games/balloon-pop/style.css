@@ -1,0 +1,109 @@
+/* The gloves roam the whole screen here, so the meters keep out of the way in the corners,
+   and stay small because each glove already shows its own hand's state. */
+:root {
+  --meter-size: clamp(72px, 8.5vw, 108px);
+}
+
+.hands-bar {
+  left: 0;
+  right: 0;
+  transform: none;
+  justify-content: space-between;
+  padding: 0 12px;
+  pointer-events: none;
+}
+
+body[data-hands='right'] .hands-bar { justify-content: flex-end; }
+body[data-hands='left'] .hands-bar { justify-content: flex-start; }
+
+.meter-caption { font-size: clamp(11px, 1vw, 13px); }
+
+.finish-card .hero-mark { color: inherit; }
+
+/* ---------- the maths challenge ---------- */
+.maths-question {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  left: 16px;
+  top: 106px;
+  padding: 4px 24px 8px;
+  background: var(--surface);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+  font-size: clamp(38px, 6.4vw, 84px);
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.maths-question:empty { visibility: hidden; }
+.maths-question.is-right { color: #12823f; }
+
+body[data-maths='on'][data-screen='playing'] .maths-question { display: block; }
+
+/* Only there when the game has wrong answers to count. */
+body:not([data-maths='on']) tr:has(#sum-left-wrong) { display: none; }
+
+/* ---------- a little film of an open hand popping a balloon ---------- */
+.pop-demo {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  left: 16px;
+  bottom: 16px;
+  width: min(24vw, 40vh);
+  min-width: 150px;
+  background: linear-gradient(#cfeeff, #f4fbff);
+  border: 5px solid var(--sun);
+  border-radius: 26px;
+  box-shadow: var(--shadow);
+}
+
+body[data-pop-demo='on'][data-screen='playing'] .pop-demo { display: block; }
+
+.pop-demo svg { display: block; width: 100%; height: auto; }
+
+.demo-balloon ellipse, .demo-balloon > path:not(.demo-string) { fill: #ff5a4f; }
+.demo-string { fill: none; stroke: var(--ink); stroke-width: 2.5; opacity: 0.5; }
+.demo-number { font-size: 50px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: #fff; stroke: var(--ink); stroke-width: 5px; paint-order: stroke; display: none; }
+body[data-maths='on'] .demo-number { display: inline; }
+.demo-burst { fill: none; stroke: #ff8f3f; stroke-width: 7; stroke-linecap: round; opacity: 0; }
+.demo-hand rect { fill: #3ddc84; stroke: var(--ink); stroke-width: 3; }
+.demo-finger, .demo-thumb { fill: none; stroke: #3ddc84; stroke-width: 10; stroke-linecap: round; }
+
+.demo-balloon, .demo-burst, .demo-hand, .demo-finger, .demo-thumb { transform-box: fill-box; }
+.demo-balloon { transform-origin: center; animation: demo-balloon 3.4s ease-in-out infinite; }
+.demo-burst { transform-origin: center; animation: demo-burst 3.4s ease-out infinite; }
+.demo-hand { animation: demo-hand 3.4s ease-in-out infinite; }
+.demo-finger, .demo-thumb { transform-origin: bottom center; animation: demo-finger 3.4s ease-in-out infinite; }
+
+/* The hand comes up closed, opens on the balloon, and it pops. */
+@keyframes demo-hand {
+  0%, 12% { transform: translate(0, 0); }
+  48%, 74% { transform: translate(52px, -88px); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes demo-finger {
+  0%, 30% { transform: scaleY(0.45); }
+  44%, 78% { transform: scaleY(1); }
+  100% { transform: scaleY(0.45); }
+}
+
+@keyframes demo-balloon {
+  0%, 52% { transform: scale(1); opacity: 1; }
+  56% { transform: scale(1.18); opacity: 1; }
+  60%, 88% { transform: scale(0.1); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes demo-burst {
+  0%, 55% { transform: scale(0.5); opacity: 0; }
+  60% { transform: scale(0.9); opacity: 1; }
+  72%, 100% { transform: scale(1.15); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demo-balloon, .demo-burst, .demo-hand, .demo-finger, .demo-thumb { animation-duration: 5s; }
+}

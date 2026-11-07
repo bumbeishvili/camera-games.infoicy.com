@@ -1,0 +1,185 @@
+/* Leap Trail's own display. What the body games share is in core/body/style.css. */
+
+/* ---------- which pieces each screen shows ---------- */
+.trail-top,
+.move-meter,
+.practice-bar { display: none; }
+
+body[data-screen='countdown'] .trail-top,
+body[data-screen='run'] .trail-top,
+body[data-screen='finishing'] .trail-top { display: flex; }
+
+body[data-screen='countdown'] .camera-frame,
+body[data-screen='run'] .camera-frame,
+body[data-screen='practice'] .camera-frame { display: block; }
+
+body[data-screen='run'] .move-meter,
+body[data-screen='countdown'] .move-meter,
+body[data-screen='practice'] .move-meter { display: block; }
+
+body[data-screen='practice'] .practice-bar { display: flex; }
+
+body[data-screen='run'] .coach.is-visible,
+body[data-screen='practice'] .coach.is-visible { display: flex; }
+
+/* Big enough for a child across the room to see themselves in. */
+.body-frame { --camera-small: clamp(190px, 25vw, 350px); }
+
+/* ---------- choosing ---------- */
+.choose-tip {
+  font-size: clamp(16px, 1.7vw, 21px);
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--ink-soft);
+}
+
+/* ---------- practising: the child's own picture beside the runner ---------- */
+body[data-screen='practice'] .body-frame {
+  --practice-width: min(38vw, calc((100vh - 200px) * var(--camera-aspect)));
+  top: 110px;
+  bottom: auto;
+  left: clamp(50px, 6vw, 90px);
+  width: var(--practice-width);
+}
+
+/* Between the child's picture and their runner, which is copying them. */
+body[data-screen='practice'] .coach {
+  top: 70px;
+  bottom: auto;
+  right: auto;
+  left: calc(clamp(50px, 6vw, 90px) + 38vw + 16px);
+}
+
+body[data-screen='practice'] .move-meter {
+  top: 110px;
+  bottom: auto;
+  left: 8px;
+  width: clamp(34px, 4vw, 50px);
+  height: min(60vh, calc(100vh - 200px));
+}
+
+.practice-bar {
+  position: fixed;
+  z-index: 3;
+  right: 14px;
+  bottom: 12px;
+  gap: 12px;
+  align-items: center;
+}
+
+.practice-count {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 2px 0 rgba(18, 48, 77, 0.8);
+}
+
+/* ---------- where the body is, between a squat and a jump ---------- */
+.move-meter {
+  position: fixed;
+  z-index: 3;
+  left: calc(12px + var(--camera-small) + 14px);
+  bottom: 12px;
+  width: clamp(30px, 3.4vw, 44px);
+  height: calc(var(--camera-small) / var(--camera-aspect) + 8px);
+  --camera-small: clamp(190px, 25vw, 350px);
+  background: rgba(18, 48, 77, 0.6);
+  border: 3px solid #fff;
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.meter-zone {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 10%;
+}
+
+.meter-zone-up { top: 0; background: #2fd16f; }
+.meter-zone-down { bottom: 0; background: #46b7ff; }
+
+/* Raising a hand has no way down, and there's nothing to squat under. */
+body[data-jump-with='reach'] .meter-zone-down { display: none; }
+
+.meter-middle {
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 50%;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.meter-dot {
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  width: 76%;
+  aspect-ratio: 1;
+  transform: translate(-50%, 50%);
+  background: var(--sun);
+  border: 3px solid #fff;
+  border-radius: 50%;
+}
+
+.move-meter[data-zone='up'] .meter-dot { background: #2fd16f; }
+.move-meter[data-zone='down'] .meter-dot { background: #46b7ff; }
+
+/* ---------- along the top ---------- */
+.trail-top {
+  position: fixed;
+  z-index: 3;
+  top: 8px;
+  left: 10px;
+  right: 66px;
+  align-items: center;
+  gap: clamp(8px, 1.6vw, 20px);
+  pointer-events: none;
+}
+
+.trail-chips { display: flex; gap: 6px; flex: none; }
+
+.trail-track {
+  position: relative;
+  flex: 1;
+  height: clamp(16px, 2.2vw, 26px);
+  margin-right: 20px;
+  background: rgba(18, 48, 77, 0.55);
+  border: 3px solid #fff;
+  border-radius: 999px;
+}
+
+.trail-fill {
+  width: 0;
+  height: 100%;
+  background: var(--sun);
+  border-radius: 999px;
+}
+
+.trail-runner {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: clamp(42px, 5vw, 62px);
+  height: clamp(42px, 5vw, 62px);
+  transform: translate(-50%, -50%);
+  background: #fff;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 3px 10px rgba(18, 48, 77, 0.3);
+}
+
+.trail-flag {
+  position: absolute;
+  top: 50%;
+  right: -16px;
+  transform: translateY(-50%);
+  font-size: clamp(22px, 3vw, 34px);
+}
+
+@media (max-width: 620px) {
+  .trail-top { flex-wrap: wrap; right: 10px; }
+  .trail-track { flex-basis: 100%; }
+}

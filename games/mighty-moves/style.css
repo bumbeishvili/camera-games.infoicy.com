@@ -1,0 +1,227 @@
+/* Mighty Moves' own display. What the body games share is in core/body/style.css. */
+
+/* ---------- which pieces each screen shows ---------- */
+.fight-top,
+.versus-banner,
+.break-card { display: none; }
+
+body[data-screen='intro'] .versus-banner { display: flex; }
+
+body[data-screen='countdown'] .fight-top,
+body[data-screen='fight'] .fight-top,
+body[data-screen='roundend'] .fight-top,
+body[data-screen='break'] .fight-top { display: grid; }
+
+body[data-screen='countdown'] .camera-frame,
+body[data-screen='fight'] .camera-frame,
+body[data-screen='roundend'] .camera-frame,
+body[data-screen='break'] .camera-frame { display: block; }
+
+body[data-screen='fight'] .tally,
+body[data-screen='countdown'] .tally { display: flex; }
+
+body[data-screen='fight'] .coach.is-visible { display: flex; }
+
+/* Everything done so far, between the camera and the card that shows the next move. */
+.tally {
+  right: auto;
+  left: calc(12px + clamp(150px, 19vw, 270px) + 14px);
+  max-width: calc(100vw - 12px - clamp(150px, 19vw, 270px) - 14px - min(26vw, 52vh) - 36px);
+  justify-content: flex-start;
+}
+body[data-screen='break'] .break-card { display: grid; }
+
+/* ---------- who to fight ---------- */
+.fight-mode {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.fight-mode label { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.is-soon { color: var(--ink-soft); }
+
+.soon {
+  font-size: 13px;
+  background: var(--surface-soft);
+  border-radius: 999px;
+  padding: 1px 10px;
+}
+
+.opponent {
+  border: 2px solid var(--line);
+  background: var(--surface);
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px 6px 6px;
+  text-align: left;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.opponent:hover { background: var(--surface-soft); }
+.opponent img { width: 66px; height: 66px; display: block; }
+.opponent-change { font-size: 13px; color: var(--accent); }
+
+/* ---------- the top of the fight ---------- */
+.fight-top {
+  position: fixed;
+  z-index: 3;
+  top: 8px;
+  left: 10px;
+  right: 10px;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: clamp(6px, 1.4vw, 18px);
+  align-items: start;
+  pointer-events: none;
+}
+
+.corner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.corner-portrait {
+  width: clamp(50px, 6.6vw, 86px);
+  height: clamp(50px, 6.6vw, 86px);
+  background: rgba(255, 255, 255, 0.88);
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 3px 10px rgba(18, 48, 77, 0.28);
+  flex: none;
+}
+
+.corner-bars { flex: 1; min-width: 0; display: grid; gap: 4px; }
+
+.corner-name {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: #fff;
+  font-size: clamp(16px, 2vw, 25px);
+  font-weight: 700;
+  text-shadow: 0 2px 0 rgba(18, 48, 77, 0.65);
+}
+
+.corner[data-who='npc'] { margin-right: 54px; }
+.corner[data-who='npc'] .corner-name { justify-content: flex-end; }
+
+.wins { letter-spacing: 2px; color: var(--sun); }
+
+.hp {
+  height: clamp(14px, 2.1vw, 26px);
+  background: rgba(18, 48, 77, 0.72);
+  border: 3px solid #fff;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.hp-fill {
+  height: 100%;
+  width: 100%;
+  background: #2fd16f;
+  border-radius: 999px;
+  transition: width 0.18s ease-out;
+}
+
+.hp-fill.is-low { background: #ffb020; }
+
+.corner[data-who='npc'] .hp-fill { margin-left: auto; }
+
+.power {
+  position: relative;
+  height: clamp(10px, 1.4vw, 16px);
+  width: 82%;
+  background: rgba(18, 48, 77, 0.6);
+  border: 2px solid #fff;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.power-fill {
+  height: 100%;
+  width: 0;
+  background: #54c8ff;
+  transition: width 0.2s ease-out;
+}
+
+.power.is-full .power-fill { background: var(--sun); }
+
+.power-word {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-shadow: 0 1px 0 rgba(18, 48, 77, 0.8);
+}
+
+.round-box {
+  display: grid;
+  justify-items: center;
+  background: #fff;
+  border-radius: 18px;
+  padding: 3px 14px 5px;
+  box-shadow: 0 3px 10px rgba(18, 48, 77, 0.28);
+  min-width: 70px;
+}
+
+.round-word {
+  font-size: clamp(15px, 1.8vw, 24px);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ---------- between rounds ---------- */
+.versus-banner {
+  position: fixed;
+  z-index: 3;
+  top: 8vh;
+  left: 0;
+  right: 0;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(14px, 3vw, 40px);
+  color: #fff;
+  font-size: clamp(30px, 5vw, 66px);
+  font-weight: 700;
+  text-shadow: 0 4px 0 rgba(18, 48, 77, 0.8);
+}
+
+.versus-word { color: var(--sun); font-size: 1.15em; }
+
+.break-card {
+  position: fixed;
+  z-index: 3;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(660px, 92vw);
+  gap: 8px;
+  justify-items: center;
+}
+
+.finish-hands { font-size: 18px; font-weight: 500; }
+.fight-summary { max-width: 440px; }
+
+
+@media (max-width: 820px), (max-height: 520px) {
+  .opponent img { width: 44px; height: 44px; }
+  .fight-mode { font-size: 14px; }
+}
+
+@media (max-width: 620px) {
+  .corner[data-who='npc'] { margin-right: 0; }
+}

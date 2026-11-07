@@ -1,0 +1,357 @@
+// Films each game for the previews on the page for choosing a game. Each one is the real game, with
+// the real tracker, playing test footage or photos as the webcam, and the camera picture made big
+// enough to see the movement in. Run it with the server going, after changing how a game looks:
+//
+//   npm start                     (in another terminal)
+//   node tools/record_demos.mjs   (or name just the games to film)
+import { chromium } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+const ROOT = new URL('..', import.meta.url).pathname;
+const FFMPEG = readFileSync(join(homedir(), '.cache/explainer-video/ffmpeg-path'), 'utf8').trim();
+const OUT = join(ROOT, 'demos');
+const SITE = 'http://localhost:8642';
+mkdirSync(OUT, { recursive: true });
+
+// Makes what the child is doing easy to see in a small picture, and tidies away what isn't needed.
+const BIG_CAMERA = `
+  #open-panel, .tally, .move-meter, .hands-bar { display: none !important; }
+  .camera-frame { --camera-small: 34vw !important; }
+  .wing-meter { left: calc(12px + 34vw + 14px) !important; }
+  .film { display: none !important; }
+`;
+
+const screenIs = (page, name) => page.waitForFunction((wanted) => window.__game?.screen === wanted, name, { timeout: 90_000 });
+const wait = (page, ms) => page.waitForTimeout(ms);
+const footage = (page, name, options = {}) => page.evaluate(([clip, settings]) => window.__camera.showFootage(clip, settings), [name, options]);
+
+/**
+ * Keeps a glove going after wherever target() says, by moving the photo of the hand that the fake
+ * camera is showing. Runs in the page until it's stopped. hand() says which photo to show.
+ */
+const CHASE = `
+  window.__chase = (glove, target, hand = () => 'open', gain = 0.1) => {
+    let x = 0;
+    let y = 0;
+    const timer = setInterval(() => {
+      const on = glove();
+      const wanted = target();
+      if (on.visible && wanted) {
+        x += ((wanted.x - on.x) / innerWidth) * 1280 * gain;
+        y += ((wanted.y - on.y) / innerHeight) * 720 * gain;
+      }
+      window.__camera.show({ left: null, right: hand(), scale: 0.7, rightOffsetX: x, rightOffsetY: y });
+    }, 33);
+    return () => clearInterval(timer);
+  };
+`;
+
+const FILMS = {
+  'joze-walk': {
+    settings: { reach: 'little' },
+    css: '.camera-frame { --camera-small: 24vw !important; left: 66% !important; }',
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: null, right: 'open', scale: 0.7 }));
+      await page.addScriptTag({ content: CHASE });
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await page.waitForFunction(() => window.__game.walk.fruit.length > 0, null, { timeout: 30_000 });
+      await wait(page, 800);
+    },
+    async play(page) {
+      // Onto a fruit with an open hand, shut on it, across to his mouth, and open.
+      await page.evaluate(() => new Promise((done) => {
+        const { walk } = window.__game;
+        const glove = walk.gloves.right;
+        let phase = 'reach';
+        let since = performance.now();
+        const go = (next) => {
+          phase = next;
+          since = performance.now();
+        };
+        const stop = window.__chase(
+          () => glove,
+          () => {
+            if (phase === 'reach' || phase === 'shut') return walk.fruit.find(({ state }) => state === 'hanging');
+            if (phase === 'carry' || phase === 'open') return walk.mouth;
+            return null;
+          },
+          () => (phase === 'shut' || phase === 'carry' ? 'fist' : 'open'),
+        );
+        const steps = setInterval(() => {
+          const held = performance.now() - since;
+          const near = (at) => at && Math.hypot(at.x - glove.x, at.y - glove.y) < walk.palmSize * 0.5;
+          if (phase === 'reach' && held > 500 && near(walk.fruit.find(({ state }) => state === 'hanging'))) go('shut');
+          if (phase === 'shut' && walk.holding) go('carry');
+          if (phase === 'carry' && held > 500 && walk.onMouth) go('open');
+          if (phase === 'open' && held > 900) go('reach');
+        }, 50);
+        setTimeout(() => {
+          stop();
+          clearInterval(steps);
+          done();
+        }, 13_000);
+      }));
+    },
+    report: (page) => page.evaluate(() => window.__game.journey.stats),
+  },
+  'smoothie-stand': {
+    settings: { pace: 'medium' },
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: null, right: 'open', scale: 0.7 }));
+      await page.addScriptTag({ content: CHASE });
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await page.waitForFunction(() => window.__game.field.throwing, null, { timeout: 30_000 });
+      await wait(page, 800);
+    },
+    async play(page) {
+      // Big swipes back and forth across where the fruit comes up.
+      await page.evaluate(() => new Promise((done) => {
+        const started = performance.now();
+        const timer = setInterval(() => {
+          const t = (performance.now() - started) / 1000;
+          window.__camera.show({ left: null, right: 'open', scale: 0.7, rightOffsetX: -90 + Math.sin(t * 2.7) * 190, rightOffsetY: -30 + Math.sin(t * 1.15) * 110 });
+          if (t > 13) {
+            clearInterval(timer);
+            done();
+          }
+        }, 33);
+      }));
+    },
+    report: (page) => page.evaluate(() => window.__game.stand.stats),
+  },
+  lighthouse: {
+    settings: { reach: 'little' },
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: null, right: 'open', scale: 0.7 }));
+      await page.addScriptTag({ content: CHASE });
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await page.waitForFunction(() => window.__game.storm.ship, null, { timeout: 30_000 });
+      await wait(page, 500);
+    },
+    async play(page) {
+      // Across the window and back, lower each time, as anyone would clean a window.
+      await page.evaluate(() => new Promise((done) => {
+        const { room } = window.__game;
+        const glass = room.window;
+        const started = performance.now();
+        const ROWS = 4;
+        const ROW_SECONDS = 2.1;
+        const stop = window.__chase(
+          () => room.gloves.right,
+          () => {
+            const t = (performance.now() - started) / 1000 / ROW_SECONDS;
+            const row = Math.min(ROWS - 1, Math.floor(t));
+            const along = t - Math.floor(t);
+            const share = row % 2 ? along : 1 - along;
+            return { x: glass.x + glass.width * (0.03 + share * 0.94), y: glass.y + glass.height * ((row + 0.5) / ROWS) };
+          },
+        );
+        setTimeout(() => {
+          stop();
+          done();
+        }, 14_000);
+      }));
+    },
+    report: (page) => page.evaluate(() => ({ home: window.__game.storm.home, clean: window.__game.storm.mud?.share })),
+  },
+  'mighty-moves': {
+    settings: { level: 'gentle' },
+    async ready(page) {
+      await footage(page, 'demo-fight', { from: 0, playing: false });
+      await page.locator('#start').click();
+      await page.locator('#fight-start').click();
+      await screenIs(page, 'fight');
+      await page.waitForFunction(() => window.__game.coach?.phase === 'asking', null, { timeout: 30_000 });
+      await page.evaluate(() => {
+        window.__game.coach.computerIn = 1000;
+      });
+    },
+    async play(page) {
+      await footage(page, 'demo-fight', { from: 0, playing: true });
+      await wait(page, 13_500);
+    },
+    report: (page) => page.evaluate(() => window.__game.fight.stats.exercises),
+  },
+  'leap-trail': {
+    settings: { squatObstacles: 'yes', pace: 'slow' },
+    async ready(page) {
+      await footage(page, 'demo-trail', { from: 0, playing: false });
+      await page.locator('#start').click();
+      await page.locator('#run-start').click();
+      await screenIs(page, 'practice');
+      await page.locator('#practice-skip').click();
+      await screenIs(page, 'run');
+      await wait(page, 1200);
+    },
+    async play(page) {
+      const obstacle = (kind, gap) => page.evaluate(async ([chosen, ahead]) => {
+        const { OBSTACLES } = await import('/games/leap-trail/run.js');
+        const { run, world } = window.__game;
+        const next = run.next;
+        world.retire(next);
+        Object.assign(next, OBSTACLES[chosen], { kind: chosen, at: run.distance + ahead });
+        run.announced = null;
+        for (let i = next.index + 1; i < run.course.length; i += 1) {
+          world.retire(run.course[i]);
+          run.course[i].at = Math.max(run.course[i].at, next.at + 40 * (i - next.index));
+        }
+        run.end = Math.max(run.end, run.course.at(-1).at + 15);
+      }, [kind, gap]);
+      await obstacle('log', 46);
+      await footage(page, 'demo-trail', { from: 0, playing: true });
+      await wait(page, 3700);
+      await obstacle('arch', 42);
+      await wait(page, 3600);
+      await obstacle('hay', 40);
+      await wait(page, 3700);
+    },
+    report: (page) => page.evaluate(() => window.__game.run.stats),
+  },
+  'sky-wings': {
+    settings: { pace: 'slow', planes: 9 },
+    css: '.camera-frame { --camera-small: 26vw !important; } .wing-meter { left: calc(12px + 26vw + 14px) !important; }',
+    async ready(page) {
+      await footage(page, 'wings', { from: 3.5, playing: false });
+      await page.locator('#start').click();
+      await page.locator('#fly-start').click();
+      await screenIs(page, 'lesson');
+      await page.locator('#lesson-skip').click();
+      await screenIs(page, 'fly');
+      // Over the island, heading for the town, with the volcano behind it.
+      await page.evaluate(() => {
+        const { flight, game } = window.__game;
+        Object.assign(flight, { x: 40, y: 120, z: 560, heading: 0, pitch: -0.1 });
+        game.clearAsk();
+      });
+      await wait(page, 1200);
+    },
+    async play(page) {
+      // The arms are the real footage. Planes are kept coming across the ring so that it's not a long
+      // wait in a short film, one at a time, and each is let go once it's been hit a few times.
+      await footage(page, 'wings', { from: 3.2, playing: true });
+      await page.evaluate(() => {
+        const started = performance.now();
+        setInterval(() => {
+          const { flight } = window.__game;
+          const [target] = flight.flying;
+          if (!target || !flight.view) return;
+          const t = (performance.now() - started) / 1000;
+          const { eye, forward } = flight.view;
+          const ahead = 95 + Math.sin(t * 0.7) * 15;
+          const across = Math.sin(t * 1.1) * 12;
+          target.x = eye.x + forward.x * ahead - forward.z * across;
+          target.y = eye.y + forward.y * ahead + Math.cos(t * 0.9) * 6;
+          target.z = eye.z + forward.z * ahead + forward.x * across;
+          target.heading = flight.heading + 0.5;
+          target.mode = 'cross';
+          target.way = { x: target.x, y: target.y, z: target.z };
+          target.modeLeft = 5;
+          target.dodgeLeft = 1;
+          flight.huntIn = 100;
+        }, 16);
+      });
+      await wait(page, 11_500);
+    },
+    report: (page) => page.evaluate(() => window.__game.flight.stats),
+  },
+  'high-five-racers': {
+    settings: { laps: 4 },
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: null, right: 'open' }));
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await wait(page, 1500);
+    },
+    async play(page) {
+      const handFor = (seconds, name, swing) => page.evaluate(([ms, hand, wide]) => new Promise((done) => {
+        const started = performance.now();
+        const timer = setInterval(() => {
+          const t = (performance.now() - started) / 1000;
+          window.__camera.show({ left: null, right: hand, rightOffsetX: Math.sin(t * 1.5) * wide, scale: 0.8 });
+          if (performance.now() - started > ms) {
+            clearInterval(timer);
+            done();
+          }
+        }, 33);
+      }), [seconds * 1000, name, swing]);
+      await handFor(6, 'open', 190);
+      await handFor(2, 'fist', 0);
+      await handFor(3, 'open', 190);
+    },
+    report: (page) => page.evaluate(() => window.__game.race.starTotal),
+  },
+  'balloon-pop': {
+    settings: { reach: 'none', pace: 'medium' },
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: null, right: 'open', scale: 0.7 }));
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await wait(page, 1200);
+    },
+    async play(page) {
+      await page.evaluate(() => new Promise((done) => {
+        const started = performance.now();
+        let nextBalloon = 0;
+        const timer = setInterval(() => {
+          const t = (performance.now() - started) / 1000;
+          const x = -170 + Math.sin(t * 0.8) * 180;
+          const y = Math.sin(t * 1.6) * 110;
+          window.__camera.show({ left: null, right: 'open', rightOffsetX: x, rightOffsetY: y, scale: 0.7 });
+          const { balloons } = window.__game;
+          const glove = balloons.gloves.right;
+          // A balloon a little ahead of where the hand is going.
+          if (t > nextBalloon && glove.visible) {
+            nextBalloon = t + 1.7;
+            const dx = Math.cos(t * 0.8) * 150;
+            const dy = Math.cos(t * 1.6) * 120;
+            balloons.spawnAt(Math.min(balloons.width - 90, Math.max(90, glove.x + dx * 0.9)), Math.min(balloons.height - 90, Math.max(190, glove.y + dy * 0.9)), { still: true });
+          }
+          if (t > 11) {
+            clearInterval(timer);
+            done();
+          }
+        }, 33);
+      }));
+    },
+    report: (page) => page.evaluate(() => window.__game.balloons.popped),
+  },
+};
+
+const wanted = process.argv.slice(2);
+const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=metal', '--mute-audio'] });
+
+for (const [game, film] of Object.entries(FILMS)) {
+  if (wanted.length && !wanted.includes(game)) continue;
+  const dir = mkdtempSync(join(tmpdir(), 'camera-games-demo-'));
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 720 },
+    bypassCSP: true, // Only to make the camera picture bigger here.
+    recordVideo: { dir, size: { width: 1280, height: 720 } },
+  });
+  const page = await context.newPage();
+  const opened = Date.now();
+  page.on('pageerror', (error) => console.error(game, 'page error', error.message));
+  await page.addInitScript({ path: join(ROOT, 'test/e2e/fake-camera.js') });
+  await page.addInitScript((saved) => localStorage.setItem('camera-games-settings', JSON.stringify(saved)), { voice: false, sound: false, ...film.settings });
+  await page.goto(`${SITE}/games/${game}/index.html?debug`);
+  await page.waitForFunction(() => window.__game, null, { timeout: 60_000 });
+  await page.addStyleTag({ content: BIG_CAMERA + (film.css ?? '') });
+  await film.ready(page);
+  const from = (Date.now() - opened) / 1000;
+  await film.play(page);
+  const to = (Date.now() - opened) / 1000;
+  console.log(game, JSON.stringify(await film.report(page)));
+  const video = page.video();
+  await context.close();
+  const raw = await video.path();
+  const finished = join(OUT, `${game}.webm`);
+  execFileSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-ss', String(from), '-to', String(to), '-i', raw, '-vf', 'scale=720:-2', '-c:v', 'libvpx-vp9', '-b:v', '420k', '-crf', '36', '-pix_fmt', 'yuv420p', '-an', finished]);
+  console.log(`${game}: ${Math.round(statSync(finished).size / 1024)} KB, ${(to - from).toFixed(1)} s`);
+}
+await browser.close();

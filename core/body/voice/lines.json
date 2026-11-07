@@ -1,0 +1,21 @@
+[
+  {"id": "make-space", "text": "Make some space around you", "ka": "გარშემო ადგილი გაათავისუფლე"},
+  {"id": "step-back", "text": "Step back until I can see all of you", "ka": "უკან დაიხიე, რომ მთლიანად დაგინახო"},
+  {"id": "show-all", "text": "Stand where I can see all of you", "ka": "ისე დადექი, რომ მთლიანად დაგინახო"},
+  {"id": "move-left", "text": "Move to your left", "ka": "მარცხნივ გადადი"},
+  {"id": "move-right", "text": "Move to your right", "ka": "მარჯვნივ გადადი"},
+  {"id": "can-see-you", "text": "I can see all of you! Get ready!", "ka": "მთლიანად გხედავ! მოემზადე!"},
+  {"id": "come-back", "text": "Come back where I can see you", "ka": "დაბრუნდი, რომ დაგინახო"},
+  {"id": "see-feet", "text": "Step back so I can see your feet", "ka": "უკან დაიხიე, რომ ფეხები დავინახო"},
+  {"id": "waiting", "text": "Take your time. I’ll wait for you.", "ka": "ნუ იჩქარებ. დაგელოდები.", "speak": "Take your time. I'll wait for you."},
+  {"id": "shout-truffle", "text": "Oink oink! Here I come!", "ka": "ღრუტ-ღრუტ! მოვდივარ!", "voice": "am_puck", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 12},
+  {"id": "shout-kit", "text": "Quick as a shadow!", "ka": "ჩრდილივით სწრაფი ვარ!", "voice": "af_nicole", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 6},
+  {"id": "shout-mochi", "text": "Hop, hop, hooray!", "ka": "ხტუნვა, ხტუნვა, ვაშა!", "voice": "af_sky", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 24},
+  {"id": "shout-widget", "text": "Power on! Beep boop!", "ka": "ჩავირთე! ბიპ-ბუპ!", "voice": "am_echo", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -6},
+  {"id": "shout-frost", "text": "Stay cool! Here comes the snow!", "ka": "აბა, თოვლი მოდის!", "voice": "bf_emma", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 18},
+  {"id": "shout-bramble", "text": "A big bear hug for you!", "ka": "დიდი დათვური ჩახუტება!", "voice": "bm_george", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -18},
+  {"id": "shout-nova", "text": "To the stars! Meow!", "ka": "ვარსკვლავებისკენ! მიაუ!", "voice": "af_bella", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 12},
+  {"id": "shout-cinder", "text": "Fired up and ready!", "ka": "ცეცხლივით მზად ვარ!", "voice": "am_adam", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 6},
+  {"id": "shout-tur", "text": "Up the mountain! Here I come!", "ka": "მთას მივუყვები, მოვდივარ!", "voice": "bm_lewis", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -6},
+  {"id": "shout-joze", "text": "Look up! Here comes Joze!", "ka": "ზემოთ აიხედე! ჯოზე მოდის!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0}
+]
