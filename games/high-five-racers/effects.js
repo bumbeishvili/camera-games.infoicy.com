@@ -247,7 +247,7 @@ export class SpeedLines {
       return {
         across: high ? (Math.random() - 0.5) * 22 : side * out,
         up: high ? 7 + Math.random() * 7 : -2.5 + Math.random() * 9,
-        along: Math.random() * 70,
+        along: 10 + Math.random() * 60,
         speed: 0.9 + Math.random() * 0.5,
         width: 0.03 + Math.random() * 0.04,
       };
@@ -271,11 +271,11 @@ export class SpeedLines {
     camera.getWorldDirection(this.forward);
     this.right.crossVectors(this.forward, camera.up).normalize();
     this.up.crossVectors(this.right, this.forward);
-    const length = 4 + speed * 0.42;
+    const length = 2.5 + speed * 0.24;
     for (let i = 0; i < this.count; i += 1) {
       const line = this.lines[i];
       line.along -= speed * line.speed * dt;
-      if (line.along < 3) line.along += 70;
+      if (line.along < 8) line.along += 62;
       this.at.copy(camera.position)
         .addScaledVector(this.forward, line.along)
         .addScaledVector(this.right, line.across)

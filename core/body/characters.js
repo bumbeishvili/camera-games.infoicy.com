@@ -179,6 +179,8 @@ export function outlineMaterial(colour, width = OUTLINE_WIDTH) {
       `vec3 transformed = position + normal * ${width.toFixed(4)};`,
     );
   };
+  // Without this, three.js shares one compiled program between every outline, and the first width wins.
+  material.customProgramCacheKey = () => `outline-${width.toFixed(4)}`;
   return material;
 }
 

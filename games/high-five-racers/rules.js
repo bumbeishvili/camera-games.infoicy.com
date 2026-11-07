@@ -5,9 +5,13 @@
 // nothing here can reward any of those. Nobody can crash or lose, and resting costs nothing.
 
 export const TOP_SPEED = 26; // At this hand's widest. At its target `drive` is 0.8.
-export const KERB_STRIPE = 6.8; // Metres. A red and a white go past fewer than three times a second, at any speed.
-export const CAR_LENGTH = 3.9;
-export const CAR_WIDTH = 1.95;
+// Anything repeating along the road is spaced so that it goes past fewer than three times a second, even at
+// the fastest the car can go. In metres.
+export const KERB_STRIPE = 6.8; // One colour, so a red and a white together are twice this.
+export const CHEVRON_SPACING = 13.6;
+// How close cars get before they touch, from the size of the cars themselves.
+export const CAR_LENGTH = 4.4;
+export const CAR_WIDTH = 2.6;
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 
@@ -129,27 +133,27 @@ export class ReachEasing {
   }
 }
 
-// The other cars race at the child's pace, whatever that is, so there are always some close enough
-// to see and to pass. Each one wants to be a certain distance from the player, which changes slowly, so
-// they keep coming past and being passed. A slap or turbo always leaves them behind for as long as it
-// lasts, which is what makes those feel fast, and a car that's fallen far behind catches up out of sight.
+// The other cars race at the child's pace, whatever that is, so that there's always someone to see and
+// to pass. Each one wants to be a little way ahead, by an amount that changes slowly. A slap's boost leaves
+// them behind for as long as it lasts, which is what makes it feel fast and is most of the overtaking. They
+// come back afterwards, and one that's fallen right out of sight comes past again, to be passed again.
 const GAINS_AT_MOST = 4.5;
 const FALLS_BACK_AT_MOST = 7;
-const LEFT_BEHIND_BY = 2.5; // During a slap or turbo, the least the player pulls away by, in metres a second.
-const FAR_BEHIND = 45;
+const LEFT_BEHIND_BY = 7; // How fast the player pulls away from them during a slap's boost.
+const COMES_BACK_BY = 8; // How fast one that's out of sight comes past.
 const WAITS_WITHIN = 45;
 const STOPS_BEHIND = 7;
 
-export function rivalSpeed({ gap, wish, playerSpeed, resting, rushing, cruise }) {
+export function rivalSpeed({ gap, wish, playerSpeed, resting, rushing, comingBack, cruise }) {
   if (resting) {
     // Everyone waits for a child who's resting. Those in front go on a little way and stop, still in
     // view, and those behind stop before they get there, so resting never costs a place.
     if (gap >= 0) return cruise * clamp(1 - gap / WAITS_WITHIN, 0, 1);
     return clamp((-gap - STOPS_BEHIND) * 1.2, 0, cruise);
   }
-  let pull = clamp((wish - gap) * 0.35, -FALLS_BACK_AT_MOST, rushing ? -LEFT_BEHIND_BY : GAINS_AT_MOST);
-  if (gap < -FAR_BEHIND) pull = Math.max(pull, Math.min(15, (-FAR_BEHIND - gap) * 0.5));
-  return Math.max(0, playerSpeed + pull);
+  if (comingBack) return playerSpeed + COMES_BACK_BY;
+  if (rushing) return Math.max(0, playerSpeed - LEFT_BEHIND_BY);
+  return Math.max(0, playerSpeed + clamp((wish - gap) * 0.35, -FALLS_BACK_AT_MOST, GAINS_AT_MOST));
 }
 
 /** Whether two cars are touching. Each is { distance, lateral }. */

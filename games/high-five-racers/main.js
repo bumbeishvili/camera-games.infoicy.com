@@ -2,9 +2,10 @@
 // at the roadside slaps it for a boost, and opening the hand as wide as it goes is turbo.
 import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
-import { GameSession, SPOKEN } from '../../core/session.js';
+import { GameSession, SPOKEN as SPOKEN_EVERYWHERE } from '../../core/session.js';
 import { CarSound } from './car-sound.js';
-import { Race, TOP_SPEED } from './game.js';
+import { Race } from './game.js';
+import { TOP_SPEED } from './rules.js';
 
 const STEER_HINT_SECONDS = 6;
 const REST_AFTER_SECONDS = 15;
@@ -17,8 +18,11 @@ const TURBO_TOAST_SPACING_SECONDS = 9;
 const SPEED_SHOWN_PER_METRE = 5; // Metres a second, as a number that's fun to see going up.
 
 const STEER_HINT = 'Move your hand side to side to catch stars';
-const FIVE_HINT = 'High five the big hand!';
-const TURBO_HINT = 'Open wide for turbo!';
+// Only this game says these. Each has a rendered voice file: see core/audio/voice/lines.json.
+const SPOKEN = {
+  bigHand: 'High five the big hand!',
+  turbo: 'Open wide for turbo!',
+};
 const PRAISE = ['Great job!', 'Nice one!', 'You passed a car!', 'Way to go!'];
 const PRAISE_EVERY = 5; // Cars passed between one bit of praise and the next.
 
@@ -69,9 +73,7 @@ class RaceGame {
           if (this.passed % PRAISE_EVERY === 1) sound.say(PRAISE[this.praiseIndex++ % PRAISE.length], { ifQuiet: true });
         }
       },
-      onOvertake: (spec, byPlayer) => {
-        if (byPlayer) this.toast(this.words.passed(spec), spec);
-      },
+      onOvertake: (spec) => this.toast(this.words.passed(spec), spec),
       onLap: (lap) => {
         sound.lap();
         sound.say(lap === this.race.laps ? 'Last lap!' : `Lap ${lap}!`);
@@ -82,7 +84,7 @@ class RaceGame {
         this.toast(streak >= 3 ? this.words.row(streak) : this.words.five);
       },
       onGate: (gate, outcome) => {
-        if (outcome === 'passed') this.missesInARow += 1;
+        if (outcome === 'passed' && this.race.drive > 0) this.missesInARow += 1;
         if (outcome === 'closed') sound.pat();
       },
       onBump: () => sound.bump(),
@@ -109,6 +111,8 @@ class RaceGame {
     this.toastBox = byId('toast');
     this.toastFace = byId('toast-face');
     this.toastText = byId('toast-text');
+    // Otherwise it would play again whenever the race's screen comes back.
+    this.toastBox.addEventListener('animationend', () => this.toastBox.classList.remove('is-showing'));
     const game = this;
     this.debug = {
       race: this.race,
@@ -173,7 +177,7 @@ class RaceGame {
     }
     this.speedShown.textContent = String(Math.round(speed * TOP_SPEED * SPEED_SHOWN_PER_METRE));
 
-    race.order.forEach(({ spec }, index) => {
+    race.order.forEach((spec, index) => {
       const entry = this.orderRows.get(spec.id);
       if (!entry) return;
       entry.row.style.setProperty('--slot', String(index));
@@ -198,26 +202,30 @@ class RaceGame {
   enterCheck() {
     this.session.sound.stopEngine();
     this.race.setMode('grid');
+    this.race.world.places.startLights.set(0);
   }
 
   prepare() {
     this.race.reset(this.session.settings.laps);
     this.race.setMode('grid');
-    this.race.world.places.startLights?.set(0);
+    this.race.world.places.startLights.set(0);
     this.missesInARow = 0;
     this.turboHintFrom = null;
+    this.lastTurboToast = -Infinity;
     this.showProgress();
     this.session.sound.startEngine();
   }
 
   begin() {
     this.race.setMode('race');
-    this.race.world.places.startLights?.go();
+    this.race.world.places.startLights.go();
+    this.race.celebrateAtLine();
   }
 
   resume() {
     this.session.sound.startEngine();
     this.race.setMode('race');
+    this.race.world.places.startLights.go();
   }
 
   update(dt, snapshot) {
@@ -226,7 +234,7 @@ class RaceGame {
     race.update(dt, {
       drive: snapshot.drive,
       // How open this hand is, against the best it managed in the hand check. That's what turbo goes by.
-      width: snapshot.handOpen ? hand.openness / hand.best : 0,
+      width: snapshot.handOpen ? hand.openness / Math.max(hand.best, hand.target + 0.01) : 0,
       steer: snapshot.steer,
       steering: session.settings.steering,
       left: snapshot.left,
@@ -240,7 +248,7 @@ class RaceGame {
   idle(dt, { left, right, steer }) {
     this.race.update(dt, { left, right, steer });
     // The lights over the start line come on, one for each number of the countdown.
-    if (this.session.screen === 'countdown') this.race.world.places.startLights?.set(this.session.countWait > 0 ? 0 : 4 - Math.ceil(this.session.countLeft));
+    if (this.session.screen === 'countdown') this.race.world.places.startLights.set(this.session.countWait > 0 ? 0 : 4 - Math.ceil(this.session.countLeft));
   }
 
   render() {
@@ -259,45 +267,47 @@ class RaceGame {
   prompt(snapshot, dt) {
     const { session, race } = this;
     const steerable = session.settings.steering !== 'auto';
-    const { gateNext: gate, gateAhead: ahead = Infinity } = race;
+    const { gateNext: gate, gateAhead: ahead } = race;
     const side = gate?.side < 0 ? 'left' : 'right';
     const needsFiveHelp = race.fives < HINT_UNTIL_FIVES || this.missesInARow >= FILM_AGAIN_AFTER_MISSES;
-    const gateHint = needsFiveHelp && steerable && ahead < FIVE_HINT_WITHIN && race.distance > 0 - FIVE_HINT_WITHIN;
+    const gateHintDue = needsFiveHelp && steerable && ahead < FIVE_HINT_WITHIN;
+
+    // Turbo isn't obvious, so it's mentioned once, to anyone who hasn't found it by themselves. It
+    // waits for a gap, and then has its say, so the two hints can't keep taking turns.
+    const turboHintDue = !race.turbo.everFull && !gateHintDue && session.playSeconds > TURBO_HINT_AFTER_SECONDS;
+    if (this.turboHintFrom === null && turboHintDue) this.turboHintFrom = session.playSeconds;
+    const turboHint = this.turboHintFrom !== null && !race.turbo.everFull && session.playSeconds - this.turboHintFrom < TURBO_HINT_SECONDS;
+    this.turboBox.classList.toggle('is-hint', turboHint);
+
+    const gateHint = gateHintDue && !turboHint;
     const steerHint = session.playSeconds < STEER_HINT_SECONDS && steerable && !gateHint;
     // While a hint is up, a little film shows what it means.
     document.body.toggleAttribute('data-steer-hint', steerHint);
+    document.body.toggleAttribute('data-turbo-hint', turboHint);
     this.showFiveFilm(gateHint && snapshot.handOpen ? side : null);
 
     const needed = session.handsPrompt(snapshot, dt);
     if (needed) {
       // After a while with the hand closed, stop asking and make resting feel fine.
       if (needed.key.startsWith('closed') && session.closedSeconds > REST_AFTER_SECONDS) {
-        return { key: 'rest', text: SPOKEN.resting, side: null };
+        return { key: 'rest', text: SPOKEN_EVERYWHERE.resting, side: null };
       }
       return needed;
     }
+    if (turboHint) return { key: 'turbo-hint', text: SPOKEN.turbo, side: null };
     if (gateHint) {
       const silent = this.fiveHintSpoken;
       this.fiveHintSpoken = true;
-      return { key: `five-${side}`, text: FIVE_HINT, side, silent };
+      return { key: `five-${side}`, text: SPOKEN.bigHand, side, silent };
     }
     if (steerHint) return { key: 'steer-hint', text: STEER_HINT, side: null };
-
-    // Turbo isn't obvious, so it's mentioned once, to anyone who hasn't found it by themselves.
-    if (!race.turbo.everFull && session.playSeconds > TURBO_HINT_AFTER_SECONDS) {
-      this.turboHintFrom ??= session.playSeconds;
-      const showing = session.playSeconds - this.turboHintFrom < TURBO_HINT_SECONDS;
-      this.turboBox.classList.toggle('is-hint', showing);
-      if (showing) return { key: 'turbo-hint', text: TURBO_HINT, side: null };
-    } else {
-      this.turboBox.classList.remove('is-hint');
-    }
     return null;
   }
 
   finished() {
     this.session.sound.stopEngine();
     this.showFiveFilm(null);
+    document.body.removeAttribute('data-turbo-hint');
     this.race.setMode('finished');
   }
 

@@ -2,11 +2,14 @@
 
 Camera games for children with hemiplegia, played by moving in front of a webcam. Opening the hand is what they practise. The right hand is the default, and the left can be chosen instead under the gear icon.
 
-- **High Five Racers:** the car only drives while the hand is open. Nobody can crash or lose: if the hand closes, the car coasts to a stop and waits.
+- **High Five Racers:** the car only drives while the hand is open. Steering over to a giant hand at the roadside high fives it for a boost, and opening the hand as wide as it goes is turbo. Nobody can crash or lose: if the hand closes, the car coasts to a stop and waits. See [below](#high-five-racers).
 - **Balloon Pop:** balloons float up and drift around, and the open hand pops them. A closed hand just bumps them. Missing a balloon costs nothing. A grown-up can turn on a maths challenge, where the wrong answer burns the glove.
 - **Mighty Moves:** a fighting game against the computer, played with the whole body. The coach shows concrete moves to do, like a clap, a squat, a jump or a hand circle, and only those can win. Ordinary punches and kicks are small hits. See [below](#mighty-moves).
 - **Leap Trail:** a fast run down a country path in 3D, grabbing lines of stars, jumping over what's in the way and squatting under what's too low, with the child's real body. See [below](#leap-trail).
 - **Sky Wings:** a dogfight over a 3D island, with both arms as wings. Tipping them banks and turns the plane, and raising or lowering them flies it up and down. Sky pirates hunt the child and the child hunts them: the guns fire by themselves at any plane inside the ring, until they've all been dropped.
+- **Robot Rescue:** robots have caught the friends from the other games, and the child rides a little tram through a seaside town to free them. An open hand fires at whatever is in the crosshair, and a closed hand raises a shield and reloads. See [below](#robot-rescue).
+- **Tank Patrol:** robot tanks are rolling into Joze's valley, and he rides along with his long neck sticking out of the hatch. With one hand: closing it drives the tank to where it points, and opening it fires at any robot tank under the crosshair that the gun can reach. See [below](#tank-patrol).
+- **Cannon Bay:** a sea battle around the 3D island, with one hand. Moving it from side to side turns the ship's wheel, and opening it raises the sails. The cannons fire by themselves at any pirate ship in a firing zone. See [below](#cannon-bay).
 - **Joze's Long Walk Home:** Joze the giraffe is lost and hungry. The child closes a hand on fruit, carries it across to his mouth and opens the hand to feed him, and each stop fed takes him closer to his family.
 - **Joze's Smoothie Stand:** at the Harvest Fair, each customer orders a smoothie, and the child slices what they ordered with a swipe of the open hand. Bad fruit makes the glove sticky until it has been held open.
 - **The Lighthouse Keeper:** mud from a storm has covered the windows and ships are lost at sea. Wiping a window clean with an open hand lets the light out, and brings a ship home.
@@ -47,11 +50,14 @@ core/                   what every game shares
     pose.worker.js      whole-body tracking, and reading hands from close-ups
     voice/              lines they share, and each character's own
 games/
-  high-five-racers/     its 3D world, its engine sound, its own settings
+  high-five-racers/     its rules, 3D world, cars, big hands and sounds
   balloon-pop/          its balloons, gloves, maths questions and sounds
   mighty-moves/         its coach, fight rules, moves, stage and sounds
   leap-trail/           its run rules, practice, 3D trail and sounds
   sky-wings/            its flight rules, lesson, island, 3D sky and sounds
+  robot-rescue/         its rules, the town, the robots, the crosshair and its sounds
+  tank-patrol/          its patrol rules, valley map, tanks, 3D valley and sounds
+  cannon-bay/           its battle rules and sea chart, the waves, ships and sea life, and its sounds
   joze-walk/            its journey, the land Joze walks through and its sounds
   smoothie-stand/       its customers and orders, the fair and its sounds
   lighthouse/           its storm and ships, the lamp room and its sounds
@@ -111,6 +117,22 @@ Choose **Hand to play with** under the gear icon. It's remembered across the gam
 It's off unless a grown-up chooses it under **Maths challenge**: adding up to 10, adding and taking away up to 20, or times tables. A question is shown big on the screen, the voice says "Pop the right answer!", and balloons with answers on them come up and wait, for as long as it takes. A child reaching for one answer may have to pass another, so an open hand has to stay on a balloon for about half a second to choose it, with a ring closing around it to show that's happening.
 
 The right answer pops, and the next question comes. The wrong one goes up in smoke and burns the glove: it turns black with soot and can't pop anything until the hand has been held open to cool it, which takes about a second and a half of being open, and a fist doesn't cool it. That makes the penalty the exercise itself. No right answers are taken away. The burn is cartoon soot, and nothing flashes. The summary counts the too-hot balloons as well as the right ones.
+
+## High Five Racers
+
+A race round a lap with grandstands, a village, a tunnel, a farm, a lake, a forest, Joze's family and the Harvest Fair. Joze drives unless a grown-up picks someone else under **Who drives**, and other characters from the games drive the other cars. They stay close, so there's always someone to pass, and they ease off on the last stretch.
+
+**High fives.** Giant open hands stand on alternating sides of the road, and the stars lead over to each one. Reaching the hand across moves the car across the road. A big hand goes green once the car is lined up, and only a hand read as open slaps it, for a burst of shapes and a boost. A closed or unreadable hand gets a soft pat and no boost.
+
+**Turbo.** Opening the hand to about its own best from the hand check fills a meter, and then there are flames, more speed and a wider view. It goes by this hand's best, so a hand that can't open far gets it too. It ends at once if the hand closes.
+
+**For children with hemiplegia:**
+
+- **How far to reach** can be set, and a side that keeps being missed brings its hands closer, each side on its own. **Car steers itself** still does all of the steering.
+- **Resting is always fine.** Closing the hand brings up the brake lights and the car coasts to a stop. Everyone waits, and resting costs no places.
+- **The summary counts high fives to each side.**
+- **Nothing flashes.** Measured through slaps, turbo, the tunnel and a whole lap, brightness changed by less than 5% from one frame to the next. The tunnel is as bright as outdoors, and anything repeating along the road goes past fewer than three times a second.
+- **On a slow computer** it gives up sharpness, then shadows, then flowers and grass, then bushes, rocks, distant things and half the crowd.
 
 ## Mighty Moves
 
@@ -201,6 +223,61 @@ The child's two arms are the wings of a toy plane, sitting or standing, and it's
 
 This game doesn't read the hand at all, as the guns fire by themselves, so it doesn't practise opening the hand. It's all about the shoulders and both arms.
 
+## Robot Rescue
+
+The hand is the aim, like an arcade light gun, so small movements cover the screen. An open hand fires by itself at whatever is in the crosshair, and a closed hand raises a shield and reloads. That makes one hand do two things, and a natural open and close builds up, with closing useful rather than a mistake. The tram does all the moving, from place to place, so there's no steering to do while aiming. Each place has a friend in a cage, freed by dealing with the robots there, and the last has a big robot whose weak spots open one at a time. A little film shows what to do until the child has fired and closed.
+
+**For children with hemiplegia:**
+
+- **Precision doesn't decide it.** Hand wobble is steadied, and the crosshair is pulled onto the nearest robot. **Reach help** sets how strongly. Even the least of it is generous.
+- **Only what's read as open fires, and only what's read as closed raises the shield.** A hand that's gone, half out of the picture, too far away or overlapping the other does neither, and the crosshair shows a question mark.
+- **Reloading can be turned off,** for a child who can't close their hand easily. If it's on, an empty blaster still fills itself after about 6 seconds, so nobody is stuck.
+- **Resting is always fine.** With the hand gone or closed for 4 seconds, the robots stop throwing and wave, and any goo in the air goes.
+- **On Gentle, the default, a child can't lose.** Hearts stop at one, and goo takes over 3 seconds to arrive. At the first stop nothing is thrown until a robot has been dropped, or 14 seconds have gone by. On the harder settings, running out of hearts ends it with "So close!", counts the robots dropped, and they can go again straight away.
+- **Nothing flashes.** There's no muzzle flash and nothing lights up. A hit is small shapes where it happened, and the shield is see-through and rises and falls at a steady rate, so a quick open and close can't flicker it. Measured with the crosshair and shield included, brightness changed by less than 2% from one frame to the next. A haze softens the sides of the view while the tram moves, as walls going past were the one thing that flickered.
+
+## Tank Patrol
+
+The camera stays still, high over one toy valley that fits on the screen, so the hand always points at the same place on the ground. That's what makes one hand enough. It uses the same hand tracking as Balloon Pop, so it starts with the hand check and can be played sitting close to the camera. Right-handed unless a grown-up picks the left.
+
+- **A closed hand drives.** The crosshair becomes a yellow marker lying on the ground, and the tank rolls to it, finding its way round what's in the way and over the bridges, with dots showing the way.
+- **An open hand fires.** The crosshair becomes a ring standing up, the turret swings to it, and the gun fires by itself at any robot tank under it, turning green. There's nothing to press. **Reach help** says how strongly the ring is pulled onto a tank near it.
+- **The gun has a range,** shown by a ring on the ground. A tank out of range turns the crosshair orange and dashed, with a closed hand in it. Robot tanks keep just out of range, so closing to drive nearer and opening to fire is how it's won.
+
+**Nobody gets hurt.** Targets are robot tanks, a few at a time, with more as others are stopped. They never explode: a stopped tank rattles to a halt in soft grey smoke, bolts and stars, its little crew climbs out and waves, and it fades.
+
+**Shells are slow and can be seen coming,** with a ring on the ground filling in where one will land, so there's time to drive away. A hit costs a heart, and hearts come back with time.
+
+**For children with hemiplegia:**
+
+- **Anything uncertain does nothing.** A hand that's missing, off the edge or can't be read neither fires nor drives, and it has to stay closed for a moment before the tank moves.
+- **Driving** can be set to **By itself**, for a child who can't close easily: an open hand on a tank out of range drives nearer, and the tank gets out from under shells itself.
+- **On Gentle, the default,** shells are slow and hearts stop at one. On Medium and Tough, running out ends it with "So close!", and they can go again straight away.
+- **Resting is always fine.** With the hand gone for 3 seconds, or nothing changing for 5, the robots stop and wait, whatever was coming goes up in a puff, and nothing bad happens.
+- **A little film** shows a hand closing to drive and opening to fire, until the child has done both, and comes back if nothing has happened for a while.
+- **Nothing flashes.** There's no muzzle flash and no explosion, and the picture's brightness is tested through firing, stops and shells landing.
+
+## Cannon Bay
+
+Pirates have come for the island's treasure, and Captain Joze, with his long neck above the rail, asks the child to drive them off. It's the island from Sky Wings seen from the sea, from behind and a little above the ship.
+
+**One hand does everything.** Moving it from side to side turns the ship's wheel, shown big on the screen. An open hand raises the sails, and the ship goes faster the wider it's open. A closed hand lowers them and the ship slows and drifts, which is never a failure.
+
+**The cannons fire by themselves** at any pirate ship in a firing zone. There's one zone on each side of the ship, drawn on the water, and each glows green while its cannons fire. They only fire with the hand seen to be open. Under **Cannons**, a grown-up can have them fire with a closed hand too, as long as the hand can be seen. A hand that's missing, half out of the picture or can't be read never fires.
+
+**The pirates** are the other nine characters, each with their own ship. There are three at a time, with another along about a second after one is beaten. They come alongside and fire slow cannonballs in high arcs, with a ring on the water showing where each will land. Being hit costs a heart, and hearts come back. Arrows at the edge of the screen say which way to steer for a ship out of sight.
+
+**Nobody gets hurt.** Nothing explodes. A beaten ship lowers its sails and slowly sinks in soft grey smoke, its crew rows away waving, and it leaves a line of gold to sail through. Missing the gold costs nothing.
+
+**For children with hemiplegia:**
+
+- **Steering is measured from where the hand starts,** and the ship helps keep a nearby pirate alongside. How much depends on **How hard**.
+- **On Gentle, the default,** the zones are big and the ship can't be sunk: hearts stop at one. On harder settings, running out of hearts ends the battle with "So close!" and a way to go again straight away.
+- **Resting is always fine.** After 4 seconds with the hand closed or gone, the pirates stop firing and sail in circles, and whatever's in the air lands harmlessly.
+- **The ship can't hit anything.** It's steered gently round the coast and turned back at the edge of the world, and ships slide past each other.
+- **A little film** shows the sails and the wheel until the child has done each, and comes back if they seem stuck.
+- **Nothing flashes.** There are no muzzle flashes, only soft smoke and small shapes. Measured through firing, splashes and sinking, brightness changed by less than 2 out of 255 from one frame to the next.
+
 ## The games with a mission
 
 These three use the same hand tracking as Balloon Pop, so they start with the hand check and can be played sitting close to the camera. Each one is a story, with the characters from the other games asking for help in their own voices, because a hard movement is easier to repeat for someone who needs it.
@@ -229,7 +306,7 @@ npm run voice:import -- <folder of recordings> ka
 
 Each recording is trimmed and set to the same level as the rest. Any lines not recorded yet keep their current voice, so it can be done in parts.
 
-**The car** is a real engine recording, played the way racing games do it: the pitch comes from a modelled rev counter with three gears, so it rises and drops through shifts. It's louder and brighter under power and falls away when coasting, so opening the hand gets an immediate rev as a reward. Tyre and wind noise builds with speed. The car also drops back while the voice speaks, so words stay clear. The levels are in [games/high-five-racers/car-sound.js](games/high-five-racers/car-sound.js).
+**The car** is a real engine recording, played the way racing games do it: the pitch comes from a modelled rev counter with three gears, so it rises and drops through shifts. It's louder and brighter under power and falls away when coasting, so opening the hand gets an immediate rev as a reward. Tyre and wind noise builds with speed. The car also drops back while the voice speaks, so words stay clear. The levels are in [games/high-five-racers/car-sound.js](games/high-five-racers/car-sound.js). A high five is a real clap slowed down with a hand drum under it, and a boost or turbo is a real car coming past.
 
 **The pop** is a real balloon recording, softened so it won't startle a sensitive child, and varied in pitch so no two sound the same.
 
@@ -238,6 +315,12 @@ Each recording is trimmed and set to the same level as the rest. Any lines not r
 **The fight** uses real recordings too: swings through the air, softened hits, a hand drum for the heavy ones, a real clap, a boxing bell and cheering. The music drops back while anyone speaks, and sound effects and music can be turned off together. Tests check that the mix doesn't go over 1.0, which is where it would distort.
 
 **The sky** has a real small plane's propeller, looped from the steady part of a recording and following the plane's speed, under the fight's music. The guns are real paintball shots, softer and friendlier than real guns, retimed into a steady rattle that only plays while a plane is in the ring. A wrong answer in Balloon Pop sizzles with a real egg going into a real pan.
+
+**The rescue** uses real paintball shots, the same paintballs landing on metal drums for hits, tin cans and a bouncing nail for robots falling apart, mud and bubbles for goo, a Lego train for the tram, and a bicycle bell when it sets off, under Mighty Moves' music.
+
+**The tank** has a real big diesel engine, looped and following its speed, under the fight's music and birds in the countryside. The gun is soft and friendly: a real champagne cork slowed right down, over a far-off bird scarer with everything sharp taken out.
+
+**The sea** in Cannon Bay is real waves, gulls, wind in real masts and a big rope creaking, with a CC0 sea shanty under them. The wind and the water follow the sails. The cannon is a real bird-scaring gun recorded from far away, slowed and softened into a friendly thump.
 
 Where each sound came from is in [CREDITS.md](CREDITS.md).
 
@@ -265,6 +348,10 @@ There's no free footage of a person clapping, circling a hand or holding their a
 - **How the games feel.** Rules, timing and every screen are tested, but only a child can say whether Leap Trail's speeds are right, whether the films are clear enough to copy, whether Mighty Moves' pace works, how tiring it is to hold both arms out in Sky Wings, and whether any of it is fun for more than a few minutes.
 - **The burnt glove.** Only a grown-up who knows the child can judge whether it's funny or upsetting. It's easy to change if it isn't right.
 - **Reading a moving hand at a distance.** Hands were only tested on sharp photos shrunk to size. A hand in the middle of a strike will be blurrier, so fewer strikes may be read than that test suggests, and a real webcam's picture may matter a lot.
+- **Whether aiming and closing feel right in Robot Rescue.** Reach help, the length of a stop and how often goo comes were tuned without a real hand, and five stops have never been played through with one.
+- **How Tank Patrol feels.** The gun's range, the speeds and how tiring it is were tuned without a real hand, and nobody has listened to its sound.
+- **How Cannon Bay feels.** Whether the zones read clearly to a child, how long a hand can stay open, and whether the shanty gets tiring.
+- **How far the big hands should be, and how wide turbo should need, on a real hand.**
 - **Kicks seen from the front.** The only kick footage available was filmed from the side, which confuses the tracker's left and right legs, so kicks were tested with a real standing body that had its legs moved by the test.
 - **A real webcam.** Only simulated camera feeds have been used. Real lighting, backgrounds and motion may need some tuning. That goes double for Balloon Pop: how hard balloons are to reach, and how it feels to chase them, can only be judged with a real hand moving.
 - **The left and right label on these hands.** It has only been checked on photos of adult hands, so a child's hand or a hand with hemiplegia could be named wrongly. If the tracker is confidently wrong, the hand won't count, and the panel says "Only sees the other hand", so it's quick to spot.

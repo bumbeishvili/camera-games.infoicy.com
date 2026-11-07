@@ -79,22 +79,22 @@ for index, start in enumerate([6.70, 8.32, 11.93], 1):
 
 # A robot in pieces: a tin can hitting the ground, and a nail bouncing away on tiles.
 nail = recording("0461")
-save(shaped(layered(
-    (low_pass(cut(recording("0248"), 0, 1.1), 7000), 0.75, 0),
+save(shaped(low_pass(layered(
+    (cut(recording("0248"), 0, 1.1), 0.75, 0),
     (cut(nail, 19.15, 1.05), 0.4, 0.05),
-), 0.75, fade_out=0.25), "clatter-1.ogg")
-save(shaped(layered(
-    (low_pass(cut(recording("0667"), 14.16, 1.1), 7000), 0.75, 0),
+), 5000), 0.75, fade_out=0.25), "clatter-1.ogg")
+save(shaped(low_pass(layered(
+    (cut(recording("0667"), 14.16, 1.1), 0.75, 0),
     (cut(nail, 15.56, 0.8), 0.4, 0.1),
-), 0.75, fade_out=0.25), "clatter-2.ogg")
+), 5000), 0.75, fade_out=0.25), "clatter-2.ogg")
 
 # The big one coming down: steel bars falling, with tins and nails going everywhere.
-save(shaped(layered(
-    (low_pass(cut(recording("1776"), 0.04, 2.6), 4500), 0.85, 0),
-    (low_pass(cut(recording("0667"), 42.55, 1.2), 7000), 0.5, 0.18),
+save(shaped(low_pass(layered(
+    (cut(recording("1776"), 0.04, 2.6), 0.85, 0),
+    (cut(recording("0667"), 42.55, 1.2), 0.5, 0.18),
     (cut(nail, 9.25, 1.1), 0.3, 0.4),
     (cut(nail, 0.74, 1.0), 0.28, 0.75),
-), 0.8, fade_out=0.8), "crash.ogg")
+), 4200), 0.8, fade_out=0.8), "crash.ogg")
 
 # Goo, from mud and a squeezed sponge.
 mud = recording("0495")
@@ -108,11 +108,11 @@ save(shaped(layered(
     (low_pass(cut(mud, 6.52, 0.3), 6000), 0.5, 0.01),
 ), 0.6, fade_out=0.2), "shield-hit.ogg")
 
-save(shaped(cut(recording("1506"), 0.8, 0.34), 0.65, fade_out=0.1), "reload.ogg")
+save(shaped(low_pass(cut(recording("1506"), 0.8, 0.34), 6000), 0.65, fade_out=0.1), "reload.ogg")
 save(shaped(cut(recording("2003"), 0.06, 0.3), 0.5, fade_out=0.1), "empty.ogg")
 save(shaped(cut(recording("1539"), 1.56, 1.2), 0.65, fade_out=0.25), "unlock.ogg")
 save(shaped(low_pass(cut(recording("2284"), 0.0, 0.75), 5000), 0.5, fade_out=0.3), "boing.ogg")
-save(shaped(cut(recording("1102"), 0.1, 1.5), 0.5, fade_out=0.6), "bell.ogg")
+save(shaped(low_pass(cut(recording("1102"), 0.1, 1.5), 6000), 0.5, fade_out=0.6), "bell.ogg")
 
 # Going along: a Lego train, as the tram's a toy too, and gulls for by the water.
 save(looped(cut(recording("1606"), 9, 11.7), 0.7) * 0.7, "tram.ogg")

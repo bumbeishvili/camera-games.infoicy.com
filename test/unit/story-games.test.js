@@ -181,7 +181,7 @@ test('a shorter storm still has Bramble and the honey in it, last of all', () =>
 
 const MOST_WORDS = 11; // Children are here to move, and nobody's waiting for anyone to finish talking.
 
-for (const game of ['smoothie-stand', 'joze-walk', 'lighthouse']) {
+for (const game of ['smoothie-stand', 'joze-walk', 'lighthouse', 'robot-rescue']) {
   test(`${game} keeps its talking short, and everything it says has a voice in both languages`, () => {
     const folder = new URL(`../../games/${game}/audio/voice/`, import.meta.url);
     const lines = JSON.parse(readFileSync(new URL('lines.json', folder)));
@@ -191,7 +191,7 @@ for (const game of ['smoothie-stand', 'joze-walk', 'lighthouse']) {
       for (const language of ['en', 'ka']) assert.ok(existsSync(new URL(`${language}/${id}.ogg`, folder)), `${language}/${id}`);
     }
     const source = readFileSync(new URL(`../../games/${game}/main.js`, import.meta.url), 'utf8');
-    const rules = readFileSync(new URL(`../../games/${game}/${{ 'smoothie-stand': 'orders', 'joze-walk': 'journey', lighthouse: 'storm' }[game]}.js`, import.meta.url), 'utf8');
+    const rules = readFileSync(new URL(`../../games/${game}/${{ 'smoothie-stand': 'orders', 'joze-walk': 'journey', lighthouse: 'storm', 'robot-rescue': 'rescue' }[game]}.js`, import.meta.url), 'utf8');
     for (const { text } of lines) assert.ok(source.includes(text) || rules.includes(text), `nothing says: ${text}`);
   });
 }

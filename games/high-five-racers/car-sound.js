@@ -18,7 +18,7 @@ const GEARS = [
   { upTo: 1, from: 1.15, to: 1.7 },
 ];
 const THROTTLE_LIFT = 0.08; // Opening the hands revs the engine before the car has moved.
-const RUSH_LIFT = 0.08; // Turbo and boosts rev it a little further, but it's still the same engine.
+const RUSH_LIFT = 0.04; // Turbo and boosts rev it a little further, but it's still the same engine.
 
 /** Which gear the car is in at a speed from 0 to 1. */
 export function gearAt(speed) {
@@ -264,9 +264,9 @@ export class CarSound extends Sound {
    */
   slap(streak = 1) {
     const step = Math.min(streak - 1, 5);
-    this.play('slap', { gain: 0.9, rate: 0.96 + Math.random() * 0.08 });
-    this.play('sparkle', { gain: 0.34, rate: 1 + step * 0.06 });
-    this.play('rush', { gain: 0.45, rate: 1.1 });
+    this.play('slap', { gain: 0.68, rate: 0.96 + Math.random() * 0.08 });
+    this.play('sparkle', { gain: 0.26, rate: 1 + step * 0.06 });
+    this.play('rush', { gain: 0.32, rate: 1.1 });
   }
 
   /** The big hand goes past with the hand closed. Just a soft pat, which isn't a telling off. */
@@ -279,7 +279,7 @@ export class CarSound extends Sound {
     const now = this.context.currentTime;
     if (now - this.lastBumpAt < BUMP_SPACING_SECONDS) return;
     this.lastBumpAt = now;
-    this.play('bump', { gain: 0.55, rate: 0.9 + Math.random() * 0.2 });
+    this.play('bump', { gain: 0.42, rate: 0.9 + Math.random() * 0.2 });
   }
 
   turboOn() {
@@ -287,7 +287,7 @@ export class CarSound extends Sound {
     const now = this.context.currentTime;
     if (now - this.lastTurboAt < TURBO_SPACING_SECONDS) return;
     this.lastTurboAt = now;
-    this.play('rush', { gain: 0.6 });
+    this.play('rush', { gain: 0.42 });
   }
 
   jumped() {
@@ -295,7 +295,7 @@ export class CarSound extends Sound {
   }
 
   landed() {
-    this.play('landed', { gain: 0.5 });
+    this.play('landed', { gain: 0.4 });
   }
 
   /** The crowd, as the car goes by the grandstand. */

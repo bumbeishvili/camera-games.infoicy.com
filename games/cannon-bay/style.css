@@ -1,0 +1,243 @@
+/* Cannon Bay. */
+:root { --meter-size: clamp(72px, 8.5vw, 108px); --wheel-size: clamp(116px, 25vh, 200px); }
+
+.hands-bar {
+  left: 0;
+  right: 0;
+  transform: none;
+  justify-content: space-between;
+  padding: 0 12px;
+  pointer-events: none;
+}
+
+body[data-hands='right'] .hands-bar { justify-content: flex-end; }
+body[data-hands='left'] .hands-bar { justify-content: flex-start; }
+.meter-caption { font-size: clamp(11px, 1vw, 13px); }
+
+/* ---------- along the top ---------- */
+.bay-hearts .chip-value { color: #e8433f; letter-spacing: 1px; }
+#bay-left { color: var(--accent); }
+#bay-gold { color: var(--sun-deep); }
+
+/* A little shake when hearts are lost. The picture itself doesn't change. */
+#hearts.is-hurt { animation: hearts-hurt 0.45s ease; display: inline-block; }
+
+@keyframes hearts-hurt {
+  20% { transform: translateX(-5px); }
+  50% { transform: translateX(5px); }
+  80% { transform: translateX(-2px); }
+}
+
+/* Every captain in this battle: faint until they come, and with a tick once they've been beaten. */
+.bay-captains {
+  display: none;
+  position: fixed;
+  z-index: 2;
+  top: 14px;
+  right: 70px;
+  max-width: calc(50vw - var(--camera-small) / 2 - 90px);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+body[data-screen='playing'] .bay-captains { display: flex; }
+
+.captain-face {
+  width: clamp(30px, 3.6vw, 46px);
+  height: clamp(30px, 3.6vw, 46px);
+  background: var(--surface);
+  border: 3px solid var(--surface);
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(18, 48, 77, 0.3);
+  opacity: 0.55;
+}
+
+.captain-face[data-state='here'] { opacity: 1; border-color: #ffd23f; }
+.captain-face[data-state='beaten'] { opacity: 1; border-color: var(--good); background: #bff2c7; filter: saturate(0.5); }
+
+/* ---------- the big ship's wheel, which turns with the hand ---------- */
+.ship-wheel {
+  display: none;
+  position: fixed;
+  z-index: 2;
+  bottom: 8px;
+  width: var(--wheel-size);
+  aspect-ratio: 1;
+  pointer-events: none;
+  filter: drop-shadow(0 6px 10px rgba(18, 48, 77, 0.35));
+}
+
+body[data-screen='check'] .ship-wheel,
+body[data-screen='countdown'] .ship-wheel,
+body[data-screen='playing'] .ship-wheel { display: block; }
+
+body[data-hands='right'] .ship-wheel { right: calc(var(--meter-size) + 18px); }
+body[data-hands='left'] .ship-wheel { left: calc(var(--meter-size) + 18px); }
+
+.ship-wheel svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.wheel-turn { transform-box: view-box; transform-origin: 100px 100px; }
+.wheel-state { fill: rgba(255, 255, 255, 0.28); stroke: var(--neutral); stroke-width: 5; }
+.ship-wheel[data-hand='open'] .wheel-state { stroke: var(--good); stroke-width: 7; }
+.ship-wheel[data-hand='closed'] .wheel-state { stroke: var(--warning); stroke-width: 7; }
+.ship-wheel[data-hand='missing'] .wheel-state { stroke-dasharray: 10 10; }
+.wheel-spoke { fill: none; stroke: #3a2212; stroke-width: 19; stroke-linecap: round; }
+.wheel-spoke-light { fill: none; stroke: #c98d4e; stroke-width: 12; stroke-linecap: round; }
+.wheel-rim-ink { fill: none; stroke: #3a2212; stroke-width: 28; }
+.wheel-rim { fill: none; stroke: #a8682f; stroke-width: 21; }
+.wheel-rim-inner { fill: none; stroke: #d39a5c; stroke-width: 5; }
+.wheel-hub { fill: #ffd23f; stroke: #3a2212; stroke-width: 5; }
+.wheel-hub-middle { fill: #a8682f; }
+.wheel-top { fill: #ffd23f; stroke: #3a2212; stroke-width: 4; stroke-linejoin: round; }
+
+/* ---------- a little film: an open hand with the sails going up, and side to side with the wheel turning ---------- */
+.film { width: min(24vw, 36vh); }
+body[data-hands='left'] .film { left: auto; right: 16px; }
+
+.film-sky { fill: #bfe6ff; }
+.film-water { fill: #2d9fdc; }
+.film-hull { fill: #b8763a; stroke: var(--ink); stroke-width: 4; stroke-linejoin: round; }
+.film-mast { fill: none; stroke: var(--ink); stroke-width: 5; stroke-linecap: round; }
+.film-sail { fill: #fff0c9; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; transform-box: fill-box; transform-origin: top center; }
+.film-wheel-rim { fill: none; stroke: #a8682f; stroke-width: 9; }
+.film-wheel-spokes { fill: none; stroke: #3a2212; stroke-width: 5; stroke-linecap: round; }
+.film-wheel-hub { fill: #ffd23f; stroke: var(--ink); stroke-width: 3; }
+.film-small-wheel { transform-box: fill-box; transform-origin: center; }
+.film-boat { transform-box: fill-box; transform-origin: center; }
+.film-hand rect { fill: var(--good); stroke: var(--ink); stroke-width: 3; }
+.film-finger { fill: none; stroke: var(--good); stroke-width: 10; stroke-linecap: round; transform-box: fill-box; transform-origin: bottom center; }
+.film-thumb { transform-origin: bottom left; }
+.film-hand { transform-box: fill-box; transform-origin: center; }
+
+/* The sails: the hand closes and opens, and the sail goes down and up with it. */
+body[data-film-part='sails'] .film-finger { animation: film-hand-opens 3.4s ease-in-out infinite; }
+body[data-film-part='sails'] .film-sail { animation: film-sail-up 3.4s ease-in-out infinite; }
+body[data-film-part='sails'] .film-boat { animation: film-boat-goes 3.4s ease-in-out infinite; }
+
+@keyframes film-hand-opens {
+  0%, 16% { transform: scale(0.42); }
+  44%, 86% { transform: scale(1); }
+  100% { transform: scale(0.42); }
+}
+
+@keyframes film-sail-up {
+  0%, 18% { transform: scaleY(0.12); }
+  48%, 84% { transform: scaleY(1); }
+  100% { transform: scaleY(0.12); }
+}
+
+@keyframes film-boat-goes {
+  0%, 26% { transform: translateX(-8px); }
+  84% { transform: translateX(16px); }
+  100% { transform: translateX(-8px); }
+}
+
+/* The wheel: the open hand goes from side to side, and the wheel and the ship turn with it. */
+body[data-film-part='wheel'] .film-hand { animation: film-hand-steers 3s ease-in-out infinite; }
+body[data-film-part='wheel'] .film-small-wheel { animation: film-wheel-turns 3s ease-in-out infinite; }
+body[data-film-part='wheel'] .film-boat { animation: film-boat-turns 3s ease-in-out infinite; }
+
+@keyframes film-hand-steers {
+  0%, 100% { transform: translateX(-52px) rotate(-8deg); }
+  50% { transform: translateX(52px) rotate(8deg); }
+}
+
+@keyframes film-wheel-turns {
+  0%, 100% { transform: rotate(-75deg); }
+  50% { transform: rotate(75deg); }
+}
+
+@keyframes film-boat-turns {
+  0%, 100% { transform: rotate(-5deg) translateX(-9px); }
+  50% { transform: rotate(5deg) translateX(9px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-film-part] .film-finger,
+  body[data-film-part] .film-sail,
+  body[data-film-part] .film-boat,
+  body[data-film-part] .film-hand,
+  body[data-film-part] .film-small-wheel { animation-duration: 6s; }
+}
+
+/* ---------- where the pirate ships are ---------- */
+.marks { display: none; }
+
+body[data-screen='playing'] .marks { display: block; }
+
+.mark {
+  position: fixed;
+  z-index: 2;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.mark[data-where='none'] { display: none; }
+
+.mark-bar {
+  position: absolute;
+  left: -32px;
+  top: -18px;
+  width: 64px;
+  height: 11px;
+  background: rgba(18, 48, 77, 0.75);
+  border: 2px solid #fff;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.mark-fill { display: block; height: 100%; width: 100%; background: #ffd23f; border-radius: 999px; }
+.mark[data-state='hunting'] .mark-fill { background: #ff7a4f; }
+.mark[data-state='fired-on'] .mark-fill { background: #3ddc84; }
+
+.mark-face {
+  position: absolute;
+  left: -19px;
+  top: -60px;
+  width: 38px;
+  height: 38px;
+  background: #fff;
+  border: 3px solid #ffd23f;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(18, 48, 77, 0.35);
+}
+
+.mark[data-state='hunting'] .mark-face { border-color: #ff7a4f; }
+.mark[data-state='fired-on'] .mark-face { border-color: #3ddc84; }
+
+.mark-arrow { display: none; }
+
+/* Off the screen: the captain's face, and an arrow saying which way to steer. */
+.mark[data-where='off'] .mark-bar { left: -30px; top: 34px; width: 60px; }
+
+.mark[data-where='off'] .mark-face {
+  left: -30px;
+  top: -30px;
+  width: 60px;
+  height: 60px;
+}
+
+.mark[data-where='off'] .mark-arrow {
+  display: block;
+  position: absolute;
+  left: -46px;
+  top: -46px;
+  width: 92px;
+  height: 92px;
+}
+
+.mark[data-where='off'] .mark-arrow::after {
+  content: '';
+  position: absolute;
+  right: -14px;
+  top: 28px;
+  border-style: solid;
+  border-width: 18px 0 18px 26px;
+  border-color: transparent transparent transparent #ffd23f;
+  filter: drop-shadow(0 0 1px rgba(18, 48, 77, 0.8));
+}
+
+.mark[data-where='off'][data-state='hunting'] .mark-arrow::after { border-left-color: #ff7a4f; }

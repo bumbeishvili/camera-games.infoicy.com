@@ -22,11 +22,12 @@ function watchPicture(page, frames, during = null) {
     const context = small.getContext('2d', { willReadFrequently: true });
     const whole = [];
     const parts = Array.from({ length: across * down }, () => []);
+    const distance = [];
     const started = performance.now();
     const step = code ? new Function('race', 'frame', code) : null;
     for (let frame = 0; frame < count; frame += 1) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
-      step?.(race, frame);
+      if (step?.(race, frame)) break;
       race.render();
       context.drawImage(race.renderer.domElement, 0, 0, across, down);
       const { data } = context.getImageData(0, 0, across, down);
@@ -37,8 +38,9 @@ function watchPicture(page, frames, during = null) {
         parts[cell].push(value);
       }
       whole.push(total / (across * down));
+      distance.push(race.distance % race.track.length);
     }
-    return { whole, parts, seconds: (performance.now() - started) / 1000 };
+    return { whole, parts, distance, seconds: (performance.now() - started) / 1000 };
   }, [frames, during]);
 }
 
@@ -85,6 +87,7 @@ test('the picture\'s brightness stays steady through high fives and turbo', asyn
     const lap = race.track.length * Math.max(0, race.lapIndex);
     race.distance = gate.along + lap - 45;
     race.lateral = gate.side * 4;
+    race.snapCamera = true;
   });
   const fivesBefore = await page.evaluate(() => window.__game.race.fives);
   const { whole } = await watchPicture(page, 120);
@@ -101,16 +104,23 @@ test('going through the tunnel doesn\'t change how bright the picture is', async
     const { race } = window.__game;
     const lap = race.track.length * Math.max(0, race.lapIndex);
     race.distance = 340 + lap - 50;
+    race.snapCamera = true;
     for (const rival of race.rivals) rival.distance = race.distance - 200;
   });
-  const { whole, parts, seconds } = await watchPicture(page, 240);
+  await page.waitForTimeout(150);
+  // Long enough to go in and be well inside, at the speed the car's going.
+  const { whole, parts, distance, seconds } = await watchPicture(page, 600, 'if (race.distance % race.track.length > 432) return true;');
   await shot(page, 'r-tunnel-inside');
+  const mean = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
+  // The camera is about 12 metres behind the car.
+  const outside = mean(whole.filter((_, frame) => distance[frame] < 335));
+  const inside = mean(whole.filter((_, frame) => distance[frame] > 362 && distance[frame] < 430));
   const step = biggestStep(whole);
-  const range = Math.max(...whole) - Math.min(...whole);
   const flashes = mostFlashesInASecond(parts, seconds);
-  console.log('tunnel: biggest step', step.toFixed(2), 'range', range.toFixed(1), 'most flashes in a second', flashes);
+  console.log('tunnel: outside', outside.toFixed(1), 'inside', inside.toFixed(1), 'biggest step', step.toFixed(2), 'most flashes in a second', flashes);
+  expect(inside).toBeGreaterThan(0);
+  expect(Math.abs(inside - outside)).toBeLessThan(15);
   expect(step).toBeLessThan(15);
-  expect(range).toBeLessThan(30);
   expect(flashes).toBeLessThanOrEqual(1);
 });
 
@@ -189,6 +199,17 @@ test('a slow computer drops the small things last of all, and keeps playing', as
   expect(speed).toBeGreaterThan(5);
   await expect.poll(() => page.evaluate(() => window.__game.race.distance)).toBeGreaterThan(distance + 10);
   await shot(page, 'r-lowest-quality');
+});
+
+test('a word from the last race doesn\'t come back at the start of the next', async ({ page }) => {
+  await raceWithOpenHand(page, { laps: 1, steering: 'auto' });
+  await page.evaluate(() => window.__game.game.toast('High five!'));
+  await expect(page.locator('#toast')).toHaveClass(/is-showing/);
+  // Turbo and passing a rival bring up words of their own, so it's this word that has to go.
+  await expect.poll(() => page.evaluate(() => {
+    const box = document.querySelector('#toast');
+    return box.classList.contains('is-showing') && box.textContent.includes('High five!');
+  }), { timeout: 4000 }).toBe(false);
 });
 
 test('a good computer doesn\'t lose anything, and the first moments don\'t count against it', async ({ page }) => {

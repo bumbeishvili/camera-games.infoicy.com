@@ -138,7 +138,9 @@ test('someone who hasn\'t found turbo is told about it once, and then left alone
   });
   await expect(page.locator('#prompt')).toHaveText(/Open wide for turbo!/, { timeout: 25_000 });
   await expect(page.locator('#turbo')).toHaveClass(/is-hint/);
+  await expect(page.locator('.hand-demo')).toBeVisible();
   await shot(page, 'r-turbo-hint');
   await expect(page.locator('#prompt')).not.toHaveText(/turbo/, { timeout: 10_000 });
   await expect(page.locator('#turbo')).not.toHaveClass(/is-hint/);
+  await expect(page.locator('.hand-demo')).toBeHidden();
 });

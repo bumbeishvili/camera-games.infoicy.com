@@ -7,7 +7,10 @@ import { buildBalloons, buildBirds, buildNature, buildSky } from './nature.js';
 import { buildPlaces } from './places.js';
 import { buildRoad } from './road.js';
 import { Terrain } from './terrain.js';
-import { PLACES } from './track.js';
+import { PLACES, within } from './track.js';
+
+const CONFETTI = { shape: 'paper', colours: ['#ff5a4f', '#ffd23f', '#3b82f6', '#27c96b', '#a855f7', '#ffffff'], size: 0.46 };
+const LEAVES = { shape: 'paper', colours: ['#f4b63f', '#ef8f5a', '#7bd65b', '#d9832f'], size: 0.36 };
 
 export class World {
   constructor(scene, track, { reducedMotion }) {
@@ -44,6 +47,13 @@ export class World {
     const size = this.track.length;
     const away = Math.abs(mod(distance - middle + size / 2, size) - size / 2);
     return 1 - smoothstep(away, half, half + 30);
+  }
+
+  /** What's drifting in the air at a distance along the road: paper by the crowds, and leaves in the forest. */
+  airAt(distance) {
+    if (within(distance, PLACES.grandstand, this.track.length) || within(distance, PLACES.fair, this.track.length)) return CONFETTI;
+    if (within(distance, PLACES.forest, this.track.length)) return LEAVES;
+    return null;
   }
 
   /** Something to run every frame, like a windmill going round. */

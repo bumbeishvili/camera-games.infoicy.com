@@ -158,6 +158,85 @@ body.hub {
 .art-boat path:last-child { fill: #fff4e0; stroke: var(--ink); stroke-width: 3; }
 .art-wave { fill: #23435f; }
 
+/* Robot Rescue's picture. */
+.game-art-rescue { background: linear-gradient(#58b7ff, #d9f2ff 62%); }
+.art-roof { fill: #d9583f; }
+.art-house-a { fill: #f6d9a8; }
+.art-house-b { fill: #a9d8c9; }
+.art-house-c { fill: #f2c6d0; }
+.art-window { fill: #79c3e0; }
+.art-string-flags { fill: none; stroke: #6b5a4a; stroke-width: 1.5; }
+.art-flags { fill: #ffd23f; stroke: #e8574c; stroke-width: 1; }
+.art-cobbles { fill: #d9c7a8; }
+.art-rails { fill: none; stroke: #6d747c; stroke-width: 4; stroke-linecap: round; }
+.art-tin-leg, .art-tin-boot, .art-tin-body { fill: #3cc2b4; stroke: var(--ink); stroke-width: 3; }
+.art-tin-arm { fill: none; stroke: #ffc83d; stroke-width: 9; stroke-linecap: round; }
+.art-tin-plate { fill: #fff1d0; stroke: var(--ink); stroke-width: 2; }
+.art-tin-antenna { fill: none; stroke: var(--ink); stroke-width: 3; }
+.art-tin-tip { fill: #ff6b57; stroke: var(--ink); stroke-width: 2.5; }
+.art-tin-eye { fill: #fff; stroke: var(--ink); stroke-width: 2.5; }
+.art-tin-pupil { fill: var(--ink); }
+.art-tin-mouth { fill: var(--ink); }
+.art-paint-pink { fill: #ff7eb6; stroke: var(--ink); stroke-width: 2; }
+.art-paint-blue { fill: #3fb7ff; stroke: var(--ink); stroke-width: 2; }
+.art-paint-yellow { fill: #ffd23f; stroke: var(--ink); stroke-width: 2; }
+.art-sight circle { fill: none; stroke: #ffb02e; stroke-width: 6; }
+.art-sight path { fill: none; stroke: var(--ink); stroke-width: 5; stroke-linecap: round; }
+.art-cage-roof { fill: #ffc83d; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
+.art-giraffe-neck, .art-giraffe-head { fill: #f5c451; stroke: #4a2c10; stroke-width: 2.5; }
+.art-giraffe-horn { fill: none; stroke: #5a3a1c; stroke-width: 4; stroke-linecap: round; }
+.art-cage-bars { fill: none; stroke: #3a4557; stroke-width: 4; stroke-linecap: round; }
+.art-lock { fill: #ffc83d; stroke: var(--ink); stroke-width: 2.5; }
+.art-lock-loop { fill: none; stroke: var(--ink); stroke-width: 3; }
+.art-blaster-body { fill: #ff8a3c; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
+.art-blaster-barrel { fill: #3f86d9; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
+
+/* Tank Patrol's picture. */
+.game-art-tanks { background: linear-gradient(#7cc8ff, #e4f6ff 62%); }
+.art-fort path { fill: #c9c3b6; stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; }
+.art-fort .art-fort-roof { fill: #7f5a7e; }
+.art-fort .art-fort-gate { fill: #3a2d28; }
+.art-tank-river { fill: #4cb5e3; }
+.art-robot-tank rect { fill: #ff4f7b; stroke: var(--ink); stroke-width: 3; }
+.art-robot-tank .art-tank-tread, .art-my-tank .art-tank-tread { fill: #2c3646; stroke: var(--ink); stroke-width: 3; }
+.art-robot-eye { fill: #fff; stroke: var(--ink); stroke-width: 2.5; }
+.art-tank-sight { fill: none; stroke: #35e07a; stroke-width: 7; }
+.art-tank-ticks { fill: none; stroke: var(--ink); stroke-width: 5; stroke-linecap: round; }
+.art-tank-shot { fill: #ffd23f; stroke: var(--ink); stroke-width: 2.5; }
+.art-my-tank rect, .art-my-tank ellipse { fill: #2f6fed; stroke: var(--ink); stroke-width: 3; }
+.art-my-tank .art-tank-trim { fill: #ffd23f; stroke: none; }
+.art-tank-gun { fill: none; stroke: #3a4a68; stroke-width: 10; stroke-linecap: round; }
+.art-tank-horn { fill: none; stroke: #f5c451; stroke-width: 5; stroke-linecap: round; }
+
+/* Cannon Bay's picture. */
+.game-art-bay { background: linear-gradient(#58b7ff, #d9f2ff 62%); }
+.art-bay-cloud { fill: #fff; opacity: 0.9; }
+.art-bay-island { fill: #63bd58; }
+.art-bay-peak { fill: #7e7268; }
+.art-bay-sea { fill: #2a9fd6; }
+.art-bay-zone { fill: #3dff86; opacity: 0.42; }
+.art-bay-zone-edge { fill: none; stroke: #3dff86; stroke-width: 3; stroke-linejoin: round; }
+.art-bay-hull { fill: #b8763a; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
+.art-bay-band { fill: #6a4bd8; }
+.art-bay-mast { fill: none; stroke: var(--ink); stroke-width: 4; stroke-linecap: round; }
+.art-bay-sail { fill: #fff0c9; stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; }
+.art-bay-spot { fill: #c9823f; }
+.art-bay-flag { fill: #6a4bd8; }
+.art-bay-neck { fill: none; stroke: #4a2c10; stroke-width: 11; stroke-linecap: round; }
+.art-bay-neck-in { fill: none; stroke: #f5c451; stroke-width: 7; stroke-linecap: round; }
+.art-bay-head { fill: #f5c451; stroke: #4a2c10; stroke-width: 2.5; }
+.art-bay-hat { fill: #27305e; stroke: #14141c; stroke-width: 1.5; }
+.art-bay-eye { fill: #1c1630; }
+.art-bay-pirate { fill: #e8452f; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
+.art-bay-pirate-trim { fill: #ffb703; }
+.art-bay-pirate-sail { fill: #ffe2c2; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+.art-bay-pirate-stripe { fill: #ff7a4a; }
+.art-bay-black { fill: #1c1f2b; }
+.art-bay-arc { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 1 9; }
+.art-bay-ball { fill: #23252e; }
+.art-bay-smoke { fill: #fff; opacity: 0.9; }
+.art-bay-splash { fill: #fff; }
+
 /* The film of a game being played, over its card while the pointer rests there. */
 .game-demo {
   display: none;

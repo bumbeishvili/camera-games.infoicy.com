@@ -46,6 +46,27 @@ test('whoever was chosen in the other games drives here too, and can be changed 
   await expect(page.locator('.order-row.is-you')).toHaveAttribute('data-who', 'tur');
 });
 
+test('any of the characters can drive, on either hand', async ({ page }) => {
+  await openGame(page);
+  const drivers = await page.locator('input[name="fighter"]').evaluateAll((inputs) => inputs.map((input) => input.value));
+  expect(drivers).toHaveLength(10);
+  expect(drivers[0]).toBe('joze');
+  await page.locator('#open-panel').click();
+  for (const [index, id] of drivers.entries()) {
+    await page.locator(`input[name="fighter"][value="${id}"]`).check();
+    if (index === 4) await page.locator('input[name="hands"][value="left"]').check();
+    const driving = await page.evaluate(() => {
+      const { race } = window.__game;
+      race.update(1 / 60, {});
+      race.render();
+      return { id: race.player.spec.id, others: race.rivals.map((rival) => rival.spec.id) };
+    });
+    expect(driving.id).toBe(id);
+    expect(driving.others).not.toContain(id);
+    expect(new Set(driving.others).size).toBe(3);
+  }
+});
+
 test('the order of the race shows everyone\'s face, and the child\'s car stands out', async ({ page }) => {
   await raceWithOpenHand(page);
   await expect(page.locator('.order-row')).toHaveCount(4);
@@ -90,6 +111,79 @@ test('bumping another car makes a few sparks and shoves it aside, and nobody los
   expect((await car(page)).speed).toBeGreaterThan(12);
 });
 
+test('cars don\'t go through each other, whichever way they meet', async ({ page }) => {
+  await raceWithOpenHand(page, { steering: 'help' });
+  const worst = await page.evaluate(async () => {
+    const { race } = window.__game;
+    const rival = race.rivals[0];
+    race.rivals[1].distance = race.distance + 300;
+    race.rivals[2].distance = race.distance + 330;
+    let most = 0;
+    let bumps = 0;
+    const onBump = race.events.onBump;
+    race.events.onBump = () => {
+      bumps += 1;
+      onBump?.();
+    };
+    const started = performance.now();
+    let placed = 0;
+    while (performance.now() - started < 7000) {
+      // Keeps getting in the way, from in front and from the side, every so often whatever's happened.
+      if (performance.now() - started >= placed * 1200) {
+        placed += 1;
+        rival.distance = race.distance + 9;
+        rival.lateral = race.lateral + (placed % 2 ? 0 : 1.5);
+        rival.speed = 6;
+        rival.bumpWait = 0;
+      }
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const overlap = Math.min(4.4 - Math.abs(rival.distance - race.distance), 2.6 - Math.abs(rival.lateral - race.lateral));
+      most = Math.max(most, overlap);
+    }
+    return { most, bumps };
+  });
+  expect(worst.bumps).toBeGreaterThan(2);
+  // A frame's worth at most, which is a bump, and not going through.
+  expect(worst.most).toBeLessThan(1);
+});
+
+test('two cars side by side don\'t keep swapping places on the list', async ({ page }) => {
+  await raceWithOpenHand(page, { steering: 'help' });
+  const seen = await page.evaluate(async () => {
+    const { race } = window.__game;
+    const rival = race.rivals[0];
+    race.rivals[1].distance = race.distance + 300;
+    race.rivals[2].distance = race.distance + 330;
+    rival.wasAhead = true;
+    const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const place = (offset) => {
+      // The car moves on a little before this is looked at, so this allows for that.
+      rival.distance = race.distance + race.speed / 60 + offset;
+      rival.lateral = -5;
+      race.lateral = 3;
+    };
+    place(0.5);
+    await nextFrame();
+    await nextFrame();
+    const before = race.place;
+    let changes = 0;
+    let crossings = 0;
+    let side = 1;
+    for (let frame = 0; frame < 120; frame += 1) {
+      place(Math.sin(frame * 0.5) * 1.2);
+      await nextFrame();
+      const now = Math.sign(rival.distance - race.distance);
+      if (now !== side) crossings += 1;
+      side = now;
+      if (race.place !== before) changes += 1;
+    }
+    return { changes, crossings };
+  });
+  // They really were swapping back and forth, and the place didn't change.
+  expect(seen.crossings).toBeGreaterThan(5);
+  expect(seen.changes).toBe(0);
+});
+
 test('overtaking is plain to see: who was passed, a wave, and the order changes', async ({ page }) => {
   await raceWithOpenHand(page, { steering: 'help' });
   await page.evaluate(() => {
@@ -99,7 +193,7 @@ test('overtaking is plain to see: who was passed, a wave, and the order changes'
       rival.lateral = -4;
     });
     const rival = race.rivals[0];
-    rival.distance = race.distance + 22;
+    rival.distance = race.distance + 6;
     rival.lateral = -4.5;
     rival.speed = 5;
   });
@@ -109,6 +203,68 @@ test('overtaking is plain to see: who was passed, a wave, and the order changes'
   await shot(page, 'r-overtake');
   const waving = await page.evaluate(() => window.__game.race.rivals[0].car.wave);
   expect(waving).toBeGreaterThan(0);
+});
+
+test('a slap\'s boost carries the child past the cars ahead', async ({ page }) => {
+  await raceWithOpenHand(page, { steering: 'auto' });
+  const gained = await page.evaluate(async () => {
+    const { race } = window.__game;
+    const rival = race.rivals[0];
+    const before = rival.distance - race.distance;
+    race.boostLeft = 2.2;
+    const started = performance.now();
+    while (performance.now() - started < 1800) await new Promise((resolve) => requestAnimationFrame(resolve));
+    return before - (rival.distance - race.distance);
+  });
+  expect(gained).toBeGreaterThan(6);
+});
+
+test('holding turbo all race long still leaves someone to race', async ({ page }) => {
+  test.setTimeout(120_000);
+  await raceWithOpenHand(page, { steering: 'help', laps: 4 });
+  // Over half a minute of wide-open driving, with nothing being slapped.
+  const seen = await page.evaluate(async () => {
+    const { race } = window.__game;
+    let framesWithCarAhead = 0;
+    let frames = 0;
+    let passes = 0;
+    const onOvertake = race.events.onOvertake;
+    race.events.onOvertake = (...args) => {
+      passes += 1;
+      onOvertake?.(...args);
+    };
+    const end = performance.now() + 30_000;
+    while (performance.now() < end) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      frames += 1;
+      if (race.rivals.some((rival) => rival.distance > race.distance && rival.distance - race.distance < 60)) framesWithCarAhead += 1;
+    }
+    return { share: framesWithCarAhead / frames, turbo: race.turbo.active };
+  });
+  console.log('a car in view ahead for', seen.share.toFixed(2), 'of the time');
+  expect(seen.turbo).toBe(true);
+  expect(seen.share).toBeGreaterThan(0.5);
+});
+
+test('on the last stretch the others ease off, and the child goes through the line first', async ({ page }) => {
+  await raceWithOpenHand(page, { steering: 'help', laps: 1 });
+  await page.evaluate(() => {
+    const { race } = window.__game;
+    race.distance = race.raceDistance - 165;
+    race.snapCamera = true;
+    race.rivals.forEach((rival, index) => {
+      rival.distance = race.distance + 10 + index * 8;
+      rival.lateral = [-4, 4, 0][index];
+      rival.lane = [-4, 4, 0][index];
+    });
+  });
+  await expect.poll(async () => (await car(page)).place, { timeout: 20_000, intervals: [50] }).toBe(1);
+  const before = await page.evaluate(() => {
+    const { race } = window.__game;
+    return race.raceDistance - race.distance;
+  });
+  expect(before).toBeGreaterThan(5);
+  await shot(page, 'r-last-stretch');
 });
 
 test('resting costs no places: everyone waits, and the cars behind stay behind', async ({ page }) => {

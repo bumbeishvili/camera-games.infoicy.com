@@ -2,7 +2,7 @@
 // the lake and its bridge, a forest, Joze's family and the Harvest Fair from the other games. Each one is
 // built from simple shapes and joined into a mesh or two, so all of this costs a few dozen draw calls.
 import * as THREE from '../../vendor/three/three.module.js';
-import { canvasTexture, faceted, handPath, lerp, Mesher, seededRandom, starPath, TAU } from './kit.js';
+import { canvasTexture, damp, faceted, handPath, lerp, Mesher, seededRandom, starPath, TAU } from './kit.js';
 import { WATER_LEVEL } from './terrain.js';
 import { PLACES, ROAD_HALF } from './track.js';
 
@@ -379,6 +379,8 @@ class Flags {
 
 const SHIRTS = ['#ff5a4f', '#3b82f6', '#ffd23f', '#27c96b', '#a855f7', '#ff8a2b', '#ffffff', '#ff7eb6', '#14b8a6', '#e8eef4'];
 const SKINS = ['#f5cfa8', '#e8b48a', '#c98f62', '#9b6a45', '#fbe0c4', '#74492d'];
+const CROWD_CHUNK = 90;
+const CROWD_HEAD = faceted(new THREE.IcosahedronGeometry(0.5, 0));
 
 function peopleMaterial(time, cheer) {
   const material = new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -427,29 +429,47 @@ class Crowd {
       .box('#ffffff', 0.34, 1.42, 0, 0.13, 0.62, 0.13, { rz: -0.32 })
       .geometry();
     const head = new Mesher()
-      .add('blob', '#ffffff', 0, 1.5, 0, 0.42, 0.44, 0.42)
+      .add(CROWD_HEAD, '#ffffff', 0, 1.5, 0, 0.46, 0.46, 0.46)
       .geometry();
     const material = peopleMaterial(time, cheer);
-    const bodies = new THREE.InstancedMesh(body, material, this.items.length);
-    const heads = new THREE.InstancedMesh(head, material, this.items.length);
+    const groups = new Map();
+    for (const item of this.items) {
+      const key = `${Math.floor(item.x / CROWD_CHUNK)},${Math.floor(item.z / CROWD_CHUNK)}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(item);
+    }
+    // In no order, so that when a slow computer draws only half of them, it isn't the top rows that go.
+    for (const group of groups.values()) {
+      for (let i = group.length - 1; i > 0; i -= 1) {
+        const other = Math.floor(this.random() * (i + 1));
+        [group[i], group[other]] = [group[other], group[i]];
+      }
+    }
     const dummy = new THREE.Object3D();
     const colour = new THREE.Color();
-    this.items.forEach((item, index) => {
-      dummy.position.set(item.x, item.y, item.z);
-      dummy.rotation.y = item.turn;
-      dummy.scale.setScalar(item.size);
-      dummy.updateMatrix();
-      bodies.setMatrixAt(index, dummy.matrix);
-      heads.setMatrixAt(index, dummy.matrix);
-      bodies.setColorAt(index, colour.set(item.shirt));
-      heads.setColorAt(index, colour.set(item.skin));
-    });
-    for (const mesh of [bodies, heads]) {
-      mesh.frustumCulled = false;
-      mesh.userData.everyone = this.items.length;
-      parent.add(mesh);
+    const meshes = [];
+    for (const group of groups.values()) {
+      const bodies = new THREE.InstancedMesh(body, material, group.length);
+      const heads = new THREE.InstancedMesh(head, material, group.length);
+      group.forEach((item, index) => {
+        dummy.position.set(item.x, item.y, item.z);
+        dummy.rotation.y = item.turn;
+        dummy.scale.setScalar(item.size);
+        dummy.updateMatrix();
+        bodies.setMatrixAt(index, dummy.matrix);
+        heads.setMatrixAt(index, dummy.matrix);
+        bodies.setColorAt(index, colour.set(item.shirt));
+        heads.setColorAt(index, colour.set(item.skin));
+      });
+      for (const mesh of [bodies, heads]) {
+        mesh.computeBoundingSphere();
+        mesh.boundingSphere.radius += 2; // They bounce, which the sphere can't know about.
+        mesh.userData.everyone = group.length;
+        parent.add(mesh);
+        meshes.push(mesh);
+      }
     }
-    return [bodies, heads];
+    return meshes;
   }
 }
 
@@ -530,11 +550,11 @@ function buildGrandstand(b, m, from, to, side, rows) {
     });
     // Signs along the front.
     const sign = b.offset(front.x, front.z, turn, 0, 0.47);
-    boards.add(b.pick(['five', 'title', 'joze', 'smoothie', 'fair', 'turbo', 'balloons', 'mighty']), sign.x, baseY + 0.62, sign.z, turn, 3 * 1, 1);
+    boards.add(b.pick(['five', 'title', 'joze', 'smoothie', 'fair', 'turbo', 'balloons', 'mighty']), sign.x, baseY + 0.62, sign.z, turn, 3, 1);
     const sign2 = b.offset(front.x, front.z, turn, -3.4, 0.47);
-    boards.add(b.pick(['five', 'joze', 'wings', 'leap']), sign2.x, baseY + 0.62, sign2.z, turn, 3 * 1, 1);
+    boards.add(b.pick(['five', 'joze', 'wings', 'leap']), sign2.x, baseY + 0.62, sign2.z, turn, 3, 1);
     const sign3 = b.offset(front.x, front.z, turn, 3.4, 0.47);
-    boards.add(b.pick(['title', 'lighthouse', 'five']), sign3.x, baseY + 0.62, sign3.z, turn, 3 * 1, 1);
+    boards.add(b.pick(['title', 'lighthouse', 'five']), sign3.x, baseY + 0.62, sign3.z, turn, 3, 1);
     if (Math.round((d - from) / bay) % 2 === 0) {
       const top = 1.05 + rows * 0.72 + 3;
       const pole = b.offset(front.x, front.z, turn, 0, -1);
@@ -561,6 +581,10 @@ function buildStartLine(b) {
   const heading = track.headingAt(0);
   const gantryOut = ROAD_HALF + 2.8;
   const beamY = 10.4;
+  // Under the banner while waiting on the line, as above it they'd be behind the camera's picture. Once
+  // the race is on they go up out of the way, or the dark panel would pass just over the following camera.
+  const lightsDown = beamY - 2.8;
+  const lightsUp = beamY + 2.9;
   overRoad.at(point.x, point.y, point.z, heading, (s) => {
     for (const x of [-gantryOut, gantryOut]) {
       // Each leg is a tower of four posts with cross pieces, in the colours of the start line.
@@ -578,7 +602,6 @@ function buildStartLine(b) {
     s.box('#e8edf2', 0, beamY + 1.25, 0, gantryOut * 2 + 1.2, 0.4, 0.8);
     s.box('#e8edf2', 0, beamY - 1.25, 0, gantryOut * 2 + 1.2, 0.3, 0.8);
     // The housing for the lights.
-    s.box(INK, 0, beamY + 2.45, 0, 7.2, 2, 0.7);
   });
   boards.add('title', point.x, point.y + beamY, point.z, heading + Math.PI, gantryOut * 2 - 1, 2.5);
   const back = b.offset(point.x, point.z, heading + Math.PI, 0, 0.45);
@@ -634,26 +657,46 @@ function buildStartLine(b) {
   b.solid(overRoad, { shadow: false });
 
   // The lights: dark, then one more red for each number of the countdown, and then all green.
-  const lampShape = new THREE.CircleGeometry(0.75, 20);
+  const lampShape = new THREE.CircleGeometry(1.15, 24);
   const dark = new THREE.MeshBasicMaterial({ color: '#3b2e33' });
   const red = new THREE.MeshBasicMaterial({ color: '#ff4b3e' });
   const green = new THREE.MeshBasicMaterial({ color: '#3ddc84' });
-  const lamps = [-2.3, 0, 2.3].map((x) => {
+  const lights = new THREE.Group();
+  lights.position.set(point.x, point.y + lightsUp, point.z);
+  lights.rotation.y = heading;
+  lights.add(new THREE.Mesh(new Mesher().box(INK, 0, 0, 0, 10.6, 3, 0.7).geometry(), b.solidMaterial));
+  // In the car, +X is on the left, so they come on from left to right.
+  const lamps = [3.2, 0, -3.2].map((x) => {
     const lamp = new THREE.Mesh(lampShape, dark);
-    const spot = b.offset(point.x, point.z, heading + Math.PI, x, 0.4);
-    lamp.position.set(spot.x, point.y + beamY + 2.45, spot.z);
-    lamp.rotation.y = heading + Math.PI;
-    b.world.scene.add(lamp);
+    // Looking back at the cars waiting on the line, which are behind the gantry.
+    lamp.position.set(x, 0, -0.4);
+    lamp.rotation.y = Math.PI;
+    lights.add(lamp);
     return lamp;
   });
+  b.world.scene.add(lights);
+  const { world } = b;
+  let wantedY = point.y + lightsUp;
+  world.animate((dt) => {
+    lights.position.y = world.reducedMotion ? wantedY : damp(lights.position.y, wantedY, 3, dt);
+  });
   return {
-    /** How many of them are lit up red. */
+    showing: 'dark',
+    get lifted() {
+      return wantedY > point.y + lightsDown;
+    },
+    /** How many of them are lit up red. Any number means they're down, waiting for the start. */
     set(count) {
+      this.showing = count > 0 ? `${count} red` : 'dark';
+      wantedY = point.y + lightsDown;
+      lights.position.y = wantedY;
       lamps.forEach((lamp, index) => {
         lamp.material = index < count ? red : dark;
       });
     },
     go() {
+      this.showing = 'green';
+      wantedY = point.y + lightsUp;
       for (const lamp of lamps) lamp.material = green;
     },
   };
@@ -833,24 +876,24 @@ function tunnelPainting() {
   return canvasTexture(1024, 512, (ctx, w, h) => {
     // Across the picture is around the arch, from one floor over the roof to the other. Down the picture is along the road.
     const sky = ctx.createLinearGradient(0, 0, w, 0);
-    sky.addColorStop(0, '#b8a688');
-    sky.addColorStop(0.1, '#d6bf86');
-    sky.addColorStop(0.2, '#7fbcd9');
-    sky.addColorStop(0.5, '#9fd0ea');
-    sky.addColorStop(0.8, '#7fbcd9');
-    sky.addColorStop(0.9, '#d6bf86');
-    sky.addColorStop(1, '#b8a688');
+    sky.addColorStop(0, '#a69678');
+    sky.addColorStop(0.1, '#c4ae78');
+    sky.addColorStop(0.2, '#6ea9c7');
+    sky.addColorStop(0.5, '#8dbcd8');
+    sky.addColorStop(0.8, '#6ea9c7');
+    sky.addColorStop(0.9, '#c4ae78');
+    sky.addColorStop(1, '#a69678');
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
     // Long bands, which never break, so they can't flicker.
-    for (const [x, width, colour] of [[120, 26, '#e68473'], [160, 18, '#e0b35c'], [w - 146, 26, '#e68473'], [w - 178, 18, '#e0b35c']]) {
+    for (const [x, width, colour] of [[120, 26, '#d67a68'], [160, 18, '#cfa24f'], [w - 146, 26, '#d67a68'], [w - 178, 18, '#cfa24f']]) {
       ctx.fillStyle = colour;
       ctx.fillRect(x, 0, width, h);
     }
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.fillRect(w / 2 - 52, 0, 104, h);
+    ctx.fillStyle = 'rgba(255,255,255,0.28)';
+    ctx.fillRect(w / 2 - 44, 0, 88, h);
     ctx.fillStyle = '#fff6d8';
-    ctx.fillRect(w / 2 - 24, 0, 48, h);
+    ctx.fillRect(w / 2 - 20, 0, 40, h);
     // Pictures on the walls, soft enough not to jump out as they go by.
     ctx.globalAlpha = 0.5;
     ctx.fillStyle = '#ffb703';

@@ -50,6 +50,128 @@ const CHASE = `
 `;
 
 const FILMS = {
+  'robot-rescue': {
+    settings: { reach: 'lots', pace: 'medium' },
+    css: '.camera-frame { --camera-small: 26vw !important; }',
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: null, right: 'open', scale: 0.7 }));
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await wait(page, 1200);
+    },
+    async play(page) {
+      // The hand goes to the nearest robot and fires. Every so often it closes, for the shield and to
+      // reload, and goo comes along for it to stop.
+      await page.evaluate(() => new Promise((done) => {
+        const { stage, mission } = window.__game;
+        mission.holdThrows = 0;
+        mission.level = { ...mission.level, throwEvery: 2.6, gooSeconds: 2 };
+        // The goo is left for the shield to stop, so that the film shows it.
+        const realTargets = mission.targets.bind(mission);
+        mission.targets = () => realTargets().filter(({ kind }) => kind !== 'goo');
+        const started = performance.now();
+        let x = 0;
+        let y = 0;
+        let closedUntil = 0;
+        const timer = setInterval(() => {
+          const now = performance.now();
+          const glove = stage.gloves.right;
+          let best = null;
+          let bestGap = Infinity;
+          for (const target of stage.targetsOnScreen ?? []) {
+            const gap = Math.hypot(target.x - glove.x, target.y - glove.y);
+            if (target.ref.kind !== 'goo' && gap < bestGap) {
+              best = target;
+              bestGap = gap;
+            }
+          }
+          if (glove.visible && best) {
+            x = Math.max(-830, Math.min(210, x + ((best.x - glove.x) / innerWidth) * 128));
+            y = Math.max(-190, Math.min(190, y + ((best.y - glove.y) / innerHeight) * 72));
+          }
+          // Close in good time for goo that's nearly here, and when it's run out.
+          if (mission.gooClose > 0.62 || mission.blaster.charge <= 0.02) closedUntil = now + 800;
+          const closed = now < closedUntil;
+          window.__camera.show({ left: null, right: closed ? 'fist' : 'open', scale: 0.7, rightOffsetX: x, rightOffsetY: y });
+          if (now - started > 14_000) {
+            clearInterval(timer);
+            done();
+          }
+        }, 33);
+      }));
+    },
+    report: (page) => page.evaluate(() => window.__game.mission.stats),
+  },
+  'tank-patrol': {
+    settings: { pace: 'medium', tanks: 15, tankLevel: 'gentle' },
+    css: '.camera-frame { --camera-small: 22vw !important; right: 12px !important; } .prompt { display: none !important; }',
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: null, right: 'open', scale: 0.7 }));
+      await page.addScriptTag({ content: CHASE });
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await wait(page, 700);
+    },
+    async play(page) {
+      // Closes the hand to drive at the next robot tank, and opens it to fire once it's in range.
+      await page.evaluate(() => new Promise((done) => {
+        const { field, patrol } = window.__game;
+        const stop = window.__chase(
+          () => field.gloves.right,
+          () => {
+            const [target] = patrol.rolling;
+            return target ? field.project(target.x, target.y, target.z) : null;
+          },
+          () => {
+            const [target] = patrol.rolling;
+            return target && patrol.inRange(target) ? 'open' : 'fist';
+          },
+        );
+        setTimeout(() => {
+          stop();
+          done();
+        }, 14_000);
+      }));
+    },
+    report: (page) => page.evaluate(() => window.__game.patrol.stats),
+  },
+  'cannon-bay': {
+    settings: { bayPace: 'medium', bayShips: 9 },
+    css: '.camera-frame { --camera-small: 24vw !important; } .story { display: none !important; }',
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: null, right: 'open', scale: 0.7 }));
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await page.waitForFunction(() => window.__game.battle.afloat.length > 0, null, { timeout: 30_000 });
+      // Ships near the end of their health, so that they go down and their crews row away in the film.
+      await page.evaluate(() => {
+        const { battle, game } = window.__game;
+        game.openFor = 99;
+        game.wheelFor = 99;
+        battle.afloat.forEach((pirate, index) => {
+          pirate.hitsLeft = 7 + index * 7;
+        });
+      });
+      await wait(page, 3500);
+    },
+    async play(page) {
+      // The real hand: open and going from side to side, which turns the wheel, and shut for a moment
+      // to bring the sails down.
+      await page.evaluate(() => new Promise((done) => {
+        const started = performance.now();
+        const timer = setInterval(() => {
+          const t = (performance.now() - started) / 1000;
+          const shut = t > 8.5 && t < 10;
+          window.__camera.show({ left: null, right: shut ? 'fist' : 'open', scale: 0.7, rightOffsetX: Math.sin(t * 0.8) * 120 });
+          if (t > 13) {
+            clearInterval(timer);
+            done();
+          }
+        }, 33);
+      }));
+    },
+    report: (page) => page.evaluate(() => window.__game.battle.stats),
+  },
   'joze-walk': {
     settings: { reach: 'little' },
     css: '.camera-frame { --camera-small: 24vw !important; left: 66% !important; }',
@@ -261,30 +383,37 @@ const FILMS = {
     report: (page) => page.evaluate(() => window.__game.flight.stats),
   },
   'high-five-racers': {
-    settings: { laps: 4 },
+    settings: { laps: 4, steering: 'help' },
     async ready(page) {
-      await page.evaluate(() => window.__camera.show({ left: null, right: 'open' }));
+      await page.evaluate(() => window.__camera.show({ left: null, right: 'open', scale: 0.7 }));
       await page.locator('#start').click();
       await screenIs(page, 'playing');
       await wait(page, 1500);
     },
     async play(page) {
-      const handFor = (seconds, name, swing) => page.evaluate(([ms, hand, wide]) => new Promise((done) => {
+      // The open hand goes across to each big hand as it comes up, so the film shows high fives.
+      await page.evaluate(() => new Promise((done) => {
+        const { race } = window.__game;
+        const TOWARDS = { 1: 150, '-1': -220 };
         const started = performance.now();
+        let x = 0;
         const timer = setInterval(() => {
-          const t = (performance.now() - started) / 1000;
-          window.__camera.show({ left: null, right: hand, rightOffsetX: Math.sin(t * 1.5) * wide, scale: 0.8 });
-          if (performance.now() - started > ms) {
+          const along = race.distance - race.track.length * Math.max(0, race.lapIndex);
+          const { gates } = race.gates;
+          const next = gates.find((gate) => gate.along > along) ?? gates[0];
+          x += (TOWARDS[next.side] - x) * 0.08;
+          window.__camera.show({ left: null, right: 'open', scale: 0.7, rightOffsetX: x });
+          if (performance.now() - started > 13_000) {
             clearInterval(timer);
             done();
           }
         }, 33);
-      }), [seconds * 1000, name, swing]);
-      await handFor(6, 'open', 190);
-      await handFor(2, 'fist', 0);
-      await handFor(3, 'open', 190);
+      }));
     },
-    report: (page) => page.evaluate(() => window.__game.race.starTotal),
+    report: (page) => page.evaluate(() => {
+      const { fives, fivesLeft, fivesRight, gatesMet } = window.__game.race;
+      return { fives, fivesLeft, fivesRight, gatesMet };
+    }),
   },
   'balloon-pop': {
     settings: { reach: 'none', pace: 'medium' },

@@ -1,0 +1,14 @@
+[
+  {"id": "open-to-fire", "text": "Open your hand to fire!", "ka": "გაშალე ხელი, რომ ესროლო!"},
+  {"id": "close-to-reload", "text": "Close your hand to reload!", "ka": "მოკუმე ხელი, რომ დატენო!"},
+  {"id": "close-for-shield", "text": "Close your hand for the shield!", "ka": "მოკუმე ხელი, რომ ფარი აიფარო!"},
+  {"id": "gold-stars", "text": "Shoot the gold stars on the big robot!", "ka": "ესროლე ოქროს ვარსკვლავებს დიდ რობოტზე!"},
+  {"id": "finish", "text": "You saved everyone!", "ka": "ყველა გადაარჩინე!"},
+  {"id": "so-close", "text": "So close!", "ka": "კინაღამ გამოგივიდა!"},
+  {"id": "joze-help", "text": "Help! The robots caught all of us!", "ka": "მიშველე! რობოტებმა ყველა დაგვიჭირეს!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "truffle-thanks", "text": "Oink! You saved me!", "ka": "ღრუტ! გადამარჩინე!", "voice": "am_puck", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 12},
+  {"id": "kit-thanks", "text": "Free at last! Thank you!", "ka": "როგორც იქნა, გავთავისუფლდი! გმადლობ!", "voice": "af_nicole", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 6},
+  {"id": "frost-thanks", "text": "Thank you! That was cool!", "ka": "გმადლობ! მაგარი იყო!", "voice": "bf_emma", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 18},
+  {"id": "mochi-thanks", "text": "Hop hop! Thank you!", "ka": "ხტუნვა, ხტუნვა! გმადლობ!", "voice": "af_sky", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 24},
+  {"id": "joze-thanks", "text": "Hooray! We’re all free!", "ka": "ვაშა! ყველა თავისუფალია!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0}
+]

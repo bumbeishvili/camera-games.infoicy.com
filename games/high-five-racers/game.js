@@ -11,14 +11,12 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { makeDriver, RaceCar, RIVAL_STYLES } from './cars.js';
 import { Particles, SpeedLines } from './effects.js';
-import { HighFiveGates, HAND_COLOURS } from './gates.js';
+import { HAND_COLOURS, HighFiveGates, PALM_HEIGHT } from './gates.js';
 import { canvasTexture, clamp, damp, mod, softCircleTexture } from './kit.js';
 import { Ramps, StarField } from './pickups.js';
-import { FASTEST_SPEED, gateOutcome, REACH, ReachEasing, rivalSpeed, SLAP, TOP_SPEED, touching, TurboMeter, wantedSpeed } from './rules.js';
+import { CAR_LENGTH, CAR_WIDTH, FASTEST_SPEED, gateOutcome, REACH, ReachEasing, rivalSpeed, SLAP, TOP_SPEED, touching, TurboMeter, wantedSpeed } from './rules.js';
 import { LANE_LIMIT, START_BEHIND_LINE, Track } from './track.js';
 import { World } from './world.js';
-
-export { TOP_SPEED };
 
 const ACCELERATION = 10;
 const COAST_DOWN = 13;
@@ -26,13 +24,19 @@ const OVER_TOP_DOWN = 7; // Slowing from a boost is gentler than slowing to a st
 
 const RIVAL_CRUISE = 0.82 * TOP_SPEED;
 const RIVAL_LANES = [-3.2, 3.2, 0];
-const RIVAL_WISHES = [-4, 3, 10]; // The middle of how far ahead each likes to be.
+const RIVAL_WISHES = [9, 17, 25]; // The middle of how far ahead each likes to be.
+const RIVAL_WISH_SWING = 12;
+const RIVAL_COMES_BACK_FROM = [24, 32, 40]; // How far behind each gets before it comes past again.
+const LAST_STRETCH = 170; // In the last of the race they ease off, so that the child wins clearly.
+const TURBO_PULLS_AWAY_SECONDS = 4; // After this they keep up with turbo, or nobody would ever see them again.
 const RIVAL_SLAP_REACH = 1.5;
 const RESTING_SPEED = 6;
 const CROWD_CHEER_SPACING_SECONDS = 25;
 const JUMP_GRAVITY = 21;
 const jumpSpeed = (speed) => 3 + speed * 0.22;
 const FINISH_STOP = 3; // Rivals pull up this far before the line, so the child gets there first.
+const PASSED_BY = 1.5; // How far clear a car has to be to have passed, so two side by side don't keep swapping.
+const SAY_PASSED_AGAIN_AFTER_SECONDS = 8;
 
 const STEERING = {
   // The car's place on the road follows the hand. That's easier than turning a wheel for a child who
@@ -74,10 +78,11 @@ function skyReflection(renderer) {
 
 export class Race {
   /**
-   * events: onStar(total), onPlace(place, previous, passedSpec), onLap(lap), onFinish(), onFive(total, side, streak),
-   * onBump(), onTurbo(on), onLanded(), onCrowd().
+   * events: onStar(total), onPlace(place, previous), onOvertake(spec, byPlayer), onLap(lap), onFinish(),
+   * onFive(total, side, streak), onGate(gate, outcome), onBump(), onTurbo(on), onJump(), onLanded(), onCrowd().
    * Modes: attract (title screen), grid (waiting on the line), race, finished.
-   * driver is who's driving the child's car, and rivals who's in the others.
+   * driver is who's driving the child's car, rivals who's in the others, and reach how far to reach
+   * for a big hand.
    */
   constructor(canvas, events = {}, { driver, rivals, reach = 'medium' }) {
     this.events = events;
@@ -88,7 +93,6 @@ export class Race {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
-    const race = this;
     this.scene = new THREE.Scene();
     this.track = new Track();
     this.world = new World(this.scene, this.track, { reducedMotion: this.reducedMotion });
@@ -108,6 +112,7 @@ export class Race {
     const glowTexture = softCircleTexture('rgba(255,255,255,1)', 'rgba(255,255,255,0)', 64);
     this.player = new RaceCar({ styleName: 'roadster', paint: '#ff5a4f', trim: '#ffd23f', spec: driver, environment, glowTexture, isPlayer: true });
     this.driver = makeDriver();
+    this.driver.setSleeveColour(driver.colours.arm ?? driver.colours.body);
     this.player.group.add(this.driver.group);
     this.scene.add(this.player.group);
 
@@ -132,10 +137,7 @@ export class Race {
       };
     });
 
-    this.orderList = [
-      { get spec() { return race.player.spec; }, distance: () => this.distance, isPlayer: true },
-      ...this.rivals.map((rival) => ({ get spec() { return rival.spec; }, distance: () => rival.distance, isPlayer: false })),
-    ];
+    this.racers = [null, ...this.rivals]; // In order, with null for the player. See order.
     this.stars = new StarField(this.scene, this.track);
     this.ramps = new Ramps(this.scene, this.track);
     this.reach = new ReachEasing(REACH[reach] ?? REACH.medium);
@@ -143,6 +145,7 @@ export class Race {
     this.gates.reachFor = (side) => this.reach.reachFor(side);
     this.gates.applyReach();
     this.particles = new Particles(this.scene);
+    this.particles.budget = this.reducedMotion ? 0.5 : 1;
     this.speedLines = new SpeedLines(this.scene);
     this.turbo = new TurboMeter();
 
@@ -164,6 +167,8 @@ export class Race {
 
     window.addEventListener('resize', () => this.resize());
     this.resize();
+    // Gets the graphics card ready for everything now, so the first flames or big hand don't make it stutter.
+    this.renderer.compile(this.scene, this.camera);
   }
 
   paintsFor(spec, index) {
@@ -201,14 +206,17 @@ export class Race {
     this.finished = false;
     this.boostLeft = 0;
     this.reachOut = 0;
-    this.reachTowards = 1;
+    this.reachAcross = 0;
     this.afterSlap = 0;
     this.lift = 0;
     this.liftSpeed = 0;
     this.flying = false;
     this.nosePitch = 0;
-    this.braking = false;
+    this.gateNext = null;
+    this.gateAhead = Infinity;
+    this.gateLined = false;
     this.crowdCheeredAt = -Infinity;
+    this.airWait = 0;
     this.restingFor = 0;
     this.turbo.reset();
     this.rivals.forEach((rival, index) => {
@@ -218,9 +226,11 @@ export class Race {
       rival.speed = 0;
       rival.bumpWait = 0;
       rival.wasAhead = true;
+      rival.passedAt = -Infinity;
       rival.lift = 0;
       rival.liftSpeed = 0;
       rival.flying = false;
+      rival.comingBack = false;
     });
     this.stars.reset();
     this.snapCamera = true;
@@ -252,6 +262,7 @@ export class Race {
   setDrivers(driver, rivals) {
     this.player.setCharacter(driver);
     this.player.setFreeArm(this.handSide);
+    this.driver.setSleeveColour(driver.colours.arm ?? driver.colours.body);
     this.rivals.forEach((rival, index) => {
       rival.spec = rivals[index];
       rival.car.setCharacter(rivals[index]);
@@ -279,17 +290,16 @@ export class Race {
    * is clearly ahead, so that it doesn't keep jumping about.
    */
   get order() {
-    const { orderList } = this;
-    for (let i = 0; i < orderList.length - 1; i += 1) {
-      const front = orderList[i];
-      const back = orderList[i + 1];
-      const margin = front.isPlayer || back.isPlayer ? 0 : 2;
-      if (back.distance() > front.distance() + margin) {
-        orderList[i] = back;
-        orderList[i + 1] = front;
-      }
+    const { racers } = this;
+    const inFront = (a, b) => {
+      if (a === null) return !b.wasAhead;
+      if (b === null) return a.wasAhead;
+      return a.distance > b.distance + 2;
+    };
+    for (let i = 0; i < racers.length - 1; i += 1) {
+      if (inFront(racers[i + 1], racers[i])) [racers[i], racers[i + 1]] = [racers[i + 1], racers[i]];
     }
-    return orderList;
+    return racers.map((racer) => (racer ? racer.spec : this.player.spec));
   }
 
   get lapIndex() {
@@ -332,7 +342,7 @@ export class Race {
       const push = -this.track.curvatureAt(this.distance) * this.speed ** 2 * tune.drift;
       this.lateralVelocity = wanted * grip + push;
     }
-    this.lateral = clamp(this.lateral + (this.lateralVelocity + this.shove) * grip * dt, -LANE_LIMIT, LANE_LIMIT);
+    this.lateral = clamp(this.lateral + (this.lateralVelocity + this.shove * grip) * dt, -LANE_LIMIT, LANE_LIMIT);
 
     const lapPosition = mod(this.distance, this.track.length);
     if (this.distance > 0) {
@@ -348,16 +358,17 @@ export class Race {
     const lap = clamp(this.lapIndex + 1, 1, this.laps);
     if (lap !== this.lap) {
       this.lap = lap;
+      this.celebrateAtLine();
       this.events.onLap?.(lap);
     }
 
-    const place = 1 + this.rivals.filter((rival) => rival.distance > this.distance).length;
+    this.watchOvertaking();
+    const place = 1 + this.rivals.filter((rival) => rival.wasAhead).length;
     if (place !== this.place) {
       const previous = this.place;
       this.place = place;
       this.events.onPlace?.(place, previous);
     }
-    this.watchOvertaking();
 
     if (this.distance >= this.raceDistance && !this.finished) {
       this.finished = true;
@@ -368,17 +379,19 @@ export class Race {
   /** Whoever gets overtaken, or does the overtaking, looks over and waves. It's all friendly. */
   watchOvertaking() {
     for (const rival of this.rivals) {
-      const ahead = rival.distance > this.distance;
+      const gap = rival.distance - this.distance;
+      const ahead = rival.wasAhead ? gap > -PASSED_BY : gap > PASSED_BY;
       if (ahead === rival.wasAhead) continue;
       rival.wasAhead = ahead;
       rival.car.wave = 1.8;
-      rival.car.fighter.setExpression('happy', 1.8);
-      if (!ahead) {
-        const at = this.tmpC.copy(rival.car.group.position);
-        at.y += 2.4;
-        this.particles.burst(at, { count: 8, shapes: ['star'], colours: ['#ffffff', '#ffe27a'], speed: 3, up: 3, life: 0.6, size: 0.4 });
-      }
-      this.events.onOvertake?.(rival.spec, !ahead);
+      if (ahead) continue;
+      // Past someone: you wave, they wave, and a few stars come out.
+      this.player.wave = 1.4;
+      const at = this.tmpC.copy(rival.car.group.position);
+      at.y += 2.4;
+      this.particles.burst(at, { count: 8, shapes: ['star'], colours: ['#ffffff', '#ffe27a'], speed: 3, up: 3, life: 0.6, size: 0.4 });
+      if (this.time - rival.passedAt > SAY_PASSED_AGAIN_AFTER_SECONDS) this.events.onOvertake?.(rival.spec);
+      rival.passedAt = this.time;
     }
   }
 
@@ -390,7 +403,7 @@ export class Race {
     const timeLeft = ahead / Math.max(this.speed, 1);
     this.afterSlap = Math.max(0, this.afterSlap - dt);
     const reaching = (handOpen && lined && timeLeft < 0.34 && this.distance > 0) || this.afterSlap > 0;
-    if (reaching && this.afterSlap <= 0) this.reachTowards = next.side;
+    if (reaching && this.afterSlap <= 0) this.reachAcross = this.lateral - next.handX;
     this.reachOut = damp(this.reachOut, reaching ? 1 : 0, 20, dt);
     this.gateNext = next;
     this.gateAhead = ahead;
@@ -401,10 +414,10 @@ export class Race {
     const from = mod(this.previousDistance, this.track.length);
     for (const gate of this.gates.gates) {
       if (mod(gate.along - from, this.track.length) > moved) continue;
-      const lateral = this.lateral;
-      const outcome = gateOutcome({ handOpen, lateral, side: gate.side, reach: this.reach.reachFor(gate.side) });
+      const outcome = gateOutcome({ handOpen, lateral: this.lateral, side: gate.side, reach: this.reach.reachFor(gate.side) });
       this.gatesMet += 1;
       this.reach.record(gate.side, outcome, handOpen);
+      this.gates.applyReach({ snap: false });
       if (outcome === 'slap') this.slapGate(gate);
       else if (outcome === 'closed') this.gates.brush(gate, 4);
       else this.gates.brush(gate, 1.2);
@@ -488,7 +501,8 @@ export class Race {
 
   updateRivals(dt, chasing) {
     const resting = chasing && this.drive === 0 && this.speed < RESTING_SPEED;
-    const rushing = this.turbo.active || this.boostLeft > 0;
+    const rushing = this.boostLeft > 0 || (this.turbo.active && this.turbo.heldFor < TURBO_PULLS_AWAY_SECONDS);
+    const lastStretch = this.raceDistance - this.distance < LAST_STRETCH;
     this.restingFor = resting ? this.restingFor + dt : 0;
     const finishLine = this.raceDistance - FINISH_STOP;
 
@@ -496,9 +510,13 @@ export class Race {
       const gap = rival.distance - this.distance;
       let wanted = RIVAL_CRUISE * 0.5;
       if (chasing) {
-        // Each drifts from behind the player to ahead and back again, at its own pace.
-        const wish = RIVAL_WISHES[index] + 19 * Math.sin(this.time * (0.21 + index * 0.05) + rival.wishPhase);
-        wanted = rivalSpeed({ gap, wish, playerSpeed: this.speed, resting, rushing, cruise: RIVAL_CRUISE });
+        // Each drifts nearer and further ahead, at its own pace.
+        const wish = lastStretch
+          ? -10 - index * 9
+          : RIVAL_WISHES[index] + RIVAL_WISH_SWING * Math.sin(this.time * (0.21 + index * 0.05) + rival.wishPhase);
+        if (gap < -RIVAL_COMES_BACK_FROM[index]) rival.comingBack = true;
+        if (gap > wish || lastStretch) rival.comingBack = false;
+        wanted = rivalSpeed({ gap, wish, playerSpeed: this.speed, resting, rushing, comingBack: rival.comingBack, cruise: RIVAL_CRUISE });
       }
       rival.speed = damp(rival.speed, wanted, 2.2, dt);
       if (chasing) rival.speed = Math.min(rival.speed, Math.max(0, finishLine - rival.distance) * 1.6);
@@ -573,14 +591,25 @@ export class Race {
     }
   }
 
-  /** Two cars touch: a little shove sideways and a few sparks, and everyone carries on. */
+  /**
+   * Two cars touch: a little shove sideways and a few sparks, and everyone carries on. They never go
+   * through each other: whichever way they overlap least, that's the way they're moved apart.
+   */
   bump(rival) {
     const side = rival.lateral >= this.lateral ? 1 : -1;
+    const ahead = rival.distance >= this.distance ? 1 : -1;
+    const across = CAR_WIDTH - Math.abs(rival.lateral - this.lateral);
+    const along = CAR_LENGTH - Math.abs(rival.distance - this.distance);
     rival.shove = side * 9;
     this.shove = -side * 3;
-    // Whoever's behind gives the one in front a push, rather than going through it.
-    if (rival.distance > this.distance) rival.speed = Math.max(rival.speed, this.speed);
-    else rival.speed = Math.min(rival.speed, this.speed * 0.9);
+    if (across < along) {
+      rival.lateral = clamp(rival.lateral + side * across * 0.6, -LANE_LIMIT, LANE_LIMIT);
+      this.lateral = clamp(this.lateral - side * across * 0.4, -LANE_LIMIT, LANE_LIMIT);
+    } else {
+      // Whoever's behind gives the one in front a push.
+      rival.distance += ahead * along;
+      rival.speed = ahead > 0 ? Math.max(rival.speed, this.speed) : Math.min(rival.speed, this.speed * 0.9);
+    }
     if (rival.bumpWait > 0) return;
     rival.bumpWait = 0.9;
     rival.car.fighter.setExpression('dizzy', 1);
@@ -590,11 +619,50 @@ export class Race {
     this.events.onBump?.();
   }
 
+  /** Little things drifting across the view, which say where you are, and show how fast you're going past. */
+  emitAir(dt) {
+    this.airWait -= dt;
+    if (this.airWait > 0 || this.reducedMotion || this.mode !== 'race' || this.particles.budget < 1) return;
+    this.airWait = 0.09;
+    const air = this.world.airAt(this.distance + 30);
+    if (!air) return;
+    const at = this.track.pointAt(this.distance + 14 + Math.random() * 46, (Math.random() - 0.5) * 34, this.tmpC);
+    this.particles.emit({
+      shape: air.shape,
+      colour: air.colours[Math.floor(Math.random() * air.colours.length)],
+      x: at.x,
+      y: at.y + 4 + Math.random() * 8,
+      z: at.z,
+      vx: (Math.random() - 0.5) * 1.6,
+      vy: -1.5,
+      vz: (Math.random() - 0.5) * 1.6,
+      life: 2.6,
+      size: air.size,
+      spin: (Math.random() - 0.5) * 5,
+    });
+  }
+
+  /** Paper coming down from the gantry, whenever someone goes through the start line. */
+  celebrateAtLine() {
+    const at = this.track.pointAt(4, 0, this.tmpC);
+    at.y += 11;
+    this.particles.burst(at, {
+      count: 46,
+      shapes: ['paper', 'paper', 'star'],
+      colours: [...HAND_COLOURS, '#ffffff', '#ff5a4f'],
+      speed: 11,
+      up: 1,
+      life: 1.9,
+      size: 0.46,
+      gravity: 4,
+      drag: 1.1,
+    });
+  }
+
   emitExhaust(dt, car, carSpeed, throttle, flames) {
     car.exhaustWait = (car.exhaustWait ?? 0) - dt;
     if (car.exhaustWait > 0) return;
-    const scale = this.particles.budget;
-    if (scale < 0.3 && !flames) return;
+    if (this.particles.budget < 0.5 && !flames) return;
     car.exhaustWait = flames ? 0.05 : throttle ? 0.13 : 0.34;
     const pipe = car.exhaustAt(Math.floor(this.time * 30), this.tmpB);
     const heading = car.group.rotation.y;
@@ -617,19 +685,22 @@ export class Race {
         opacity: 0.7,
       });
     } else {
+      // A proper puff when the engine's working, and hardly anything when it's only cruising.
+      const working = carSpeed > (car.puffSpeed ?? 0) + 0.01;
+      car.puffSpeed = carSpeed;
       this.particles.emit({
         shape: 'puff',
         colour: '#f2efe8',
         x: pipe.x,
         y: pipe.y,
         z: pipe.z,
-        vx: Math.sin(heading) * carSpeed * 0.55 + (Math.random() - 0.5) * 0.6,
-        vy: 0.5 + Math.random() * 0.5,
-        vz: Math.cos(heading) * carSpeed * 0.55 + (Math.random() - 0.5) * 0.6,
-        life: throttle ? 0.5 : 0.8,
-        size: throttle ? 0.3 : 0.24,
-        grow: 1.1,
-        opacity: throttle ? 0.3 : 0.22,
+        vx: Math.sin(heading) * carSpeed * 0.6 + (Math.random() - 0.5) * 0.8,
+        vy: 0.5 + Math.random() * 0.6,
+        vz: Math.cos(heading) * carSpeed * 0.6 + (Math.random() - 0.5) * 0.8,
+        life: working ? 0.55 : 0.3,
+        size: working ? 0.2 : 0.14,
+        grow: working ? 1.5 : 1,
+        opacity: working ? 0.42 : 0.2,
       });
     }
   }
@@ -677,8 +748,8 @@ export class Race {
     const flameLevel = turboOn ? 0.55 + this.turbo.grown * 0.45 : boosting ? 0.5 : 0;
     this.player.setFlames(flameLevel, dt, this.reducedMotion);
     this.emitExhaust(dt, this.player, this.speed, this.drive > 0, flameLevel > 0.1);
-    this.driver.reachOut(this.handSide, this.reachOut, this.reachTowards);
-    this.player.look = this.reachOut > 0.1 ? this.reachTowards * -0.9 : clamp(-this.lateralVelocity * 0.05, -0.5, 0.5);
+    this.driver.reachOut(this.handSide, this.reachOut, this.reachAcross, PALM_HEIGHT);
+    this.player.look = this.reachOut > 0.1 ? clamp(this.reachAcross, -0.9, 0.9) : clamp(-this.lateralVelocity * 0.05, -0.5, 0.5);
     this.player.updateDriver(dt, { steer: input.steer ?? 0, excited: rushing ? 1 : 0 });
     if (slowing && Math.random() < dt * 14) this.puffAtWheels(1);
 
@@ -701,13 +772,14 @@ export class Race {
     }
 
     this.poseDriver(dt, input);
+    this.emitAir(dt);
 
     this.stars.update(this.time, this.lapIndex, racing || this.mode === 'grid');
     const showGates = racing || this.mode === 'grid';
     this.gates.update(dt, this.time, {
       next: showGates ? this.gateNext ?? this.gates.gates[0] : null,
-      ready: this.gateLined ?? false,
-      stripOn: racing && (this.gateAhead ?? 99) < 60,
+      ready: this.gateLined,
+      stripOn: racing && this.gateAhead < 60,
       carDistance: this.distance,
     });
     const speedShare = this.speed / TOP_SPEED;
@@ -727,7 +799,7 @@ export class Race {
     this.fillLight.target.position.copy(carPosition);
 
     const lineStrength = this.reducedMotion ? 0 : racing ? clamp((speedShare - 0.85) / 0.4, 0, 1) : 0;
-    this.speedLines.update(dt, this.camera, this.speed, lineStrength * (this.quality.level >= 2 ? 0 : 1));
+    this.speedLines.update(dt, this.camera, this.speed, this.quality.level >= 3 ? 0 : lineStrength);
     this.particles.update(dt, this.camera, this.renderer.domElement.height);
   }
 
@@ -839,7 +911,7 @@ export class Race {
     }
     // Level 3 drops flowers, grass and ink lines. Level 4 drops bushes, rocks, things far away and half the crowd.
     this.world.setDetail(level - 1);
-    this.particles.budget = level >= 4 ? 0.3 : level >= 3 ? 0.55 : 1;
+    this.particles.budget = (level >= 4 ? 0.3 : level >= 3 ? 0.55 : 1) * (this.reducedMotion ? 0.5 : 1);
     this.setCarDetail();
     this.resize();
   }

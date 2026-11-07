@@ -3,10 +3,12 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { ball, mergeParts, outlineMaterial, roundedBox, toon } from '../../core/body/characters.js';
 import { canvasTexture, damp, lerp, mod, starPath, TAU } from './kit.js';
+import { CHEVRON_SPACING } from './rules.js';
 import { GATE_SPOTS, LANE_LIMIT, ROAD_HALF } from './track.js';
 
 const HAND_SIZE = 2.1;
-const WRIST_HEIGHT = 2.2;
+const WRIST_HEIGHT = 2.8; // High enough for a car and its driver to go underneath.
+export const PALM_HEIGHT = WRIST_HEIGHT + 0.68 * HAND_SIZE;
 const POST_OUT = ROAD_HALF + 1.3;
 const TUCKED_OUT = ROAD_HALF + 2.6;
 const TUCKS_BEHIND_CAR = 40; // It's back at the roadside for this far behind the car.
@@ -56,20 +58,19 @@ function palmTexture() {
   });
 }
 
+/** One long arrow. They're far apart, as a row of short ones would flicker going past at speed. */
 function stripTexture() {
-  return canvasTexture(128, 128, (ctx, w, h) => {
+  return canvasTexture(128, 256, (ctx, w, h) => {
     ctx.clearRect(0, 0, w, h);
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 20;
+    ctx.lineWidth = 24;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    for (const y of [36, 100]) {
-      ctx.beginPath();
-      ctx.moveTo(20, y + 22);
-      ctx.lineTo(w / 2, y - 18);
-      ctx.lineTo(w - 20, y + 22);
-      ctx.stroke();
-    }
+    ctx.beginPath();
+    ctx.moveTo(18, h * 0.64);
+    ctx.lineTo(w / 2, h * 0.36);
+    ctx.lineTo(w - 18, h * 0.64);
+    ctx.stroke();
   }, { repeat: true });
 }
 
@@ -82,7 +83,9 @@ export class HighFiveGates {
     const handShapes = { '-1': handGeometry(1), 1: handGeometry(-1) };
     const outline = outlineMaterial('#27384b', 0.018);
     const paints = HAND_COLOURS.map((colour) => new THREE.MeshToonMaterial({ color: colour, gradientMap: toon() }));
-    this.readyPaint = new THREE.MeshToonMaterial({ color: READY_COLOUR, gradientMap: toon() });
+    // Whichever hand is next wears this, which goes smoothly to green once the car is lined up with it.
+    this.nextPaint = new THREE.MeshToonMaterial({ gradientMap: toon() });
+    this.readyColour = new THREE.Color(READY_COLOUR);
     const palm = new THREE.MeshBasicMaterial({ map: palmTexture(), transparent: true });
     const palmShape = new THREE.CircleGeometry(0.46, 28);
     const armPaint = new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -155,18 +158,22 @@ export class HighFiveGates {
   armGeometry(colour) {
     const hex = `#${colour.getHexString()}`;
     const parts = [
-      { geometry: new THREE.CylinderGeometry(0.2, 0.26, 2.4, 10), colour: '#f7fafc', at: [0, 1.2, 0] },
+      { geometry: new THREE.CylinderGeometry(0.2, 0.26, WRIST_HEIGHT, 10), colour: '#f7fafc', at: [0, WRIST_HEIGHT / 2, 0] },
       { geometry: new THREE.CylinderGeometry(0.28, 0.34, 0.5, 10), colour: hex, at: [0, 0.25, 0] },
-      { geometry: ball(0.3), colour: hex, at: [0, 2.4, 0] },
+      { geometry: ball(0.3), colour: hex, at: [0, WRIST_HEIGHT, 0] },
     ];
     return mergeParts(parts);
   }
 
-  /** Where each hand stands depends on how far the child has to reach. */
-  applyReach() {
+  /**
+   * Where each hand stands depends on how far the child has to reach. A grown-up's choice takes effect
+   * at once, and a hand coming closer for a child who's trying moves over gently.
+   */
+  applyReach({ snap = true } = {}) {
     for (const gate of this.gates) {
       const reach = this.reachFor(gate.side);
-      gate.handX = gate.side * Math.min(reach + 1.9, ROAD_HALF - 0.6);
+      gate.wantedX = gate.side * Math.min(reach + 1.9, ROAD_HALF - 0.6);
+      if (snap) gate.handX = gate.wantedX;
       gate.arm.position.set(gate.side * POST_OUT, 0, 0);
       this.placeHand(gate);
     }
@@ -197,7 +204,7 @@ export class HighFiveGates {
   }
 
   /** The strip on the road shows how far over to go for the next hand. */
-  showStrip(gate, ready) {
+  showStrip(gate) {
     const reach = this.reachFor(gate.side);
     if (gate !== this.stripGate || reach !== this.stripReach) {
       this.stripGate = gate;
@@ -213,19 +220,15 @@ export class HighFiveGates {
         position.setXYZ(i * 2, corner.x, corner.y + 0.12, corner.z);
         this.track.pointAt(along, far, corner);
         position.setXYZ(i * 2 + 1, corner.x, corner.y + 0.12, corner.z);
-        const v = (along - gate.along) / 3.6;
+        const v = (along - gate.along) / CHEVRON_SPACING;
         uv.setXY(i * 2, 0, v);
-        uv.setXY(i * 2 + 1, Math.abs(far - near) / 3.6, v);
+        uv.setXY(i * 2 + 1, 1, v);
       }
       position.needsUpdate = true;
       uv.needsUpdate = true;
       this.strip.geometry.computeBoundingSphere();
     }
-    this.stripMaterial.color.set(ready ? READY_COLOUR : gate.paint.color);
-  }
-
-  hideStrip() {
-    this.strip.visible = false;
+    this.stripMaterial.color.copy(this.nextPaint.color);
   }
 
   /** The hand was slapped, and swings back on its arm. */
@@ -245,6 +248,7 @@ export class HighFiveGates {
       const behindCar = mod(carDistance - gate.along, length);
       const tuck = behindCar < TUCKS_BEHIND_CAR ? 1 : 0;
       gate.tucked = damp(gate.tucked, tuck, tuck ? 18 : 5, dt);
+      gate.handX = damp(gate.handX, gate.wantedX, 2, dt);
       this.placeHand(gate);
 
       // A loose spring, so it swings back, over, and settles.
@@ -255,12 +259,13 @@ export class HighFiveGates {
       const wave = isNext && !this.reducedMotion ? Math.sin(time * 3.2 + gate.wave) * 0.1 : 0;
       gate.pivot.rotation.set(-gate.swing, 0, wave - gate.side * 0.06, 'XYZ');
       gate.hand.scale.setScalar(HAND_SIZE * (1 + gate.ready * 0.1) * (1 - gate.tucked * 0.25));
-      gate.glove.material = gate.ready > 0.5 ? this.readyPaint : gate.paint;
+      gate.glove.material = isNext ? this.nextPaint : gate.paint;
+      if (isNext) this.nextPaint.color.lerpColors(gate.paint.color, this.readyColour, gate.ready);
     }
     this.strip.visible = stripOn && next !== null;
     if (this.strip.visible) {
-      this.showStrip(next, ready);
-      if (!this.reducedMotion) this.stripMaterial.map.offset.y = -time * 0.55;
+      this.showStrip(next);
+      if (!this.reducedMotion) this.stripMaterial.map.offset.y = -time * 0.2;
     }
   }
 }

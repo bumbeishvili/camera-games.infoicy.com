@@ -83,6 +83,52 @@ for (const [name, side, count] of [['right', 1, 'right'], ['left', -1, 'left']])
   });
 }
 
+test('the glove really does meet the big hand', async ({ page }) => {
+  await raceWithOpenHand(page, { steering: 'help' });
+  for (const side of [1, -1]) {
+    await reachTowards(page, side);
+    await beforeGate(page, side);
+    const apart = await page.evaluate(() => new Promise((resolve) => {
+      const { race } = window.__game;
+      const onFive = race.events.onFive;
+      race.events.onFive = (...args) => {
+        race.events.onFive = onFive;
+        onFive(...args);
+        const gate = race.gates.gates.find((candidate) => Math.abs(candidate.swingSpeed) > 8);
+        race.scene.updateMatrixWorld(true);
+        const glove = race.camera.position.clone();
+        race.driver[race.handSide].root.getWorldPosition(glove);
+        const hand = glove.clone();
+        gate.hand.getWorldPosition(hand);
+        hand.y += 1.4; // From the wrist up to the middle of the palm.
+        resolve(glove.distanceTo(hand));
+      };
+    }));
+    expect(apart).toBeLessThan(2.5);
+    await page.waitForTimeout(300);
+  }
+});
+
+test('a hand that keeps being missed moves closer, one side at a time', async ({ page }) => {
+  await raceWithOpenHand(page, { steering: 'help', reach: 'big' });
+  await reachTowards(page, -1);
+  const before = await page.evaluate(() => {
+    const { race } = window.__game;
+    const right = race.gates.gates.find((gate) => gate.side === 1);
+    const left = race.gates.gates.find((gate) => gate.side === -1);
+    return { needs: race.reach.reachFor(1), left: race.reach.reachFor(-1), right: right.wantedX, leftAt: left.wantedX };
+  });
+  const gate = await beforeGate(page, 1, 40);
+  await expect.poll(async () => (await progress(page)).distance, { timeout: 10_000, intervals: [30] }).toBeGreaterThan(gate.along + 2);
+  const after = await page.evaluate(() => {
+    const { race } = window.__game;
+    const right = race.gates.gates.find((candidate) => candidate.side === 1);
+    return { needs: race.reach.reachFor(1), right: right.wantedX };
+  });
+  expect(after.needs).toBeLessThan(before.needs);
+  expect(after.right).toBeLessThan(before.right);
+});
+
 test('a car on the other side of the road just goes by: no boost, and no telling off', async ({ page }) => {
   await raceWithOpenHand(page, { steering: 'help' });
   await reachTowards(page, -1);

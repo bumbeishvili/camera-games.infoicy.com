@@ -12,6 +12,8 @@ const WHEEL_SPIN_LIMIT = 40; // Radians a second. Faster than this would only lo
 const DARK = '#2b3340';
 const METAL = '#c7ced6';
 const WHITE = '#f7fafc';
+const LAMP_OFF = new THREE.Color('#7d1d17');
+const LAMP_ON = new THREE.Color('#ff2a12');
 
 function tyreShape(radius, width) {
   const edge = width * 0.28;
@@ -263,7 +265,7 @@ function makeGlove(side) {
 
 const SHOULDER_HEIGHT = 1.4;
 const GLOVE_REST = new THREE.Vector3(1.28, 3.05, -0.1);
-const GLOVE_SLAP = new THREE.Vector3(3.4, 3.1, 1.2);
+const GLOVE_SLAP_FORWARD = 0.6; // The big hand is met just ahead of the car.
 
 /** The child's glove and the arm that holds it up, which stretches for a high five. */
 export function makeDriver() {
@@ -289,18 +291,21 @@ export function makeDriver() {
   const between = new THREE.Vector3();
   const target = new THREE.Vector3();
 
-  /** reach is 0 at rest and 1 at full stretch, towards towards = -1 (screen left, +X) or 1 (screen right). */
-  function reachOut(side, reach, towards) {
+  /**
+   * reach is 0 at rest and 1 at full stretch. across and height say where the big hand is from the car,
+   * with +X being the car's left, so that the two hands really do meet.
+   */
+  function reachOut(side, reach, across = 0, height = GLOVE_REST.y) {
     const sign = side === 'left' ? 1 : -1;
     const glove = side === 'left' ? left : right;
     target.set(sign * GLOVE_REST.x, GLOVE_REST.y, GLOVE_REST.z);
     if (reach > 0) {
-      target.x = lerp(target.x, -towards * GLOVE_SLAP.x, reach);
-      target.y = lerp(target.y, GLOVE_SLAP.y, reach);
-      target.z = lerp(target.z, GLOVE_SLAP.z, reach);
+      target.x = lerp(target.x, across, reach);
+      target.y = lerp(target.y, height, reach);
+      target.z = lerp(target.z, GLOVE_SLAP_FORWARD, reach);
     }
     glove.root.position.copy(target);
-    glove.root.rotation.z = lerp(-sign * 0.14, towards * 0.5, reach);
+    glove.root.rotation.z = lerp(-sign * 0.14, 0, reach);
     const shoulder = shoulders[side];
     between.subVectors(target, shoulder);
     const length = between.length();
@@ -314,8 +319,8 @@ export function makeDriver() {
     sleeveMaterial.color.set(colour);
   }
 
-  reachOut('left', 0, -1);
-  reachOut('right', 0, 1);
+  reachOut('left', 0);
+  reachOut('right', 0);
   return { group, left, right, sleeves, reachOut, setSleeveColour };
 }
 
@@ -349,7 +354,7 @@ function lampGlow(texture) {
     blending: THREE.AdditiveBlending,
     opacity: 0,
   }));
-  sprite.scale.setScalar(1.35);
+  sprite.scale.setScalar(1.05);
   return sprite;
 }
 
@@ -412,8 +417,8 @@ export class RaceCar {
     });
 
     // The lamps at the back, which are what says the car is slowing down.
-    this.brakeMaterial = new THREE.MeshStandardMaterial({ color: '#c92a20', emissive: '#ff2414', emissiveIntensity: 0.15 });
-    const lampShape = ball(0.2, 0.14, 0.07);
+    this.brakeMaterial = new THREE.MeshBasicMaterial({ color: LAMP_OFF });
+    const lampShape = ball(0.24, 0.16, 0.07);
     this.brakeGlows = style.lamps.map(([x, y, z]) => {
       const lamp = new THREE.Mesh(lampShape, this.brakeMaterial);
       lamp.position.set(x, y, z);
@@ -453,8 +458,6 @@ export class RaceCar {
     this.pose = makePose();
     this.look = 0;
     this.wave = 0;
-    this.lean = 0;
-    this.tilt = 0;
     this.fighter = null;
     this.setCharacter(spec);
   }
@@ -501,16 +504,16 @@ export class RaceCar {
     this.fighter.upperR.visible = side !== 'right';
   }
 
-  place(track, distance, lateral, speed, yaw, dt, { lift = 0, pitch = 0, roll = 0, bob = 0 } = {}) {
+  place(track, distance, lateral, speed, yaw, dt, { lift = 0, pitch = 0, roll = 0 } = {}) {
     track.pointAt(distance, lateral, this.group.position);
-    this.group.position.y += lift + (speed > 1 ? Math.sin(this.time * 19 + distance) * 0.012 : 0) + bob;
+    this.group.position.y += lift + (speed > 1 ? Math.sin(this.time * 19 + distance) * 0.012 : 0);
     this.group.rotation.y = track.headingAt(distance) + yaw;
     this.group.rotation.x = -track.pitchAt(distance) + pitch;
     this.group.rotation.z = roll;
     const spin = Math.min(WHEEL_SPIN_LIMIT, speed / 0.47);
     for (const wheel of this.wheels) {
       wheel.spinner.rotation.x += spin * dt * (0.47 / wheel.radius);
-      if (wheel.front) wheel.pivot.rotation.y = yaw * 3 - track.curvatureAt(distance) * 2.4;
+      if (wheel.front) wheel.pivot.rotation.y = clamp(yaw * 2.4 - track.curvatureAt(distance) * 7, -0.55, 0.55);
     }
     this.steeringWheel.rotation.z = (yaw * 4 + track.curvatureAt(distance) * 5) * 1.4;
   }
@@ -518,8 +521,8 @@ export class RaceCar {
   /** braking is how hard the car is slowing, from 0 to 1. */
   setBraking(amount, dt) {
     this.braking = damp(this.braking, amount, 14, dt);
-    this.brakeMaterial.emissiveIntensity = 0.15 + this.braking * 0.75;
-    for (const glow of this.brakeGlows) glow.material.opacity = this.braking * 0.62;
+    this.brakeMaterial.color.lerpColors(LAMP_OFF, LAMP_ON, this.braking);
+    for (const glow of this.brakeGlows) glow.material.opacity = this.braking * 0.42;
   }
 
   /** level is 0 for none and 1 for the biggest flames. */
@@ -547,7 +550,7 @@ export class RaceCar {
     this.wave = Math.max(0, this.wave - dt);
 
     const waving = this.wave > 0;
-    const armLeft = this.isPlayer && this.gloveSide === 'left';
+    const armLeft = this.isPlayer && this.gloveSide === 'right';
     // The free hand waves. For a rival that's the one nearest the camera's middle: its right.
     const swing = Math.sin(this.time * 9) * 0.16;
     pose.handRX = damp(pose.handRX, waving && !armLeft ? -0.62 + swing : 0.32, 12, dt);
@@ -578,10 +581,6 @@ export class RaceCar {
     this.fighter.root.traverse((node) => {
       if (node.isMesh && node.material.side === THREE.BackSide) node.visible = full;
     });
-  }
-
-  dispose() {
-    this.fighter?.dispose();
   }
 }
 

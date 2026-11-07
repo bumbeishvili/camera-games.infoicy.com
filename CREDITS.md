@@ -32,6 +32,41 @@ Shared sounds are in `core/audio/sfx/`, and each game's own are in its `audio/` 
 | `wipe.ogg` (The Lighthouse Keeper) | [Cleaning glass](https://bigsoundbank.com/cleaning-glass-s0689.html) | Joseph Sardin, BigSoundBank | CC0 | Looped from the steady part |
 | `horn.ogg` (The Lighthouse Keeper) | [Horn of a ship #1](https://bigsoundbank.com/horn-of-a-ship-1-s0261.html) | DenisChardonnet, BigSoundBank | CC0 | Five seconds, softened at each end, level set |
 | `waves.ogg` (The Lighthouse Keeper) | [Beach, small waves](https://bigsoundbank.com/beach-small-waves-s0265.html) | DenisChardonnet, BigSoundBank | CC0 | Twenty seconds, looped |
+| `shot-1.ogg` to `shot-3.ogg` (Robot Rescue) | [Paintball: Shots](https://bigsoundbank.com/paintball-tirs-s0528.html) | Joseph Sardin, BigSoundBank | CC0 | Three shots cut out, softened, level set |
+| `hit-1.ogg` to `hit-3.ogg` (Robot Rescue) | [Paintball: shots, impacts drums metal](https://bigsoundbank.com/paintball-tirs-impacts-futs-metalliques-s0530.html) | Joseph Sardin, BigSoundBank | CC0 | Three impacts cut out, softened |
+| `clatter-1.ogg`, `clatter-2.ogg` (Robot Rescue) | [Tin can #3](https://bigsoundbank.com/tin-can-3-s0248.html), [Tin can #5](https://bigsoundbank.com/tin-can-5-s0667.html), [Nail falling on tiled floor](https://bigsoundbank.com/clou-qui-tombe-sur-carrelage-s0461.html) | DenisChardonnet (#3), Joseph Sardin, BigSoundBank | CC0 | A tin can and a nail mixed, softened, level set |
+| `crash.ogg` (Robot Rescue) | [Fall 2 sheet steel bars #1](https://bigsoundbank.com/fall-2-sheet-steel-bars-1-s1776.html), with Tin can #5 and the nail above | Joseph Sardin, BigSoundBank | CC0 | Mixed, softened, end faded |
+| `goo-throw.ogg` (Robot Rescue) | [Sponge and foam](https://bigsoundbank.com/sponge-and-foam-s0778.html) | Joseph Sardin, BigSoundBank | CC0 | One squeeze cut out, softened |
+| `goo-splat.ogg` (Robot Rescue) | [Steps in the Mud](https://bigsoundbank.com/steps-in-the-mud-s0495.html) | Joseph Sardin, BigSoundBank | CC0 | One step cut out, softened |
+| `goo-pop.ogg` (Robot Rescue) | [Bubbles Burst](https://bigsoundbank.com/bubbles-burst-s1074.html) | Joseph Sardin, BigSoundBank | CC0 | One bubble cut out, level set |
+| `shield-hit.ogg` (Robot Rescue) | [Aluminum lid 20 cm](https://bigsoundbank.com/couvercle-en-aluminium-20cm-sample-s0379.html), with Steps in the Mud above | Joseph Sardin, BigSoundBank | CC0 | Mixed, softened |
+| `reload.ogg` (Robot Rescue) | [Seat belt, in](https://bigsoundbank.com/seat-belt-in-s1506.html) | Joseph Sardin, BigSoundBank | CC0 | The click cut out, softened |
+| `empty.ogg` (Robot Rescue) | [Empty firecracker gun #1](https://bigsoundbank.com/empty-firecracker-gun-1-s2003.html) | Joseph Sardin, BigSoundBank | CC0 | Trimmed, level set |
+| `unlock.ogg` (Robot Rescue) | [Barn lock, unlocking](https://bigsoundbank.com/barn-lock-unlocking-s1539.html) | Joseph Sardin, BigSoundBank | CC0 | The last clunks cut out, level set |
+| `boing.ogg` (Robot Rescue) | [Boing Cartoon #8](https://bigsoundbank.com/boing-cartoon-8-s2284.html) | Joseph Sardin, BigSoundBank | CC0 | Trimmed, softened |
+| `bell.ogg` (Robot Rescue) | [Bell Bike #5](https://bigsoundbank.com/bell-bike-5-s1102.html) | Joseph Sardin, BigSoundBank | CC0 | Trimmed, softened, end faded |
+| `tram.ogg` (Robot Rescue) | [Electric train in Lego #1](https://bigsoundbank.com/electric-train-in-lego-1-s1606.html) | Joseph Sardin, BigSoundBank | CC0 | Eleven seconds, looped |
+| `gulls.ogg` (Robot Rescue) | [Gulls on the Harbor](https://bigsoundbank.com/gulls-on-the-harbor-s2573.html) | Joseph Sardin, BigSoundBank | CC0 | Twenty seconds, looped |
+| `engine.ogg` (Tank Patrol) | [Big diesel engine](https://bigsoundbank.com/big-diesel-engine-s0967.html) | Joseph Sardin, BigSoundBank | CC0 | Looped from the steady part, softened |
+| `shot-1.ogg`, `shot-2.ogg` (Tank Patrol) | [Champagne cork #1](https://bigsoundbank.com/champagne-cork-1-s0211.html), [#2](https://bigsoundbank.com/champagne-cork-2-s0648.html); [Explosion far away #1](https://bigsoundbank.com/explosion-far-away-1-s1023.html), [#2](https://bigsoundbank.com/explosion-far-away-2-s1806.html) | Joseph Sardin, BigSoundBank | CC0 | Slowed cork over a far-off bird scarer with everything sharp taken out, with `tools/build_tank_sounds.py` |
+| `hit-1.ogg` to `hit-3.ogg` (Tank Patrol) | [Paintball: shots, impacts drums metal](https://bigsoundbank.com/paintball-shots-impacts-drums-metal-s0530.html) | Joseph Sardin, BigSoundBank | CC0 | Single impacts, slowed a little, softened |
+| `lob.ogg` (Tank Patrol) | [Tin can #4](https://bigsoundbank.com/tin-can-4-s0249.html), Explosion far away #2 | DenisChardonnet; Joseph Sardin, BigSoundBank | CC0 | Slowed well down, softened, layered |
+| `land.ogg` (Tank Patrol) | Explosion far away #1, [Tin can #2](https://bigsoundbank.com/tin-can-2-s0247.html) | Joseph Sardin; DenisChardonnet, BigSoundBank | CC0 | Softened, layered |
+| `rattle.ogg` (Tank Patrol) | [Rattle slow](https://bigsoundbank.com/rattle-slow-s0318.html), Tin can #2, [Nail falling on tiled floor](https://bigsoundbank.com/clou-qui-tombe-sur-carrelage-s0461.html) | DavidGreck; DenisChardonnet; Joseph Sardin, BigSoundBank | CC0 | Ratchet slowing down, then tin and nail, softened |
+| `splutter.ogg` (Tank Patrol) | [Damaged muffler 1 (parked car)](https://bigsoundbank.com/damaged-muffler-1-parked-car-s0673.html) | Joseph Sardin, BigSoundBank | CC0 | The engine stopping, softened |
+| `hop.ogg` (Tank Patrol) | [Boing Cartoon #8](https://bigsoundbank.com/boing-cartoon-8-s2284.html) | Joseph Sardin, BigSoundBank | CC0 | Softened |
+| `birds.ogg` (Tank Patrol) | [Countryside #2](https://bigsoundbank.com/countryside-2-s0898.html) | Joseph Sardin, BigSoundBank | CC0 | Sixteen seconds, looped |
+| `cannon.ogg` (Cannon Bay) | [Explosion far away #2](https://bigsoundbank.com/explosion-far-away-2-s1806.html) | Joseph Sardin, BigSoundBank | CC0 | A bird-scaring gun at 250 m: slowed, top rolled off, softened, level set |
+| `splash.ogg` (Cannon Bay) | [Splash, Big #3](https://bigsoundbank.com/splash-big-3-s1521.html) | Joseph Sardin, BigSoundBank | CC0 | 1.8 seconds, softened, level set |
+| `thud.ogg` (Cannon Bay) | [Gavel, 1 blow](https://bigsoundbank.com/gavel-1-blow-s1588.html) | Joseph Sardin, BigSoundBank | CC0 | Slowed, softened, level set |
+| `creak.ogg` (Cannon Bay) | [Big rope](https://bigsoundbank.com/big-rope-s3426.html) | Joseph Sardin & Axeline T., BigSoundBank | CC0 | 24 seconds, looped |
+| `wind.ogg` (Cannon Bay) | [Masts whistling #2](https://bigsoundbank.com/masts-whistling-2-s2444.html) | Dorian Clair, BigSoundBank | CC0 | 26 seconds, looped |
+| `canvas.ogg` (Cannon Bay) | [Flag #1](https://bigsoundbank.com/flag-1-s1787.html) | Joseph Sardin, BigSoundBank | CC0 | Slowed, softened |
+| `gulls.ogg` (Cannon Bay) | [Gulls on the Harbor](https://bigsoundbank.com/gulls-on-the-harbor-s2573.html) | Joseph Sardin, BigSoundBank | CC0 | 24 seconds, looped |
+| `row.ogg` (Cannon Bay) | [Rowing Quickly](https://bigsoundbank.com/rowing-quickly-s1513.html) | Joseph Sardin, BigSoundBank | CC0 | One stroke cut out, softened |
+| `music.ogg` (Cannon Bay) | [A sailor's chant](https://opengameart.org/content/a-sailors-chant) | Thimras | CC0 | Level set, join hidden |
+| `slap.ogg` (High Five Racers) | `clap.ogg` and `thump.ogg` above | Santiago Sanchez Cifuentes; OwlishMedia | CC0 | One clap slowed, a hand drum put under it, top softened, level set |
+| `rush.ogg` (High Five Racers) | [Car 1](https://opengameart.org/content/car-1-1) | Yaroslav_Novikov | CC0 | The car coming closer cut out, top softened, ends faded |
 
 The engine loop's CC-BY licence requires this credit to stay with the game: **"Car Engine Loop 96kHz, 4s" by qubodup, CC-BY 3.0, resampled and level adjusted.**
 
@@ -43,7 +78,7 @@ The folders called `voice/ka/` were rendered with Microsoft's `ka-GE-EkaNeural` 
 
 ## Characters
 
-All ten characters in `core/body/roster.js`, and the worlds of Leap Trail, Sky Wings and the games with a mission are original designs made for these games.
+All ten characters in `core/body/roster.js`, and the worlds of High Five Racers, Leap Trail, Sky Wings, Robot Rescue, Tank Patrol, Cannon Bay and the games with a mission, with Robot Rescue's robots, are original designs made for these games.
 
 ## Test footage
 

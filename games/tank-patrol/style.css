@@ -1,0 +1,223 @@
+/* Tank Patrol. */
+:root {
+  --meter-size: clamp(72px, 8.5vw, 108px);
+  --camera-small: clamp(130px, 15vw, 230px);
+}
+
+#marks {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+.hands-bar {
+  left: 0;
+  right: 0;
+  transform: none;
+  justify-content: space-between;
+  padding: 0 12px;
+  pointer-events: none;
+}
+
+body[data-hands='right'] .hands-bar { justify-content: flex-end; }
+body[data-hands='left'] .hands-bar { justify-content: flex-start; }
+.meter-caption { font-size: clamp(11px, 1vw, 13px); }
+
+/* A closed hand isn't wrong here, as it's how the tank drives, so the meter says what each one does. */
+body[data-screen='playing'] .meter-word,
+body[data-screen='countdown'] .meter-word { display: none; }
+body[data-screen='playing'] .meter[data-state='closed'],
+body[data-screen='countdown'] .meter[data-state='closed'] { animation: none; }
+body[data-screen='check'] .meter-caption::after { content: none !important; }
+.meter-caption::after { font-weight: 700; text-align: right; white-space: nowrap; content: 'No hand'; }
+body[data-hand-read='open'] .meter-caption::after { content: 'Fire'; }
+body[data-hand-read='closed'] .meter-caption::after { content: 'Drive'; }
+body[data-hand-read='unsure'] .meter-caption::after { content: 'Not sure'; }
+
+/* The mirror goes up by the gear while playing, so the fort and the far side of the valley can be seen. */
+body[data-screen='playing'] .camera-frame,
+body[data-screen='countdown'] .camera-frame {
+  left: auto;
+  right: 68px;
+  transform: none;
+}
+
+/* A prompt goes between the numbers and the mirror, at the top. */
+body[data-screen='playing'] .prompt,
+body[data-screen='playing']:has(.story.is-visible) .prompt {
+  top: 12px;
+  left: 55.5%;
+  max-width: 47vw;
+  width: max-content;
+  padding: 8px 20px 10px;
+  border-radius: 26px;
+  font-size: clamp(16px, 2.15vw, 30px);
+}
+
+.chip-hearts .chip-value {
+  display: flex;
+  gap: 2px;
+  height: 1.1em;
+  align-items: center;
+}
+
+.heart {
+  width: 1em;
+  height: 1em;
+  fill: #ff5a6e;
+  stroke: var(--ink);
+  stroke-width: 2.4;
+  transition: transform 0.2s ease;
+}
+
+.heart.is-gone { fill: #d9e3ec; stroke: #93a3b3; transform: scale(0.82); }
+.chip-hearts.is-hurt { animation: hearts-bump 0.45s ease-out; }
+
+@keyframes hearts-bump {
+  25% { transform: translateX(-4px) rotate(-1.5deg); }
+  60% { transform: translateX(3px) rotate(1deg); }
+}
+
+/* The film goes on the other side from the hand's meter. */
+.film { width: min(18vw, 30vh); }
+body[data-hands='left'] .film { left: auto; right: 16px; }
+
+/*
+ * A little film. A closed hand drives the tank up to the yellow marker, and then an open hand swings the
+ * gun to the robot tank, which shakes as the shots land, and stops. It takes 9 seconds, all told.
+ */
+.film-ground { fill: #a6e07f; }
+.film-road { fill: none; stroke: #e7d4a4; stroke-width: 22; stroke-linecap: round; }
+.film-treads { fill: #26303f; stroke: var(--ink); stroke-width: 2; }
+.film-body { fill: #2f6fed; stroke: var(--ink); stroke-width: 2.5; }
+.film-robot-body { fill: #ff4f7b; stroke: var(--ink); stroke-width: 2.5; }
+.film-robot-eye { fill: #fff; stroke: var(--ink); stroke-width: 1.5; }
+.film-pupil { fill: var(--ink); }
+.film-gun { fill: #3a4a68; stroke: var(--ink); stroke-width: 2; }
+.film-neck { fill: none; stroke: #f5c451; stroke-width: 7; stroke-linecap: round; }
+.film-head { fill: #f5c451; stroke: #4a2c10; stroke-width: 2; }
+.film-eye { fill: #2c1a0f; }
+.film-horns { fill: none; stroke: #f5c451; stroke-width: 3.5; stroke-linecap: round; }
+.film-go { fill: rgb(255 210 63 / 0.35); stroke: #ffd23f; stroke-width: 5; }
+.film-go-edge { fill: none; stroke: var(--ink); stroke-width: 8; }
+.film-sight { fill: rgb(53 224 122 / 0.22); stroke: #35e07a; stroke-width: 6; }
+.film-sight-edge { fill: none; stroke: var(--ink); stroke-width: 9; }
+.film-ball { fill: #ffd23f; stroke: var(--ink); stroke-width: 1.5; }
+.film-star { fill: #ffd23f; stroke: var(--ink); stroke-width: 1.5; }
+.film-hand rect { fill: #ffc21a; stroke: var(--ink); stroke-width: 3; }
+.film-hand path { fill: none; stroke: #ffc21a; stroke-width: 10; stroke-linecap: round; transform-box: fill-box; transform-origin: bottom center; }
+.film-hand .film-thumb { transform-origin: bottom left; animation: film-thumb 9s ease-in-out infinite, film-finger-colour 9s step-end infinite; }
+
+.film-hand rect { animation: film-palm 9s step-end infinite; }
+.film-hand path { animation: film-fingers 9s ease-in-out infinite, film-finger-colour 9s step-end infinite; }
+.film-tank { animation: film-tank 9s ease-in-out infinite; }
+.film-turret { transform-box: view-box; transform-origin: 0 0; animation: film-turret 9s ease-in-out infinite; }
+.film-go-mark { animation: film-go 9s step-end infinite; }
+.film-sight-mark { animation: film-sight 9s step-end infinite; }
+.film-robot { animation: film-robot 9s linear infinite; }
+.film-balls { animation: film-balls 9s step-end infinite; }
+.film-balls circle { animation: film-ball 0.75s linear infinite; }
+.film-balls circle:nth-child(2) { animation-delay: -0.25s; }
+.film-balls circle:nth-child(3) { animation-delay: -0.5s; }
+.film-stars { animation: film-stars 9s ease-out infinite; }
+
+/* Closed for the first half, opening just before the shots begin, and open until it starts again. */
+@keyframes film-fingers {
+  0%, 44% { transform: scale(1, 0.2); }
+  52%, 94% { transform: scale(1, 1); }
+  100% { transform: scale(1, 0.2); }
+}
+
+@keyframes film-thumb {
+  0%, 44% { transform: scale(0.42); }
+  52%, 94% { transform: scale(1); }
+  100% { transform: scale(0.42); }
+}
+
+@keyframes film-finger-colour {
+  0%, 48% { stroke: #ffc21a; }
+  48.01%, 97% { stroke: #3ddc84; }
+  97.01%, 100% { stroke: #ffc21a; }
+}
+
+@keyframes film-palm {
+  0%, 48% { fill: #ffc21a; }
+  48.01%, 97% { fill: #3ddc84; }
+  97.01%, 100% { fill: #ffc21a; }
+}
+
+@keyframes film-tank {
+  0%, 6% { transform: translate(44px, 128px); }
+  42%, 96% { transform: translate(92px, 92px); }
+  100% { transform: translate(44px, 128px); }
+}
+
+/* The gun points along the road, then swings round to the robot. */
+@keyframes film-turret {
+  0%, 46% { transform: rotate(-40deg); }
+  54%, 96% { transform: rotate(0deg); }
+  100% { transform: rotate(-40deg); }
+}
+
+@keyframes film-go {
+  0%, 44% { opacity: 1; }
+  44.01%, 100% { opacity: 0; }
+}
+
+@keyframes film-sight {
+  0%, 53% { opacity: 0; }
+  53.01%, 84% { opacity: 1; }
+  84.01%, 100% { opacity: 0; }
+}
+
+@keyframes film-balls {
+  0%, 56% { opacity: 0; }
+  56.01%, 82% { opacity: 1; }
+  82.01%, 100% { opacity: 0; }
+}
+
+@keyframes film-ball {
+  from { transform: translate(120px, 80px) scale(1); }
+  to { transform: translate(172px, 44px) scale(0.9); }
+}
+
+@keyframes film-robot {
+  0%, 58% { transform: translate(172px, 44px); opacity: 1; }
+  60%, 64%, 68%, 72%, 76%, 80% { transform: translate(170px, 44px) rotate(-3deg); opacity: 1; }
+  62%, 66%, 70%, 74%, 78%, 82% { transform: translate(174px, 44px) rotate(3deg); opacity: 1; }
+  86% { transform: translate(172px, 44px); opacity: 1; }
+  94%, 99% { transform: translate(172px, 44px); opacity: 0; }
+  100% { transform: translate(172px, 44px); opacity: 1; }
+}
+
+@keyframes film-stars {
+  0%, 82% { opacity: 0; transform: translate(172px, 40px) scale(0.2); }
+  84% { opacity: 1; transform: translate(172px, 40px) scale(0.6); }
+  94% { opacity: 1; transform: translate(172px, 26px) scale(1.15); }
+  98%, 100% { opacity: 0; transform: translate(172px, 18px) scale(1.15); }
+}
+
+/* On a window standing on end there's no room along the top, so the mirror and the words go under it. */
+@media (max-width: 760px) {
+  :root { --camera-small: clamp(96px, 26vw, 170px); }
+  body[data-screen='playing'] .camera-frame,
+  body[data-screen='countdown'] .camera-frame { top: 104px; right: 12px; }
+  .story { width: min(62vw, 350px); }
+  body[data-screen='playing'] .prompt,
+  body[data-screen='playing']:has(.story.is-visible) .prompt {
+    top: auto;
+    bottom: calc(var(--meter-size) + 40px);
+    left: 50%;
+    max-width: 92vw;
+    font-size: 19px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .film-hand rect, .film-hand path, .film-hand .film-thumb, .film-tank, .film-turret, .film-go-mark, .film-sight-mark, .film-robot, .film-balls, .film-stars { animation-duration: 13.5s; }
+  .film-balls circle { animation-duration: 1.1s; }
+  .chip-hearts.is-hurt { animation: none; }
+}

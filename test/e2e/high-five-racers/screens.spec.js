@@ -31,10 +31,23 @@ async function expectNothingCutOff(page) {
   expect(cutOff).toEqual([]);
 }
 
+/** The chips and the camera's picture both have to be seen. */
+async function expectChipsClearOfCamera(page) {
+  const overlapping = await page.evaluate(() => {
+    const frame = document.querySelector('.camera-frame').getBoundingClientRect();
+    return [...document.querySelectorAll('.chip')].filter((chip) => {
+      const box = chip.getBoundingClientRect();
+      return box.left < frame.right && box.right > frame.left && box.top < frame.bottom && box.bottom > frame.top;
+    }).length;
+  });
+  expect(overlapping).toBe(0);
+}
+
 const SCREENS = [
   { name: 'tablet-landscape', width: 1024, height: 768 },
   { name: 'tablet-portrait', width: 768, height: 1024 },
   { name: 'phone-landscape', width: 844, height: 390 },
+  { name: 'phone-portrait', width: 390, height: 844 },
   { name: 'laptop-large', width: 1920, height: 1080 },
 ];
 
@@ -59,6 +72,7 @@ for (const { name, width, height } of SCREENS) {
     await waitUntilStopped(page);
     await expect(page.locator('#prompt')).toHaveText(/Open your right hand!/);
     await expectNothingCutOff(page);
+    await expectChipsClearOfCamera(page);
     await shot(page, `72-${name}-race`);
   });
 }

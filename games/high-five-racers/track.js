@@ -28,14 +28,10 @@ export const PLACES = {
   grandstand: [-105, 45],
   village: [118, 246],
   tunnel: [340, 434],
-  crest: [455, 500],
-  farm: [490, 590],
   lake: [570, 700],
   bridge: [770, 806],
   forest: [822, 1010],
-  family: [985, 1075],
   fair: [1085, 1205],
-  billboards: [1205, 1300],
 };
 
 /** The big hands to high five, on alternating sides: -1 is the left of the road and 1 the right. */

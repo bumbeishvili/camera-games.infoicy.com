@@ -79,7 +79,7 @@ test('every sound and voice line loads and decodes in Chrome', async ({ page }) 
     expect(duration, text).toBeLessThan(5);
   }
   expect(Object.keys(loaded.sounds).sort()).toEqual(
-    ['applause', 'bump', 'cheer', 'engineLoop', 'engineStart', 'go', 'handsOpen', 'lap', 'landed', 'passBy', 'rush', 'slap', 'sparkle', 'star', 'tick', 'whoosh', 'win'],
+    ['applause', 'bump', 'cheer', 'engineLoop', 'engineStart', 'go', 'handsOpen', 'landed', 'lap', 'passBy', 'rush', 'slap', 'sparkle', 'star', 'tick', 'whoosh', 'win'],
   );
   // The engine has to come back the exact length it was written, or its loop would click.
   expect(loaded.sounds.engineLoop).toBeCloseTo(4, 3);
@@ -208,4 +208,49 @@ test('the engine stops at the finish and the celebration plays', async ({ page }
   const celebrating = await listen(page, 1);
   expect(celebrating.rms).toBeGreaterThan(0.01);
   await expect.poll(() => page.evaluate(() => window.__game.sound.currentVoice?.source.buffer.duration ?? 0), { timeout: 3000 }).toBeGreaterThan(1);
+});
+
+test('a high five, a bump and turbo each have their real sound, nothing clips, and no line gets cut off', async ({ page }) => {
+  test.setTimeout(120_000);
+  await openGame(page, { voice: true, sound: true, steering: 'auto' });
+  await show(page, null, 'open');
+  await reachRace(page);
+  await tapOutput(page);
+  await page.evaluate(() => {
+    const { sound } = window.__game;
+    window.__played = [];
+    window.__cutOff = 0;
+    const realPlay = sound.play.bind(sound);
+    sound.play = (name, options) => {
+      window.__played.push(name);
+      realPlay(name, options);
+    };
+    const realStop = sound.stopVoice.bind(sound);
+    sound.stopVoice = () => {
+      if (sound.currentVoice) window.__cutOff += 1;
+      realStop();
+    };
+    window.__peak = 0;
+    const samples = new Float32Array(window.__tap.fftSize);
+    setInterval(() => {
+      window.__tap.getFloatTimeDomainData(samples);
+      for (const sample of samples) window.__peak = Math.max(window.__peak, Math.abs(sample));
+    }, 20);
+  });
+  await expect.poll(() => page.evaluate(() => window.__game.race.fives), { timeout: 45_000 }).toBeGreaterThan(2);
+  await page.evaluate(() => {
+    const { race } = window.__game;
+    const rival = race.rivals[0];
+    rival.distance = race.distance + 8;
+    rival.lateral = race.lateral;
+    rival.speed = 5;
+  });
+  await expect.poll(() => page.evaluate(() => window.__played.includes('bump')), { timeout: 10_000 }).toBe(true);
+  const heard = await page.evaluate(() => ({ played: window.__played, peak: window.__peak, cutOff: window.__cutOff, turbo: window.__game.race.turbo.everFull }));
+  console.log('with high fives, peak', heard.peak);
+  for (const name of ['slap', 'sparkle', 'rush', 'bump']) expect(heard.played).toContain(name);
+  expect(heard.turbo).toBe(true);
+  expect(heard.peak).toBeGreaterThan(0.05);
+  expect(heard.peak).toBeLessThanOrEqual(1);
+  expect(heard.cutOff).toBe(0);
 });

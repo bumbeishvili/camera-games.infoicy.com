@@ -1,6 +1,9 @@
 // The rules of the race on their own, with nothing else running. These need no browser.
 import { expect, test } from '@playwright/test';
 import {
+  CAR_LENGTH,
+  CAR_WIDTH,
+  CHEVRON_SPACING,
   FASTEST_SPEED,
   gateOutcome,
   KERB_STRIPE,
@@ -82,8 +85,9 @@ test('nothing makes a closed hand go, and nothing goes past the fastest speed', 
   expect(wantedSpeed(1, 0, 2)).toBeGreaterThan(wantedSpeed(1));
 });
 
-test('a kerb\'s red and white go past fewer than three times a second, even at the fastest', () => {
+test('what repeats along the road goes past fewer than three times a second, even at the fastest', () => {
   expect(FASTEST_SPEED / (2 * KERB_STRIPE)).toBeLessThan(3);
+  expect(FASTEST_SPEED / CHEVRON_SPACING).toBeLessThan(3);
 });
 
 test('a big hand is slapped only by an open hand that has reached it', () => {
@@ -141,15 +145,18 @@ test('resting costs no places: cars behind stop behind, and cars in front stop a
 
 test('the other cars can\'t keep up with a boost or turbo, but come back afterwards', () => {
   const cruise = 21;
-  expect(rivalSpeed({ gap: -5, wish: 20, playerSpeed: 34, resting: false, rushing: true, cruise })).toBeLessThan(34);
-  expect(rivalSpeed({ gap: 5, wish: 20, playerSpeed: 34, resting: false, rushing: true, cruise })).toBeLessThan(34);
+  expect(rivalSpeed({ gap: -5, wish: 20, playerSpeed: 34, resting: false, rushing: true, cruise })).toBeLessThan(30);
+  expect(rivalSpeed({ gap: 5, wish: 20, playerSpeed: 34, resting: false, rushing: true, cruise })).toBeLessThan(30);
   expect(rivalSpeed({ gap: -5, wish: 20, playerSpeed: 20, resting: false, rushing: false, cruise })).toBeGreaterThan(20);
-  // Out of sight, a car that's far behind catches up, so that there's always someone to race.
-  expect(rivalSpeed({ gap: -100, wish: 0, playerSpeed: 30, resting: false, rushing: true, cruise })).toBeGreaterThan(30);
+  // Out of sight, a car that's far behind comes past again, so that there's always someone to race.
+  expect(rivalSpeed({ gap: -40, wish: 20, playerSpeed: 30, resting: false, rushing: true, comingBack: true, cruise })).toBeGreaterThan(30);
+  // But never while a child is resting.
+  expect(rivalSpeed({ gap: -40, wish: 20, playerSpeed: 0, resting: true, rushing: false, comingBack: true, cruise })).toBeLessThanOrEqual(cruise);
+  expect(rivalSpeed({ gap: -5, wish: 20, playerSpeed: 0, resting: true, rushing: false, comingBack: true, cruise })).toBe(0);
 });
 
 test('cars touch when they overlap, and not when they\'re only close', () => {
   expect(touching({ distance: 10, lateral: 0 }, { distance: 12, lateral: 1 })).toBe(true);
-  expect(touching({ distance: 10, lateral: 0 }, { distance: 20, lateral: 0 })).toBe(false);
-  expect(touching({ distance: 10, lateral: -2 }, { distance: 10, lateral: 2 })).toBe(false);
+  expect(touching({ distance: 10, lateral: 0 }, { distance: 10 + CAR_LENGTH + 0.1, lateral: 0 })).toBe(false);
+  expect(touching({ distance: 10, lateral: 0 }, { distance: 10, lateral: CAR_WIDTH + 0.1 })).toBe(false);
 });
