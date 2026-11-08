@@ -2,6 +2,8 @@
 
 Camera games for children with hemiplegia, played by moving in front of a webcam. Opening the hand is what they practise. The right hand is the default, and the left can be chosen instead under the gear icon.
 
+They need a computer with a webcam, Google Chrome and Python 3, which runs the small local server they're played from. They work offline, and the camera picture never leaves the computer. Each game has ten levels, and a grown-up can set how open the hand has to be, how far to reach and how big a move has to be. See [Run it](#run-it) to start.
+
 - **High Five Racers:** the car only drives while the hand is open. Steering over to a giant hand at the roadside high fives it for a boost, and opening the hand as wide as it goes is turbo. Nobody can crash or lose: if the hand closes, the car coasts to a stop and waits. See [below](#high-five-racers).
 - **Balloon Pop:** balloons float up and drift around, and the open hand pops them. A closed hand just bumps them. Missing a balloon costs nothing. A grown-up can turn on a maths challenge, where the wrong answer burns the glove.
 - **Mighty Moves:** a fighting game against the computer, played with the whole body. The coach shows concrete moves to do, like a clap, a squat, a jump or a hand circle, and only those can win. Ordinary punches and kicks are small hits. See [below](#mighty-moves).
