@@ -79,3 +79,38 @@ test('a body game has the same levels, and losing doesn\'t move on', async ({ pa
   await page.reload();
   await expect(badge(page)).toHaveText('Level 2 of 10');
 });
+
+test('what a level brings is shown on the title card, under the countdown, and as coming up next', async ({ page }) => {
+  await openGame(page, {}, 'lighthouse');
+  await page.evaluate(() => {
+    const { session } = window.__game;
+    session.game.newAt = (level) => (level === 4 ? [{ mark: '🌊', name: 'Big waves' }] : level === 5 ? [{ mark: '⭐', name: 'Starfish', nameKa: 'ზღვის ვარსკვლავი' }] : []);
+  });
+  await page.locator('#open-panel').click();
+  await page.locator('#level-choice label', { hasText: '4' }).click();
+  await page.locator('#close-panel').click();
+  await expect(page.locator('#level-new')).toHaveText('New:🌊Big waves');
+
+  await show(page, null, 'open');
+  await page.locator('#start').click();
+  await waitForScreen(page, 'countdown');
+  await expect(page.locator('#level-new-now')).toBeVisible();
+  await expect(page.locator('#level-new-now')).toContainText('Big waves');
+  await shot(page, 'levels-new-countdown');
+  await waitForScreen(page, 'playing');
+  await expect(page.locator('#level-new-now')).toBeHidden();
+
+  await page.evaluate(() => window.__game.session.finish());
+  await expect(page.locator('#level-next-new')).toHaveText('Coming up:⭐Starfish');
+  await page.waitForTimeout(600);
+  await shot(page, 'levels-new-finish');
+});
+
+test('level 1 has nothing new to show', async ({ page }) => {
+  await openGame(page, {}, 'lighthouse');
+  await page.evaluate(() => {
+    window.__game.session.game.newAt = () => [{ mark: '🌊', name: 'Big waves' }];
+    window.__game.session.levelUi.refresh();
+  });
+  await expect(page.locator('#level-new')).toBeHidden();
+});

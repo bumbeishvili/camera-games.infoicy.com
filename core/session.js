@@ -18,6 +18,7 @@
 //   finished()                the round is over
 //   setHands(side)            the hand in play has changed
 //   settingChanged(change)    one of the game's own settings has changed
+//   newAt(level)              what's new at a level, as [{ mark, name, nameKa }] (see core/levels.js)
 //   chimeOnOpen               chime whenever the hand in play opens
 //   debug                     extra things for the automated tests to read
 import { CameraProblem, TrackingCamera } from './camera.js';
@@ -133,6 +134,8 @@ export class GameSession {
 
     this.levelUi = mountLevels(this.levels, {
       language: () => settings.language,
+      // What each level brings that's new, if the game says.
+      newAt: (level) => this.game?.newAt?.(level) ?? [],
       onChoose: (level) => {
         // Mid-round, the new level starts with the next round.
         if (this.screen !== 'playing' && this.screen !== 'countdown') this.level = level;

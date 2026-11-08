@@ -1035,3 +1035,45 @@ body:not([data-screen='countdown'], [data-screen='playing']) .count { display: n
 }
 
 body[data-screen='countdown'] .level-now { display: block; }
+
+/* What a level brings that's new: on the title card, under the countdown, and coming up next. */
+.level-new {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  font-size: clamp(16px, 2vw, 21px);
+  font-weight: 600;
+}
+
+.level-new:empty { display: none; }
+
+.level-new-lead { font-weight: 700; color: var(--ink-soft); }
+
+.level-new-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-soft);
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 14px 4px 10px;
+}
+
+.level-new-mark { font-size: 1.25em; line-height: 1; }
+
+.level-new-now {
+  position: fixed;
+  z-index: 3;
+  left: 50%;
+  top: calc(63% + 64px);
+  transform: translateX(-50%);
+  width: min(720px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.level-new-now .level-new-chip { background: var(--surface); box-shadow: var(--shadow); }
+.level-new-now .level-new-lead { color: var(--surface); -webkit-text-stroke: 1px var(--ink); paint-order: stroke fill; }
+
+body:not([data-screen='countdown']) .level-new-now { display: none; }

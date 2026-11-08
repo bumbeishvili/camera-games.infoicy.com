@@ -132,6 +132,8 @@ export class BodyGame {
     this.wireControls();
     this.levelUi = mountLevels(this.levels, {
       language: () => settings.language,
+      // What each level brings that's new, if the game says: a newAt(level) method, as in core/levels.js.
+      newAt: (level) => this.newAt?.(level) ?? [],
       onChoose: (level) => {
         // In the middle of play, the new level starts next time.
         if (!this.levelUnderway) this.level = level;

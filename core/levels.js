@@ -77,12 +77,21 @@ export function levelWords({ played, next, won, allDone }) {
 
 const pips = Array.from({ length: LAST_LEVEL }, (_, index) => `<li data-level="${index + 1}"></li>`).join('');
 
+/** What a level brings that's new, as little chips: a picture and a name each. */
+export function newsMarkup(news, language = 'en') {
+  return news
+    .map(({ mark, name, nameKa }) => `<span class="level-new-chip"><span class="level-new-mark" aria-hidden="true">${mark}</span>${language === 'ka' && nameKa ? nameKa : name}</span>`)
+    .join('');
+}
+
 /**
  * Puts the level on the title card, the finish card, the countdown and the grown-ups' panel. Both kinds
  * of game have the same pieces to put it in. language() says which language the countdown speaks, and
- * onChoose(level) is told when a grown-up picks a level. It returns refresh() and showResult(result).
+ * onChoose(level) is told when a grown-up picks a level. newAt(level) is what's new at a level, as a list
+ * of { mark, name, nameKa }, where mark is a small picture such as an emoji: it's shown on the title card,
+ * under the countdown, and on the finish card as what's coming next. It returns refresh() and showResult(result).
  */
-export function mountLevels(levels, { language = () => 'en', onChoose = () => {} } = {}) {
+export function mountLevels(levels, { language = () => 'en', onChoose = () => {}, newAt = () => [] } = {}) {
   const byId = (id) => document.getElementById(id);
   const make = (tag, id, className) => {
     const element = document.createElement(tag);
@@ -93,14 +102,19 @@ export function mountLevels(levels, { language = () => 'en', onChoose = () => {}
 
   const badge = make('p', 'level-badge', 'level-badge');
   document.querySelector('#screen-welcome h1')?.after(badge);
+  const welcomeNew = make('p', 'level-new', 'level-new');
+  badge.after(welcomeNew);
 
   const done = make('div', 'level-done', 'level-done');
-  done.innerHTML = `<p id="level-done-text" class="level-done-text"></p><ol id="level-pips" class="level-pips" aria-hidden="true">${pips}</ol>`;
+  done.innerHTML = `<p id="level-done-text" class="level-done-text"></p><ol id="level-pips" class="level-pips" aria-hidden="true">${pips}</ol><p id="level-next-new" class="level-new"></p>`;
   document.querySelector('#screen-finish h2')?.after(done);
 
   const now = make('div', 'level-now', 'level-now');
   now.setAttribute('aria-hidden', 'true');
   document.body.append(now);
+  const nowNew = make('div', 'level-new-now', 'level-new level-new-now');
+  nowNew.setAttribute('aria-hidden', 'true');
+  document.body.append(nowNew);
 
   const choice = make('fieldset', 'level-choice', 'choice level-choice');
   choice.innerHTML = `
@@ -118,7 +132,12 @@ export function mountLevels(levels, { language = () => 'en', onChoose = () => {}
       badge.textContent = `Level ${level} of ${LAST_LEVEL}`;
       now.textContent = language() === 'ka' ? `დონე ${level}` : `Level ${level}`;
       for (const input of choice.querySelectorAll('input')) input.checked = Number(input.value) === level;
+      const news = level > 1 ? newAt(level) : [];
+      welcomeNew.innerHTML = news.length ? `<span class="level-new-lead">New:</span>${newsMarkup(news)}` : '';
+      nowNew.innerHTML = news.length ? `<span class="level-new-lead">${language() === 'ka' ? 'ახალი:' : 'New:'}</span>${newsMarkup(news, language())}` : '';
       const result = levels.last;
+      const coming = result?.won && !result.allDone ? newAt(result.next) : [];
+      byId('level-next-new').innerHTML = coming.length ? `<span class="level-new-lead">Coming up:</span>${newsMarkup(coming)}` : '';
       byId('level-done-text').textContent = result ? levelWords(result) : `Next: level ${level}`;
       for (const pip of done.querySelectorAll('li')) {
         const at = Number(pip.dataset.level);
