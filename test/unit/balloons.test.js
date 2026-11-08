@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { toScreen } from '../../games/balloon-pop/balloons.js';
-import { LEVELS, MathsDeck, answersFor } from '../../games/balloon-pop/maths.js';
+import { LEVELS, MathsDeck, answersFor, choicesFor } from '../../games/balloon-pop/maths.js';
 import {
   balloonLevel, balloonNewAt, balloonsPerMinute, MOST_ANSWERS, newsIsOn, PACES, PLACES, POWER_SECONDS, PRIZE, secondsOnScreen, STAR_HOLD_SECONDS, WANDERER_CHANCE,
 } from '../../games/balloon-pop/rules.js';
@@ -189,4 +189,37 @@ test('the maths challenge has a few more answers to choose from at higher levels
       assert.ok(answers.includes(question.answer) && answers.every((value) => value > 0), question.id);
     }
   }
+});
+
+test('with the maths challenge on, the cards only list what comes with it: one more answer where a level adds one, and the places', () => {
+  const words = (news) => news.map(({ name }) => name);
+  // Off, or never chosen, is the usual list.
+  for (const level of LEVEL_NUMBERS) {
+    assert.deepEqual(balloonNewAt(level, { maths: 'off' }), balloonNewAt(level));
+    assert.deepEqual(balloonNewAt(level, {}), balloonNewAt(level));
+  }
+  for (const kind of Object.keys(LEVELS)) {
+    const answers = (level) => new MathsDeck(kind, Math.random, { extra: balloonLevel(level).answers, most: MOST_ANSWERS }).choices;
+    for (const level of LEVEL_NUMBERS) {
+      const news = balloonNewAt(level, { maths: kind });
+      // Only balloons with answers come up, so nothing else that's new is listed, apart from a new place.
+      const places = balloonNewAt(level).filter(({ key }) => PLACES.includes(key));
+      const adds = level > 1 && answers(level) > answers(level - 1);
+      assert.deepEqual(news.filter(({ key }) => key !== 'answers'), places, `${kind} at ${level}`);
+      assert.equal(news.some(({ key }) => key === 'answers'), adds, `${kind} at ${level}: ${words(news)}`);
+      for (const { mark, name, nameKa } of news) {
+        assert.ok(mark && name && name.split(' ').length <= 3, name);
+        assert.match(nameKa, /[Ⴀ-ჿ]/, name);
+      }
+      // What the cards say is what the deck really has.
+      assert.equal(choicesFor(kind, balloonLevel(level).answers, MOST_ANSWERS), answers(level));
+    }
+  }
+  // Adding up to 10 starts with three answers, so it gets one more at 4 and another at 8. The others
+  // start with four, and five is the most, so only level 4 adds one.
+  assert.deepEqual(words(balloonNewAt(4, { maths: 'add' })), ['One more answer']);
+  assert.deepEqual(words(balloonNewAt(8, { maths: 'add' })), ['One more answer', 'The fair']);
+  assert.deepEqual(words(balloonNewAt(8, { maths: 'times' })), ['The fair']);
+  assert.deepEqual(words(balloonNewAt(5, { maths: 'addTake' })), ['By the sea']);
+  for (const level of [1, 2, 3, 6, 7, 9, 10]) assert.deepEqual(balloonNewAt(level, { maths: 'add' }), [], `level ${level}`);
 });

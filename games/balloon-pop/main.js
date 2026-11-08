@@ -188,9 +188,12 @@ class BalloonGame {
     box.classList.add('is-caught');
   }
 
-  /** What each level brings that's new: see balloonNewAt in rules.js. */
+  /**
+   * What each level brings that's new: see balloonNewAt in rules.js. With the maths challenge on, that's
+   * only what comes with it: more answers to choose from, and the places.
+   */
   newAt(level) {
-    return balloonNewAt(level);
+    return balloonNewAt(level, { maths: this.session.settings.maths });
   }
 
   setHands(side) {
@@ -209,6 +212,8 @@ class BalloonGame {
     this.setUpMaths();
     if (this.deck && this.session.screen === 'playing') this.questionIn = FIRST_QUESTION_AFTER;
     this.showProgress();
+    // What's new at a level depends on it, so the cards say so straight away.
+    this.session.levelUi?.refresh();
   }
 
   /** Each level brings more balloons, a little faster, and new kinds of them: see rules.js. */
@@ -257,6 +262,11 @@ class BalloonGame {
 
   render() {
     this.field.render();
+  }
+
+  /** Play is over: a power-up stops, and the bluebird flies off rather than waiting by the finish card. */
+  finished() {
+    this.field.endPlay();
   }
 
   prompt(snapshot, dt) {

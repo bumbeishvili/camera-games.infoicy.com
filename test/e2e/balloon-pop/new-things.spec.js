@@ -329,14 +329,17 @@ test('level 9: the bluebird comes first, and pops balloons near the hand by itse
 });
 
 test('level 10: a big balloon pops into three, and the sky has every kind in it by itself', async ({ page }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
   await startAt(page, 10);
   await show(page, null, null);
   const seen = await page.evaluate(async () => {
     const { balloons } = window.__game;
     const kinds = new Set();
-    const end = performance.now() + 30_000;
-    while (performance.now() < end && kinds.size < 7) {
+    // By the game's own clock, so a busy computer can't cut it short. Which kinds come up is chance, so
+    // it watches until the ones checked below have all come, for up to a minute of play.
+    const wanted = ['basket', 'power-bird', 'present', 'star'];
+    const end = balloons.time + 60;
+    while (balloons.time < end && kinds.size < 7 && !wanted.every((kind) => kinds.has(kind))) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
       for (const balloon of balloons.balloons) {
         if (balloon.kind) kinds.add(balloon.kind === 'power' ? `power-${balloon.power}` : balloon.kind);
@@ -397,4 +400,201 @@ test('turning the maths challenge on while the bluebird and a rainbow are poppin
     sentAway: window.__game.balloons.balloons.every((balloon) => balloon.leaving || balloon.number !== undefined),
   }));
   expect(after).toEqual({ total: before, sentAway: true });
+});
+
+test('level 6: reach help and the magnet bring a friend\'s basket to the hand, all of it together', async ({ page }) => {
+  await startAt(page, 6);
+  await gloveReady(page);
+  await clearSky(page);
+  // A basket to one side of the open hand, its nearest balloon level with the hand, a third of the screen
+  // away: near enough for reach help and the magnet, too far for the hand to pop it.
+  const placeBasket = () => page.evaluate(() => {
+    const { balloons } = window.__game;
+    balloons.baskets = [];
+    balloons.balloons = [];
+    balloons.basketTimer = 999;
+    balloons.powerTimer = 999;
+    const glove = balloons.gloves.right;
+    const size = balloons.balloonSize;
+    const way = glove.x > balloons.width / 2 ? -1 : 1;
+    const basket = balloons.addBasket(balloons.width / 2, balloons.height / 2);
+    basket.x = glove.x + way * (balloons.height * 0.33 + size * 1.05);
+    basket.y = glove.y + size * 2.5;
+    window.__basket = basket;
+  });
+  /** How far the basket came towards the hand, across, in screen heights, in this much play. */
+  const watch = (seconds) => page.evaluate(async (length) => {
+    const { balloons } = window.__game;
+    const basket = window.__basket;
+    const glove = balloons.gloves.right;
+    const from = { x: basket.x, time: balloons.time, popped: balloons.total };
+    let apart = 0;
+    while (balloons.time - from.time < length) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      // Its balloons stay tied on, wherever it goes.
+      for (const balloon of basket.balloons) apart = Math.max(apart, Math.abs(balloon.x - (basket.drawX + balloon.offset.x)));
+    }
+    return { towards: ((basket.x - from.x) * Math.sign(glove.x - from.x)) / balloons.height, popped: balloons.total - from.popped, apart };
+  }, seconds);
+
+  // With no reach help, it only rises.
+  await placeBasket();
+  const none = await watch(0.8);
+  expect(none.towards).toBeCloseTo(0, 5);
+  // Reach help draws it to the open hand, by the same rule as a balloon on its own.
+  await page.evaluate(() => window.__game.balloons.configure({ reach: 'lots' }));
+  await placeBasket();
+  const helped = await watch(0.6);
+  await shot(page, 'balloon-pop-basket-reach-help');
+  expect(helped.towards).toBeGreaterThan(0.04);
+  expect(helped.popped).toBe(0);
+  expect(helped.apart).toBeLessThan(1);
+  // So does the magnet, with no reach help.
+  await page.evaluate(() => {
+    const { balloons } = window.__game;
+    balloons.configure({ reach: 'none' });
+    balloons.startPower('magnet', balloons.gloves.right);
+  });
+  await placeBasket();
+  const magnet = await watch(0.8);
+  expect(magnet.towards).toBeGreaterThan(0.05);
+  expect(magnet.popped).toBe(0);
+});
+
+test('level 9: a power-up\'s time only runs while the hand is open, and the bluebird only pops for an open hand', async ({ page }) => {
+  await startAt(page, 9);
+  await gloveReady(page);
+  await clearSky(page);
+  await page.evaluate(() => {
+    const { balloons } = window.__game;
+    balloons.powerTimer = 999;
+    balloons.basketTimer = 999;
+    balloons.startPower('bird', balloons.gloves.right);
+  });
+  const left = () => page.evaluate(() => window.__game.balloons.power?.left ?? null);
+  const popped = () => page.evaluate(() => window.__game.balloons.total);
+  // A closed hand: its time stands still, and the bluebird waits by the hand, popping nothing.
+  await show(page, null, 'fist');
+  await waitForHand(page, 'closed');
+  await page.evaluate(() => {
+    const { balloons } = window.__game;
+    const glove = balloons.gloves.right;
+    for (const dx of [-2.8, 2.8]) balloons.addBalloon({ x: glove.x + dx * balloons.balloonSize, y: glove.y - balloons.balloonSize * 1.5, still: true });
+  });
+  const closedAt = await left();
+  await page.waitForTimeout(2500);
+  expect(await left()).toBeCloseTo(closedAt, 5);
+  expect(await popped()).toBe(0);
+  // Gone from the picture: still standing still.
+  await show(page, null, null);
+  await waitForHand(page, 'missing');
+  const goneAt = await left();
+  await page.waitForTimeout(1200);
+  expect(await left()).toBeCloseTo(goneAt, 5);
+  expect(await popped()).toBe(0);
+  // Open again: its time runs, and the bluebird pops the balloons by the hand. The open hand's photo
+  // puts the glove somewhere else from the fist's, so the balloons are put by it again.
+  await show(page, null, 'open');
+  await gloveReady(page);
+  await page.evaluate(() => {
+    const { balloons } = window.__game;
+    const glove = balloons.gloves.right;
+    balloons.balloons.forEach((balloon, index) => {
+      const x = glove.x + (index ? 2.8 : -2.8) * balloons.balloonSize;
+      Object.assign(balloon, { homeX: x, x, y: glove.y - balloons.balloonSize * 1.5, push: 0, pushSpeed: 0 });
+    });
+  });
+  await expect.poll(left, { timeout: 5000 }).toBeLessThan(goneAt - 0.3);
+  await expect.poll(popped, { timeout: 8000 }).toBe(2);
+});
+
+test('level 9: when the game ends, the bluebird flies off rather than waiting by the finish card', async ({ page }) => {
+  await startAt(page, 9);
+  await gloveReady(page);
+  await clearSky(page);
+  await page.evaluate(() => {
+    const { balloons } = window.__game;
+    balloons.powerTimer = 999;
+    balloons.startPower('bird', balloons.gloves.right);
+    balloons.configure({ goal: 1 });
+  });
+  await page.waitForTimeout(400);
+  await onGlove(page);
+  await waitForScreen(page, 'finish');
+  await expect.poll(() => page.evaluate(() => window.__game.balloons.bird), { timeout: 10_000 }).toBe(null);
+  expect(await page.evaluate(() => window.__game.balloons.power)).toBe(null);
+  await page.waitForTimeout(500);
+  await shot(page, 'balloon-pop-finish-no-bird');
+});
+
+test('level 10: a big balloon\'s three start inside it and drift apart, never jumping sideways', async ({ page }) => {
+  await startAt(page, 10);
+  // No hand, so nothing pops them.
+  await show(page, null, null);
+  await waitForHand(page, 'missing');
+  await clearSky(page);
+  const start = await page.evaluate(() => {
+    const { balloons } = window.__game;
+    balloons.baskets = [];
+    balloons.powerTimer = 999;
+    balloons.basketTimer = 999;
+    // When the breeze pushes hardest (it turns at 0.32 radians a second), so leaving it out would show.
+    balloons.time = Math.PI / 2 / 0.32;
+    const big = balloons.addBalloon({ x: balloons.width * 0.55, y: balloons.height * 0.55, kind: 'big' });
+    const before = new Set(balloons.balloons);
+    // Popped as a frame would, which also takes it out of the sky.
+    balloons.pop(big, 'right');
+    balloons.balloons = balloons.balloons.filter((balloon) => balloon !== big);
+    const little = balloons.balloons.filter((balloon) => !before.has(balloon));
+    const at = little.map(({ x }) => x);
+    // With no time passing, each stays exactly where it was put: its sway and the breeze are allowed for.
+    for (const balloon of little) balloons.moveBalloon(balloon, 0, balloons.pace);
+    window.__little = little;
+    return { big: { x: big.x, r: big.r }, at, moved: little.map(({ x }, index) => Math.abs(x - at[index])), push: little.map(({ push }) => Math.abs(push)) };
+  });
+  expect(start.at).toHaveLength(3);
+  for (const moved of start.moved) expect(moved).toBeLessThan(0.5);
+  // They start inside where the big one was.
+  for (const x of start.at) expect(Math.abs(x - start.big.x)).toBeLessThan(start.big.r * 0.6);
+  await page.waitForTimeout(150);
+  await shot(page, 'balloon-pop-big-split');
+  // Over the next second they drift out to their own places, smoothly, by the game's own clock.
+  const after = await page.evaluate(async () => {
+    const { balloons } = window.__game;
+    const little = window.__little;
+    let last = { t: balloons.time, x: little.map(({ x }) => x) };
+    let fastest = 0;
+    const end = balloons.time + 1.2;
+    while (balloons.time < end) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      if (balloons.time <= last.t) continue;
+      little.forEach((balloon, index) => {
+        fastest = Math.max(fastest, Math.abs(balloon.x - last.x[index]) / (balloons.time - last.t));
+      });
+      last = { t: balloons.time, x: little.map(({ x }) => x) };
+    }
+    return { fastest: fastest / balloons.height, push: little.map(({ push }) => Math.abs(push)), up: little.every((balloon) => balloons.balloons.includes(balloon)) };
+  });
+  expect(after.up).toBe(true);
+  // A drift, in screen heights a second: never a jump.
+  expect(after.fastest).toBeLessThan(0.8);
+  // Each has got where it was going: what carried it out has died away.
+  after.push.forEach((push, index) => expect(push).toBeLessThanOrEqual(start.push[index] * 0.1 + 0.5));
+});
+
+test('with the maths challenge on, the title card only lists what comes with it', async ({ page }) => {
+  await openGame(page, { levels: { [GAME]: 4 }, maths: 'add' }, GAME);
+  await expect(page.locator('#level-new')).toContainText('One more answer');
+  await expect(page.locator('#level-new')).not.toContainText('Star balloons');
+  await shot(page, 'balloon-pop-maths-title-4');
+  // At level 6 nothing new comes with it: no baskets, as only balloons with answers come up.
+  await page.evaluate(() => {
+    const { session } = window.__game;
+    session.levels.choose(6);
+    session.levelUi.refresh();
+  });
+  await expect(page.locator('#level-new')).toBeEmpty();
+  // A grown-up turns it off, and the card says straight away what level 6 brings.
+  await page.evaluate(() => window.__game.session.changeSettings({ maths: 'off' }));
+  await expect(page.locator('#level-new')).toContainText('Friends in baskets');
 });

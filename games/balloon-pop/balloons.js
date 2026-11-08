@@ -836,7 +836,6 @@ export class BalloonField {
       basket.balloons.push(balloon);
     }
     this.baskets.push(basket);
-    basket.balloons[1].intro = null;
     basket.intro = 'basket';
     return basket;
   }
@@ -882,9 +881,15 @@ export class BalloonField {
       }
     }
     if (popping) {
-      this.updatePower(dt);
-      this.updateBird(dt);
+      // A power-up's time only runs while the hand in play counts as open, so resting never wastes it.
+      // A hand that's missing, unsure or overlapping the other doesn't count: it fails closed.
+      const open = snapshot?.handOpen === true && snapshot.side === this.side;
+      this.updatePower(dt, open);
+      this.updateBird(dt, open);
       this.updateChain();
+    } else if (this.bird?.state === 'leaving') {
+      // Once play is over, a bluebird on its way off carries on, rather than waiting by the finish card.
+      this.updateBird(dt, false);
     }
     this.updateBaskets(dt, pace);
 
@@ -1006,16 +1011,26 @@ export class BalloonField {
     this.events.onPower?.(kind);
   }
 
-  updatePower(dt) {
+  /** A power-up's time runs out, but only while the hand in play is open. */
+  updatePower(dt, open) {
     if (!this.power) return;
-    this.power.left -= dt;
+    if (open) this.power.left -= dt;
     if (this.power.left > 0) return;
     if (this.power.kind === 'bird' && this.bird) this.bird.state = 'leaving';
     this.power = null;
   }
 
-  /** The bluebird stays by the hand, and every so often flies to a balloon near it and pops it. */
-  updateBird(dt) {
+  /** Play is over: a power-up stops, and the bluebird flies off. */
+  endPlay() {
+    this.power = null;
+    if (this.bird) this.bird.state = 'leaving';
+  }
+
+  /**
+   * The bluebird stays by the hand, and while the hand is open, every so often it flies to a balloon near
+   * it and pops it. So a closed hand never pops anything, even with its help, as its time doesn't run then.
+   */
+  updateBird(dt, open) {
     const { bird } = this;
     if (!bird) return;
     bird.flap += dt * (this.reducedMotion ? 3 : 6);
@@ -1043,6 +1058,7 @@ export class BalloonField {
     const follow = Math.min(1, dt * 4);
     bird.x += (home.x - bird.x) * follow;
     bird.y += (home.y - bird.y) * follow;
+    if (!open) return;
     bird.next -= dt;
     if (bird.next > 0) return;
     bird.next = BIRD.every;
@@ -1070,12 +1086,26 @@ export class BalloonField {
     });
   }
 
-  /** Friends' baskets rise with their balloons, and come down once they've all been popped. */
+  /**
+   * Friends' baskets rise with their balloons, and come down once they've all been popped. Reach help and
+   * the magnet bring a basket to the hand by the same rules as a balloon on its own, all of it together,
+   * going by whichever of its balloons is nearest the hand.
+   */
   updateBaskets(dt, pace) {
     const breeze = this.breezeAt;
+    const glove = this.gloves[this.side];
+    const edge = this.balloonSize * 2.4;
     this.baskets = this.baskets.filter((basket) => {
       if (basket.state === 'rising') {
         basket.y -= pace.rise * 0.8 * this.height * dt * (basket.left / BASKET_BALLOONS);
+        const reachable = basket.balloons.filter(({ leaving }) => !leaving);
+        if (glove.visible && reachable.length) {
+          const gap = (balloon) => Math.hypot(balloon.x - glove.x, balloon.y - glove.y);
+          const nearest = reachable.reduce((best, balloon) => (gap(balloon) < gap(best) ? balloon : best));
+          const pull = this.pullTowardsHand(nearest, dt);
+          basket.x = clamp(basket.x + pull.x, edge, this.width - edge);
+          basket.y += pull.y;
+        }
       } else if (basket.state === 'falling') {
         basket.y += BASKET_FALL * this.height * dt;
         if (basket.y >= this.height * 0.86) basket.state = 'landed';
@@ -1090,13 +1120,22 @@ export class BalloonField {
     });
   }
 
-  /** A big balloon pops into three ordinary ones, which spring out around where it was. */
+  /**
+   * A big balloon pops into three ordinary ones. Each starts inside where the big one was, and drifts out
+   * to its own place within about a second, the two at the sides out of reach of a hand that stays where
+   * the big one was, so each is reached for. Its own sway and the breeze are allowed for from the start,
+   * so it never jumps sideways.
+   */
   split(balloon) {
     for (let i = 0; i < BIG_SPLITS_INTO; i += 1) {
       const angle = -Math.PI / 2 + (i - 1) * 1.1;
-      const x = clamp(balloon.x + Math.cos(angle) * balloon.r * 1.3, this.balloonSize, this.width - this.balloonSize);
-      const little = this.addBalloon({ x, y: balloon.y + Math.sin(angle) * balloon.r * 1.1 });
-      little.pushSpeed = Math.cos(angle) * this.height * 0.5;
+      const to = clamp(balloon.x + Math.cos(angle) * balloon.r * 2, this.balloonSize, this.width - this.balloonSize);
+      const from = balloon.x + (to - balloon.x) * 0.25;
+      const little = this.addBalloon({ x: from, y: balloon.y + Math.sin(angle) * balloon.r * 1.1 });
+      little.homeX = to - this.swayOf(little) - this.breezeOn(little);
+      // A push that starts at the gap and dies away smoothly carries it out from where it starts.
+      little.push = from - to;
+      little.pushSpeed = (to - from) * 2.3;
       // A moment to be seen before it can be popped.
       little.fresh = true;
     }
@@ -1157,37 +1196,51 @@ export class BalloonField {
     balloon.pushSpeed *= Math.exp(-dt * 3.2);
     balloon.push *= Math.exp(-dt * 0.9);
 
+    const pull = this.pullTowardsHand(balloon, dt);
+    balloon.homeX += pull.x;
+    balloon.y += pull.y;
+
+    balloon.x = clamp(balloon.homeX + this.swayOf(balloon) + this.breezeOn(balloon) + balloon.push, balloon.r, width - balloon.r);
+  }
+
+  /** How far a balloon has swayed from where it's heading just now, in pixels. */
+  swayOf(balloon) {
+    return Math.sin(this.time * balloon.swayRate + balloon.phase) * balloon.sway;
+  }
+
+  /** How far the breeze has pushed a balloon sideways just now, in pixels. Balloons that wait are still. */
+  breezeOn(balloon) {
+    return balloon.still || balloon.number !== undefined ? 0 : this.breezeAt;
+  }
+
+  /**
+   * How far reach help and the magnet draw a balloon towards the hand this frame, in pixels. Reach help
+   * draws it to a nearby open hand, for a child whose reach is limited. The magnet draws it to the hand in
+   * play, open or closed, while it lasts. Balloons that wait for an answer stay where they are.
+   */
+  pullTowardsHand(balloon, dt) {
+    const { height } = this;
+    const pull = { x: 0, y: 0 };
+    if (balloon.still) return pull;
+    const towards = (glove, speed, nearest, furthest) => {
+      const dx = glove.x - balloon.x;
+      const dy = glove.y - balloon.y;
+      const away = Math.hypot(dx, dy);
+      if (away <= nearest || away >= furthest) return;
+      pull.x += (dx / away) * speed * dt;
+      pull.y += (dy / away) * speed * dt;
+    };
     const help = REACH_HELP[this.reachName] * height;
-    if (help > 0 && !balloon.still) {
+    if (help > 0) {
       for (const glove of Object.values(this.gloves)) {
-        if (!glove.visible || glove.status !== 'open') continue;
-        const dx = glove.x - balloon.x;
-        const dy = glove.y - balloon.y;
-        const away = Math.hypot(dx, dy);
-        if (away > 1 && away < height * REACH_HELP_RANGE) {
-          balloon.homeX += (dx / away) * help * dt;
-          balloon.y += (dy / away) * help * dt;
-        }
+        if (glove.visible && glove.status === 'open') towards(glove, help, 1, height * REACH_HELP_RANGE);
       }
     }
-
-    // The magnet draws the balloons near the hand in, for a few seconds.
-    if (this.power?.kind === 'magnet' && !balloon.still && balloon.number === undefined && balloon.kind !== 'power') {
-      const glove = this.gloves[this.side];
-      if (glove.visible) {
-        const dx = glove.x - balloon.x;
-        const dy = glove.y - balloon.y;
-        const away = Math.hypot(dx, dy);
-        if (away > balloon.r && away < height * MAGNET.balloonRange) {
-          balloon.homeX += (dx / away) * MAGNET.balloonPull * height * dt;
-          balloon.y += (dy / away) * MAGNET.balloonPull * height * dt;
-        }
-      }
+    const glove = this.gloves[this.side];
+    if (this.power?.kind === 'magnet' && glove.visible && balloon.number === undefined && balloon.kind !== 'power') {
+      towards(glove, MAGNET.balloonPull * height, balloon.r, height * MAGNET.balloonRange);
     }
-
-    const sway = Math.sin(this.time * balloon.swayRate + balloon.phase) * balloon.sway;
-    const breeze = balloon.still || balloon.number !== undefined ? 0 : this.breezeAt;
-    balloon.x = clamp(balloon.homeX + sway + breeze + balloon.push, balloon.r, width - balloon.r);
+    return pull;
   }
 
   /** Whether a balloon with an answer on it has been chosen, and what that means for the glove. */

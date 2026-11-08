@@ -251,8 +251,8 @@ export class Garden {
     this.gloves = { left: new Glove('left'), right: new Glove('right') };
     this.bodies = COLOURS.map((colour) => paintSpider(colour));
     this.sleepers = COLOURS.map((colour) => paintSpider(colour, { asleep: true }));
+    // A golden spider is never sleepy, so it only has a waking face.
     this.goldBody = paintSpider(GOLD, { golden: true });
-    this.goldSleeper = paintSpider(GOLD, { golden: true, asleep: true });
     this.ladybirdBody = paintLadybird();
     this.marks = { berry: paintMark('🍓'), butterfly: paintMark('🦋'), basket: paintMark('🧺'), flower: paintMark('🌼') };
     this.language = () => 'en';
@@ -261,6 +261,7 @@ export class Garden {
     this.labels = [];
     this.introduced = new Set();
     this.helpers = { basket: null, chest: null, butterfly: null };
+    this.oldHelpers = null; // The last place's, fading as the next place comes.
     this.slow = 1;
     this.playTime = 0;
     this.webHome = [0, 0];
@@ -378,6 +379,7 @@ export class Garden {
     this.fade = 1;
     this.moving = 0;
     this.oldWeb = null;
+    this.oldHelpers = null;
     this.count = count;
     this.homeHere = 0;
     this.webHome = [0, 0];
@@ -444,6 +446,8 @@ export class Garden {
       legs: Math.random() * Math.PI * 2,
       speed: 0,
       asleepFor: 0,
+      // When on its path's clock it fell asleep, as its path waits for it while it sleeps.
+      sleptAt: plan.sleepy ? this.playTime : null,
       waking: 0,
     };
     this.placeOnPath(spider);
@@ -458,9 +462,12 @@ export class Garden {
     return spider;
   }
 
-  /** Where a spider is on its path now, in pixels. The path's clock slows while the butterfly is out. */
-  pathPoint(spider) {
-    const at = spiderAt(spider.path, this.playTime);
+  /**
+   * Where a spider is on its path, in pixels: now, or at another time on the path's clock. The clock
+   * slows while the butterfly is out.
+   */
+  pathPoint(spider, time = this.playTime) {
+    const at = spiderAt(spider.path, time);
     const middle = this.gardenMiddle;
     return {
       x: middle.x + this.way * (at.x + spider.shift.x) * this.height,
@@ -468,8 +475,8 @@ export class Garden {
     };
   }
 
-  placeOnPath(spider) {
-    const { x, y } = this.pathPoint(spider);
+  placeOnPath(spider, time = this.playTime) {
+    const { x, y } = this.pathPoint(spider, time);
     spider.x = x;
     spider.y = y;
   }
@@ -548,10 +555,6 @@ export class Garden {
     }
   }
 
-  get fillWanted() {
-    return this.count ? this.homeHere / this.count : 0;
-  }
-
   /** From one place to the next: a moment with the full web, then the next place fading in. */
   moveAlong(dt) {
     if (this.holdFor > 0) {
@@ -568,6 +571,7 @@ export class Garden {
       if (this.moving === 0) {
         this.fromPlace = null;
         this.oldWeb = null;
+        this.oldHelpers = null;
         this.events.onMoved?.();
       }
     }
@@ -577,7 +581,7 @@ export class Garden {
   goTo(place) {
     this.fromPlace = this.place;
     this.place = place;
-    this.oldWeb = { spiders: this.spiders.filter(({ state }) => state === 'home'), fills: [...this.fills], webs: this.level.webs, flower: this.visitors.ladybird };
+    this.oldWeb = { spiders: this.spiders.filter(({ state }) => state === 'home'), fills: [...this.fills], flower: this.visitors.ladybird, stream: this.stream };
     // The next place's things fade in as this one's fade out, so its flower comes and goes gently.
     this.visitors = visitorsAt(place, this.levelNumber);
     this.spiders = [];
@@ -589,8 +593,9 @@ export class Garden {
     this.fade = 0;
     this.moving = MOVE_SECONDS;
     this.catching = new Catching();
-    // What wasn't picked up fades, at no cost, and the helpers stay behind.
+    // What wasn't picked up fades, at no cost, and the helpers stay behind, fading with the place.
     for (const berry of this.berries) berry.going = true;
+    this.oldHelpers = this.helpers;
     this.helpers = { basket: null, chest: null, butterfly: null };
     this.slow = 1;
   }
@@ -610,7 +615,11 @@ export class Garden {
     const lastY = spider.y;
     if (spider.stretch > 0) spider.stretch = Math.max(0, spider.stretch - dt);
     if (spider.state === 'asleep') {
-      // It stays where it is, until a hand wakes it, or it wakes by itself.
+      // It stays where it is, until a hand wakes it, or it wakes by itself. Its path waits for it, at
+      // the moment it fell asleep, and it's put on it each time, so a hand switched over or more help
+      // reaching moves it with the garden.
+      spider.sleptAt ??= this.playTime;
+      this.placeOnPath(spider, spider.sleptAt);
       spider.asleepFor += dt;
       if (spider.asleepFor >= SLEEP_MOST) this.wake(spider);
     }
@@ -661,12 +670,12 @@ export class Garden {
 
   /**
    * A sleepy spider wakes, with a stretch, and plays on from right where it is, so the hand that woke
-   * it can catch it straight away.
+   * it can catch it straight away. Its path waited for it, so it carries on round its own loop from
+   * there, in its own part of the garden.
    */
   wake(spider) {
-    const at = spiderAt(spider.path, this.playTime);
-    const middle = this.gardenMiddle;
-    spider.shift = { x: (spider.x - middle.x) / (this.way * this.height) - at.x, y: (spider.y - middle.y) / this.height - at.y };
+    if (spider.sleptAt != null) spider.path.phase -= spider.path.rate * (this.playTime - spider.sleptAt);
+    spider.sleptAt = null;
     spider.state = 'playing';
     spider.sleepy = false;
     spider.stretch = 0.6;
@@ -722,13 +731,14 @@ export class Garden {
     const seen = glove.visible;
     const { open, closed } = this.readHand(snapshot);
     this.lastHand = { open, closed };
-    const before = this.catching.held;
     const result = this.catching.update(dt, {
       seen,
       open,
       closed,
       near: seen ? this.spiderNear(glove) : null,
-      onWeb: this.onWeb,
+      // Each one carried goes home only where it lives, so at one of two webs, or at the ladybird's
+      // flower, the other stays in the basket rather than being let go.
+      onWeb: (spider) => this.atHomeOf(spider),
     });
     if (result === 'caught') {
       const spider = this.catching.held;
@@ -737,16 +747,12 @@ export class Garden {
       if (this.level.berries) this.dropBerry(spider.x, spider.y + this.spiderSize * 1.4);
       this.events.onCatch?.();
     } else if (result === 'home') {
-      for (const spider of this.catching.released) {
-        if (this.atHomeOf(spider)) this.bringHome(spider);
-        else this.letGoOf(spider);
-      }
+      for (const spider of this.catching.released) this.bringHome(spider);
     } else if (result === 'let-go') {
       for (const spider of this.catching.released) this.letGoOf(spider);
     } else if (result === 'stashed') {
       this.events.onStash?.();
     }
-    void before;
     const carried = this.catching.carried;
     carried.forEach((spider, index) => {
       // The one in the hand peeps out of it, and one in the basket sits in the basket below.
@@ -843,33 +849,37 @@ export class Garden {
     const gap = (thing) => Math.hypot(glove.x - thing.x, glove.y - thing.y);
 
     // Berries, which roll to a hand nearby and are picked up by it coming close, open or closed.
+    const fall = (berry) => {
+      if (berry.y >= berry.rest && berry.vy >= 0) return;
+      berry.vy += this.height * 1.4 * dt;
+      berry.x += berry.vx * dt;
+      berry.y = Math.min(berry.rest, berry.y + berry.vy * dt);
+      if (berry.y >= berry.rest) berry.vy = 0;
+    };
     this.berries = this.berries.filter((berry) => {
       berry.age += dt;
       berry.fade = Math.min(1, berry.fade + dt * 3);
-      if (berry.y < berry.rest || berry.vy < 0) {
-        berry.vy += this.height * 1.4 * dt;
-        berry.x += berry.vx * dt;
-        berry.y = Math.min(berry.rest, berry.y + berry.vy * dt);
-        if (berry.y >= berry.rest) berry.vy = 0;
-      }
       if (berry.going) {
+        fall(berry);
         berry.gone = (berry.gone ?? 0) + dt;
         return berry.gone < 0.8;
       }
-      if (!seen) return true;
-      const away = gap(berry);
-      if (!berry.armed) {
-        if (away > this.height * BERRY.away) berry.armed = true;
-        return true;
-      }
-      if (away <= this.palmSize * BERRY.pickPalms + berry.r && berry.age > 0.3) {
+      const away = seen ? gap(berry) : Infinity;
+      if (seen && !berry.armed && away > this.height * BERRY.away) berry.armed = true;
+      const ready = seen && berry.armed;
+      if (ready && away <= this.palmSize * BERRY.pickPalms + berry.r && berry.age > 0.3) {
         this.pickBerry(berry);
         return false;
       }
-      if (away < this.height * BERRY.pullRange && away > 1) {
+      if (ready && away < this.height * BERRY.pullRange && away > 1) {
+        // It goes straight to the hand, and only falls back to the grass once the hand has gone, so a
+        // hand held above it never has it bobbing up and down.
         berry.x += ((glove.x - berry.x) / away) * BERRY.pull * this.height * dt;
         berry.y += ((glove.y - berry.y) / away) * BERRY.pull * this.height * dt;
+        berry.vy = 0;
         berry.rest = Math.max(berry.rest, berry.y);
+      } else {
+        fall(berry);
       }
       return true;
     });
@@ -890,15 +900,20 @@ export class Garden {
       if (spider.waking >= WAKE_SECONDS) this.wake(spider);
     }
 
+    // Helpers only come, and are only introduced, during play: never behind the countdown, where the
+    // next place's own would replace them at "Go!", or behind the finish card.
     const { basket, chest, butterfly } = this.helpers;
     const middle = this.gardenMiddle;
     const groundAt = (shift) => ({ x: middle.x + this.way * shift * this.height, y: this.height * GROUND });
     const appear = (helper) => {
       if (helper.state !== 'coming') return false;
-      helper.in -= dt;
+      if (playing) helper.in -= dt;
       if (helper.in > 0) return true;
       helper.state = 'waiting';
       return false;
+    };
+    const introduce = (key, target) => {
+      if (playing) this.introduce(key, target);
     };
 
     // The basket, sitting in the grass until the hand comes by it. Then it carries two.
@@ -906,7 +921,7 @@ export class Garden {
       Object.assign(basket, groundAt(0.16), { r: this.height * 0.045 });
       basket.alpha = Math.min(1, basket.alpha + dt * 2);
       if (basket.state === 'waiting') {
-        this.introduce('basket', basket);
+        introduce('basket', basket);
         if (seen && gap(basket) <= this.palmSize * 1.5 + basket.r) {
           basket.state = 'carried';
           this.catching.holds = BASKET_HOLDS;
@@ -920,7 +935,7 @@ export class Garden {
       if (chest.state !== 'open') Object.assign(chest, groundAt(-0.04), { r: this.height * 0.05 });
       chest.alpha = Math.min(1, chest.alpha + dt * 2);
       if (chest.state === 'waiting') {
-        this.introduce('chest', chest);
+        introduce('chest', chest);
         const on = seen && open && gap(chest) <= this.palmSize * 1.3 + chest.r;
         chest.hold = on ? chest.hold + dt : Math.max(0, chest.hold - dt);
         if (chest.hold >= CHEST_SECONDS) {
@@ -936,11 +951,23 @@ export class Garden {
     }
 
     // The butterfly: it rests in the grass, and touched, it flies over the garden for a while, and the
-    // spiders slow right down to watch it.
-    if (butterfly && !appear(butterfly)) this.updateButterfly(butterfly, dt, seen && gap(butterfly) <= this.palmSize * 1.8, groundAt(-0.04));
+    // spiders slow right down to watch it. Its time only runs while the hand in play is open, so resting
+    // never wastes it.
+    if (butterfly && !appear(butterfly)) {
+      this.updateButterfly(butterfly, dt, {
+        touched: seen && gap(butterfly) <= this.palmSize * 1.8,
+        rest: groundAt(-0.04),
+        playing,
+        open: seen && open,
+      });
+    }
   }
 
-  updateButterfly(butterfly, dt, touched, rest) {
+  /**
+   * touched says the hand in play is on it, rest is where it sits in the grass, playing whether it's
+   * play, and open whether the hand in play is seen open, which is when its time runs.
+   */
+  updateButterfly(butterfly, dt, { touched, rest, playing, open }) {
     butterfly.t += dt;
     butterfly.r = this.height * 0.045;
     if (butterfly.state === 'waiting') {
@@ -956,8 +983,10 @@ export class Garden {
       butterfly.alpha = Math.min(1, butterfly.alpha + dt * 2);
       if (butterfly.flown >= 1) butterfly.state = 'resting';
     } else if (butterfly.state === 'resting') {
-      this.introduce('butterfly', butterfly);
-      butterfly.wait += dt;
+      if (playing) {
+        this.introduce('butterfly', butterfly);
+        butterfly.wait += dt;
+      }
       if (touched) {
         butterfly.state = 'helping';
         butterfly.left = BUTTERFLY.seconds;
@@ -970,7 +999,7 @@ export class Garden {
       }
     } else if (butterfly.state === 'helping') {
       // Round and round, slowly, over where the spiders play.
-      butterfly.left -= dt;
+      if (open) butterfly.left -= dt;
       butterfly.flown = Math.min(1, butterfly.flown + dt);
       const middle = this.gardenMiddle;
       const turn = butterfly.t * 0.7;
@@ -1310,7 +1339,7 @@ export class Garden {
     const body = ladybird
       ? this.ladybirdBody
       : spider.golden
-        ? (asleep ? this.goldSleeper : this.goldBody)
+        ? this.goldBody
         : (asleep ? this.sleepers : this.bodies)[spider.colour % this.bodies.length];
     const across = size * 2.4;
     ctx.drawImage(body, x - across / 2, y - across / 2, across, across);
@@ -1356,40 +1385,58 @@ export class Garden {
     ctx.restore();
   }
 
-  /** A soft stream along the bottom of the garden, for the leaf boats. */
-  drawStream(ctx) {
+  /**
+   * The stream the leaf boats sail along, at the bottom of the garden, or null with no boat: its middle,
+   * how far it goes either way, and how wide it is either side, in pixels. It's long enough for the
+   * whole leaf at either end of a boat's way, and it comes in with its boat.
+   */
+  get stream() {
     const boat = this.spiders.find((spider) => spider.kind === 'boat');
-    if (!boat) return;
+    if (!boat) return null;
     const middle = this.gardenMiddle;
-    const y = middle.y + boat.path.cy * this.height + this.spiderSize * 1.1;
-    const half = (boat.path.ax + 0.06) * this.height;
+    return {
+      x: middle.x + this.way * boat.path.cx * this.height,
+      y: middle.y + boat.path.cy * this.height + this.spiderSize * 1.1,
+      half: boat.path.ax * this.height + this.spiderSize * 2.4,
+      wide: this.height * 0.03,
+      alpha: boat.alpha,
+    };
+  }
+
+  /** A soft stream along the bottom of the garden, for the leaf boats: this place's, or the last one's fading. */
+  drawStream(ctx, stream = this.stream, fade = 1) {
+    if (!stream) return;
     ctx.save();
+    ctx.globalAlpha = stream.alpha * fade;
     ctx.fillStyle = 'rgb(120 200 240 / 0.55)';
     ctx.beginPath();
-    ctx.ellipse(middle.x, y, half, this.height * 0.03, 0, 0, Math.PI * 2);
+    ctx.ellipse(stream.x, stream.y, stream.half, stream.wide, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
 
-  /** The basket, the treasure chest and the butterfly. */
-  drawHelpers(ctx) {
-    const { basket, chest, butterfly } = this.helpers;
+  /**
+   * The basket, the treasure chest and the butterfly: this place's, or the last place's fading as the
+   * next one comes, at fade.
+   */
+  drawHelpers(ctx, helpers = this.helpers, fade = 1) {
+    const { basket, chest, butterfly } = helpers;
     const glove = this.gloves[this.side];
-    if (basket && basket.state === 'waiting') this.drawMark(ctx, 'basket', basket.x, basket.y, basket.r, basket.alpha);
-    if (chest && chest.state !== 'coming') this.drawChest(ctx, chest);
+    if (basket && basket.state === 'waiting') this.drawMark(ctx, 'basket', basket.x, basket.y, basket.r, basket.alpha * fade);
+    if (chest && chest.state !== 'coming') this.drawChest(ctx, chest, fade);
     if (butterfly && butterfly.state !== 'coming' && butterfly.x !== undefined) {
       // Its wings open and close slowly.
       const flap = butterfly.state === 'resting' ? 0.75 + 0.25 * Math.cos(butterfly.t * 1.6) : 0.55 + 0.45 * Math.abs(Math.cos(butterfly.t * 3));
       const size = butterfly.r * 2;
       ctx.save();
-      ctx.globalAlpha = butterfly.alpha;
+      ctx.globalAlpha = butterfly.alpha * fade;
       ctx.translate(butterfly.x, butterfly.y);
       ctx.scale(this.reducedMotion ? 1 : flap, 1);
       ctx.drawImage(this.marks.butterfly, -size / 2, -size / 2, size, size);
       ctx.restore();
     }
     if (basket?.state === 'carried' && glove.visible) {
-      this.drawMark(ctx, 'basket', glove.x, glove.y + this.palmSize * 1.05, this.height * 0.05, 1);
+      this.drawMark(ctx, 'basket', glove.x, glove.y + this.palmSize * 1.05, this.height * 0.05, fade);
     }
   }
 
@@ -1400,11 +1447,14 @@ export class Garden {
     ctx.restore();
   }
 
-  /** A little wooden treasure chest, with a gold band, whose lid swings open. */
-  drawChest(ctx, chest) {
+  /**
+   * A little wooden treasure chest, with a gold band, whose lid swings open upwards. It's hinged on
+   * Joze's side, so it's mirrored for the left hand.
+   */
+  drawChest(ctx, chest, fade = 1) {
     const { x, y, r } = chest;
     ctx.save();
-    ctx.globalAlpha = chest.alpha;
+    ctx.globalAlpha = chest.alpha * fade;
     ctx.lineWidth = Math.max(2, r * 0.08);
     ctx.strokeStyle = INK;
     ctx.fillStyle = '#b5713b';
@@ -1414,8 +1464,10 @@ export class Garden {
     ctx.stroke();
     const open = chest.state === 'open' ? Math.min(1, chest.openFor * 3) : 0;
     ctx.save();
-    ctx.translate(x - r, y - r * 0.4);
-    ctx.rotate(-open * 1.6 * this.way);
+    // The hinge, its lid and its swing are all mirrored for the left hand, so it opens upwards either way.
+    ctx.translate(x - r * this.way, y - r * 0.4);
+    ctx.scale(this.way, 1);
+    ctx.rotate(-open * 1.6);
     ctx.fillStyle = '#c98a4a';
     ctx.beginPath();
     ctx.roundRect(0, -r * 0.55, r * 2, r * 0.55, [r * 0.5, r * 0.5, 0, 0]);
@@ -1505,6 +1557,7 @@ export class Garden {
       const gone = 1 - this.fade;
       webs.forEach((web, index) => this.drawWeb(ctx, web, this.oldWeb.fills[index], gone));
       if (this.oldWeb.flower) this.drawFlower(ctx, gone);
+      this.drawStream(ctx, this.oldWeb.stream, gone);
       for (const spider of this.oldWeb.spiders) {
         const at = this.homeSpot(spider, webs);
         this.drawSpider(ctx, { ...spider, ...at }, { alpha: gone });
@@ -1519,6 +1572,8 @@ export class Garden {
       if (this.visitors.ladybird) this.drawFlower(ctx, alpha);
     }
     this.drawStream(ctx);
+    // The last place's helpers stay behind, fading with it.
+    if (this.oldHelpers) this.drawHelpers(ctx, this.oldHelpers, 1 - this.fade);
     this.drawHelpers(ctx);
     this.drawBerries(ctx);
     const carried = this.catching.carried;

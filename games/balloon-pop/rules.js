@@ -7,6 +7,7 @@
 // with sweets in them, power-up bubbles, star balloons, pairs, friends in baskets, a magnet, rainbow
 // balloons, a bluebird and big balloons. Prizes only ever add: missing one costs nothing.
 import { ramp, rampWhole, stepsAt } from '../../core/levels.js';
+import { choicesFor, LEVELS as MATHS } from './maths.js';
 
 // rise is in screen heights a second, every is seconds between balloons, most is how many
 // can be up at once. Even fast is gentle: this is about reaching, not reaction time.
@@ -121,11 +122,25 @@ const NEWS = {
   10: [{ key: 'big', mark: '🎈', name: 'Big balloons', nameKa: 'დიდი ბუშტები' }],
 };
 
-/** What's new at a level, as [{ key, mark, name, nameKa }]. Nothing at level 1. */
-export const balloonNewAt = (level) => NEWS[level] ?? [];
-
 // The places, which follow one another rather than adding up.
 export const PLACES = ['seaside', 'fair'];
+
+// With the maths challenge on, a level that adds an answer to choose from says so.
+const MORE_ANSWERS = { key: 'answers', mark: '🔢', name: 'One more answer', nameKa: 'კიდევ ერთი პასუხი' };
+
+/**
+ * What's new at a level, as [{ key, mark, name, nameKa }]. Nothing at level 1. maths is the maths
+ * challenge's kind, or 'off'. With it on, only balloons with answers come up, so what's new is one more
+ * answer to choose from, at a level that really adds one (there are never more than MOST_ANSWERS), and
+ * a new place, as the places still change.
+ */
+export function balloonNewAt(level, { maths = 'off' } = {}) {
+  const news = NEWS[level] ?? [];
+  if (!Object.hasOwn(MATHS, maths ?? '')) return news;
+  const answers = (at) => choicesFor(maths, balloonLevel(at).answers, MOST_ANSWERS);
+  const more = level > 1 && answers(level) > answers(level - 1);
+  return [...(more ? [MORE_ANSWERS] : []), ...news.filter(({ key }) => PLACES.includes(key))];
+}
 
 /** Whether the part of a level that a piece of news names is on. */
 export function newsIsOn(key, level) {

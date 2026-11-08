@@ -151,6 +151,63 @@ test('with the basket, two can be carried at once: the first goes into the baske
   assert.equal(plain.update(0.1, hand({ open: true })), 'let-go');
 });
 
+test('with the basket, opening at one home only lets in what lives there, and the other stays carried', () => {
+  // Two webs, from level 8: a pink spider in the basket and a blue one in the hand, at the blue web.
+  const pink = { id: 'pink', web: 0 };
+  const blue = { id: 'blue', web: 1 };
+  const atWeb = (web) => (spider) => spider.web === web;
+  const carrying = (stash, held) => {
+    const catching = new Catching({ holds: BASKET_HOLDS });
+    catching.stash = [stash];
+    catching.held = held;
+    return catching;
+  };
+  let catching = carrying(pink, blue);
+  assert.equal(catching.update(0.1, hand({ open: true, onWeb: atWeb(1) })), 'home');
+  assert.deepEqual(catching.released, [blue]);
+  // The pink one isn't let go: it's still in the basket, for its own web.
+  assert.deepEqual(catching.carried, [pink]);
+  assert.equal(catching.held, null);
+  // The open hand stays at the blue web, and nothing more happens to it.
+  assert.equal(catching.update(0.1, hand({ open: true, onWeb: atWeb(1) })), null);
+  assert.deepEqual(catching.carried, [pink]);
+  // Then at the pink web, it goes home too.
+  assert.equal(catching.update(0.1, hand({ open: true, onWeb: atWeb(0) })), 'home');
+  assert.deepEqual(catching.released, [pink]);
+  assert.deepEqual(catching.carried, []);
+
+  // The other way round: at the pink web, the pink one in the basket goes home, and the blue one in the
+  // open hand goes into the basket, rather than being let go.
+  catching = carrying(pink, blue);
+  assert.equal(catching.update(0.1, hand({ open: true, onWeb: atWeb(0) })), 'home');
+  assert.deepEqual(catching.released, [pink]);
+  assert.deepEqual(catching.stash, [blue]);
+  assert.equal(catching.held, null);
+
+  // From level 6: a spider in the basket and the ladybird in the hand. At her flower, only she goes home.
+  const spider = { id: 'spider', web: 0 };
+  const ladybird = { id: 'ladybird', kind: 'ladybird', web: null };
+  const atFlower = (one) => one.kind === 'ladybird';
+  const atTheWeb = (one) => one.kind !== 'ladybird';
+  catching = carrying(spider, ladybird);
+  assert.equal(catching.update(0.1, hand({ open: true, onWeb: atFlower })), 'home');
+  assert.deepEqual(catching.released, [ladybird]);
+  assert.deepEqual(catching.carried, [spider]);
+  // At the web, only the spider goes home, and she stays carried, in the basket, for her flower.
+  catching = carrying(spider, ladybird);
+  assert.equal(catching.update(0.1, hand({ open: true, onWeb: atTheWeb })), 'home');
+  assert.deepEqual(catching.released, [spider]);
+  assert.deepEqual(catching.carried, [ladybird]);
+  assert.equal(catching.update(0.1, hand({ open: true, onWeb: atFlower })), 'home');
+  assert.deepEqual(catching.released, [ladybird]);
+
+  // Away from every home, it's as before: the one in the hand is let go when the basket is full.
+  catching = carrying(pink, blue);
+  assert.equal(catching.update(0.1, hand({ open: true, onWeb: () => false })), 'let-go');
+  assert.deepEqual(catching.released, [blue]);
+  assert.deepEqual(catching.carried, [pink]);
+});
+
 /* ---------- moving about ---------- */
 
 test('nowhere on a path is a spider faster than its level allows, and it goes round a smooth loop', () => {
@@ -304,6 +361,16 @@ test('what each new thing does is really in the garden from its level', () => {
     last = at;
   }
   assert.ok(fastest <= gardenAt(9).speed * 1.001);
+  // It goes along the stream, which runs under the middle of the garden, whatever spot it was given, so
+  // it's never further from the middle than its own way along.
+  for (const level of [9, 10]) {
+    for (let slot = 0; slot < 7; slot += 1) {
+      const path = pathFor({ kind: 'boat', centre: spotFor(slot), phase: slot, level });
+      let furthest = 0;
+      for (let t = 0; t < 60; t += 0.05) furthest = Math.max(furthest, Math.abs(spiderAt(path, t).x));
+      assert.ok(furthest <= path.ax + 1e-9, `level ${level}, spot ${slot}: ${furthest}`);
+    }
+  }
 });
 
 test('helpers and prizes are gentle: generous to pick up, short holds, and nobody stuck', () => {

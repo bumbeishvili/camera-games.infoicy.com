@@ -152,9 +152,10 @@ export function pathFor({ kind, centre, phase = 0, level }) {
   const [ax, ay] = kind === 'dangle' ? [wander * 0.45, swing] : [wander, wander * 0.6];
   const k = kind === 'dangle' ? Math.min(twist, 2) : twist;
   if (kind === 'boat') {
-    // Along the stream at the bottom of the garden and back, bobbing gently.
+    // Along the stream at the bottom of the garden and back, bobbing gently. The stream runs under the
+    // middle of the garden, so that's where the boat goes along, whichever spot it was given.
     const [bx, by] = [wander * 1.15, 0.008];
-    return { kind, cx: centre.x, cy: 0.17, ax: bx, ay: by, k: 2, rate: speed / Math.hypot(bx, 2 * by), phase, phaseY: phase * 0.7 + 1.1 };
+    return { kind, cx: 0, cy: 0.17, ax: bx, ay: by, k: 2, rate: speed / Math.hypot(bx, 2 * by), phase, phaseY: phase * 0.7 + 1.1 };
   }
   // The fastest anywhere on the loop is at most this many times its rate of going round.
   const fastest = Math.hypot(ax, k * ay);
@@ -321,7 +322,8 @@ export class Gathering {
  *
  * With the basket, from level 6, the hand can carry two. Opening the hand away from the web with one in
  * it pops that one into the basket instead of letting it go, and the hand can then catch another.
- * Opening at the web puts both home.
+ * Opening at the web puts both home. Where two don't share a home, as with two webs or the ladybird,
+ * opening at one home only lets in what lives there, and the other stays carried, in the basket.
  *
  * It fails closed. open and closed are only true when the tracker is sure, so a hand at the edge of the
  * picture, too far away or overlapping the other one is neither, and does neither. A hand that has gone
@@ -343,8 +345,9 @@ export class Catching {
   }
 
   /**
-   * near is the spider the hand is by, if any. onWeb is whether the hand is where what it carries goes
-   * home. Returns 'caught', 'stashed', 'home', 'let-go' or null, and released says which ones.
+   * near is the spider the hand is by, if any. onWeb says whether the hand is where a spider it carries
+   * goes home: a function of the spider, or true or false for all of them. Returns 'caught', 'stashed',
+   * 'home', 'let-go' or null, and released says which ones.
    */
   update(dt, { seen, open, closed, near, onWeb }) {
     this.released = [];
@@ -357,15 +360,20 @@ export class Catching {
       this.stash = [];
       return 'let-go';
     }
-    if (this.held) {
-      if (!open) return null;
+    if (open) {
       this.sinceOpen = 0;
-      if (onWeb) {
-        this.released = this.carried;
+      this.nearFor = 0;
+      const atHome = typeof onWeb === 'function' ? onWeb : () => Boolean(onWeb);
+      const home = this.carried.filter((spider) => atHome(spider));
+      if (home.length) {
+        // What lives here goes home. Anything else stays carried, in the basket, as the hand is open
+        // and there's room in it now.
+        this.released = home;
+        this.stash = this.carried.filter((spider) => !home.includes(spider));
         this.held = null;
-        this.stash = [];
         return 'home';
       }
+      if (!this.held) return null;
       if (this.stash.length < this.holds - 1 && this.held.kind !== 'ladybird') {
         this.stash.push(this.held);
         this.held = null;
@@ -375,16 +383,8 @@ export class Catching {
       this.held = null;
       return 'let-go';
     }
-    if (open) {
-      this.sinceOpen = 0;
-      this.nearFor = 0;
-      if (this.stash.length && onWeb) {
-        this.released = this.stash;
-        this.stash = [];
-        return 'home';
-      }
-      return null;
-    }
+    // Closed, or not sure: anything in the hand stays there.
+    if (this.held) return null;
     this.sinceOpen += dt;
     if (closed && near && this.sinceOpen <= GRAB_WINDOW) {
       this.nearFor += dt;

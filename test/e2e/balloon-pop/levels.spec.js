@@ -32,7 +32,9 @@ test('level 10 has more balloons, a little faster, with star balloons, pairs and
   expect(plan.pace.most).toBe(10);
   expect(plan.pace.rise).toBeCloseTo(0.085 * 1.35, 4);
 
-  // Lets the sky fill by itself, with the hand away, and keeps a note of what came up.
+  // Lets the sky fill by itself, with the hand away, and keeps a note of what came up. It's timed by the
+  // game's own clock, so a busy computer can't cut it short, and as which kinds come up is chance, it
+  // watches on until a star balloon and a pair have both come, for up to 40 seconds of play.
   const seen = await page.evaluate(async () => {
     const { balloons } = window.__game;
     const kinds = { stars: 0, pairs: 0, plain: 0 };
@@ -40,8 +42,9 @@ test('level 10 has more balloons, a little faster, with star balloons, pairs and
     let most = 0;
     let breezeLeast = Infinity;
     let breezeMost = -Infinity;
-    const end = performance.now() + 14_000;
-    while (performance.now() < end) {
+    const end = balloons.time + 14;
+    const longest = balloons.time + 40;
+    while (balloons.time < end || ((!kinds.stars || !kinds.pairs) && balloons.time < longest)) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
       most = Math.max(most, balloons.balloons.length);
       breezeLeast = Math.min(breezeLeast, balloons.breezeAt);
