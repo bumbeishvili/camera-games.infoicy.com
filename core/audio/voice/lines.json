@@ -13,7 +13,6 @@
   {"id": "resting-ok", "text": "Resting is OK. Open your hand when you’re ready.", "speak": "Resting is okay. Open your hand when you're ready.", "ka": "შეგიძლია დაისვენო. როცა მზად იქნები, გაშალე ხელი."},
   {"id": "steer-hint", "text": "Move your hand side to side to catch stars", "ka": "ამოძრავე ხელი მარცხნივ და მარჯვნივ და ვარსკვლავები დაიჭირე"},
   {"id": "five-hint", "text": "High five the big hand!", "ka": "დიდ ხელს ხელი დაარტყი!"},
-  {"id": "turbo-hint", "text": "Open wide for turbo!", "ka": "ტურბოსთვის ხელი ფართოდ გაშალე!"},
   {"id": "count-3", "text": "3", "speak": "Three!", "ka": "სამი!"},
   {"id": "count-2", "text": "2", "speak": "Two!", "ka": "ორი!"},
   {"id": "count-1", "text": "1", "speak": "One!", "ka": "ერთი!"},

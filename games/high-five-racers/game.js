@@ -374,15 +374,18 @@ export class Race {
     return this.stars.nextLane(mod(this.distance, this.track.length), this.lapIndex) ?? 0;
   }
 
-  updatePlayer(dt, { drive = 0, width = 0, steer = 0, steering = 'help', other = null }) {
+  updatePlayer(dt, { drive = 0, steer = 0, steering = 'help', other = null }) {
     this.drive = drive;
     const handOpen = drive > 0;
     const wasTurbo = this.turbo.active;
-    // A fist and then an open hand with the other hand, once turbo has run out, sets it off again and the
-    // car flies. The car still only goes while the hand in play is open.
+    // A fist and then an open hand with the other hand makes the car fly, with turbo. The car still only
+    // goes while the hand in play is open.
     const otherHandDidIt = this.otherHand.update(other);
-    if (otherHandDidIt && handOpen && this.turbo.burst()) this.takeOff();
-    this.turbo.update(handOpen ? width : 0, dt);
+    if (otherHandDidIt && handOpen && !this.soaring) {
+      this.turbo.burst();
+      this.takeOff();
+    }
+    this.turbo.update(handOpen ? 1 : 0, dt);
     if (this.turbo.active !== wasTurbo) this.events.onTurbo?.(this.turbo.active);
     this.boostLeft = handOpen ? Math.max(0, this.boostLeft - dt) : 0;
 

@@ -19,26 +19,15 @@ export const CAR_WIDTH = 2.6;
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 
-// Turbo comes from opening the hand as wide as this hand can, measured against its own best in the
-// hand check, so a hand that can't open far gets it too. `width` is how open it is as a share of that
-// best, and is 0 for a hand that doesn't count as open. A little less keeps it going once it's started,
-// as a real hand doesn't hold perfectly still.
+// Turbo fills up by itself while the hand in play stays open, and once the meter is full it goes by itself
+// for a few seconds, with flames and more speed. Then the meter fills again. Closing the hand pauses it:
+// turbo stops while the hand is closed, and nothing is taken away. There's nothing else to learn.
 export const TURBO = {
-  startsAt: 0.94,
-  keepsAt: 0.89,
-  fillSeconds: 0.7,
-  drainSeconds: 1.2,
-  closedDrainSeconds: 0.4,
-  growSeconds: 2.5, // Holding it wide makes the flames bigger, and the car a little faster.
+  fillSeconds: 4, // Of driving with the hand open.
+  seconds: 3, // How long turbo lasts.
+  growSeconds: 1.2, // The flames grow over this, and the car gets a little faster.
   bonus: 0.2,
   heldBonus: 0.1,
-};
-
-// Once turbo has run out, making a fist with the other hand and opening it again sets turbo off once
-// more, and the car takes off and flies for a moment. Turbo like this lasts a set time, shown running
-// down on the meter, rather than lasting while the hand is held wide.
-export const SECOND_HAND = {
-  turboSeconds: 3.5,
 };
 
 export const SLAP = {
@@ -50,7 +39,7 @@ export const SLAP = {
 const MOST_BONUS = 0.45;
 export const FASTEST_SPEED = TOP_SPEED * (1 + MOST_BONUS);
 
-/** The meter on screen. It fills while the hand is at its widest, then that's turbo. */
+/** The meter on screen: it fills while the hand is open, and when it's full that's turbo. */
 export class TurboMeter {
   constructor() {
     this.reset();
@@ -60,57 +49,43 @@ export class TurboMeter {
     this.level = 0;
     this.active = false;
     this.heldFor = 0;
-    this.everFull = false;
-    this.burstLeft = 0;
+    this.left = 0; // Seconds of turbo still to come.
+    this.everFull = false; // Whether there's been turbo yet this race.
   }
 
-  /** Turbo from the other hand. Only once turbo has run out, and it says whether it started. */
+  /** Turbo straight away, for its whole time, as when the car takes off. */
   burst() {
-    if (this.active) return false;
-    this.burstLeft = SECOND_HAND.turboSeconds;
+    this.left = TURBO.seconds;
     this.level = 1;
     this.active = true;
     this.heldFor = 0;
-    return true;
+    this.everFull = true;
   }
 
-  /** How far holding it has got, from 0 to 1, for the size of the flames. */
+  /** How far into turbo it is, from 0 to 1, for the size of the flames. */
   get grown() {
     return this.active ? clamp(this.heldFor / TURBO.growSeconds, 0, 1) : 0;
   }
 
-  update(width, dt) {
-    // A closed, missing or unreadable hand ends it at once, without waiting for the meter.
-    if (!(width > 0)) {
+  /** open is more than 0 while the hand in play counts as open. */
+  update(open, dt) {
+    if (!(open > 0)) {
       this.active = false;
-      this.heldFor = 0;
-      this.burstLeft = 0;
-      this.level = Math.max(0, this.level - dt / TURBO.closedDrainSeconds);
       return;
     }
-    if (this.burstLeft > 0) {
-      // The meter runs down like a timer, whatever the hand in play is doing, as long as it's open.
-      this.burstLeft = Math.max(0, this.burstLeft - dt);
-      this.level = this.burstLeft / SECOND_HAND.turboSeconds;
+    if (this.left > 0) {
+      this.active = true;
       this.heldFor += dt;
-      if (this.burstLeft > 0) return;
-      this.active = false;
-      this.heldFor = 0;
+      this.left = Math.max(0, this.left - dt);
+      this.level = this.left / TURBO.seconds;
+      if (this.left === 0) {
+        this.active = false;
+        this.heldFor = 0;
+      }
       return;
     }
-    const wide = width >= (this.active ? TURBO.keepsAt : TURBO.startsAt);
-    if (wide) {
-      this.level = Math.min(1, this.level + dt / TURBO.fillSeconds);
-      if (this.level >= 1) {
-        this.active = true;
-        this.everFull = true;
-      }
-      if (this.active) this.heldFor += dt;
-    } else {
-      this.active = false;
-      this.heldFor = 0;
-      this.level = Math.max(0, this.level - dt / TURBO.drainSeconds);
-    }
+    this.level = Math.min(1, this.level + dt / TURBO.fillSeconds);
+    if (this.level >= 1) this.burst();
   }
 
   get bonus() {
@@ -119,10 +94,9 @@ export class TurboMeter {
 }
 
 /**
- * Watches the hand that isn't in play for a fist and then an open hand. To be sure the fist was meant,
- * the hand has to be seen open first, then really closed (in view and readable, not just cut off or
- * lost), and then open again. A hand that turns up already open, or as a fist, doesn't count until it
- * has done the whole thing. update() is true once, at the moment the hand opens again.
+ * Watches the hand that isn't in play for a fist and then an open hand. update() is true once, as the
+ * hand opens after a fist. The fist has to be a real one, in view and readable: a hand cut off by the
+ * edge, too far away, touching the other hand or lost doesn't count as one.
  */
 export class FistAndOpen {
   constructor() {
@@ -130,22 +104,16 @@ export class FistAndOpen {
   }
 
   reset() {
-    this.stage = 'waiting'; // Then 'open', then 'fist'.
+    this.sawFist = false;
   }
 
   update(hand) {
-    const status = hand?.status;
-    if (status === 'open') {
-      const done = this.stage === 'fist';
-      this.stage = 'open';
+    if (hand?.status === 'open') {
+      const done = this.sawFist;
+      this.sawFist = false;
       return done;
     }
-    if (status === 'closed' && hand.reason === 'closed') {
-      if (this.stage === 'open') this.stage = 'fist';
-      return false;
-    }
-    // Missing, cut off, too small or touching the other hand: start again.
-    this.stage = 'waiting';
+    this.sawFist = hand?.status === 'closed' && hand.reason === 'closed';
     return false;
   }
 }

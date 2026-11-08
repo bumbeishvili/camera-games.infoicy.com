@@ -4,9 +4,6 @@ body:not([data-screen='playing']) .turbo,
 body:not([data-screen='playing']) .toast,
 body:not([data-screen='playing']) .five-film { display: none; }
 
-/* The film from the hand check, of a hand opening wide, while the game explains turbo. */
-body[data-screen='playing'][data-turbo-hint] .hand-demo { display: block; }
-
 /* ---------- who's in front: faces in order, which swap places when someone overtakes ---------- */
 .race-order {
   --row: clamp(38px, 6.4vh, 52px);
@@ -166,12 +163,6 @@ body[data-screen='playing'][data-turbo-hint] .hand-demo { display: block; }
 @keyframes turbo-flame {
   0%, 100% { transform: scale(1.12) rotate(-3deg); }
   50% { transform: scale(1.28) rotate(3deg); }
-}
-
-.turbo.is-hint { animation: turbo-hint 1.2s ease-in-out infinite; }
-
-@keyframes turbo-hint {
-  50% { transform: translateY(-6px) scale(1.04); }
 }
 
 /* ---------- a little film by the meter: the other hand makes a fist and opens, and the car flies ---------- */
@@ -362,7 +353,6 @@ body[data-five-film='left'] .five-film svg { transform: scaleX(-1); }
   .order-row { transition: none; }
   .turbo-finger { animation: none; transform: rotate(var(--spread)); }
   .fly-film-finger, .fly-film-car { animation-duration: 4.5s; }
-  .turbo.is-hint,
   .turbo[data-state='on'] .turbo-flame { animation: none; }
   .toast.is-showing { animation-name: toast-still; }
   .five-film-small,

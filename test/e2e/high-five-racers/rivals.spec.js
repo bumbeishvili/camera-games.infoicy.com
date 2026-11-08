@@ -219,10 +219,10 @@ test('a slap\'s boost carries the child past the cars ahead', async ({ page }) =
   expect(gained).toBeGreaterThan(6);
 });
 
-test('holding turbo all race long still leaves someone to race', async ({ page }) => {
+test('driving with the hand open all race long, turbo and all, still leaves someone to race', async ({ page }) => {
   test.setTimeout(120_000);
   await raceWithOpenHand(page, { steering: 'help', laps: 4 });
-  // Over half a minute of wide-open driving, with nothing being slapped.
+  // Over half a minute of open-handed driving, with turbo coming and going and nothing being slapped.
   const seen = await page.evaluate(async () => {
     const { race } = window.__game;
     let framesWithCarAhead = 0;
@@ -239,7 +239,7 @@ test('holding turbo all race long still leaves someone to race', async ({ page }
       frames += 1;
       if (race.rivals.some((rival) => rival.distance > race.distance && rival.distance - race.distance < 60)) framesWithCarAhead += 1;
     }
-    return { share: framesWithCarAhead / frames, turbo: race.turbo.active };
+    return { share: framesWithCarAhead / frames, turbo: race.turbo.everFull };
   });
   console.log('a car in view ahead for', seen.share.toFixed(2), 'of the time');
   expect(seen.turbo).toBe(true);

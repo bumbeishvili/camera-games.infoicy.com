@@ -10,7 +10,6 @@ import {
   RIVAL_PACE,
   RIVAL_TURBO,
   rivalSpeed,
-  SECOND_HAND,
   sideChanges,
   SLAP,
   TOP_SPEED,
@@ -27,60 +26,69 @@ const missing = { status: 'missing', reason: 'missing' };
 
 const run = (watch, hands) => hands.map((hand) => watch.update(hand));
 
-test('the other hand counts once it has been open, made a fist and opened again', () => {
+test('the other hand counts as it opens after a fist, each time', () => {
   const watch = new FistAndOpen();
-  assert.deepEqual(run(watch, [open, open, fist, fist, open, open]), [false, false, false, false, true, false]);
-  assert.deepEqual(run(watch, [fist, open]), [false, true], 'and again, each time');
+  assert.deepEqual(run(watch, [fist, fist, open, open]), [false, false, true, false]);
+  assert.deepEqual(run(watch, [fist, open]), [false, true], 'and again');
+  assert.deepEqual(run(new FistAndOpen(), [open, open]), [false, false], 'an open hand alone does nothing');
 });
 
-test('a hand that turns up already open, or as a fist, has to do the whole thing first', () => {
-  assert.deepEqual(run(new FistAndOpen(), [missing, open]), [false, false]);
-  assert.deepEqual(run(new FistAndOpen(), [missing, fist, open]), [false, false, false]);
-  assert.deepEqual(run(new FistAndOpen(), [null, fist, open, fist, open]), [false, false, false, false, true]);
-});
-
-test('a hand cut off, touching the other hand or lost is not a fist, and starts it again', () => {
+test('a hand cut off, too far away, touching the other hand or lost is not a fist', () => {
   for (const notAFist of [cutOff, touching, missing, null, undefined]) {
-    assert.deepEqual(run(new FistAndOpen(), [open, notAFist, open]), [false, false, false], String(notAFist?.reason));
-    assert.deepEqual(run(new FistAndOpen(), [open, fist, notAFist, open]), [false, false, false, false], `fist then ${notAFist?.reason}`);
+    assert.deepEqual(run(new FistAndOpen(), [notAFist, open]), [false, false], String(notAFist?.reason));
+    assert.deepEqual(run(new FistAndOpen(), [fist, notAFist, open]), [false, false, false], `fist then ${notAFist?.reason}`);
   }
 });
 
-test('turbo from the other hand only starts once turbo has run out, and then lasts a set time', () => {
-  const meter = new TurboMeter();
-  for (let t = 0; t < 2; t += 0.05) meter.update(1, 0.05);
-  assert.equal(meter.active, true, 'turbo from the hand held wide');
-  assert.equal(meter.burst(), false, 'not while turbo is still going');
+const drive = (meter, open, seconds, step = 0.05) => {
+  for (let t = 0; t < seconds - 1e-9; t += step) meter.update(open, step);
+};
 
-  for (let t = 0; t < 3; t += 0.05) meter.update(0.5, 0.05);
+test('keeping the hand open fills the meter, and then turbo goes by itself for a set time', () => {
+  const meter = new TurboMeter();
+  drive(meter, 1, TURBO.fillSeconds / 2);
+  assert.ok(Math.abs(meter.level - 0.5) < 0.02, `half full after half the time: ${meter.level}`);
   assert.equal(meter.active, false);
-  assert.equal(meter.burst(), true, 'once it has run out');
-  assert.equal(meter.active, true);
+  drive(meter, 1, TURBO.fillSeconds / 2 + 0.06);
+  assert.equal(meter.active, true, 'full, so turbo');
   assert.ok(meter.bonus >= TURBO.bonus);
 
-  // The meter runs down like a timer while the hand in play is open, however open it is.
   let seconds = 0;
-  let last = meter.level;
   while (meter.active && seconds < 10) {
-    meter.update(0.5, 0.05);
+    meter.update(1, 0.05);
     seconds += 0.05;
-    assert.ok(meter.level <= last + 1e-9);
-    last = meter.level;
   }
-  assert.ok(Math.abs(seconds - SECOND_HAND.turboSeconds) < 0.11, `lasted ${seconds.toFixed(2)} s`);
-  assert.equal(meter.level, 0);
-  assert.equal(meter.burst(), true, 'and can go again');
+  assert.ok(Math.abs(seconds - TURBO.seconds) < 0.11, `lasted ${seconds.toFixed(2)} s`);
+  assert.equal(meter.level, 0, 'then it fills again from empty');
+  drive(meter, 1, TURBO.fillSeconds + 0.06);
+  assert.equal(meter.active, true, 'and goes again');
 });
 
-test('closing the hand in play ends the other hand\'s turbo at once', () => {
+test('a closed hand pauses the meter and turbo, and takes nothing away', () => {
+  const meter = new TurboMeter();
+  drive(meter, 1, TURBO.fillSeconds / 2);
+  const filled = meter.level;
+  drive(meter, 0, 5);
+  assert.equal(meter.level, filled, 'resting keeps what was filled');
+  drive(meter, 1, TURBO.fillSeconds / 2 + 0.06);
+  assert.equal(meter.active, true);
+
+  drive(meter, 1, 1);
+  const left = meter.left;
+  drive(meter, 0, 2);
+  assert.equal(meter.active, false, 'no turbo with the hand closed');
+  assert.equal(meter.bonus, 0);
+  assert.equal(meter.left, left);
+  meter.update(1, 0.05);
+  assert.equal(meter.active, true, 'it carries on when the hand opens');
+});
+
+test('flying gives turbo straight away, for its whole time', () => {
   const meter = new TurboMeter();
   meter.burst();
-  meter.update(0.5, 0.05);
-  meter.update(0, 0.05);
-  assert.equal(meter.active, false);
-  assert.equal(meter.bonus, 0);
-  meter.update(0.5, 0.05);
-  assert.equal(meter.active, false, 'it doesn\'t come back when the hand opens');
+  assert.equal(meter.active, true);
+  assert.equal(meter.level, 1);
+  assert.equal(meter.left, TURBO.seconds);
 });
 
 /* ---------- levels ---------- */

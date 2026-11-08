@@ -1,6 +1,6 @@
-// High Five Racers: the car only drives while the hand in play is open. Steering over to a big hand
-// at the roadside slaps it for a boost, and opening the hand as wide as it goes is turbo. Once turbo has
-// run out, a fist and then an open hand with the other hand sets it off again, and the car flies.
+// High Five Racers: the car only drives while the hand in play is open. Steering over to a big hand at the
+// roadside slaps it for a boost. Keeping the hand open fills the turbo meter, and turbo goes by itself when
+// it's full. A fist and then an open hand with the other hand makes the car fly.
 import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
 import { GameSession, SPOKEN as SPOKEN_EVERYWHERE } from '../../core/session.js';
@@ -15,11 +15,6 @@ const REST_AFTER_SECONDS = 15;
 const FIVE_HINT_WITHIN = 65; // Metres before a big hand that the hint comes up.
 const HINT_UNTIL_FIVES = 2; // Once a child has got the idea, nothing more is said about it.
 const FILM_AGAIN_AFTER_MISSES = 3;
-// Turbo isn't obvious, so the meter always shows how to fill it, and a hint comes back whenever the hand has
-// been open this long without turbo: the first time sooner. It's only said aloud once a race.
-const TURBO_HINT_AFTER_SECONDS = 14;
-const TURBO_HINT_AGAIN_AFTER_SECONDS = 20;
-const TURBO_HINT_SECONDS = 5;
 // Right after turbo runs out, a little film by the meter shows the other hand making a fist and opening, and
 // the car taking off: the first few times each race, and after that only while it hasn't flown yet.
 const FLY_FILM_SECONDS = 4;
@@ -31,7 +26,6 @@ const STEER_HINT = 'Move your hand side to side to catch stars';
 // Only this game says these. Each has a rendered voice file: see core/audio/voice/lines.json.
 const SPOKEN = {
   bigHand: 'High five the big hand!',
-  turbo: 'Open wide for turbo!',
 };
 const PRAISE = ['Great job!', 'Nice one!', 'You passed a car!', 'Way to go!'];
 const PRAISE_EVERY = 5; // Cars passed between one bit of praise and the next.
@@ -44,8 +38,7 @@ const WORDS = {
     passed: (spec) => `You passed ${spec.name}!`,
     turbo: 'Turbo!',
     fly: 'Fly!',
-    openWide: 'Open wide!',
-    keepOpen: 'Keep it open!',
+    keepOpen: 'Keep your hand open!',
     otherHand: 'Other hand: fist, then open!',
   },
   ka: {
@@ -54,8 +47,7 @@ const WORDS = {
     passed: (spec) => `გაასწარი: ${spec.nameKa}!`,
     turbo: 'ტურბო!',
     fly: 'გაფრინდი!',
-    openWide: 'ფართოდ გაშალე!',
-    keepOpen: 'გაშლილი გეჭიროს!',
+    keepOpen: 'ხელი გაშლილი გეჭიროს!',
     otherHand: 'მეორე ხელი: მუშტი, მერე გაშალე!',
   },
 };
@@ -81,7 +73,6 @@ class RaceGame {
     this.passed = 0;
     this.missesInARow = 0;
     this.fiveHintSpoken = false;
-    this.turboHintFrom = null;
     this.lastTurboToast = -Infinity;
     this.resetHints();
     const { sound } = session;
@@ -95,7 +86,10 @@ class RaceGame {
           if (this.passed % PRAISE_EVERY === 1) sound.say(PRAISE[this.praiseIndex++ % PRAISE.length], { ifQuiet: true });
         }
       },
-      onOvertake: (spec) => this.toast(this.words.passed(spec), spec),
+      // In the air, "Fly!" stays up rather than being replaced by everyone flown past.
+      onOvertake: (spec) => {
+        if (!this.race.soaring) this.toast(this.words.passed(spec), spec);
+      },
       onLap: (lap) => {
         sound.lap();
         sound.say(lap === this.race.laps ? 'Last lap!' : `Lap ${lap}!`);
@@ -162,9 +156,6 @@ class RaceGame {
 
   /** At the start of each race: nothing hinted, said or flown yet. */
   resetHints() {
-    this.turboHintFrom = null;
-    this.openWithoutTurbo = 0;
-    this.turboHintsShown = 0;
     this.flyFilmLeft = 0;
     this.flyFilms = 0;
     this.flights = 0;
@@ -237,11 +228,11 @@ class RaceGame {
     byId('race-progress-fill').style.width = `${Math.round(progress * 100)}%`;
 
     this.turboFill.style.transform = `scaleX(${turbo.toFixed(3)})`;
-    // The meter says what to do: open wide, keep it open while it fills, and then it's turbo.
+    // The meter says the one thing to do: keep the hand open, and it fills up and turns into turbo.
     const rising = turbo > this.lastTurboLevel + 1e-4;
     this.lastTurboLevel = turbo;
     const state = turboOn ? 'on' : turbo > 0.02 && rising ? 'filling' : 'idle';
-    const word = { on: this.words.turbo, filling: this.words.keepOpen, idle: this.words.openWide }[state];
+    const word = turboOn ? this.words.turbo : this.words.keepOpen;
     if (this.turboBox.dataset.state !== state || this.turboWord.textContent !== word) {
       this.turboBox.dataset.state = state;
       this.turboWord.textContent = word;
@@ -306,16 +297,13 @@ class RaceGame {
 
   update(dt, snapshot) {
     const { session, race } = this;
-    const hand = snapshot[snapshot.side];
     race.update(dt, {
       drive: snapshot.drive,
-      // How open this hand is, against the best it managed in the hand check. That's what turbo goes by.
-      width: snapshot.handOpen ? hand.openness / Math.max(hand.best, hand.target + 0.01) : 0,
       steer: snapshot.steer,
       steering: session.settings.steering,
       left: snapshot.left,
       right: snapshot.right,
-      // The other hand: a fist and then open, once turbo has run out, sets it off again and the car flies.
+      // The other hand: a fist and then open makes the car fly.
       other: snapshot.other,
     });
     const { speed, turboOn, boosting } = race.info;
@@ -351,27 +339,10 @@ class RaceGame {
     const needsFiveHelp = race.fives < HINT_UNTIL_FIVES || this.missesInARow >= FILM_AGAIN_AFTER_MISSES;
     const gateHintDue = needsFiveHelp && steerable && ahead < FIVE_HINT_WITHIN;
 
-    // Turbo isn't obvious, so it's shown again whenever the hand has been open a while without it: the meter
-    // bounces and the little film shows a hand opening wide. It waits for a gap, and then has its say, so
-    // the two hints can't keep taking turns.
-    if (race.turbo.active) this.openWithoutTurbo = 0;
-    else if (snapshot.handOpen) this.openWithoutTurbo += dt;
-    const waitFor = this.turboHintsShown === 0 ? TURBO_HINT_AFTER_SECONDS : TURBO_HINT_AGAIN_AFTER_SECONDS;
-    if (this.turboHintFrom === null && !gateHintDue && this.openWithoutTurbo > waitFor) this.turboHintFrom = session.playSeconds;
-    const turboHint = this.turboHintFrom !== null && !race.turbo.active && session.playSeconds - this.turboHintFrom < TURBO_HINT_SECONDS;
-    if (this.turboHintFrom !== null && !turboHint) {
-      // Over, whether its time ran out or turbo started. The next one waits for another stretch.
-      this.turboHintFrom = null;
-      this.openWithoutTurbo = 0;
-      this.turboHintsShown += 1;
-    }
-    this.turboBox.classList.toggle('is-hint', turboHint);
-
-    const gateHint = gateHintDue && !turboHint;
+    const gateHint = gateHintDue;
     const steerHint = session.playSeconds < STEER_HINT_SECONDS && steerable && !gateHint;
     // While a hint is up, a little film shows what it means.
     document.body.toggleAttribute('data-steer-hint', steerHint);
-    document.body.toggleAttribute('data-turbo-hint', turboHint);
     this.showFiveFilm(gateHint && snapshot.handOpen ? side : null);
 
     // Once a big hand's hint has been up and gone, or gone over to the other side, it has had its say.
@@ -389,7 +360,6 @@ class RaceGame {
     }
     // Each hint is said aloud the first time it shows, and only shown after that. It has to stay unsaid-able
     // for the whole of its first showing, as the prompt box waits a moment before it shows and speaks.
-    if (turboHint) return { key: 'turbo-hint', text: SPOKEN.turbo, side: null, silent: this.turboHintsShown > 0 };
     if (gateHint) return { key: fiveKey, text: SPOKEN.bigHand, side, silent: this.fiveHintSpoken };
     if (steerHint) return { key: 'steer-hint', text: STEER_HINT, side: null };
     return null;
@@ -400,7 +370,6 @@ class RaceGame {
     this.showFlyFilm(0);
     this.session.sound.stopEngine();
     this.showFiveFilm(null);
-    document.body.removeAttribute('data-turbo-hint');
     this.race.setMode('finished');
   }
 

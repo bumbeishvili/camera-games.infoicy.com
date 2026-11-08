@@ -23,57 +23,43 @@ function run(meter, width, seconds) {
   for (let t = 0; t < seconds; t += STEP) meter.update(width, STEP);
 }
 
-test('turbo fills only for a hand at its widest', () => {
+test('turbo fills by itself while the hand is open, however open, and then goes by itself', () => {
   const meter = new TurboMeter();
-  run(meter, 0.8, 3);
-  expect(meter.level).toBe(0);
+  run(meter, 0.4, TURBO.fillSeconds / 2);
+  expect(meter.level).toBeGreaterThan(0.4);
   expect(meter.active).toBe(false);
-  run(meter, TURBO.startsAt - 0.01, 3);
-  expect(meter.active).toBe(false);
-
-  run(meter, 1, TURBO.fillSeconds / 2);
-  expect(meter.level).toBeGreaterThan(0.3);
-  expect(meter.active).toBe(false);
-  run(meter, 1, TURBO.fillSeconds);
+  run(meter, 0.4, TURBO.fillSeconds / 2 + 0.05);
   expect(meter.active).toBe(true);
   expect(meter.bonus).toBeGreaterThan(0);
-});
-
-test('turbo carries on through a small wobble, and stops when the hand is less wide', () => {
-  const meter = new TurboMeter();
-  run(meter, 1, 2);
-  expect(meter.active).toBe(true);
-  run(meter, TURBO.keepsAt + 0.01, 1);
-  expect(meter.active).toBe(true);
-  meter.update(TURBO.keepsAt - 0.01, STEP);
+  run(meter, 1, TURBO.seconds + 0.05);
   expect(meter.active).toBe(false);
-  expect(meter.bonus).toBe(0);
+  expect(meter.level).toBeLessThan(0.05);
 });
 
 for (const [name, reading] of [['closed', 0], ['unreadable', Number.NaN], ['nonsense', -1], ['missing', undefined]]) {
-  test(`a ${name} hand ends turbo at once and never fills the meter`, () => {
+  test(`a ${name} hand stops turbo at once, and never fills the meter`, () => {
     const meter = new TurboMeter();
-    run(meter, 1, 2);
+    run(meter, 1, TURBO.fillSeconds + 0.5);
     expect(meter.active).toBe(true);
     meter.update(reading, STEP);
     expect(meter.active).toBe(false);
     expect(meter.bonus).toBe(0);
     const level = meter.level;
-    run(meter, reading, 0.2);
-    expect(meter.level).toBeLessThan(level);
     run(meter, reading, 3);
-    expect(meter.level).toBe(0);
+    expect(meter.active).toBe(false);
+    expect(meter.level).toBe(level);
     expect(wantedSpeed(reading, 0.3, 2)).toBe(0);
   });
 }
 
-test('holding it wide grows the flames, up to a limit', () => {
+test('the flames grow as turbo goes on, up to a limit', () => {
   const meter = new TurboMeter();
-  run(meter, 1, 1);
+  meter.burst();
+  run(meter, 1, 0.3);
   const early = meter.grown;
-  run(meter, 1, 1);
+  run(meter, 1, 0.5);
   expect(meter.grown).toBeGreaterThan(early);
-  run(meter, 1, 10);
+  run(meter, 1, 1);
   expect(meter.grown).toBe(1);
 });
 

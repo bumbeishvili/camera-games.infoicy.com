@@ -1,6 +1,5 @@
-// How turbo and flying are shown to a child who can't read well, with as little talking as possible. The
-// meter always shows a hand spread wide and says what to do. The turbo hint comes back after a while
-// without turbo, but is only said aloud once a race. When turbo runs out, a little film by the meter shows
+// How turbo and flying are shown to a child who can't read well, with no talking. The meter shows an open
+// hand and says to keep it open, and then it's turbo. When turbo runs out, a little film by the meter shows
 // the other hand making a fist and opening, and the car taking off. Nothing in any of it flashes.
 import { inflateSync } from 'node:zlib';
 import { car, expect, openGame, reachRace, shot, show, test, waitForHand, waitUntilMoving } from '../helpers.js';
@@ -11,7 +10,7 @@ const meter = (page) => page.evaluate(() => {
   return { state: box.dataset.state, word: document.getElementById('turbo-word').textContent, hand: shown('.turbo-hand'), flame: shown('.turbo-flame') };
 });
 
-/** Driving with the hand in play loosely open, which never fills the meter by itself. */
+/** Driving with the hand in play loosely open, which counts as open. */
 async function raceLoosely(page, settings = {}) {
   const side = settings.hands ?? 'right';
   await openGame(page, { strictness: { [side]: 0.5 }, ...settings });
@@ -20,78 +19,24 @@ async function raceLoosely(page, settings = {}) {
   await show(page, ...(side === 'right' ? [null, 'relaxed'] : ['relaxed', null]));
   await waitForHand(page, 'open', side);
   await expect.poll(async () => (await car(page)).speed, { timeout: 15_000 }).toBeGreaterThan(12);
-  await expect.poll(() => page.evaluate(() => window.__game.race.turbo.level), { timeout: 10_000 }).toBe(0);
 }
 
-test('the meter always shows how to fill it: open wide, keep it open, and then it\'s turbo', async ({ page }) => {
+test('the meter says to keep the hand open, and then it\'s turbo', async ({ page }) => {
   await raceLoosely(page);
-  await expect.poll(() => meter(page)).toEqual({ state: 'idle', word: 'Open wide!', hand: true, flame: false });
-  await page.waitForTimeout(300);
-  await shot(page, 'high-five-racers-turbo-how-to');
-
-  await show(page, null, 'open');
-  await expect.poll(() => meter(page), { timeout: 8000, intervals: [20] }).toMatchObject({ state: 'filling', word: 'Keep it open!', hand: true });
+  await expect.poll(() => meter(page), { timeout: 8000, intervals: [20] }).toMatchObject({ state: 'filling', word: 'Keep your hand open!', hand: true });
   await shot(page, 'high-five-racers-turbo-filling');
   await expect.poll(() => meter(page), { timeout: 8000, intervals: [50] }).toEqual({ state: 'on', word: 'Turbo!', hand: false, flame: true });
 
-  // As it runs down again, it's back to saying how.
-  await show(page, null, 'relaxed');
-  await expect.poll(async () => (await meter(page)).word, { timeout: 8000 }).toBe('Open wide!');
+  // With the hand closed it still says what to do.
+  await show(page, null, 'fist');
+  await waitForHand(page, 'closed');
+  await expect.poll(() => meter(page), { timeout: 8000 }).toEqual({ state: 'idle', word: 'Keep your hand open!', hand: true, flame: false });
+  await shot(page, 'high-five-racers-turbo-how-to');
 });
 
 test('the meter\'s words are in Georgian too', async ({ page }) => {
   await raceLoosely(page, { language: 'ka' });
-  await expect.poll(async () => (await meter(page)).word).toBe('ფართოდ გაშალე!');
-  await show(page, null, 'open');
-  await expect.poll(async () => (await meter(page)).word, { timeout: 8000, intervals: [20] }).toBe('გაშლილი გეჭიროს!');
-});
-
-test('the turbo hint comes back after a stretch without turbo, and is only said aloud once', async ({ page }) => {
-  test.setTimeout(120_000);
-  await openGame(page, { strictness: { right: 0.5 }, voice: true, sound: true });
-  await page.evaluate(() => {
-    const { sound } = window.__game;
-    const say = sound.say.bind(sound);
-    window.__spoken = [];
-    sound.say = (...args) => {
-      const playing = say(...args);
-      if (playing) window.__spoken.push(args[0]);
-      return playing;
-    };
-  });
-  await show(page, null, 'open');
-  await reachRace(page);
-  await show(page, null, 'relaxed');
-  await waitForHand(page, 'open');
-  // Well past the first big hands, which have a hint of their own.
-  await page.evaluate(() => {
-    window.__game.race.fives = 5;
-  });
-  const hinting = () => page.evaluate(() => document.getElementById('turbo').classList.contains('is-hint'));
-  await expect.poll(hinting, { timeout: 30_000 }).toBe(true);
-  await expect(page.locator('#prompt')).toHaveText(/Open wide for turbo!/);
-  await expect(page.locator('.hand-demo')).toBeVisible();
-  await expect.poll(hinting, { timeout: 10_000 }).toBe(false);
-
-  // Another long stretch with the hand open and no turbo. The test skips most of the wait.
-  await page.evaluate(() => {
-    window.__game.game.openWithoutTurbo = 18;
-  });
-  await expect.poll(hinting, { timeout: 15_000 }).toBe(true);
-  await expect(page.locator('#prompt')).toHaveText(/Open wide for turbo!/);
-  await expect(page.locator('.hand-demo')).toBeVisible();
-  await shot(page, 'high-five-racers-turbo-hint-again');
-  await expect.poll(hinting, { timeout: 10_000 }).toBe(false);
-  const said = await page.evaluate(() => window.__spoken.filter((line) => line === 'Open wide for turbo!').length);
-  expect(said).toBe(1);
-
-  // Turbo itself ends a hint at once.
-  await page.evaluate(() => {
-    window.__game.game.openWithoutTurbo = 30;
-  });
-  await expect.poll(hinting, { timeout: 15_000 }).toBe(true);
-  await show(page, null, 'open');
-  await expect.poll(hinting, { timeout: 8000 }).toBe(false);
+  await expect.poll(async () => (await meter(page)).word, { timeout: 8000, intervals: [20] }).toBe('ხელი გაშლილი გეჭიროს!');
 });
 
 test('when turbo runs out, a film shows the other hand making a fist and opening, and the car flying', async ({ page }) => {
@@ -103,10 +48,8 @@ test('when turbo runs out, a film shows the other hand making a fist and opening
   }));
   expect((await film()).shown).toBe(false);
 
-  // Turbo from the hand held wide, and then a looser hand: it runs out.
-  await show(page, null, 'open');
-  await expect.poll(() => page.evaluate(() => window.__game.race.turbo.active), { timeout: 8000 }).toBe(true);
-  await show(page, null, 'relaxed');
+  // Turbo comes by itself, and a few seconds later it runs out.
+  await expect.poll(() => page.evaluate(() => window.__game.race.turbo.active), { timeout: 10_000 }).toBe(true);
   // The right hand is in play, so the other hand is on the left of the picture, as in a mirror.
   await expect.poll(film, { timeout: 8000, intervals: [50] }).toEqual({ side: 'left', shown: true, words: 'Other hand: fist, then open!' });
   await page.waitForTimeout(1300);
@@ -221,19 +164,17 @@ test('the hints and the film move gently: nothing in them changes brightness or 
   await page.evaluate(() => {
     const { game } = window.__game;
     game.race.fives = 5;
-    game.openWithoutTurbo = 60;
     game.turboRanOut();
     game.flyFilmLeft = 60;
   });
   await expect(page.locator('#fly-film')).toBeVisible();
-  await expect(page.locator('#turbo')).toHaveClass(/is-hint/);
 
   // Everything the hints animate only moves or turns: no colour, light or fading in and out.
   const animated = await page.evaluate(() => {
     const properties = new Set();
     for (const animation of document.getAnimations()) {
       const target = animation.effect?.target;
-      if (!target?.closest?.('#turbo, #fly-film, .hand-demo')) continue;
+      if (!target?.closest?.('#turbo, #fly-film')) continue;
       for (const frame of animation.effect.getKeyframes()) {
         for (const key of Object.keys(frame)) if (!['offset', 'computedOffset', 'easing', 'composite'].includes(key)) properties.add(key);
       }
@@ -294,5 +235,5 @@ for (const { name, width, height } of [{ name: 'phone-landscape', width: 844, he
 test('it all still works while the car steers itself', async ({ page }) => {
   await raceLoosely(page, { steering: 'auto' });
   await waitUntilMoving(page);
-  expect((await meter(page)).word).toBe('Open wide!');
+  expect(['Keep your hand open!', 'Turbo!']).toContain((await meter(page)).word);
 });

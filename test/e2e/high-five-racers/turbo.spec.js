@@ -1,4 +1,5 @@
-// Opening the hand as wide as it goes is turbo: a meter, flames and a wider view. Only that does it.
+// Turbo comes by itself: keeping the hand open fills the meter, and when it's full there are flames, more
+// speed and a wider view for a few seconds. Then it fills again. A closed hand pauses it.
 import {
   car,
   expect,
@@ -23,50 +24,34 @@ const turbo = (page) => page.evaluate(() => {
   };
 });
 
-/** The hand check sees a wide open hand, so that is this hand's best. A lower line lets a looser one drive. */
-async function raceWithRoomToOpen(page) {
+/** A relaxed hand counts as open with a lower line. Turbo doesn't care how wide it is, only that it's open. */
+async function raceRelaxed(page) {
   await openGame(page, { strictness: { right: 0.5 } });
   await show(page, null, 'open');
   await reachRace(page);
   await show(page, null, 'relaxed');
   await waitForHand(page, 'open');
-  await expect.poll(async () => (await turbo(page)).level, { timeout: 8000 }).toBe(0);
 }
 
-test('a loosely open hand drives but isn\'t turbo, and opening it wide is', async ({ page }) => {
-  await raceWithRoomToOpen(page);
-
-  // Open enough to drive, for a while, without ever filling the meter.
-  for (let i = 0; i < 12; i += 1) {
-    const reading = await turbo(page);
-    expect(reading.on).toBe(false);
-    expect(reading.flames).toBe(false);
-    expect(reading.level).toBe(0);
-    await page.waitForTimeout(200);
-  }
-  const { speed } = await car(page);
-  expect(speed).toBeGreaterThan(12);
-  expect(speed).toBeLessThan(26);
-  const loose = await turbo(page);
-  await shot(page, 'r-turbo-loose');
-
-  await show(page, null, 'open');
+test('keeping the hand open fills the meter, turbo goes by itself, and then it fills again', async ({ page }) => {
+  await raceRelaxed(page);
+  const before = await turbo(page);
   await expect.poll(async () => (await turbo(page)).level, { timeout: 8000, intervals: [50] }).toBeGreaterThan(0.2);
   await expect.poll(async () => (await turbo(page)).on, { timeout: 8000, intervals: [50] }).toBe(true);
   await expect.poll(async () => (await car(page)).speed, { timeout: 8000 }).toBeGreaterThan(27);
-  const wide = await turbo(page);
-  expect(wide.flames).toBe(true);
-  expect(wide.state).toBe('on');
-  await expect.poll(async () => (await turbo(page)).fov, { timeout: 8000 }).toBeGreaterThan(loose.fov + 4);
+  const on = await turbo(page);
+  expect(on.flames).toBe(true);
+  expect(on.state).toBe('on');
+  await expect.poll(async () => (await turbo(page)).fov, { timeout: 8000 }).toBeGreaterThan(before.fov + 4);
   await shot(page, 'r-turbo-on');
 
-  // Back to a looser hand: it's over, without any fuss.
-  await show(page, null, 'relaxed');
+  // A few seconds later it's over, and the meter starts filling again.
   await expect.poll(async () => (await turbo(page)).on, { timeout: 8000 }).toBe(false);
   await expect.poll(async () => (await turbo(page)).flames, { timeout: 3000 }).toBe(false);
+  await expect.poll(async () => (await turbo(page)).level, { timeout: 8000 }).toBeGreaterThan(0.1);
 });
 
-test('a hand that can\'t open far gets turbo too, at its own widest', async ({ page }) => {
+test('a hand that can\'t open far gets turbo too', async ({ page }) => {
   await openGame(page);
   await show(page, null, 'relaxed');
   await reachRace(page);
@@ -76,7 +61,7 @@ test('a hand that can\'t open far gets turbo too, at its own widest', async ({ p
 });
 
 for (const [name, pose] of [['a fist', 'fist'], ['pointing', 'pointing'], ['no hand', null]]) {
-  test(`${name} ends turbo at once, and never fills the meter`, async ({ page }) => {
+  test(`${name} stops turbo at once, and pauses the meter`, async ({ page }) => {
     await openGame(page);
     await show(page, null, 'open');
     await reachRace(page);
@@ -96,8 +81,10 @@ for (const [name, pose] of [['a fist', 'fist'], ['pointing', 'pointing'], ['no h
     const lowest = await turbo(page);
     expect(lowest.on).toBe(false);
     expect(lowest.flames).toBe(false);
-    expect(lowest.level).toBe(0);
     expect(lowest.state).toBe('idle');
+    // Resting takes nothing away, and fills nothing either.
+    await page.waitForTimeout(1500);
+    expect((await turbo(page)).level).toBe(lowest.level);
   });
 }
 
@@ -121,26 +108,4 @@ test('closing the hand reads clearly: brake lights, the nose going down, slowing
   await show(page, null, 'open');
   await waitForHand(page, 'open');
   await expect.poll(lamps, { timeout: 3000 }).toBeLessThan(0.2);
-});
-
-test('someone who hasn\'t found turbo is told about it once, and then left alone', async ({ page }) => {
-  test.setTimeout(120_000);
-  await openGame(page, { strictness: { right: 0.5 }, voice: true, sound: true });
-  await show(page, null, 'open');
-  await reachRace(page);
-  await show(page, null, 'relaxed');
-  await waitForHand(page, 'open');
-  // Well clear of the big hands, which have their own hint, so only this one can show.
-  await page.evaluate(() => {
-    const { race } = window.__game;
-    race.fives = 5;
-    race.turbo.everFull = false;
-  });
-  await expect(page.locator('#prompt')).toHaveText(/Open wide for turbo!/, { timeout: 25_000 });
-  await expect(page.locator('#turbo')).toHaveClass(/is-hint/);
-  await expect(page.locator('.hand-demo')).toBeVisible();
-  await shot(page, 'r-turbo-hint');
-  await expect(page.locator('#prompt')).not.toHaveText(/turbo/, { timeout: 10_000 });
-  await expect(page.locator('#turbo')).not.toHaveClass(/is-hint/);
-  await expect(page.locator('.hand-demo')).toBeHidden();
 });

@@ -136,9 +136,12 @@ test('the others use turbo now and then, with flames, and get passed again', asy
   await show(page, null, 'relaxed');
   await waitForHand(page, 'open');
   await waitUntilMoving(page);
-  await expect.poll(() => page.evaluate(() => window.__game.race.turbo.active), { timeout: 10_000 }).toBe(false);
   const seen = await page.evaluate(async () => {
     const { race } = window.__game;
+    // The child's own turbo comes by itself, and the others hold back during it, so it's kept off here.
+    const ownTurbo = race.turbo.update;
+    race.turbo.reset();
+    race.turbo.update = () => {};
     // One just behind, ready to go.
     race.rivals.forEach((rival, index) => {
       rival.distance = race.distance + 120 + index * 30;
@@ -163,6 +166,7 @@ test('the others use turbo now and then, with flames, and get passed again', asy
       passedUs = passedUs || rival.distance > race.distance + 3;
       if (passedUs && flames && rival.turboLeft === 0) break;
     }
+    race.turbo.update = ownTurbo;
     return { turbos, flames, passedUs, fastest: rival.speed };
   });
   expect(seen.turbos).toBe(1);
