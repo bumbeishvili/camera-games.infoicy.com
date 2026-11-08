@@ -23,6 +23,12 @@ export const PLACES = [
 
 // Which places get one more spider as the levels go up, in this order: the long ones in the middle.
 const MORE_AT = ['honey', 'pond'];
+// Where a ladybird comes to play instead of one of the spiders, from level 3: the second and fourth places.
+const LADYBIRD_AT = ['carrots', 'pond'];
+// Where the butterfly comes to help, from level 5, and where a treasure chest sits, from level 7. They
+// take turns, so no place has both.
+const BUTTERFLY_AT = ['gate', 'honey', 'house'];
+const CHEST_AT = ['carrots', 'pond'];
 
 /**
  * What each level brings, from 1 to 10. Nothing here has a time limit, and nothing can be lost: a
@@ -50,8 +56,68 @@ export function gardenAt(level) {
     shy: stepsAt(level, { 1: 0, 5: 0.34, 8: 0.5 }),
     // From level 7, some spiders come in twos, holding hands, to bring home one after the other.
     pairs: stepsAt(level, { 1: 0, 7: 1, 9: 2 }),
+    // From level 2, a spider caught leaves a berry on the leaf where it was, to pick up on the way back.
+    berries: level >= 2,
+    // From level 3, a ladybird plays at some places instead of a spider. She goes home to her flower.
+    ladybird: level >= 3,
+    // From level 4, some spiders are asleep. An open hand held by one for a moment wakes it, and it
+    // wakes by itself after a while anyway. This is the share of them that start asleep.
+    sleepy: stepsAt(level, { 1: 0, 4: 0.2, 8: 0.25 }),
+    // From level 5, a butterfly comes to some places. Touching it makes the spiders slow right down to
+    // watch it, for a few seconds.
+    butterfly: level >= 5,
+    // From level 6, a little basket sits in the grass at each place. Picked up, it carries two at once.
+    basket: level >= 6,
+    // From level 7, a treasure chest at some places, which an open hand held on it opens, for berries.
+    chest: level >= 7,
+    // From level 8, two webs, pink and blue, and each spider goes home to the web of its own colour.
+    webs: stepsAt(level, { 1: 1, 8: 2 }),
+    // From level 9, one spider at each place sails about on a leaf boat.
+    boats: level >= 9,
+    // At level 10, one spider at each place is golden, and brings a shower of berries home with it.
+    golden: level >= 10,
   };
 }
+
+// What each level brings that's new, for the title card, the countdown and the finish card. key says
+// which part of gardenAt turns it on, which the unit tests check.
+const NEWS = {
+  2: [{ key: 'berries', mark: '🍓', name: 'Berries', nameKa: 'კენკრა' }],
+  3: [{ key: 'ladybird', mark: '🐞', name: 'Ladybird', nameKa: 'ჭიამაია' }, { key: 'twist', mark: '➰', name: 'Loopier paths', nameKa: 'მრუდე ბილიკები' }],
+  4: [{ key: 'sleepy', mark: '💤', name: 'Sleepy spiders', nameKa: 'მძინარა ობობები' }, { key: 'webSway', mark: '🍃', name: 'Swaying web', nameKa: 'მოქანავე ქსელი' }],
+  5: [{ key: 'butterfly', mark: '🦋', name: 'Butterfly', nameKa: 'პეპელა' }, { key: 'shy', mark: '🙈', name: 'Shy spiders', nameKa: 'მორცხვი ობობები' }],
+  6: [{ key: 'basket', mark: '🧺', name: 'Basket for two', nameKa: 'კალათა ორისთვის' }],
+  7: [{ key: 'chest', mark: '🧰', name: 'Treasure chest', nameKa: 'განძის სკივრი' }, { key: 'pairs', mark: '🤝', name: 'Holding hands', nameKa: 'ხელჩაკიდებულები' }],
+  8: [{ key: 'webs', mark: '🎀', name: 'Two webs', nameKa: 'ორი ქსელი' }],
+  9: [{ key: 'boats', mark: '⛵', name: 'Leaf boats', nameKa: 'ფოთლის ნავები' }],
+  10: [{ key: 'golden', mark: '✨', name: 'Golden spider', nameKa: 'ოქროს ობობა' }],
+};
+
+/** What's new at a level, as [{ key, mark, name, nameKa }]. Nothing at level 1. */
+export const spiderNewAt = (level) => NEWS[level] ?? [];
+
+/** Whether the part of a level that a piece of news names is on. */
+export function newsIsOn(key, level) {
+  const at = gardenAt(level);
+  if (key === 'twist') return at.twist > 1;
+  if (key === 'webs') return at.webs > 1;
+  return Boolean(at[key]);
+}
+
+// Prizes and helpers.
+export const BERRY = {
+  pickPalms: 1.4, // How near the glove picks a berry up, in palm lengths from the middle of the hand.
+  pullRange: 0.28, // How near the hand it has to be to roll towards it, in screen heights.
+  pull: 0.22, // How fast it rolls, in screen heights a second.
+  away: 0.3, // How far the hand has to have gone from a berry it just left, before it can pick it up.
+};
+export const CHEST_BERRIES = 4;
+export const GOLDEN_BERRIES = 5;
+export const WAKE_SECONDS = 0.6; // An open hand held by a sleepy spider this long wakes it.
+export const SLEEP_MOST = 12; // A sleepy spider wakes by itself after this long, so nobody gets stuck.
+export const CHEST_SECONDS = 0.6; // An open hand held on a chest this long opens it.
+export const BUTTERFLY = { seconds: 8, slow: 0.45, waitMost: 20 };
+export const BASKET_HOLDS = 2;
 
 /** The places at a level, with how many spiders each needs. */
 export function placesAt(level) {
@@ -85,6 +151,11 @@ export function pathFor({ kind, centre, phase = 0, level }) {
   // A dangling spider's thread slides along the branch slowly while it swings up and down.
   const [ax, ay] = kind === 'dangle' ? [wander * 0.45, swing] : [wander, wander * 0.6];
   const k = kind === 'dangle' ? Math.min(twist, 2) : twist;
+  if (kind === 'boat') {
+    // Along the stream at the bottom of the garden and back, bobbing gently.
+    const [bx, by] = [wander * 1.15, 0.008];
+    return { kind, cx: centre.x, cy: 0.17, ax: bx, ay: by, k: 2, rate: speed / Math.hypot(bx, 2 * by), phase, phaseY: phase * 0.7 + 1.1 };
+  }
   // The fastest anywhere on the loop is at most this many times its rate of going round.
   const fastest = Math.hypot(ax, k * ay);
   return { kind, cx: centre.x, cy: centre.y, ax, ay, k, rate: speed / fastest, phase, phaseY: phase * 0.7 + 1.1 };
@@ -113,12 +184,14 @@ const SPOTS = [[-0.1, 0.1], [0.1, -0.1], [0.12, 0.13], [-0.12, -0.12], [0, 0], [
  * Who's coming out to play at a place, in order, for a level. Every other one swings on its thread.
  * Each pair is two spiders on one path, one just behind the other.
  */
-export function spidersFor(count, level, random = Math.random) {
-  const { pairs, shy } = gardenAt(level);
+export function spidersFor(count, level, random = Math.random, { ladybird = false } = {}) {
+  const { pairs, shy, sleepy, webs, boats, golden } = gardenAt(level);
   const spiders = [];
   let pairsLeft = pairs;
   // Starting halfway, so the first shy one comes early on, not only at the end.
   let shyOwed = shy > 0 ? 0.5 : 0;
+  let sleepyOwed = sleepy > 0 ? 0.5 : 0;
+  let web = 0;
   for (let index = 0; spiders.length < count; index += 1) {
     const kind = index % 2 ? 'dangle' : 'scuttle';
     const twins = pairsLeft > 0 && count - spiders.length >= 2 && index % 3 === 1;
@@ -127,11 +200,59 @@ export function spidersFor(count, level, random = Math.random) {
     shyOwed += shy;
     const isShy = !twins && shyOwed >= 1 - 1e-9;
     if (isShy) shyOwed -= 1;
+    // So are sleepy ones, which are never shy as well.
+    sleepyOwed += sleepy;
+    const isSleepy = !twins && !isShy && index > 0 && sleepyOwed >= 1 - 1e-9;
+    if (isSleepy) sleepyOwed -= 1;
     const pair = twins ? index : null;
-    spiders.push({ kind, shy: isShy, pair, colour: spiders.length, phase: random() * Math.PI * 2 });
-    if (twins) spiders.push({ kind, shy: false, pair, colour: spiders.length, phase: null, behind: true });
+    const plan = { kind, shy: isShy, sleepy: isSleepy, pair, colour: spiders.length, phase: random() * Math.PI * 2, web, golden: false };
+    spiders.push(plan);
+    if (twins) spiders.push({ ...plan, shy: false, sleepy: false, golden: false, colour: spiders.length, phase: null, behind: true });
+    // With two webs, they take turns: twins go to the same one.
+    if (webs > 1) web = 1 - web;
   }
-  return spiders.slice(0, count);
+  const out = spiders.slice(0, count);
+  const free = (plan) => plan.pair === null && !plan.golden && plan.kind !== 'boat' && plan.kind !== 'ladybird';
+  const pick = () => {
+    const spot = out.findIndex((plan, index) => index >= 1 && free(plan));
+    return spot >= 0 ? spot : out.findIndex(free);
+  };
+  // A ladybird comes out to play second, or first if the others are twins, instead of a spider on its own.
+  if (ladybird && count >= 2) {
+    const spot = pick();
+    if (spot >= 0) out[spot] = { ...out[spot], kind: 'ladybird', shy: false, sleepy: false, web: null };
+  }
+  // One sails about on a leaf boat, never shy or asleep. If the others are all taken, a pair of twins
+  // sail on it together.
+  if (boats) {
+    const spot = pick();
+    if (spot >= 0) {
+      out[spot] = { ...out[spot], kind: 'boat', shy: false, sleepy: false };
+    } else {
+      const leader = out.findIndex((plan) => plan.pair !== null && !plan.behind);
+      if (leader >= 0) {
+        for (const index of [leader, leader + 1]) if (out[index]?.pair === out[leader].pair) out[index] = { ...out[index], kind: 'boat' };
+      }
+    }
+  }
+  // One is golden, early on, and if all the others are taken, it's the first of a pair of twins.
+  if (golden) {
+    let spot = pick();
+    if (spot < 0) spot = out.findIndex((plan) => plan.pair !== null && !plan.behind);
+    if (spot >= 0) out[spot] = { ...out[spot], golden: true, sleepy: false };
+  }
+  return out;
+}
+
+/** Whether a place has a ladybird, a butterfly or a treasure chest at a level. */
+export function visitorsAt(place, level) {
+  const at = gardenAt(level);
+  return {
+    ladybird: at.ladybird && LADYBIRD_AT.includes(place),
+    butterfly: at.butterfly && BUTTERFLY_AT.includes(place),
+    chest: at.chest && CHEST_AT.includes(place),
+    basket: at.basket,
+  };
 }
 
 export const spotFor = (index) => {
@@ -198,35 +319,70 @@ export class Gathering {
  * and then closes on a spider, catches it. It's carried in the closed hand, and opening the hand lets it
  * go: into its web if that's where the hand is, or back to playing anywhere else.
  *
+ * With the basket, from level 6, the hand can carry two. Opening the hand away from the web with one in
+ * it pops that one into the basket instead of letting it go, and the hand can then catch another.
+ * Opening at the web puts both home.
+ *
  * It fails closed. open and closed are only true when the tracker is sure, so a hand at the edge of the
  * picture, too far away or overlapping the other one is neither, and does neither. A hand that has gone
  * from the picture lets go of what it had, as it can't be seen, and never puts a spider in its web.
  */
 export class Catching {
-  constructor() {
+  constructor({ holds = 1 } = {}) {
     this.held = null;
+    this.stash = []; // In the basket.
+    this.holds = holds;
     this.sinceOpen = Infinity;
     this.nearFor = 0;
+    this.released = []; // What the last 'home' or 'let-go' was about.
   }
 
-  /** near is the spider the hand is by, if any. Returns 'caught', 'home', 'let-go' or null. */
+  /** Everything being carried: in the basket, and then in the hand. */
+  get carried() {
+    return this.held ? [...this.stash, this.held] : [...this.stash];
+  }
+
+  /**
+   * near is the spider the hand is by, if any. onWeb is whether the hand is where what it carries goes
+   * home. Returns 'caught', 'stashed', 'home', 'let-go' or null, and released says which ones.
+   */
   update(dt, { seen, open, closed, near, onWeb }) {
+    this.released = [];
     if (!seen) {
       this.sinceOpen = Infinity;
       this.nearFor = 0;
-      if (!this.held) return null;
+      if (!this.carried.length) return null;
+      this.released = this.carried;
       this.held = null;
+      this.stash = [];
       return 'let-go';
     }
     if (this.held) {
       if (!open) return null;
-      this.held = null;
       this.sinceOpen = 0;
-      return onWeb ? 'home' : 'let-go';
+      if (onWeb) {
+        this.released = this.carried;
+        this.held = null;
+        this.stash = [];
+        return 'home';
+      }
+      if (this.stash.length < this.holds - 1 && this.held.kind !== 'ladybird') {
+        this.stash.push(this.held);
+        this.held = null;
+        return 'stashed';
+      }
+      this.released = [this.held];
+      this.held = null;
+      return 'let-go';
     }
     if (open) {
       this.sinceOpen = 0;
       this.nearFor = 0;
+      if (this.stash.length && onWeb) {
+        this.released = this.stash;
+        this.stash = [];
+        return 'home';
+      }
       return null;
     }
     this.sinceOpen += dt;

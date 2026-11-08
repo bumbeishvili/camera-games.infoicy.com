@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { LAST_LEVEL } from '../../core/levels.js';
 import {
-  CATCH_REACH, Catching, GRAB_WINDOW, Gathering, PLACES, SPIDER_SIZE, gardenAt, pathFor, placesAt, spiderAt, spidersFor, spotFor, webAt,
+  BASKET_HOLDS, BERRY, BUTTERFLY, CATCH_REACH, CHEST_SECONDS, Catching, GRAB_WINDOW, Gathering, PLACES, SLEEP_MOST, SPIDER_SIZE, WAKE_SECONDS,
+  gardenAt, newsIsOn, pathFor, placesAt, spiderAt, spiderNewAt, spidersFor, spotFor, visitorsAt, webAt,
 } from '../../games/spider-catcher/spiders.js';
 
 const LEVELS = Array.from({ length: LAST_LEVEL }, (_, index) => index + 1);
@@ -116,6 +117,40 @@ test('Joze comes first and last, and every friend has one short line', () => {
   assert.ok(PLACES.at(-1).done);
 });
 
+test('with the basket, two can be carried at once: the first goes into the basket, and both go home', () => {
+  const catching = new Catching({ holds: BASKET_HOLDS });
+  const [one, two] = [{ id: 1 }, { id: 2 }];
+  catching.update(0.1, hand({ open: true, near: one }));
+  catching.update(0.2, hand({ closed: true, near: one }));
+  assert.equal(catching.held, one);
+  // Opening away from the web pops it in the basket, rather than letting it go.
+  assert.equal(catching.update(0.1, hand({ open: true })), 'stashed');
+  assert.deepEqual(catching.carried, [one]);
+  assert.equal(catching.update(0.2, hand({ closed: true, near: two })), 'caught');
+  assert.deepEqual(catching.carried, [one, two]);
+  // With both, opening away lets the one in the hand go, and the basket keeps its one.
+  const spare = new Catching({ holds: BASKET_HOLDS });
+  spare.stash = [one];
+  spare.held = two;
+  assert.equal(spare.update(0.1, hand({ open: true })), 'let-go');
+  assert.deepEqual(spare.released, [two]);
+  assert.deepEqual(spare.carried, [one]);
+  // At the web, both go home.
+  assert.equal(catching.update(0.1, hand({ open: true, onWeb: true })), 'home');
+  assert.deepEqual(catching.released, [one, two]);
+  assert.deepEqual(catching.carried, []);
+  // A hand that leaves the picture lets go of all of them.
+  catching.stash = [one];
+  catching.held = two;
+  assert.equal(catching.update(0.1, hand({ seen: false })), 'let-go');
+  assert.deepEqual(catching.released, [one, two]);
+  // Without the basket, it's as it always was.
+  const plain = new Catching();
+  plain.update(0.1, hand({ open: true, near: one }));
+  plain.update(0.2, hand({ closed: true, near: one }));
+  assert.equal(plain.update(0.1, hand({ open: true })), 'let-go');
+});
+
 /* ---------- moving about ---------- */
 
 test('nowhere on a path is a spider faster than its level allows, and it goes round a smooth loop', () => {
@@ -175,7 +210,7 @@ test('who comes out to play: half swing on threads, the shy ones and twins only 
 const more = (value) => Number(value);
 const less = (value) => -value;
 
-test('level 1 is slow, two at a time, still webs and nothing shy or in pairs', () => {
+test('level 1 is slow, two at a time, still webs and nothing shy or in pairs, and nothing new', () => {
   const level = gardenAt(1);
   assert.deepEqual(placesAt(1), PLACES);
   assert.equal(level.atOnce, 2);
@@ -183,10 +218,109 @@ test('level 1 is slow, two at a time, still webs and nothing shy or in pairs', (
   assert.equal(level.webSway, 0);
   assert.equal(level.shy, 0);
   assert.equal(level.pairs, 0);
+  assert.equal(level.speed, 0.07);
+  assert.equal(level.webs, 1);
+  for (const key of ['berries', 'ladybird', 'butterfly', 'basket', 'chest', 'boats', 'golden']) assert.equal(level[key], false, key);
+  assert.equal(level.sleepy, 0);
+  assert.deepEqual(spiderNewAt(1), []);
+  for (const { place } of PLACES) assert.deepEqual(visitorsAt(place, 1), { ladybird: false, butterfly: false, chest: false, basket: false });
+  // Level 1's spiders are as they always were.
+  const plans = spidersFor(5, 1, () => 0.5);
+  assert.ok(plans.every(({ sleepy, golden, kind }) => !sleepy && !golden && (kind === 'scuttle' || kind === 'dangle')));
+});
+
+test('every level from 2 brings something new, which really comes in at that level and stays', () => {
+  for (const level of LEVELS.slice(1)) {
+    const news = spiderNewAt(level);
+    assert.ok(news.length > 0 && news.length <= 3, `level ${level} has nothing new`);
+    for (const { key, mark, name, nameKa } of news) {
+      assert.ok(mark && name && name.split(' ').length <= 3, `level ${level}: ${name}`);
+      assert.match(nameKa, /[Ⴀ-ჿ]/, name);
+      assert.equal(newsIsOn(key, level - 1), false, `${name} is already on at level ${level - 1}`);
+      for (const later of LEVELS.slice(level - 1)) assert.equal(newsIsOn(key, later), true, `${name} is off at level ${later}`);
+    }
+  }
+  const listed = new Set(LEVELS.flatMap((level) => spiderNewAt(level).map(({ key }) => key)));
+  for (const thing of ['berries', 'ladybird', 'sleepy', 'butterfly', 'basket', 'chest', 'webs', 'boats', 'golden', 'webSway', 'shy', 'pairs']) {
+    assert.ok(listed.has(thing), thing);
+  }
+});
+
+test('what each new thing does is really in the garden from its level', () => {
+  // A ladybird plays at the second and fourth places from level 3, in place of a spider, so there's no
+  // more to do. She's never shy, asleep or in a pair.
+  for (const level of LEVELS) {
+    for (const { place, count } of placesAt(level)) {
+      const { ladybird } = visitorsAt(place, level);
+      const plans = spidersFor(count, level, () => 0.3, { ladybird });
+      assert.equal(plans.length, count);
+      const birds = plans.filter(({ kind }) => kind === 'ladybird');
+      assert.equal(birds.length, ladybird ? 1 : 0, `${place} at ${level}`);
+      for (const bird of birds) assert.ok(!bird.shy && !bird.sleepy && bird.pair === null && bird.web === null);
+    }
+  }
+  assert.ok(placesAt(3).some(({ place }) => visitorsAt(place, 3).ladybird));
+  // Sleepy spiders from level 4, never the first one out, so there's always one to catch straight away.
+  const sleepy = spidersFor(5, 4, () => 0.3);
+  assert.ok(sleepy.some(({ sleepy: asleep }) => asleep));
+  assert.equal(sleepy[0].sleepy, false);
+  assert.ok(spidersFor(5, 3).every(({ sleepy: asleep }) => !asleep));
+  // The butterfly and the chest take turns between the places, and every place has a basket from 6.
+  for (const level of LEVELS) {
+    for (const { place } of PLACES) {
+      const at = visitorsAt(place, level);
+      assert.ok(!(at.butterfly && at.chest), place);
+      assert.equal(at.basket, level >= 6);
+    }
+  }
+  assert.ok(PLACES.some(({ place }) => visitorsAt(place, 5).butterfly));
+  assert.ok(PLACES.some(({ place }) => visitorsAt(place, 7).chest));
+  // Two webs from level 8: the spiders take turns between them, and twins share one.
+  const two = spidersFor(5, 8, () => 0.3);
+  assert.deepEqual(new Set(two.map(({ web }) => web)), new Set([0, 1]));
+  for (const plan of two.filter(({ behind }) => behind)) assert.equal(plan.web, two[two.indexOf(plan) - 1].web);
+  assert.ok(spidersFor(5, 7, () => 0.3).every(({ web }) => web === 0));
+  // A leaf boat at every place from level 9, and a golden spider at every place at 10, whatever else
+  // is there. A boat's spider is never shy or asleep.
+  for (const level of [9, 10]) {
+    for (const { place, count } of placesAt(level)) {
+      const plans = spidersFor(count, level, () => 0.3, visitorsAt(place, level));
+      assert.ok(plans.some(({ kind }) => kind === 'boat'), `${place} at ${level}`);
+      assert.ok(plans.filter(({ kind }) => kind === 'boat').every(({ shy, sleepy: asleep }) => !shy && !asleep));
+      if (level === 10) assert.equal(plans.filter(({ golden }) => golden).length, 1, `${place} at ${level}`);
+      if (visitorsAt(place, level).ladybird) assert.equal(plans.filter(({ kind }) => kind === 'ladybird').length, 1);
+    }
+  }
+  assert.ok(spidersFor(5, 8, () => 0.3).every(({ kind }) => kind !== 'boat'));
+  assert.equal(spidersFor(5, 10, () => 0.3).filter(({ golden }) => golden).length, 1);
+  assert.ok(spidersFor(5, 9, () => 0.3).every(({ golden }) => !golden));
+  // A boat's path goes along the bottom of the garden, never faster than the level allows.
+  const boat = pathFor({ kind: 'boat', centre: spotFor(2), phase: 0, level: 9 });
+  let fastest = 0;
+  let last = spiderAt(boat, 0);
+  for (let t = 0.01; t < 40; t += 0.01) {
+    const at = spiderAt(boat, t);
+    fastest = Math.max(fastest, Math.hypot(at.x - last.x, at.y - last.y) / 0.01);
+    last = at;
+  }
+  assert.ok(fastest <= gardenAt(9).speed * 1.001);
+});
+
+test('helpers and prizes are gentle: generous to pick up, short holds, and nobody stuck', () => {
+  assert.ok(BERRY.pickPalms >= 1.3 && BERRY.pullRange >= 0.25);
+  assert.ok(WAKE_SECONDS <= 0.8 && CHEST_SECONDS <= 0.8);
+  // A sleepy spider wakes by itself, so it can never hold a place up.
+  assert.ok(SLEEP_MOST <= 15);
+  // The butterfly only ever slows the spiders down, for a few seconds.
+  assert.ok(BUTTERFLY.slow > 0 && BUTTERFLY.slow < 1 && BUTTERFLY.seconds <= 10);
+  assert.equal(BASKET_HOLDS, 2);
 });
 
 test('each level is a little harder than the one before, and nothing is easier', () => {
-  const harder = { more, atOnce: more, speed: more, wander: more, swing: more, twist: more, webSway: more, shy: more, pairs: more };
+  const harder = {
+    more, atOnce: more, speed: more, wander: more, swing: more, twist: more, webSway: more, shy: more, pairs: more,
+    berries: more, ladybird: more, sleepy: more, butterfly: more, basket: more, chest: more, webs: more, boats: more, golden: more,
+  };
   for (const level of LEVELS.slice(1)) {
     const [before, now] = [gardenAt(level - 1), gardenAt(level)];
     let harderIn = 0;
@@ -220,10 +354,19 @@ function gardenLoad(level) {
     + 3 * at.webSway
     + 0.8 * at.shy
     - 0.15 * (at.atOnce - first.atOnce)
-    - 0.1 * at.pairs;
+    - 0.1 * at.pairs
+    // Waking a sleepy spider takes an open hand held by it a moment, and two webs a moment's choosing.
+    + 0.8 * at.sleepy
+    + 0.3 * (at.webs - 1);
+  // Opening a treasure chest, and touching the butterfly, take a moment at the places they're at. The
+  // basket saves a trip across and back at each place, which is about half of a spider's 5 seconds.
+  const extras = PLACES.reduce((sum, { place }) => {
+    const visitors = visitorsAt(place, level);
+    return sum + (visitors.chest ? 2 : 0) + (visitors.butterfly ? 1 : 0) - (visitors.basket ? 2.5 : 0);
+  }, 0);
   const spiders = placesAt(level).reduce((sum, { count }) => sum + count, 0);
   // About two seconds from one place to the next, and the last thank-you.
-  const seconds = spiders * spiderSeconds + (PLACES.length - 1) * 2 + 2.4;
+  const seconds = spiders * spiderSeconds + (PLACES.length - 1) * 2 + 2.4 + extras;
   return { seconds, perMinute: (spiders / seconds) * 60, reactSeconds: reactSeconds(level) };
 }
 

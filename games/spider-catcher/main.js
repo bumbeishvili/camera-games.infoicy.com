@@ -8,10 +8,11 @@ import { GameSession } from '../../core/session.js';
 import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { Garden } from './garden.js';
-import { Gathering, PLACES, placesAt } from './spiders.js';
+import { gardenAt, Gathering, PLACES, placesAt, spiderNewAt } from './spiders.js';
 
 const CLOSE_ON_ONE = 'Close your hand on a spider!';
 const OPEN_ON_WEB = 'Bring it to the web, and open your hand!';
+const TO_THE_FLOWER = ['Take her to the flower!', 'ყვავილთან მიიყვანე!'];
 const ALL_HOME = 'Every spider is home!';
 
 const LAST_WORDS_SECONDS = 2.4;
@@ -45,9 +46,23 @@ class SpiderGame {
         this.gathering?.letGo();
       },
       onDash: () => session.sound.play('rustle', { gain: 0.4, rate: 1.25 }),
+      // A berry picked, a helper met, a sleepy spider woken: a soft sound each, and no words.
+      onBerry: () => {
+        session.sound.play('star', { gain: 0.3, rate: 1.05 + Math.random() * 0.15 });
+        this.showBerries(true);
+      },
+      onHelper: () => session.sound.play('handsOpen', { gain: 0.4 }),
+      onWake: () => session.sound.play('rustle', { gain: 0.35, rate: 0.9 }),
+      onStash: () => session.sound.play('tick', { gain: 0.4 }),
       onLeave: () => this.leave(),
       onMoved: () => this.gathering.nextPlace(),
     });
+    this.garden.language = () => session.settings.language;
+    this.garden.prizeTarget = () => {
+      const box = byId('chip-berries')?.getBoundingClientRect();
+      return box && box.width ? { x: box.left + box.width / 2, y: box.top + box.height / 2 } : { x: 80, y: 40 };
+    };
+    byId('finish-hero')?.closest('.finish-hero')?.insertAdjacentHTML('afterend', '<p id="finish-prizes" class="finish-prizes"></p>');
     this.joze = new MoveDemo(byId('joze-stage'));
     this.joze.setCharacter(characterById('joze'));
     this.applySettings();
@@ -88,7 +103,16 @@ class SpiderGame {
     this.story.hide();
     this.after = null;
     this.garden.home = { left: 0, right: 0 };
+    this.garden.picked = { left: 0, right: 0 };
+    this.garden.ladybirds = { left: 0, right: 0 };
+    this.garden.berries = [];
+    this.garden.flying = [];
+    this.garden.labels = [];
+    this.garden.introduced = new Set();
     this.garden.setLevel(level);
+    // Berries only come from level 2, so there's no tally before then.
+    document.body.dataset.prizes = gardenAt(level).berries ? 'on' : 'off';
+    this.showBerries();
     this.garden.arriveAt(PLACES[0].place, 0);
     this.gathering = new Gathering({ level, onEvent: (event) => this.onGathering(event) });
     this.jozeDoes('jozeWaits');
@@ -151,6 +175,22 @@ class SpiderGame {
     this.garden.goTo(next.place);
   }
 
+  /** What each level brings that's new: see spiderNewAt in spiders.js. */
+  newAt(level) {
+    return spiderNewAt(level);
+  }
+
+  /** The berry tally, which grows a little for a moment when a berry lands in it. */
+  showBerries(picked = false) {
+    const chip = byId('chip-berries');
+    chip.textContent = String(this.garden.berryTotal);
+    if (!picked) return;
+    const box = chip.closest('.chip');
+    box.classList.remove('is-caught');
+    void box.offsetWidth;
+    box.classList.add('is-caught');
+  }
+
   showProgress() {
     const { gathering } = this;
     const dots = byId('spider-dots');
@@ -206,6 +246,11 @@ class SpiderGame {
     if (needed && !needed.key.startsWith('closed')) return needed;
     // Once they've got the idea, these only come back if they seem to have stopped.
     if (garden.holding && (this.gathering.stats.home === 0 || this.idleFor > HINT_AFTER_SECONDS)) {
+      // The ladybird goes home to her flower, not the web. Her hint is shown but not said, as it has no voice.
+      if (garden.holding.kind === 'ladybird') {
+        const [en, ka] = TO_THE_FLOWER;
+        return { key: 'bring-ladybird', text: session.settings.language === 'ka' ? ka : en, side: null, silent: true };
+      }
       return { key: 'bring', text: OPEN_ON_WEB, side: null };
     }
     const playing = garden.spiders.some((spider) => garden.catchable(spider));
@@ -220,7 +265,10 @@ class SpiderGame {
   }
 
   summary() {
-    return { hero: this.gathering.stats.home, noun: 'game', rows: { home: this.garden.home } };
+    const { picked, ladybirds, berryTotal } = this.garden;
+    const birds = ladybirds.left + ladybirds.right;
+    byId('finish-prizes').textContent = [berryTotal ? `🍓 ${berryTotal}` : '', birds ? `🐞 ${birds}` : ''].filter(Boolean).join('   ');
+    return { hero: this.gathering.stats.home, noun: 'game', rows: { home: this.garden.home, berries: picked } };
   }
 }
 
@@ -234,11 +282,12 @@ new GameSession({
     finishTitle: ALL_HOME,
     heroMark: '🏡',
     heroNoun: 'spiders brought home',
-    extraRows: [{ id: 'home', label: 'Spiders home' }],
+    extraRows: [{ id: 'home', label: 'Spiders home' }, { id: 'berries', label: 'Berries picked' }],
     hudTop: `
       <div class="hud-top">
         <div class="chips">
           <div class="chip"><span class="chip-label">Home</span><span id="chip-home" class="chip-value">0 of ${total}</span></div>
+          <div class="chip chip-berries"><span class="chip-label">Berries</span><span id="chip-berries" class="chip-value">0</span></div>
         </div>
       </div>
       <ol id="spider-dots" class="spider-dots" aria-hidden="true"></ol>

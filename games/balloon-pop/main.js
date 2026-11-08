@@ -4,7 +4,7 @@ import { GameSession } from '../../core/session.js';
 import { Sound } from '../../core/sound.js';
 import { BalloonField } from './balloons.js';
 import { MathsDeck } from './maths.js';
-import { MOST_ANSWERS } from './rules.js';
+import { balloonNewAt, MOST_ANSWERS } from './rules.js';
 
 const POP_HINT_SECONDS = 6;
 const DEMO_MATHS_SECONDS = 14;
@@ -28,6 +28,7 @@ const TOO_HOT = 'Ouch! Too hot!';
 const COOL_IT = 'Hold your hand open to cool it down!';
 
 const byId = (id) => document.getElementById(id);
+const PRIZE_MARKS = { sweet: '🍬', star: '⭐', gem: '💎', heart: '💗' };
 
 class BalloonGame {
   chimeOnOpen = false; // Hands open and close all the time here, so a chime would be noise.
@@ -48,7 +49,8 @@ class BalloonGame {
       onPop: (total) => {
         // Never quite the same twice, as real balloons aren't.
         sound.play('pop', { gain: 0.55, rate: 0.88 + Math.random() * 0.32 });
-        if (this.deck) this.rightAnswer(total);
+        // Only an answer to a question that's showing counts as one.
+        if (this.deck && this.question) this.rightAnswer(total);
         else if (total % PRAISE_EVERY === 0 && total < this.field.goal) {
           sound.say(PRAISE[this.praiseIndex++ % PRAISE.length], { ifQuiet: true });
         }
@@ -60,11 +62,25 @@ class BalloonGame {
         sound.say(TOO_HOT);
       },
       onCooled: () => sound.handsOpen(),
+      // A prize caught, and a power-up started: a soft chime each, and no words.
+      onPrize: () => {
+        sound.play('star', { gain: 0.32, rate: 1.05 + Math.random() * 0.15 });
+        this.showPrizes(true);
+      },
+      onPower: () => sound.play('handsOpen', { gain: 0.4 }),
       onBump: (side) => {
         this.bump = { side, at: session.playSeconds };
       },
       onGoal: () => session.finish(),
+    }, {
+      language: () => settings.language,
+      prizeTarget: () => {
+        const box = byId('chip-prizes')?.getBoundingClientRect();
+        return box && box.width ? { x: box.left + box.width / 2, y: box.top + box.height / 2 } : { x: 80, y: 40 };
+      },
     });
+    // The finish card lists the prizes caught, by kind.
+    byId('finish-hero')?.closest('.finish-hero')?.insertAdjacentHTML('afterend', '<p id="finish-prizes" class="finish-prizes"></p>');
     this.field.configure({ pace: settings.pace, reach: settings.reach, goal: settings.balloons, side: settings.hands });
     this.field.setLevel(session.level);
     const game = this;
@@ -161,6 +177,22 @@ class BalloonGame {
     byId('race-progress-fill').style.width = `${Math.round(progress * 100)}%`;
   }
 
+  /** The prize tally, from level 2, which grows a little for a moment when a prize lands in it. */
+  showPrizes(caught = false) {
+    const chip = byId('chip-prizes');
+    chip.textContent = String(this.field.prizeTotal);
+    if (!caught) return;
+    const box = chip.closest('.chip');
+    box.classList.remove('is-caught');
+    void box.offsetWidth;
+    box.classList.add('is-caught');
+  }
+
+  /** What each level brings that's new: see balloonNewAt in rules.js. */
+  newAt(level) {
+    return balloonNewAt(level);
+  }
+
   setHands(side) {
     this.field.configure({ side });
   }
@@ -189,6 +221,9 @@ class BalloonGame {
     this.burns = 0;
     this.setUpMaths();
     this.showProgress();
+    // Prizes only come from level 2, so there's no tally before then.
+    document.body.dataset.prizes = this.field.plan.prizes.length ? 'on' : 'off';
+    this.showPrizes();
   }
 
   begin() {
@@ -246,8 +281,12 @@ class BalloonGame {
   }
 
   summary() {
-    const { total, popped, wrong } = this.field.info;
-    return { hero: total, noun: 'game', rows: { popped, wrong } };
+    const { total, popped, wrong, caught, prizes } = this.field.info;
+    byId('finish-prizes').textContent = Object.entries(prizes)
+      .filter(([, count]) => count > 0)
+      .map(([kind, count]) => `${PRIZE_MARKS[kind]} ${count}`)
+      .join('   ');
+    return { hero: total, noun: 'game', rows: { popped, wrong, prizes: caught } };
   }
 }
 
@@ -259,11 +298,12 @@ new GameSession({
     finishTitle: 'You popped them all!',
     heroMark: '🎈',
     heroNoun: 'balloons',
-    extraRows: [{ id: 'popped', label: 'Balloons popped' }, { id: 'wrong', label: 'Too-hot balloons' }],
+    extraRows: [{ id: 'popped', label: 'Balloons popped' }, { id: 'wrong', label: 'Too-hot balloons' }, { id: 'prizes', label: 'Prizes caught' }],
     hudTop: `
       <div class="hud-top">
         <div class="chips">
           <div class="chip"><span id="chip-popped-label" class="chip-label">Popped</span><span id="chip-popped" class="chip-value">0 of 20</span></div>
+          <div class="chip chip-prizes"><span class="chip-label">Prizes</span><span id="chip-prizes" class="chip-value">0</span></div>
         </div>
         <div class="race-progress" aria-hidden="true"><div id="race-progress-fill" class="race-progress-fill"></div></div>
       </div>

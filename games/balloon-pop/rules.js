@@ -2,6 +2,10 @@
 // on its own. Level 1 is the game as it always was. A grown-up's choices are never changed by a level:
 // the hand, how open it has to be, reach help, how many balloons to pop, and the maths challenge's kind.
 // Balloon speed is a grown-up's choice too, and a level only goes a little faster than whichever it is.
+//
+// Every level from 2 brings something new to see and play with, and keeps what came before: presents
+// with sweets in them, power-up bubbles, star balloons, pairs, friends in baskets, a magnet, rainbow
+// balloons, a bluebird and big balloons. Prizes only ever add: missing one costs nothing.
 import { ramp, rampWhole, stepsAt } from '../../core/levels.js';
 
 // rise is in screen heights a second, every is seconds between balloons, most is how many
@@ -18,33 +22,139 @@ export const WANDERER_CHANCE = 0.25; // Balloons that sway wide and drift across
 export const STAR_HOLD_SECONDS = 0.35;
 export const MOST_ANSWERS = 5; // The most balloons with answers on them, so they fit side by side.
 
+// A power-up lasts this long once its bubble is popped.
+export const POWER_SECONDS = 8;
+// The first power-up bubble, and the first friend in a basket, come this soon in a game, so they're met.
+export const FIRST_POWER_AFTER = 5;
+export const FIRST_BASKET_AFTER = 8;
+// A big balloon pops into this many ordinary ones.
+export const BIG_SPLITS_INTO = 3;
+// A friend in a basket hangs under this many balloons.
+export const BASKET_BALLOONS = 3;
+
+// Prizes. Each one comes out of something popped, falls slowly, drifts towards a nearby hand and is
+// caught by the glove just coming near it, open or closed. One that isn't caught fades on the hills.
+export const PRIZE = {
+  fall: 0.075, // How fast one falls, in screen heights a second: about 10 seconds from the top.
+  pullRange: 0.4, // How near the hand it has to be to drift towards it, in screen heights.
+  pull: 0.24, // How fast it drifts, in screen heights a second.
+  catchPalms: 1.5, // How near the glove catches it, in palm lengths from the middle of the hand.
+};
+// What the magnet does: prizes come from further and faster, and balloons drift to the hand.
+export const MAGNET = { pullRange: 0.75, pull: 0.65, balloonRange: 0.5, balloonPull: 0.12 };
+// The bubble round the glove: popping and catching reach this much further, in palm lengths.
+export const BUBBLE_REACH = 0.65;
+// The bluebird pops a balloon near the hand this often, and only this near it, in screen heights.
+export const BIRD = { every: 1.1, range: 0.34, flySeconds: 0.45 };
+
 /** What changes from level 1 to 10. */
 export function balloonLevel(level) {
   return {
     // Balloons float up faster. Even at level 10 each is on the screen for 3/4 of the time it was.
     rise: ramp(level, 1, 1.35),
     // They come along more often: the time between them, as a share of the chosen speed's.
-    every: ramp(level, 1, 0.65),
+    every: ramp(level, 1, 0.72),
     // More of them can be up at once.
     most: rampWhole(level, 0, 3),
     // More of them sway wide and drift across.
     wanderers: ramp(level, WANDERER_CHANCE, 0.5),
-    // From level 4, star balloons, which need the open hand held on them for a moment.
+    // From level 2, some balloons carry a present, which falls on a little parachute when the balloon
+    // pops. Catching it gives a sweet.
+    presents: stepsAt(level, { 1: 0, 2: 0.14, 6: 0.16 }),
+    // From level 4, star balloons, which need the open hand held on them for a moment, and drop a star.
     stars: stepsAt(level, { 1: 0, 4: 0.15, 6: 0.25, 9: 0.3 }),
     // From level 5, two balloons tied together come up as a pair, and come apart when one pops.
-    pairs: stepsAt(level, { 1: 0, 5: 0.15, 8: 0.25 }),
+    // Popping both drops a gem.
+    pairs: stepsAt(level, { 1: 0, 5: 0.15, 8: 0.2 }),
     // From level 7, a breeze pushes every balloon slowly one way and then the other, as a share of the
     // screen's width each way.
     breeze: stepsAt(level, { 1: 0, 7: 0.03, 9: 0.045 }),
+    // From level 8, now and then a rainbow balloon, whose pop spreads to the balloons round it.
+    rainbow: stepsAt(level, { 1: 0, 8: 0.06 }),
+    // At level 10, now and then a big balloon, which pops into three ordinary ones.
+    big: stepsAt(level, { 1: 0, 10: 0.05 }),
+    // From level 6, a friend floats by in a basket under three balloons, this many seconds apart.
+    // Popping all three brings them gently down, and they leave a heart.
+    baskets: stepsAt(level, { 1: 0, 6: 26, 9: 22 }),
+    // Power-up bubbles, which change things for a few seconds once popped, this many seconds apart.
+    powerEvery: stepsAt(level, { 1: 0, 3: 16, 7: 14, 9: 13 }),
+    // Which power-ups there are: a bubble round the glove (from 3), a magnet (from 7) and the bluebird
+    // (from 9). The newest comes first.
+    powers: stepsAt(level, { 1: [], 3: ['bubble'], 7: ['bubble', 'magnet'], 9: ['bubble', 'magnet', 'bird'] }),
+    // Which prizes there are, from what: sweets from presents, stars from star balloons, gems from pairs,
+    // and hearts from friends in baskets.
+    prizes: stepsAt(level, { 1: [], 2: ['sweet'], 4: ['sweet', 'star'], 5: ['sweet', 'star', 'gem'], 6: ['sweet', 'star', 'gem', 'heart'] }),
+    // Where it is: over the hills, then by the sea from level 5, and at the Harvest Fair from level 8.
+    place: stepsAt(level, { 1: 'hills', 5: 'seaside', 8: 'fair' }),
     // With the maths challenge on, from level 4 one more answer to choose from, and from level 8 two.
     answers: stepsAt(level, { 1: 0, 4: 1, 8: 2 }),
   };
 }
 
-/** How many balloons come up a minute at a speed and level, counting both of a pair. */
+// What each level brings that's new, for the title card, the countdown and the finish card. key says
+// which part of balloonLevel turns it on, which the unit tests check.
+const NEWS = {
+  2: [
+    { key: 'presents', mark: '🎁', name: 'Present balloons', nameKa: 'საჩუქრიანი ბუშტები' },
+    { key: 'sweet', mark: '🍬', name: 'Sweets', nameKa: 'კანფეტები' },
+  ],
+  3: [{ key: 'bubble', mark: '🫧', name: 'Bubble glove', nameKa: 'ბუშტის ხელთათმანი' }],
+  4: [{ key: 'stars', mark: '⭐', name: 'Star balloons', nameKa: 'ვარსკვლავიანი ბუშტები' }],
+  5: [
+    { key: 'pairs', mark: '🎈', name: 'Balloon pairs', nameKa: 'ბუშტების წყვილები' },
+    { key: 'gem', mark: '💎', name: 'Gems', nameKa: 'ძვირფასი ქვები' },
+    { key: 'seaside', mark: '🌊', name: 'By the sea', nameKa: 'ზღვასთან' },
+  ],
+  6: [
+    { key: 'baskets', mark: '🧺', name: 'Friends in baskets', nameKa: 'მეგობრები კალათებში' },
+    { key: 'heart', mark: '💗', name: 'Hearts', nameKa: 'გულები' },
+  ],
+  7: [
+    { key: 'magnet', mark: '🧲', name: 'Magnet', nameKa: 'მაგნიტი' },
+    { key: 'breeze', mark: '🍃', name: 'Breeze', nameKa: 'ნიავი' },
+  ],
+  8: [
+    { key: 'rainbow', mark: '🌈', name: 'Rainbow balloons', nameKa: 'ცისარტყელა ბუშტები' },
+    { key: 'fair', mark: '🎡', name: 'The fair', nameKa: 'ბაზრობა' },
+  ],
+  9: [{ key: 'bird', mark: '🐦', name: 'Bluebird helper', nameKa: 'ლურჯი ჩიტი' }],
+  10: [{ key: 'big', mark: '🎈', name: 'Big balloons', nameKa: 'დიდი ბუშტები' }],
+};
+
+/** What's new at a level, as [{ key, mark, name, nameKa }]. Nothing at level 1. */
+export const balloonNewAt = (level) => NEWS[level] ?? [];
+
+// The places, which follow one another rather than adding up.
+export const PLACES = ['seaside', 'fair'];
+
+/** Whether the part of a level that a piece of news names is on. */
+export function newsIsOn(key, level) {
+  const plan = balloonLevel(level);
+  const on = {
+    presents: plan.presents > 0,
+    stars: plan.stars > 0,
+    pairs: plan.pairs > 0,
+    breeze: plan.breeze > 0,
+    rainbow: plan.rainbow > 0,
+    big: plan.big > 0,
+    baskets: plan.baskets > 0,
+    seaside: plan.place === 'seaside',
+    fair: plan.place === 'fair',
+  };
+  if (key in on) return on[key];
+  if (['bubble', 'magnet', 'bird'].includes(key)) return plan.powers.includes(key) && plan.powerEvery > 0;
+  return plan.prizes.includes(key);
+}
+
+/**
+ * How many balloons come up a minute at a speed and level, counting both of a pair, the three a big one
+ * pops into, and the two more that a friend's basket brings. A power-up bubble takes a balloon's place.
+ */
 export function balloonsPerMinute(paceName, level) {
   const plan = balloonLevel(level);
-  return (60 / (PACES[paceName].every * plan.every)) * (1 + plan.pairs);
+  const stream = (60 / (PACES[paceName].every * plan.every)) * (1 + plan.pairs + plan.big * BIG_SPLITS_INTO);
+  const baskets = plan.baskets ? (60 / plan.baskets) * (BASKET_BALLOONS - 1) : 0;
+  return stream + baskets;
 }
 
 /** How many seconds a balloon takes to float up the screen, at its usual pace. */

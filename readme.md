@@ -131,7 +131,21 @@ It's off unless a grown-up chooses it under **Maths challenge**: adding up to 10
 
 The right answer pops, and the next question comes. The wrong one goes up in smoke and burns the glove: it turns black with soot and can't pop anything until the hand has been held open to cool it, which takes about a second and a half of being open, and a fist doesn't cool it. That makes the penalty the exercise itself. No right answers are taken away. The burn is cartoon soot, and nothing flashes. The summary counts the too-hot balloons as well as the right ones.
 
-**Levels in Balloon Pop.** Level 1 is the game as described above. Each level brings balloons a little faster and a little more often, with more up at once and more of them drifting wide. From level 4 some are star balloons, which only pop once the open hand has stayed on them for about a third of a second, with a ring closing round them. From level 5 some come up as pairs tied together, and from level 7 a gentle breeze pushes them all slowly one way and back. Even at level 10 each balloon is on the screen for three quarters of the time it was at level 1, and no more than twice as many come along a minute. How many to pop, the speed chosen, reach help and the hand stay as a grown-up set them. With the maths challenge on, levels 4 and 8 each add one more answer to choose from, up to five. Missing a balloon still costs nothing. The numbers are in `balloonLevel` in `rules.js`.
+**Levels in Balloon Pop.** Level 1 is the game as described above. Each level brings balloons a little faster and a little more often, with more up at once and more of them drifting wide, and every level from 2 brings something new, which stays for the levels after it:
+
+| Level | What's new |
+|---|---|
+| 2 | **Present balloons.** Popping one drops its present on a little parachute, and catching it gives a sweet. |
+| 3 | **The bubble glove.** Now and then a soap bubble floats up with a hand in it. Popping it puts a see-through bubble round the glove for 8 seconds, which pops and catches from further away. |
+| 4 | **Star balloons,** which only pop once the open hand has stayed on them for about a third of a second, with a ring closing round them. Each drops a gold star. |
+| 5 | **Pairs** tied together, and popping both drops a gem. The game moves to the seaside. |
+| 6 | **Friends in baskets:** Joze first, then Mochi, Frost and Truffle float up in a basket under three balloons. Each one popped slows the basket, and the third brings it gently down on a parachute, leaving a heart. |
+| 7 | **The magnet,** a power-up that draws prizes and nearby balloons to the hand for 8 seconds, and a gentle breeze that pushes every balloon slowly one way and back. |
+| 8 | **Rainbow balloons,** whose pop spreads to up to six balloons round them, one after another. The game moves to the Harvest Fair. |
+| 9 | **The bluebird,** a power-up that stays by the hand for 8 seconds and pops a balloon near it about once a second. |
+| 10 | **Big balloons,** which pop into three ordinary ones. |
+
+Prizes fall slowly, taking about ten seconds to come down the screen, drift towards a hand that's near them, and are caught just by the glove coming within about a palm and a half, open or closed. One that isn't caught fades on the hills, and missing it costs nothing. They're counted on the screen from level 2, and on the finish card by kind. A power-up's bubble pops like a balloon but doesn't count as one, and a ring round the glove shows its time running out. Power-ups and friends in baskets only come during play, never behind the title or finish card. The first time each new thing comes along in a game, it has a small label beside it for two seconds, such as "Pop it for a present!", in the language the voice speaks, and nothing new is said aloud. Even at level 10 each balloon is on the screen for three quarters of the time it was at level 1, and no more than twice as many come along a minute, counting the three a big balloon pops into and a basket's balloons. How many to pop, the speed chosen, reach help and the hand stay as a grown-up set them. With the maths challenge on, the balloons with answers are as before, and levels 4 and 8 each add one more answer to choose from, up to five; the new kinds of balloon, the prizes and the power-ups don't come during it, and switching it on stops the bluebird and a rainbow's spreading pop. Nothing new flashes: the bubble is see-through, prizes turn slowly, and the tally only grows a little and settles when a prize lands in it. Measured at levels 1, 6 and 10, with prizes, power-ups, baskets and rainbows on the screen, brightness changed by less than 3.1 out of 255 from one frame to the next. The numbers are in `balloonLevel` in `rules.js`.
 
 ## High Five Racers
 
@@ -337,15 +351,29 @@ The same grasp, carry and let go as Joze's Long Walk Home, but what's caught won
 
 **It fails closed.** Only a hand the tracker is sure of counts as open or closed. A hand at the edge of the picture, too far away or overlapping the other is neither, so it can't catch a spider, and a spider it's holding stays held until the hand can be read again. A hand that leaves the picture lets go, and that never puts a spider in its web.
 
-**The levels** ([games/spider-catcher/spiders.js](games/spider-catcher/spiders.js)). Level 1 has two spiders out at a time, slow, on simple loops, with a still web. After that there are more out at once (three from level 3, four from level 6), they go a little quicker each level, their paths go further and get twistier (figures of eight from level 3, pretzels from level 8), and the swings get longer. From level 4 the web sways slowly on its branch. From level 5 some spiders are shy: the first time a hand comes near, one scuttles a little way off, and after that it can be caught like any other. From level 7 some come in twos, holding hands, to bring home one after the other. The middle places have one more spider from level 3, and another from level 8. Level 10 is at most 1.35 times as fast as level 1, so there's still about 74% of the time to catch one going past.
+**The levels** ([games/spider-catcher/spiders.js](games/spider-catcher/spiders.js)). Level 1 has two spiders out at a time, slow, on simple loops, with a still web. After that there are more out at once (three from level 3, four from level 6), they go a little quicker each level, their paths go further and get twistier (figures of eight from level 3, pretzels from level 8), and the swings get longer. Every level from 2 also brings something new, which stays for the levels after it:
+
+| Level | What's new |
+|---|---|
+| 2 | **Berries.** A spider caught leaves a berry on the leaf where it was, picked up by the hand coming back past it. |
+| 3 | **The ladybird** plays at the carrots and the pond instead of one of the spiders, and goes home to her flower in the grass, not the web. While she's carried, the hint says to take her to the flower. |
+| 4 | **Sleepy spiders,** which can't be caught until an open hand held by one for a moment wakes it, and then it plays on from where it is. One left alone wakes by itself after 12 seconds. The web sways slowly on its branch. |
+| 5 | **The butterfly** comes to the gate, the honey tree and Joze's house. Touching it sends it round over the garden for 8 seconds, and the spiders slow to under half their speed to watch it. **Shy spiders** scuttle a little way off the first time a hand comes near. |
+| 6 | **A basket for two** sits in the grass at each place. Picked up, it lets the hand carry two: opening away from the web pops the first one in the basket, and opening at the web puts both home. |
+| 7 | **A treasure chest** at the carrots and the pond, which opens under an open hand held on it, for four berries, and **twins** holding hands. |
+| 8 | **Two webs,** a pink one and a blue one, and each spider is the colour of its web. Opening at the other web just lets the spider go back to playing, and its own web glows softly. The webs are spaced so their drop areas don't meet, and the lower one stays clear of the ladybird's flower. |
+| 9 | **Leaf boats:** one spider at each place sails along a little stream at the bottom of the garden. |
+| 10 | **The golden spider,** one at each place, with a little crown. It's welcome in either web and brings a shower of five berries home with it. |
+
+Berries roll towards a hand that's near them and are picked up by it coming within about a palm and a half, open or closed. Ones that aren't picked up fade when Joze moves on, and cost nothing. They're counted on the screen from level 2 and on the finish card, with the ladybirds taken home. The first time each new thing comes along in a game, it has a small label beside it for two seconds, such as "Take her to the flower!", in the language the voice speaks, and nothing new is said aloud. The middle places have one more spider from level 3, and another from level 8, and the ladybird takes a spider's place rather than adding one. Level 10 is at most 1.35 times as fast as level 1, so there's still about 74% of the time to catch one going past.
 
 **For children with hemiplegia:**
 
 - **How far to reach** sets how far from the web the spiders play. No level changes it.
 - **Resting is always fine.** The spiders just keep playing, and nothing is lost.
-- **With reduced motion,** the web sways half as far, a shy spider dashes off more gently, and legs patter more slowly.
+- **With reduced motion,** the web sways half as far, a shy spider dashes off more gently, legs patter more slowly, and the butterfly's wings, the leaf boats and a waking spider's stretch stay still.
 - **The summary counts spiders brought home with each hand.**
-- **Nothing flashes.** Colours stay steady, a web fills in slowly, places fade into each other, and legs patter no more than about one and a half times a second. Measured through spiders moving, landing in webs, Joze clapping and moving between places, at level 1 and level 10, brightness changed by no more than 1.2 out of 255 from one frame to the next. Every place is bright, with an average brightness of over 190 out of 255.
+- **Nothing flashes.** Colours stay steady, a web fills in slowly, places fade into each other, and legs patter no more than about one and a half times a second. Measured through spiders moving, landing in webs, Joze clapping and moving between places, at levels 1, 6 and 10, with berries, the butterfly, the basket, a chest and a glowing web at the higher levels, brightness changed by no more than 1.7 out of 255 from one frame to the next. Every place is bright, with an average brightness of over 190 out of 255.
 
 ## Sound
 

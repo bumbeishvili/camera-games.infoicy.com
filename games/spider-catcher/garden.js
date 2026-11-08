@@ -3,11 +3,17 @@
 // play on the side of the hand in play, and their web is across from them, so bringing one home is a
 // reach across.
 //
+// The higher levels bring more to it (spiders.js): berries left where a spider was caught, a ladybird
+// who goes home to her flower, sleepy spiders to wake, a butterfly that slows everyone down, a basket for
+// two, treasure chests, two webs of different colours, leaf boats and a golden spider.
+//
 // Nothing flashes: seizures are more common in children with hemiplegia. Colours stay steady, a web
-// fills in slowly, places fade into each other over more than a second, and legs only patter.
+// fills in slowly, places fade into each other over more than a second, and legs only patter. New things
+// only move, grow or fade, slowly.
 import { Glove, INK } from '../../core/glove.js';
 import {
-  CATCH_REACH, Catching, DASH, SPIDER_SIZE, WEB_REACH, gardenAt, pathFor, spidersFor, spiderAt, spotFor, webAt,
+  BASKET_HOLDS, BERRY, BUTTERFLY, CATCH_REACH, CHEST_BERRIES, CHEST_SECONDS, Catching, DASH, GOLDEN_BERRIES, SLEEP_MOST,
+  SPIDER_SIZE, WAKE_SECONDS, WEB_REACH, gardenAt, pathFor, spidersFor, spiderAt, spotFor, visitorsAt, webAt,
 } from './spiders.js';
 
 const PALM_SHARE = 0.105;
@@ -29,6 +35,35 @@ const PLACE_HOLD = 0.6; // A moment to see the full web, before moving on.
 const MOVE_SECONDS = 1.4; // From one place to the next.
 const COLOURS = ['#ff7eb6', '#5fc3ff', '#ffc93c', '#6ad98b', '#b48cff', '#ff9a52'];
 const LEGS = [-0.95, -0.45, 0.05, 0.55]; // Leg angles from straight out, on each side.
+// Two webs, from level 8: a pink one above and a blue one below, a little smaller, and the spiders the
+// colour of the web they live in.
+// Two webs, one above the other, far enough apart that their drop areas don't meet.
+const TWO_WEBS = { size: 0.12, reach: 0.17, downs: [0.31, 0.69] };
+const WEB_COLOURS = ['#ff7eb6', '#5fc3ff'];
+const GOLD = '#ffcf3f';
+// The ladybird's flower, between the web and where the spiders play, down in the grass.
+const FLOWER = { across: 0.5, down: 0.81, reach: 0.17, size: 0.07 };
+const GROUND = 0.8; // Where a basket, a chest or a resting butterfly sits, in screen heights.
+const BERRY_SIZE = 0.028;
+const PRIZE_FLY_SECONDS = 0.7;
+const LABEL_SECONDS = 2.2;
+const BASKET_AFTER = 2; // Seconds after arriving at a place before the basket, chest or butterfly come.
+const CHEST_AFTER = 1.2;
+const BUTTERFLY_AFTER = 3;
+// The little label each new thing gets the first time it comes along, in English and Georgian.
+const LABELS = {
+  berry: ['Pick it up!', 'აიღე!'],
+  ladybird: ['Take her to the flower!', 'ყვავილთან მიიყვანე!'],
+  sleepy: ['Open your hand to wake it!', 'გაშალე ხელი, გააღვიძე!'],
+  butterfly: ['Touch the butterfly!', 'შეეხე პეპელას!'],
+  basket: ['Carry two!', 'ორი წაიღე!'],
+  chest: ['Open your hand on it!', 'ზედ გაშალე ხელი!'],
+  webs: ['Same colour web!', 'იმავე ფერის ქსელში!'],
+  boat: ['Leaf boat!', 'ფოთლის ნავი!'],
+  golden: ['Golden spider!', 'ოქროს ობობა!'],
+  shy: ['Shy!', 'მორცხვია!'],
+  twins: ['Holding hands!', 'ხელჩაკიდებულები!'],
+};
 
 const LOOKS = {
   gate: { sky: ['#8fd3ff', '#e9f8ff'], far: '#a8dc8a', near: '#7cc65e', leaves: '#4f9f47' },
@@ -53,7 +88,7 @@ function shade(hex, amount) {
  * A spider's round body and friendly face, about 200 across, drawn once for each colour. Its legs are
  * drawn as it moves. Big eyes, rosy cheeks and a smile, and nothing pointy.
  */
-function paintSpider(colour) {
+function paintSpider(colour, { asleep = false, golden = false } = {}) {
   const canvas = document.createElement('canvas');
   canvas.width = 240;
   canvas.height = 240;
@@ -92,6 +127,35 @@ function paintSpider(colour) {
     ctx.arc(x + 9, -13, 6, 0, Math.PI * 2);
     ctx.fill();
   }
+  if (asleep) {
+    // Eyes closed, in two gentle curves.
+    for (const x of [-34, 34]) {
+      ctx.fillStyle = colour;
+      ctx.beginPath();
+      ctx.ellipse(x, -12, 31, 35, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(x, -16, 16, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.stroke();
+    }
+  }
+  if (golden) {
+    // A little crown, with round tips.
+    ctx.fillStyle = '#fff1a8';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(-34, -70);
+    ctx.lineTo(-38, -104);
+    ctx.lineTo(-14, -86);
+    ctx.lineTo(0, -110);
+    ctx.lineTo(14, -86);
+    ctx.lineTo(38, -104);
+    ctx.lineTo(34, -70);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
   // Rosy cheeks and a smile.
   ctx.fillStyle = 'rgb(255 120 140 / 0.55)';
   for (const x of [-62, 62]) {
@@ -107,6 +171,74 @@ function paintSpider(colour) {
   return canvas;
 }
 
+/** A ladybird, round and red with black spots, a friendly face and nothing pointy. */
+function paintLadybird() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 240;
+  canvas.height = 240;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(120, 120);
+  ctx.lineWidth = 7;
+  ctx.strokeStyle = INK;
+  // Her head, at the top.
+  ctx.fillStyle = '#3a2b33';
+  ctx.beginPath();
+  ctx.ellipse(0, -62, 56, 42, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#ff5a4f';
+  ctx.beginPath();
+  ctx.ellipse(0, 18, 92, 84, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0, -62);
+  ctx.lineTo(0, 100);
+  ctx.stroke();
+  ctx.fillStyle = '#3a2b33';
+  for (const [x, y, r] of [[-46, -4, 17], [46, -4, 17], [-40, 52, 14], [40, 52, 14], [-14, 82, 9], [14, 82, 9]]) {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = 'rgb(255 255 255 / 0.45)';
+  ctx.beginPath();
+  ctx.ellipse(-44, -36, 18, 10, -0.6, 0, Math.PI * 2);
+  ctx.fill();
+  for (const x of [-22, 22]) {
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(x, -68, 15, 17, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    ctx.fillStyle = INK;
+    ctx.beginPath();
+    ctx.arc(x + 3, -65, 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(0, -52, 12, 0.2 * Math.PI, 0.8 * Math.PI);
+  ctx.stroke();
+  return canvas;
+}
+
+/** A small picture drawn once from an emoji: a berry, the butterfly or the basket. */
+function paintMark(mark) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.font = '100px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(mark, 64, 70);
+  return canvas;
+}
+
 export class Garden {
   /** events: onCatch(), onHome(side), onLetGo(), onDash(), onArrive(), onMoved() */
   constructor({ backdrop, canvas }, events = {}) {
@@ -117,7 +249,28 @@ export class Garden {
     this.events = events;
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.gloves = { left: new Glove('left'), right: new Glove('right') };
-    this.bodies = COLOURS.map(paintSpider);
+    this.bodies = COLOURS.map((colour) => paintSpider(colour));
+    this.sleepers = COLOURS.map((colour) => paintSpider(colour, { asleep: true }));
+    this.goldBody = paintSpider(GOLD, { golden: true });
+    this.goldSleeper = paintSpider(GOLD, { golden: true, asleep: true });
+    this.ladybirdBody = paintLadybird();
+    this.marks = { berry: paintMark('🍓'), butterfly: paintMark('🦋'), basket: paintMark('🧺'), flower: paintMark('🌼') };
+    this.language = () => 'en';
+    this.berries = [];
+    this.flying = [];
+    this.labels = [];
+    this.introduced = new Set();
+    this.helpers = { basket: null, chest: null, butterfly: null };
+    this.slow = 1;
+    this.playTime = 0;
+    this.webHome = [0, 0];
+    this.webCount = [0, 0];
+    this.fills = [0, 0];
+    this.webGlow = null;
+    this.visitors = visitorsAt('gate', 1);
+    this.picked = { left: 0, right: 0 }; // Berries picked by each hand.
+    this.ladybirds = { left: 0, right: 0 }; // Ladybirds taken home by each hand.
+    this.prizeTarget = () => ({ x: 80, y: 40 });
     this.catching = new Catching();
     this.level = gardenAt(1);
     this.levelNumber = 1;
@@ -129,7 +282,6 @@ export class Garden {
     this.waiting = [];
     this.count = 0;
     this.homeHere = 0;
-    this.fill = 0;
     this.place = 'gate';
     this.fromPlace = null;
     this.fade = 1;
@@ -177,10 +329,40 @@ export class Garden {
     return { x: this.across(GARDEN_ACROSS - REACH_HELP[this.reach]), y: this.height * GARDEN_DOWN };
   }
 
-  /** Where the web is now, as it may be swaying from the higher levels. */
+  /** Where the web is now, as it may be swaying from the higher levels. With two, it's the pink one. */
   get web() {
+    return this.webs[0];
+  }
+
+  /** The webs: one, or from level 8 two, a pink one and a blue one, swaying together. */
+  get webs() {
     const sway = webAt(this.level.webSway, this.time, this.reducedMotion);
-    return { x: this.across(WEB_ACROSS) + sway.x * this.height, y: this.height * WEB_DOWN + sway.y * this.height, r: this.height * WEB_SIZE };
+    const x = this.across(WEB_ACROSS) + sway.x * this.height;
+    if (this.level.webs < 2) {
+      return [{ x, y: this.height * WEB_DOWN + sway.y * this.height, r: this.height * WEB_SIZE, reach: this.height * WEB_REACH, index: 0, colour: null }];
+    }
+    return TWO_WEBS.downs.map((down, index) => ({
+      x, y: this.height * down + sway.y * this.height, r: this.height * TWO_WEBS.size, reach: this.height * TWO_WEBS.reach, index, colour: WEB_COLOURS[index],
+    }));
+  }
+
+  /** The web a spider lives in. */
+  webOf(spider) {
+    const { webs } = this;
+    return webs[Math.min(spider.web ?? 0, webs.length - 1)];
+  }
+
+  /** Where the ladybird's flower is, down in the grass between the web and the garden. */
+  get flower() {
+    // Help reaching brings it nearer, but with two webs only half as far, so it stays clear of the lower
+    // web. That leaves the ladybird's carry a little shorter, never longer.
+    const nearer = REACH_HELP[this.reach] * (this.level.webs > 1 ? 0.25 : 0.5);
+    return { x: this.across(FLOWER.across - nearer), y: this.height * FLOWER.down, r: this.height * FLOWER.size, reach: this.height * FLOWER.reach };
+  }
+
+  /** How full a web is, from 0 to 1: the first one's, or the one asked for. */
+  get fill() {
+    return this.fills[0];
   }
 
   /** What this level brings: see gardenAt in spiders.js. */
@@ -198,10 +380,22 @@ export class Garden {
     this.oldWeb = null;
     this.count = count;
     this.homeHere = 0;
-    this.fill = 0;
+    this.webHome = [0, 0];
+    this.fills = [0, 0];
+    this.webGlow = null;
     this.spiders = [];
+    this.visitors = visitorsAt(place, this.levelNumber);
     this.catching = new Catching();
-    this.waiting = spidersFor(count, this.levelNumber);
+    this.waiting = spidersFor(count, this.levelNumber, Math.random, { ladybird: this.visitors.ladybird });
+    // At two webs, each spider is the colour of the web it lives in.
+    if (this.level.webs > 1) for (const plan of this.waiting) if (plan.web !== null) plan.colour = plan.web;
+    this.webCount = [0, 1].map((index) => this.waiting.filter((plan) => plan.kind !== 'ladybird' && (plan.web ?? 0) === index).length);
+    this.helpers = {
+      basket: this.visitors.basket ? { state: 'coming', in: BASKET_AFTER, alpha: 0 } : null,
+      chest: this.visitors.chest ? { state: 'coming', in: CHEST_AFTER, alpha: 0, hold: 0 } : null,
+      butterfly: this.visitors.butterfly ? { state: 'coming', in: BUTTERFLY_AFTER, alpha: 0, t: 0, wait: 0 } : null,
+    };
+    this.slow = 1;
     this.letOut();
   }
 
@@ -224,6 +418,7 @@ export class Garden {
       if (this.waiting[0]?.behind && plan.pair !== null) {
         const twin = this.waiting.shift();
         this.spiders.push(this.makeSpider(twin, slot, spider.path));
+        this.introduce('twins', spider);
       }
     }
   }
@@ -231,13 +426,13 @@ export class Garden {
   makeSpider(plan, slot, leader = null) {
     const path = leader
       ? { ...leader, phase: leader.phase - BEHIND }
-      : pathFor({ kind: plan.kind, centre: spotFor(slot), phase: plan.phase, level: this.levelNumber });
+      : pathFor({ kind: plan.kind === 'ladybird' ? 'scuttle' : plan.kind, centre: spotFor(slot), phase: plan.phase, level: this.levelNumber });
     const spider = {
       ...plan,
       slot,
       path,
       shift: { x: 0, y: 0 },
-      state: 'playing',
+      state: plan.sleepy ? 'asleep' : 'playing',
       alpha: 0,
       x: 0,
       y: 0,
@@ -248,15 +443,24 @@ export class Garden {
       spot: null,
       legs: Math.random() * Math.PI * 2,
       speed: 0,
+      asleepFor: 0,
+      waking: 0,
     };
     this.placeOnPath(spider);
     this.events.onArrive?.();
+    // The first time each new kind comes along, it gets a little label.
+    if (plan.kind === 'ladybird') this.introduce('ladybird', spider);
+    else if (plan.kind === 'boat') this.introduce('boat', spider);
+    if (plan.golden) this.introduce('golden', spider);
+    if (plan.sleepy) this.introduce('sleepy', spider);
+    if (plan.shy) this.introduce('shy', spider);
+    if (this.level.webs > 1 && plan.web !== null) this.introduce('webs', spider);
     return spider;
   }
 
-  /** Where a spider is on its path now, in pixels. */
+  /** Where a spider is on its path now, in pixels. The path's clock slows while the butterfly is out. */
   pathPoint(spider) {
-    const at = spiderAt(spider.path, this.time);
+    const at = spiderAt(spider.path, this.playTime);
     const middle = this.gardenMiddle;
     return {
       x: middle.x + this.way * (at.x + spider.shift.x) * this.height,
@@ -270,7 +474,7 @@ export class Garden {
     spider.y = y;
   }
 
-  /** Whether a spider can be caught now: out playing, and not dashing off or scurrying back. */
+  /** Whether a spider can be caught now: out playing, and not asleep, dashing off or scurrying back. */
   catchable(spider) {
     return spider.state === 'playing' && spider.alpha >= 0.5;
   }
@@ -295,26 +499,49 @@ export class Garden {
   }
 
   get holding() {
-    return this.catching.held;
+    return this.catching.held ?? this.catching.stash[0] ?? null;
   }
 
+  /** Whether the hand is where what it's carrying goes home: its web, or the ladybird's flower. */
   get onWeb() {
+    const carried = this.holding;
+    return carried ? this.atHomeOf(carried) : this.atHome(this.web);
+  }
+
+  atHome(home) {
     const glove = this.gloves[this.side];
-    const { web } = this;
-    return glove.visible && Math.hypot(glove.x - web.x, glove.y - web.y) <= this.height * WEB_REACH;
+    return glove.visible && Math.hypot(glove.x - home.x, glove.y - home.y) <= home.reach;
+  }
+
+  atHomeOf(spider) {
+    // The golden spider is welcome in either web.
+    if (spider.golden) return this.webs.some((web) => this.atHome(web));
+    return this.atHome(spider.kind === 'ladybird' ? this.flower : this.webOf(spider));
+  }
+
+  /** At the other web, of two: the wrong colour for this spider. */
+  atOtherWeb(spider) {
+    if (spider.kind === 'ladybird' || spider.golden || this.level.webs < 2) return null;
+    const other = this.webs.find((web) => web.index !== this.webOf(spider).index);
+    return this.atHome(other) ? other : null;
   }
 
   update(dt, snapshot, { aspect = this.aspect, playing = false, showHands = false } = {}) {
     this.time += dt;
+    this.playTime += dt * this.slow;
     this.aspect = aspect;
     for (const side of ['left', 'right']) {
       const glove = this.gloves[side];
       if (showHands && snapshot?.side === side) glove.follow(snapshot[side], dt, this);
       else glove.hide();
     }
-    this.fill += Math.sign(this.fillWanted - this.fill) * Math.min(Math.abs(this.fillWanted - this.fill), dt * FILL_RATE);
+    for (const index of [0, 1]) {
+      const wanted = this.webCount[index] ? this.webHome[index] / this.webCount[index] : 0;
+      this.fills[index] += Math.sign(wanted - this.fills[index]) * Math.min(Math.abs(wanted - this.fills[index]), dt * FILL_RATE);
+    }
     this.moveAlong(dt);
     for (const spider of this.spiders) this.moveSpider(spider, dt);
+    this.updateExtras(dt, snapshot, playing && this.moving === 0);
     if (playing && this.moving === 0) {
       this.noticeHand();
       this.handleHand(dt, snapshot);
@@ -350,20 +577,43 @@ export class Garden {
   goTo(place) {
     this.fromPlace = this.place;
     this.place = place;
-    this.oldWeb = { spiders: this.spiders.filter(({ state }) => state === 'home'), fill: this.fill };
+    this.oldWeb = { spiders: this.spiders.filter(({ state }) => state === 'home'), fills: [...this.fills], webs: this.level.webs, flower: this.visitors.ladybird };
+    // The next place's things fade in as this one's fade out, so its flower comes and goes gently.
+    this.visitors = visitorsAt(place, this.levelNumber);
     this.spiders = [];
     this.count = 0;
     this.homeHere = 0;
-    this.fill = 0;
+    this.webHome = [0, 0];
+    this.webCount = [0, 0];
+    this.fills = [0, 0];
     this.fade = 0;
     this.moving = MOVE_SECONDS;
     this.catching = new Catching();
+    // What wasn't picked up fades, at no cost, and the helpers stay behind.
+    for (const berry of this.berries) berry.going = true;
+    this.helpers = { basket: null, chest: null, butterfly: null };
+    this.slow = 1;
+  }
+
+  /** Where a spider sits once it's home: in its web, or on the ladybird's flower. */
+  homeSpot(spider, webs = this.webs) {
+    if (spider.kind === 'ladybird') {
+      const { flower } = this;
+      return { x: flower.x, y: flower.y - flower.r * 0.5 };
+    }
+    return this.spotInWeb(spider.spot, webs[Math.min(spider.web ?? 0, webs.length - 1)]);
   }
 
   moveSpider(spider, dt) {
     spider.alpha = Math.min(1, spider.alpha + dt / ARRIVE_SECONDS);
     const lastX = spider.x;
     const lastY = spider.y;
+    if (spider.stretch > 0) spider.stretch = Math.max(0, spider.stretch - dt);
+    if (spider.state === 'asleep') {
+      // It stays where it is, until a hand wakes it, or it wakes by itself.
+      spider.asleepFor += dt;
+      if (spider.asleepFor >= SLEEP_MOST) this.wake(spider);
+    }
     if (spider.state === 'dashing') {
       const { dash } = spider;
       dash.t += dt;
@@ -391,12 +641,12 @@ export class Garden {
       const { land } = spider;
       land.t += dt;
       const share = ease(Math.min(1, land.t / LAND_SECONDS));
-      const to = this.spotInWeb(spider.spot);
+      const to = this.homeSpot(spider);
       spider.x = land.x + (to.x - land.x) * share;
       spider.y = land.y + (to.y - land.y) * share;
       if (land.t >= LAND_SECONDS) spider.state = 'home';
     } else if (spider.state === 'home') {
-      const to = this.spotInWeb(spider.spot);
+      const to = this.homeSpot(spider);
       spider.x = to.x;
       spider.y = to.y;
     }
@@ -405,7 +655,22 @@ export class Garden {
       spider.speed += (speed - spider.speed) * Math.min(1, dt * 8);
     }
     // Legs patter while it moves, about once or twice a second, never quicker.
-    spider.legs += dt * (spider.state === 'home' ? 1.5 : 3 + Math.min(4, spider.speed * 40)) * (this.reducedMotion ? 0.5 : 1);
+    const resting = spider.state === 'home' || spider.state === 'asleep';
+    spider.legs += dt * (resting ? 1.5 : 3 + Math.min(4, spider.speed * 40)) * (this.reducedMotion ? 0.5 : 1);
+  }
+
+  /**
+   * A sleepy spider wakes, with a stretch, and plays on from right where it is, so the hand that woke
+   * it can catch it straight away.
+   */
+  wake(spider) {
+    const at = spiderAt(spider.path, this.playTime);
+    const middle = this.gardenMiddle;
+    spider.shift = { x: (spider.x - middle.x) / (this.way * this.height) - at.x, y: (spider.y - middle.y) / this.height - at.y };
+    spider.state = 'playing';
+    spider.sleepy = false;
+    spider.stretch = 0.6;
+    this.events.onWake?.();
   }
 
   /** Where in the web a spider sits once it's home, from the middle out, round and round. */
@@ -466,29 +731,269 @@ export class Garden {
       onWeb: this.onWeb,
     });
     if (result === 'caught') {
-      this.catching.held.state = 'held';
+      const spider = this.catching.held;
+      spider.state = 'held';
+      // It leaves a berry behind on the leaf, to pick up on the way back.
+      if (this.level.berries) this.dropBerry(spider.x, spider.y + this.spiderSize * 1.4);
       this.events.onCatch?.();
     } else if (result === 'home') {
-      this.bringHome(before);
+      for (const spider of this.catching.released) {
+        if (this.atHomeOf(spider)) this.bringHome(spider);
+        else this.letGoOf(spider);
+      }
     } else if (result === 'let-go') {
-      before.state = 'returning';
-      before.back = { x: before.x, y: before.y, t: 0 };
-      this.events.onLetGo?.();
+      for (const spider of this.catching.released) this.letGoOf(spider);
+    } else if (result === 'stashed') {
+      this.events.onStash?.();
     }
-    if (this.catching.held) {
-      this.catching.held.x = glove.x;
-      this.catching.held.y = glove.y - this.palmSize * 0.15;
+    void before;
+    const carried = this.catching.carried;
+    carried.forEach((spider, index) => {
+      // The one in the hand peeps out of it, and one in the basket sits in the basket below.
+      const inBasket = spider !== this.catching.held;
+      spider.x = glove.x + (inBasket ? this.way * this.palmSize * 0.25 * (index + 1) : 0);
+      spider.y = glove.y + (inBasket ? this.palmSize * 0.95 : -this.palmSize * 0.15);
+    });
+  }
+
+  /** A spider let go of scurries back to playing. At the other of two webs, its own web glows softly. */
+  letGoOf(spider) {
+    const wrong = this.atOtherWeb(spider);
+    spider.state = 'returning';
+    spider.back = { x: spider.x, y: spider.y, t: 0 };
+    if (wrong) {
+      const web = this.webOf(spider);
+      this.webGlow = { index: web.index, life: 1.6 };
     }
+    this.events.onLetGo?.();
   }
 
   bringHome(spider) {
     spider.state = 'landing';
     spider.land = { x: spider.x, y: spider.y, t: 0 };
-    spider.spot = this.homeHere;
+    if (spider.kind === 'ladybird') {
+      spider.spot = 0;
+      this.ladybirds[this.side] += 1;
+    } else {
+      // The golden spider stays in whichever web it was brought to.
+      if (spider.golden) {
+        const was = this.webOf(spider).index;
+        spider.web = (this.webs.find((one) => this.atHome(one)) ?? this.webOf(spider)).index;
+        // Each web still fills up all the way, with the golden one counted in the web it's in.
+        if (spider.web !== was) {
+          this.webCount[was] -= 1;
+          this.webCount[spider.web] += 1;
+        }
+      }
+      const web = this.webOf(spider).index;
+      spider.spot = this.webHome[web];
+      this.webHome[web] += 1;
+    }
     this.homeHere += 1;
     this.home[this.side] += 1;
+    // A golden spider brings a shower of berries home with it.
+    if (spider.golden) {
+      const at = this.homeSpot(spider);
+      for (let i = 0; i < GOLDEN_BERRIES; i += 1) this.dropBerry(at.x, at.y, { armed: true, spread: (i - (GOLDEN_BERRIES - 1) / 2) * 0.7 });
+    }
     this.events.onHome?.(this.side);
     this.letOut();
+  }
+
+  /* ---------- berries, helpers and labels, from the higher levels ---------- */
+
+  /** A new thing's label, the first time it comes along in a game, one at a time so they're read. */
+  introduce(key, target) {
+    if (this.introduced.has(key) || this.labels.length || !LABELS[key]) return;
+    this.introduced.add(key);
+    const [en, ka] = LABELS[key];
+    this.labels.push({ key, target, life: LABEL_SECONDS, text: this.language() === 'ka' ? ka : en });
+  }
+
+  /**
+   * A berry hops out onto the grass or a leaf. One left where a spider was caught can only be picked up
+   * once the hand has gone away from it and come back; one from a chest or a golden spider straight away.
+   */
+  dropBerry(x, y, { armed = false, spread = 0 } = {}) {
+    const berry = {
+      x: x + spread * this.height * 0.05,
+      y,
+      rest: Math.min(this.height * 0.92, y + this.height * 0.05),
+      vx: spread * this.height * 0.12,
+      vy: -this.height * 0.35,
+      armed,
+      age: 0,
+      fade: 0,
+      going: false,
+      r: this.height * BERRY_SIZE,
+    };
+    this.berries.push(berry);
+    this.introduce('berry', berry);
+    return berry;
+  }
+
+  get berryTotal() {
+    return this.picked.left + this.picked.right;
+  }
+
+  updateExtras(dt, snapshot, playing) {
+    const glove = this.gloves[this.side];
+    const { open } = this.readHand(snapshot);
+    const seen = playing && glove.visible;
+    const gap = (thing) => Math.hypot(glove.x - thing.x, glove.y - thing.y);
+
+    // Berries, which roll to a hand nearby and are picked up by it coming close, open or closed.
+    this.berries = this.berries.filter((berry) => {
+      berry.age += dt;
+      berry.fade = Math.min(1, berry.fade + dt * 3);
+      if (berry.y < berry.rest || berry.vy < 0) {
+        berry.vy += this.height * 1.4 * dt;
+        berry.x += berry.vx * dt;
+        berry.y = Math.min(berry.rest, berry.y + berry.vy * dt);
+        if (berry.y >= berry.rest) berry.vy = 0;
+      }
+      if (berry.going) {
+        berry.gone = (berry.gone ?? 0) + dt;
+        return berry.gone < 0.8;
+      }
+      if (!seen) return true;
+      const away = gap(berry);
+      if (!berry.armed) {
+        if (away > this.height * BERRY.away) berry.armed = true;
+        return true;
+      }
+      if (away <= this.palmSize * BERRY.pickPalms + berry.r && berry.age > 0.3) {
+        this.pickBerry(berry);
+        return false;
+      }
+      if (away < this.height * BERRY.pullRange && away > 1) {
+        berry.x += ((glove.x - berry.x) / away) * BERRY.pull * this.height * dt;
+        berry.y += ((glove.y - berry.y) / away) * BERRY.pull * this.height * dt;
+        berry.rest = Math.max(berry.rest, berry.y);
+      }
+      return true;
+    });
+    for (const flight of this.flying) flight.t += dt;
+    this.flying = this.flying.filter((flight) => flight.t < PRIZE_FLY_SECONDS);
+    for (const label of this.labels) label.life -= dt;
+    this.labels = this.labels.filter((label) => label.life > 0);
+    if (this.webGlow) {
+      this.webGlow.life -= dt;
+      if (this.webGlow.life <= 0) this.webGlow = null;
+    }
+
+    // Sleepy spiders, woken by an open hand held by them for a moment.
+    for (const spider of this.spiders) {
+      if (spider.state !== 'asleep') continue;
+      const near = seen && open && this.isNear(spider, glove, this.catchReach * 1.1);
+      spider.waking = near ? spider.waking + dt : Math.max(0, spider.waking - dt);
+      if (spider.waking >= WAKE_SECONDS) this.wake(spider);
+    }
+
+    const { basket, chest, butterfly } = this.helpers;
+    const middle = this.gardenMiddle;
+    const groundAt = (shift) => ({ x: middle.x + this.way * shift * this.height, y: this.height * GROUND });
+    const appear = (helper) => {
+      if (helper.state !== 'coming') return false;
+      helper.in -= dt;
+      if (helper.in > 0) return true;
+      helper.state = 'waiting';
+      return false;
+    };
+
+    // The basket, sitting in the grass until the hand comes by it. Then it carries two.
+    if (basket && !appear(basket)) {
+      Object.assign(basket, groundAt(0.16), { r: this.height * 0.045 });
+      basket.alpha = Math.min(1, basket.alpha + dt * 2);
+      if (basket.state === 'waiting') {
+        this.introduce('basket', basket);
+        if (seen && gap(basket) <= this.palmSize * 1.5 + basket.r) {
+          basket.state = 'carried';
+          this.catching.holds = BASKET_HOLDS;
+          this.events.onHelper?.('basket');
+        }
+      }
+    }
+
+    // The treasure chest, opened by an open hand held on it, for berries.
+    if (chest && !appear(chest)) {
+      if (chest.state !== 'open') Object.assign(chest, groundAt(-0.04), { r: this.height * 0.05 });
+      chest.alpha = Math.min(1, chest.alpha + dt * 2);
+      if (chest.state === 'waiting') {
+        this.introduce('chest', chest);
+        const on = seen && open && gap(chest) <= this.palmSize * 1.3 + chest.r;
+        chest.hold = on ? chest.hold + dt : Math.max(0, chest.hold - dt);
+        if (chest.hold >= CHEST_SECONDS) {
+          chest.state = 'open';
+          chest.openFor = 0;
+          for (let i = 0; i < CHEST_BERRIES; i += 1) this.dropBerry(chest.x, chest.y - chest.r, { armed: true, spread: (i - (CHEST_BERRIES - 1) / 2) * 0.8 });
+          this.events.onHelper?.('chest');
+        }
+      } else if (chest.state === 'open') {
+        chest.openFor += dt;
+        if (chest.openFor > 2.5) chest.alpha = Math.max(0, chest.alpha - dt * 1.5);
+      }
+    }
+
+    // The butterfly: it rests in the grass, and touched, it flies over the garden for a while, and the
+    // spiders slow right down to watch it.
+    if (butterfly && !appear(butterfly)) this.updateButterfly(butterfly, dt, seen && gap(butterfly) <= this.palmSize * 1.8, groundAt(-0.04));
+  }
+
+  updateButterfly(butterfly, dt, touched, rest) {
+    butterfly.t += dt;
+    butterfly.r = this.height * 0.045;
+    if (butterfly.state === 'waiting') {
+      butterfly.state = 'arriving';
+      butterfly.from = { x: rest.x + this.way * this.height * 0.3, y: -this.height * 0.05 };
+      butterfly.flown = 0;
+    }
+    if (butterfly.state === 'arriving') {
+      butterfly.flown += dt / 2.2;
+      const share = ease(Math.min(1, butterfly.flown));
+      butterfly.x = butterfly.from.x + (rest.x - butterfly.from.x) * share;
+      butterfly.y = butterfly.from.y + (rest.y - butterfly.from.y) * share - Math.sin(share * Math.PI) * this.height * 0.08;
+      butterfly.alpha = Math.min(1, butterfly.alpha + dt * 2);
+      if (butterfly.flown >= 1) butterfly.state = 'resting';
+    } else if (butterfly.state === 'resting') {
+      this.introduce('butterfly', butterfly);
+      butterfly.wait += dt;
+      if (touched) {
+        butterfly.state = 'helping';
+        butterfly.left = BUTTERFLY.seconds;
+        butterfly.from = { x: butterfly.x, y: butterfly.y };
+        butterfly.flown = 0;
+        this.slow = BUTTERFLY.slow;
+        this.events.onHelper?.('butterfly');
+      } else if (butterfly.wait > BUTTERFLY.waitMost) {
+        butterfly.state = 'leaving';
+      }
+    } else if (butterfly.state === 'helping') {
+      // Round and round, slowly, over where the spiders play.
+      butterfly.left -= dt;
+      butterfly.flown = Math.min(1, butterfly.flown + dt);
+      const middle = this.gardenMiddle;
+      const turn = butterfly.t * 0.7;
+      const circle = { x: middle.x + Math.cos(turn) * this.height * 0.14, y: this.height * 0.3 + Math.sin(turn) * this.height * 0.05 };
+      const share = ease(butterfly.flown);
+      butterfly.x = butterfly.from.x + (circle.x - butterfly.from.x) * share;
+      butterfly.y = butterfly.from.y + (circle.y - butterfly.from.y) * share;
+      if (butterfly.left <= 0) {
+        butterfly.state = 'leaving';
+        this.slow = 1;
+      }
+    } else if (butterfly.state === 'leaving') {
+      butterfly.y -= this.height * 0.2 * dt;
+      butterfly.x += this.way * this.height * 0.1 * dt;
+      butterfly.alpha = Math.max(0, butterfly.alpha - dt * 0.8);
+      if (butterfly.alpha <= 0) this.helpers.butterfly = null;
+    }
+  }
+
+  pickBerry(berry) {
+    this.picked[this.side] += 1;
+    this.flying.push({ x: berry.x, y: berry.y, t: 0 });
+    this.events.onBerry?.(this.berryTotal);
   }
 
   /* ---------- drawing ---------- */
@@ -666,20 +1171,22 @@ export class Garden {
    * The web: spokes, a spiral that gets fuller with each spider home, and dew that stays once it's
    * there. It gets a little whiter and fuller as it fills, slowly, never all at once.
    */
-  drawWeb(ctx, web, fill, alpha) {
+  drawWeb(ctx, web, fill, alpha, glow = 0) {
     const { height } = this;
     ctx.save();
     ctx.globalAlpha = alpha;
     // Where it hangs from: a twig above, and threads down to the plants.
     ctx.strokeStyle = 'rgb(255 255 255 / 0.85)';
     ctx.lineWidth = Math.max(1.5, height * 0.003);
+    // With two webs, the top one's threads go down to the one below rather than to the plants.
+    const bottom = web.colour && web.index === 0 ? web.y + web.r * 1.9 : height * 0.86;
     ctx.beginPath();
     ctx.moveTo(web.x, web.y - web.r);
     ctx.lineTo(web.x, height * 0.12);
     ctx.moveTo(web.x - web.r * 0.8, web.y + web.r * 0.6);
-    ctx.lineTo(web.x - web.r * 1.3, height * 0.86);
+    ctx.lineTo(web.x - web.r * 1.3, bottom);
     ctx.moveTo(web.x + web.r * 0.8, web.y + web.r * 0.6);
-    ctx.lineTo(web.x + web.r * 1.3, height * 0.86);
+    ctx.lineTo(web.x + web.r * 1.3, bottom);
     ctx.stroke();
     ctx.fillStyle = '#8a5a34';
     ctx.beginPath();
@@ -690,6 +1197,20 @@ export class Garden {
     ctx.beginPath();
     ctx.arc(web.x, web.y, web.r * 1.08, 0, Math.PI * 2);
     ctx.fill();
+    if (web.colour) {
+      // Its colour, as a soft disc and a ring round it, so it's clear which spiders live there.
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.28;
+      ctx.fillStyle = web.colour;
+      ctx.fill();
+      ctx.globalAlpha = alpha * (0.85 + 0.15 * glow);
+      ctx.strokeStyle = web.colour;
+      ctx.lineWidth = height * (0.009 + 0.006 * glow);
+      ctx.beginPath();
+      ctx.arc(web.x, web.y, web.r * (1.1 + 0.08 * glow), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
     const spokes = 12;
     const thread = Math.max(1.5, height * (0.0028 + 0.0016 * fill));
     ctx.beginPath();
@@ -733,10 +1254,29 @@ export class Garden {
 
   /** A spider, its legs pattering if it's moving. held tucks its legs in, peeping out of the glove. */
   drawSpider(ctx, spider, { alpha = spider.alpha, held = false } = {}) {
-    const size = this.spiderSize * (held ? 0.9 : 1);
+    // Just woken, it stretches: a little taller for a moment, slowly.
+    const yawn = spider.stretch > 0 && !this.reducedMotion ? Math.sin((1 - spider.stretch / 0.6) * Math.PI) * 0.12 : 0;
+    const size = this.spiderSize * (held ? 0.9 : 1) * (1 + yawn);
     const { x, y } = spider;
     ctx.save();
     ctx.globalAlpha = alpha;
+    const out = spider.state === 'playing' || spider.state === 'dashing';
+    if (spider.kind === 'boat' && out) {
+      // Its leaf boat, rocking gently under it.
+      ctx.save();
+      ctx.translate(x, y + size * 0.75);
+      ctx.rotate(this.reducedMotion ? 0 : Math.sin(this.time * 1.3 + spider.phase) * 0.08);
+      ctx.fillStyle = '#5fbf4f';
+      ctx.strokeStyle = '#3e8f3a';
+      ctx.lineWidth = Math.max(2, size * 0.1);
+      ctx.beginPath();
+      ctx.moveTo(-size * 1.9, -size * 0.25);
+      ctx.quadraticCurveTo(0, size * 1.1, size * 1.9, -size * 0.25);
+      ctx.quadraticCurveTo(0, size * 0.15, -size * 1.9, -size * 0.25);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
     if (spider.kind === 'dangle' && (spider.state === 'playing' || spider.state === 'dashing')) {
       ctx.strokeStyle = 'rgb(255 255 255 / 0.9)';
       ctx.lineWidth = Math.max(1.5, this.height * 0.0028);
@@ -745,14 +1285,15 @@ export class Garden {
       ctx.lineTo(x, y - size * 0.8);
       ctx.stroke();
     }
-    const colour = COLOURS[spider.colour % COLOURS.length];
-    ctx.strokeStyle = shade(colour, -0.35);
+    const ladybird = spider.kind === 'ladybird';
+    const colour = spider.golden ? GOLD : COLOURS[spider.colour % COLOURS.length];
+    ctx.strokeStyle = ladybird ? '#3a2b33' : shade(colour, -0.35);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.lineWidth = size * 0.2;
-    const stretch = held ? 0.55 : 1;
+    ctx.lineWidth = size * (ladybird ? 0.16 : 0.2);
+    const stretch = held ? 0.55 : ladybird ? 0.75 : 1;
     for (const way of [-1, 1]) {
-      LEGS.forEach((angle, index) => {
+      (ladybird ? LEGS.slice(1) : LEGS).forEach((angle, index) => {
         const patter = held ? 0 : Math.sin(spider.legs * 1.5 + index * 1.6 + (way > 0 ? Math.PI : 0)) * 0.18;
         const a = angle + patter;
         const kneeX = x + way * Math.cos(a) * size * 1.15 * stretch;
@@ -765,9 +1306,181 @@ export class Garden {
         ctx.stroke();
       });
     }
-    const body = this.bodies[spider.colour % this.bodies.length];
+    const asleep = spider.state === 'asleep';
+    const body = ladybird
+      ? this.ladybirdBody
+      : spider.golden
+        ? (asleep ? this.goldSleeper : this.goldBody)
+        : (asleep ? this.sleepers : this.bodies)[spider.colour % this.bodies.length];
     const across = size * 2.4;
     ctx.drawImage(body, x - across / 2, y - across / 2, across, across);
+    if (asleep) {
+      // Little z's drifting slowly up, and a ring closing round it as an open hand wakes it.
+      ctx.fillStyle = INK;
+      ctx.font = `600 ${Math.round(size * 0.7)}px Fredoka, sans-serif`;
+      const rise = (this.time * 0.4 + spider.phase) % 1;
+      ctx.globalAlpha = alpha * (1 - rise) * 0.8;
+      ctx.fillText('z', x + size * (0.9 + rise * 0.3), y - size * (0.9 + rise * 0.9));
+      ctx.globalAlpha = alpha;
+      if (spider.waking > 0) {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = size * 0.18;
+        ctx.beginPath();
+        ctx.arc(x, y, size * 1.6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, spider.waking / WAKE_SECONDS));
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  /** The ladybird's flower: a big daisy in the grass, with a soft ring round it while she's carried. */
+  drawFlower(ctx, alpha) {
+    const { flower } = this;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = '#4f9f47';
+    ctx.lineWidth = Math.max(3, this.height * 0.008);
+    ctx.beginPath();
+    ctx.moveTo(flower.x, flower.y);
+    ctx.lineTo(flower.x, this.height);
+    ctx.stroke();
+    if (this.holding?.kind === 'ladybird') {
+      ctx.strokeStyle = 'rgb(255 255 255 / 0.9)';
+      ctx.lineWidth = Math.max(3, this.height * 0.006);
+      ctx.beginPath();
+      ctx.arc(flower.x, flower.y, flower.reach * (0.9 + 0.06 * Math.sin(this.time * 2)), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    const size = flower.r * 2.4;
+    ctx.drawImage(this.marks.flower, flower.x - size / 2, flower.y - size / 2, size, size);
+    ctx.restore();
+  }
+
+  /** A soft stream along the bottom of the garden, for the leaf boats. */
+  drawStream(ctx) {
+    const boat = this.spiders.find((spider) => spider.kind === 'boat');
+    if (!boat) return;
+    const middle = this.gardenMiddle;
+    const y = middle.y + boat.path.cy * this.height + this.spiderSize * 1.1;
+    const half = (boat.path.ax + 0.06) * this.height;
+    ctx.save();
+    ctx.fillStyle = 'rgb(120 200 240 / 0.55)';
+    ctx.beginPath();
+    ctx.ellipse(middle.x, y, half, this.height * 0.03, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /** The basket, the treasure chest and the butterfly. */
+  drawHelpers(ctx) {
+    const { basket, chest, butterfly } = this.helpers;
+    const glove = this.gloves[this.side];
+    if (basket && basket.state === 'waiting') this.drawMark(ctx, 'basket', basket.x, basket.y, basket.r, basket.alpha);
+    if (chest && chest.state !== 'coming') this.drawChest(ctx, chest);
+    if (butterfly && butterfly.state !== 'coming' && butterfly.x !== undefined) {
+      // Its wings open and close slowly.
+      const flap = butterfly.state === 'resting' ? 0.75 + 0.25 * Math.cos(butterfly.t * 1.6) : 0.55 + 0.45 * Math.abs(Math.cos(butterfly.t * 3));
+      const size = butterfly.r * 2;
+      ctx.save();
+      ctx.globalAlpha = butterfly.alpha;
+      ctx.translate(butterfly.x, butterfly.y);
+      ctx.scale(this.reducedMotion ? 1 : flap, 1);
+      ctx.drawImage(this.marks.butterfly, -size / 2, -size / 2, size, size);
+      ctx.restore();
+    }
+    if (basket?.state === 'carried' && glove.visible) {
+      this.drawMark(ctx, 'basket', glove.x, glove.y + this.palmSize * 1.05, this.height * 0.05, 1);
+    }
+  }
+
+  drawMark(ctx, name, x, y, r, alpha = 1) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(this.marks[name], x - r * 1.2, y - r * 1.2, r * 2.4, r * 2.4);
+    ctx.restore();
+  }
+
+  /** A little wooden treasure chest, with a gold band, whose lid swings open. */
+  drawChest(ctx, chest) {
+    const { x, y, r } = chest;
+    ctx.save();
+    ctx.globalAlpha = chest.alpha;
+    ctx.lineWidth = Math.max(2, r * 0.08);
+    ctx.strokeStyle = INK;
+    ctx.fillStyle = '#b5713b';
+    ctx.beginPath();
+    ctx.roundRect(x - r, y - r * 0.4, r * 2, r * 1.1, r * 0.15);
+    ctx.fill();
+    ctx.stroke();
+    const open = chest.state === 'open' ? Math.min(1, chest.openFor * 3) : 0;
+    ctx.save();
+    ctx.translate(x - r, y - r * 0.4);
+    ctx.rotate(-open * 1.6 * this.way);
+    ctx.fillStyle = '#c98a4a';
+    ctx.beginPath();
+    ctx.roundRect(0, -r * 0.55, r * 2, r * 0.55, [r * 0.5, r * 0.5, 0, 0]);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = '#ffd23f';
+    ctx.fillRect(x - r * 0.15, y - r * 0.5, r * 0.3, r * 0.45);
+    if (chest.state === 'waiting' && chest.hold > 0) {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = r * 0.14;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(x, y, r * 1.6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, chest.hold / CHEST_SECONDS));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  drawBerries(ctx) {
+    for (const berry of this.berries) {
+      const alpha = berry.going ? Math.max(0, 1 - (berry.gone ?? 0) / 0.8) : berry.fade;
+      this.drawMark(ctx, 'berry', berry.x, berry.y, berry.r, alpha);
+    }
+    const to = this.prizeTarget();
+    for (const flight of this.flying) {
+      const share = ease(Math.min(1, flight.t / PRIZE_FLY_SECONDS));
+      const x = flight.x + (to.x - flight.x) * share;
+      const y = flight.y + (to.y - flight.y) * share - Math.sin(share * Math.PI) * this.height * 0.08;
+      this.drawMark(ctx, 'berry', x, y, this.height * BERRY_SIZE * (1.2 - 0.5 * share));
+    }
+  }
+
+  /** A new thing's little label, above it, fading in and out. */
+  drawLabel(ctx, label) {
+    const { height } = this;
+    const { target } = label;
+    const alpha = clamp(Math.min((LABEL_SECONDS - label.life) / 0.3, label.life / 0.6), 0, 1);
+    const size = Math.max(16, height * 0.03);
+    const r = target.r ?? this.spiderSize;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    if (!this.reducedMotion) {
+      ctx.strokeStyle = 'rgb(255 255 255 / 0.75)';
+      ctx.lineWidth = Math.max(2, height * 0.005);
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, r * (2 + 0.4 * (1 - label.life / LABEL_SECONDS)), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.font = `600 ${Math.round(size)}px Fredoka, "Noto Sans Georgian", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const w = ctx.measureText(label.text).width + size * 1.2;
+    const h = size * 1.7;
+    const x = clamp(target.x, w / 2 + 8, this.width - w / 2 - 8);
+    const y = clamp(target.y - r * 2.4 - h / 2, h / 2 + 90, height - h);
+    ctx.fillStyle = 'rgb(255 255 255 / 0.95)';
+    ctx.strokeStyle = 'rgb(18 48 77 / 0.25)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x - w / 2, y - h / 2, w, h, h / 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = INK;
+    ctx.fillText(label.text, x, y + 1);
     ctx.restore();
   }
 
@@ -786,23 +1499,35 @@ export class Garden {
 
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.clearRect(0, 0, width, height);
-    const { web } = this;
+    const { webs } = this;
     if (this.oldWeb) {
       // The web just filled, fading out as the next place comes, with its spiders in it.
       const gone = 1 - this.fade;
-      this.drawWeb(ctx, web, this.oldWeb.fill, gone);
+      webs.forEach((web, index) => this.drawWeb(ctx, web, this.oldWeb.fills[index], gone));
+      if (this.oldWeb.flower) this.drawFlower(ctx, gone);
       for (const spider of this.oldWeb.spiders) {
-        const at = this.spotInWeb(spider.spot, web);
+        const at = this.homeSpot(spider, webs);
         this.drawSpider(ctx, { ...spider, ...at }, { alpha: gone });
       }
     }
-    if (!this.oldWeb || this.fade > 0) this.drawWeb(ctx, web, this.fill, this.oldWeb ? this.fade : 1);
-    const held = this.catching.held;
+    if (!this.oldWeb || this.fade > 0) {
+      const alpha = this.oldWeb ? this.fade : 1;
+      webs.forEach((web, index) => {
+        const glow = this.webGlow?.index === index ? Math.sin(Math.PI * (1 - this.webGlow.life / 1.6)) : 0;
+        this.drawWeb(ctx, web, this.fills[index], alpha, glow);
+      });
+      if (this.visitors.ladybird) this.drawFlower(ctx, alpha);
+    }
+    this.drawStream(ctx);
+    this.drawHelpers(ctx);
+    this.drawBerries(ctx);
+    const carried = this.catching.carried;
     for (const spider of this.spiders) {
-      if (spider !== held) this.drawSpider(ctx, spider);
+      if (!carried.includes(spider)) this.drawSpider(ctx, spider);
     }
     this.gloves.left.draw(ctx, this.palmSize);
     this.gloves.right.draw(ctx, this.palmSize);
-    if (held) this.drawSpider(ctx, held, { held: true });
+    for (const spider of carried) this.drawSpider(ctx, spider, { held: true });
+    for (const label of this.labels) this.drawLabel(ctx, label);
   }
 }

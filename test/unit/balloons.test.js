@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { toScreen } from '../../games/balloon-pop/balloons.js';
 import { LEVELS, MathsDeck, answersFor } from '../../games/balloon-pop/maths.js';
-import { balloonLevel, balloonsPerMinute, MOST_ANSWERS, PACES, secondsOnScreen, STAR_HOLD_SECONDS, WANDERER_CHANCE } from '../../games/balloon-pop/rules.js';
+import {
+  balloonLevel, balloonNewAt, balloonsPerMinute, MOST_ANSWERS, newsIsOn, PACES, PLACES, POWER_SECONDS, PRIZE, secondsOnScreen, STAR_HOLD_SECONDS, WANDERER_CHANCE,
+} from '../../games/balloon-pop/rules.js';
 
 test('the middle of the picture lands near the middle of the screen', () => {
   const { x, y } = toScreen(0.5, 0.49, 1000, 500);
@@ -76,8 +78,12 @@ test('what Balloon Pop says about answers has a voice file, in both languages', 
 /* ---------- levels ---------- */
 
 const LEVEL_NUMBERS = Array.from({ length: 10 }, (_, index) => index + 1);
-// For each thing a level changes, which way is harder.
-const HARDER = { rise: 1, every: -1, most: 1, wanderers: 1, stars: 1, pairs: 1, breeze: 1, answers: 1 };
+// For each number a level changes, which way is harder. More presents, rainbows and friends in baskets
+// are more to deal with, though they help too.
+const HARDER = { rise: 1, every: -1, most: 1, wanderers: 1, presents: 1, stars: 1, pairs: 1, breeze: 1, rainbow: 1, big: 1, answers: 1 };
+// What a level adds rather than turns up: lists that only ever grow, and new things that come at a level.
+const ADDED = ['powers', 'prizes'];
+const FROM_LEVEL = ['baskets', 'powerEvery', 'place'];
 
 test('level 1 is Balloon Pop as it always was', () => {
   assert.deepEqual(PACES, {
@@ -86,12 +92,25 @@ test('level 1 is Balloon Pop as it always was', () => {
     fast: { rise: 0.16, every: 0.6, most: 11 },
   });
   assert.equal(WANDERER_CHANCE, 0.25);
-  assert.deepEqual(balloonLevel(1), { rise: 1, every: 1, most: 0, wanderers: 0.25, stars: 0, pairs: 0, breeze: 0, answers: 0 });
+  assert.deepEqual(balloonLevel(1), {
+    rise: 1, every: 1, most: 0, wanderers: 0.25, presents: 0, stars: 0, pairs: 0, breeze: 0, rainbow: 0, big: 0,
+    baskets: 0, powerEvery: 0, powers: [], prizes: [], place: 'hills', answers: 0,
+  });
+  assert.deepEqual(balloonNewAt(1), []);
   for (const kind of Object.keys(LEVELS)) assert.equal(new MathsDeck(kind, Math.random, { extra: balloonLevel(1).answers }).choices, LEVELS[kind].choices);
 });
 
 test('each level is the same or harder than the one before in every way, and harder in at least one', () => {
-  assert.deepEqual(Object.keys(balloonLevel(1)).sort(), Object.keys(HARDER).sort());
+  assert.deepEqual(Object.keys(balloonLevel(1)).sort(), [...Object.keys(HARDER), ...ADDED, ...FROM_LEVEL].sort());
+  for (const level of LEVEL_NUMBERS.slice(1)) {
+    // Power-ups and prizes only ever join: nothing a level had goes away at the next.
+    for (const key of ADDED) assert.ok(balloonLevel(level - 1)[key].every((thing) => balloonLevel(level)[key].includes(thing)), `level ${level}: ${key}`);
+    // Friends in baskets and power-ups, once they've come, stay, and come along at least as often.
+    for (const key of ['baskets', 'powerEvery']) {
+      const [before, now] = [balloonLevel(level - 1)[key], balloonLevel(level)[key]];
+      if (before) assert.ok(now > 0 && now <= before, `level ${level}: ${key}`);
+    }
+  }
   for (const level of LEVEL_NUMBERS.slice(1)) {
     const before = balloonLevel(level - 1);
     const now = balloonLevel(level);
@@ -104,21 +123,48 @@ test('each level is the same or harder than the one before in every way, and har
   }
 });
 
-test('new kinds of balloon come along from about level 4, and level 10 has them all', () => {
-  assert.equal(balloonLevel(3).stars + balloonLevel(3).pairs + balloonLevel(3).breeze, 0);
-  assert.ok(balloonLevel(4).stars > 0);
-  assert.ok(balloonLevel(5).pairs > 0);
-  assert.ok(balloonLevel(7).breeze > 0);
+test('every level from 2 brings something new, which really comes in at that level and stays', () => {
+  for (const level of LEVEL_NUMBERS.slice(1)) {
+    const news = balloonNewAt(level);
+    assert.ok(news.length > 0 && news.length <= 3, `level ${level} has nothing new`);
+    for (const { key, mark, name, nameKa } of news) {
+      assert.ok(mark && name && name.split(' ').length <= 3, `level ${level}: ${name}`);
+      assert.match(nameKa, /[Ⴀ-ჿ]/, name);
+      // Not there the level before, there from this level, and still there at every level after.
+      assert.equal(newsIsOn(key, level - 1), false, `${name} is already on at level ${level - 1}`);
+      assert.equal(newsIsOn(key, level), true, `${name} is off at level ${level}`);
+      // A place lasts until the next one, and everything else stays once it's come.
+      if (PLACES.includes(key)) continue;
+      for (const later of LEVEL_NUMBERS.slice(level - 1)) assert.equal(newsIsOn(key, later), true, `${name} is off at level ${later}`);
+    }
+  }
+  // Every new thing is listed somewhere, so nothing comes without its chip.
+  const listed = new Set(LEVEL_NUMBERS.flatMap((level) => balloonNewAt(level).map(({ key }) => key)));
+  for (const thing of ['presents', 'sweet', 'bubble', 'stars', 'pairs', 'gem', 'seaside', 'baskets', 'heart', 'magnet', 'breeze', 'rainbow', 'fair', 'bird', 'big']) {
+    assert.ok(listed.has(thing), thing);
+  }
   const top = balloonLevel(10);
-  assert.ok(top.stars > 0 && top.pairs > 0 && top.breeze > 0 && top.answers > 0);
+  assert.ok(top.stars > 0 && top.pairs > 0 && top.breeze > 0 && top.answers > 0 && top.rainbow > 0 && top.big > 0 && top.baskets > 0);
+  assert.deepEqual(top.powers.sort(), ['bird', 'bubble', 'magnet']);
+  assert.deepEqual(top.prizes.sort(), ['gem', 'heart', 'star', 'sweet']);
+});
+
+test('prizes and power-ups are gentle: slow to fall, easy to catch, and over in a few seconds', () => {
+  // A prize takes about ten seconds to fall the height of the screen, so there's time to get to it.
+  assert.ok(1 / PRIZE.fall >= 10);
+  // It's caught by the glove coming within a palm and a half, and drifts to a hand nearer than 0.4 of
+  // the screen, at a pace a child can see: about a third of the screen in a second and a half.
+  assert.ok(PRIZE.catchPalms >= 1.5 && PRIZE.pullRange >= 0.4 && PRIZE.pull <= 0.3);
+  assert.ok(POWER_SECONDS >= 6 && POWER_SECONDS <= 10);
 });
 
 test('even level 10 stays doable: time to reach, balloons a minute, and the length of a game', () => {
   for (const pace of Object.keys(PACES)) {
     // Each balloon is on the screen for at least 70% of the time it was at level 1.
     assert.ok(secondsOnScreen(pace, 10) >= 0.7 * secondsOnScreen(pace, 1), pace);
-    // No more than twice as many balloons a minute to reach for.
-    assert.ok(balloonsPerMinute(pace, 10) <= 2 * balloonsPerMinute(pace, 1), pace);
+    // No more than twice as many balloons a minute to reach for, counting the three a big one pops into
+    // and the balloons on a friend's basket.
+    for (const level of LEVEL_NUMBERS) assert.ok(balloonsPerMinute(pace, level) <= 2 * balloonsPerMinute(pace, 1), `${pace} ${level}`);
   }
   // How many to pop is the grown-up's, so a game only gets longer by the moments star balloons are held,
   // which is a few seconds over a game, well under a third of it.

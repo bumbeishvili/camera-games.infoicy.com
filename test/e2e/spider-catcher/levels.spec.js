@@ -16,7 +16,8 @@ const chase = (page, what) => page.evaluate((target) => {
   const timer = setInterval(() => {
     const { garden: place } = window.__game;
     const glove = place.gloves.right;
-    const wanted = target === 'web' ? place.web : place.spiders.find((spider) => place.catchable(spider));
+    // At two webs, the one the spider being carried lives in.
+    const wanted = target === 'web' ? place.webOf(place.holding ?? {}) : place.spiders.find((spider) => place.catchable(spider));
     if (glove.visible && wanted) {
       x += ((wanted.x - glove.x) / innerWidth) * 1280 * 0.12;
       y += ((wanted.y - glove.y) / innerHeight) * 720 * 0.12;
@@ -154,23 +155,34 @@ test('level 10: every place done still ends with everyone home', async ({ page }
   expect((await garden(page)).home).toBe(19);
 });
 
-for (const level of [1, 10]) {
-  test(`nothing flashes at level ${level}: spiders moving, landing in webs, Joze clapping, and moving between places`, async ({ page }) => {
+for (const level of [1, 6, 10]) {
+  test(`nothing flashes at level ${level}: spiders moving, landing in webs, Joze clapping, and moving between places${level > 1 ? ', with berries, helpers and visitors' : ''}`, async ({ page }) => {
     test.setTimeout(240_000);
     await startPlaying(page, GAME, atLevel(GAME, level));
     await storyIs(page, 'joze');
-    // A spider home every so often, the real way into the web, so the places go by meanwhile.
-    await page.evaluate(() => {
+    // A spider home every so often, the real way into the web, so the places go by meanwhile. From
+    // level 2, berries hop out and are picked up, and the butterfly, basket and chest come and go.
+    await page.evaluate((more) => {
+      let turn = 0;
       window.__bringing = setInterval(() => {
         const { garden: place } = window.__game;
-        const spider = place.moving === 0 && place.spiders.find((one) => place.catchable(one));
+        const spider = place.moving === 0 && place.spiders.find((one) => place.catchable(one) || one.state === 'asleep');
         if (spider) place.bringHome(spider);
+        if (!more || place.moving) return;
+        turn += 1;
+        const glove = place.gloves.right;
+        for (let i = 0; i < 3; i += 1) place.dropBerry(place.width * (0.55 + i * 0.1), place.height * 0.6, { armed: true, spread: i - 1 });
+        if (glove.visible && place.berries[0]) place.pickBerry(place.berries.shift());
+        const { butterfly } = place.helpers;
+        if (butterfly?.state === 'resting') Object.assign(butterfly, { state: 'helping', left: 6, from: { x: butterfly.x, y: butterfly.y }, flown: 0 });
+        if (turn % 3 === 0) place.webGlow = { index: 0, life: 1.6 };
       }, 700);
-    });
+    }, level > 1);
     const result = judgeBrightness(await watchBrightness(page, 420, CANVASES));
     const { index } = await garden(page);
     await page.evaluate(() => clearInterval(window.__bringing));
     console.log(`level ${level}`, JSON.stringify(result), 'place', index);
+    if (level > 1) await shot(page, `spider-l${level}-busy`);
     expect(index).toBeGreaterThanOrEqual(1);
     expect(result.biggestStep).toBeLessThan(3);
     expect(result.flickeringShare).toBeLessThan(0.02);

@@ -37,6 +37,20 @@ body[data-hands='right'] .hands-bar { justify-content: flex-end; }
 body[data-hands='left'] .hands-bar { justify-content: flex-start; }
 .meter-caption { font-size: clamp(11px, 1vw, 13px); }
 
+/* The berry tally, from level 2. A berry landing in it makes it grow a little and settle: never a flash. */
+.chip-berries { display: none; }
+body[data-prizes='on'] .chip-berries { display: grid; }
+.chip-berries .chip-label::before { content: '🍓 '; }
+.chip-berries.is-caught { animation: berry-landed 0.6s ease-out; }
+@keyframes berry-landed {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+.finish-prizes { margin: 0; font-size: clamp(20px, 2.4vw, 28px); font-weight: 600; }
+.finish-prizes:empty { display: none; }
+body:not([data-prizes='on']) tr:has(#sum-left-berries) { display: none; }
+
 /* One dot for each spider, filled in as each comes home. */
 .spider-dots {
   display: none;
@@ -111,4 +125,5 @@ body[data-screen='playing'] .spider-dots { display: flex; }
 @media (prefers-reduced-motion: reduce) {
   .film-spider, .film-finger, .film-hand { animation-duration: 7.5s; }
   .spider-dots li { transition: none; }
+  .chip-berries.is-caught { animation: none; }
 }

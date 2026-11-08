@@ -20,6 +20,22 @@ body[data-hands='left'] .hands-bar { justify-content: flex-start; }
 
 .finish-card .hero-mark { color: inherit; }
 
+/* ---------- prizes, from level 2 ---------- */
+.chip-prizes { display: none; transition: transform 0.35s ease; }
+body[data-prizes='on']:not([data-maths='on']) .chip-prizes { display: grid; }
+.chip-prizes .chip-label::before { content: '🎁 '; }
+/* A caught prize lands in the tally, which grows a little and settles back: a move, never a flash. */
+.chip-prizes.is-caught { animation: prize-landed 0.6s ease-out; }
+@keyframes prize-landed {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+.finish-prizes { margin: 0; font-size: clamp(20px, 2.4vw, 28px); font-weight: 600; }
+.finish-prizes:empty { display: none; }
+body:not([data-prizes='on']) tr:has(#sum-left-prizes),
+body[data-maths='on'] tr:has(#sum-left-prizes) { display: none; }
+
 /* ---------- the maths challenge ---------- */
 .maths-question {
   display: none;
@@ -105,5 +121,6 @@ body[data-maths='on'] .demo-number { display: inline; }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .chip-prizes.is-caught { animation: none; }
   .demo-balloon, .demo-burst, .demo-hand, .demo-finger, .demo-thumb { animation-duration: 5s; }
 }

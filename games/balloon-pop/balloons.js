@@ -6,13 +6,20 @@
 // The wrong one is too hot: the glove goes black with soot and can't pop anything until the child
 // has held the hand open for long enough to cool it, which is the exercise this game is for.
 //
-// Higher levels (rules.js) bring more balloons, a little faster, and new kinds: star balloons that need
-// the open hand held on them a moment, pairs tied together, and a breeze that moves them all.
+// Higher levels (rules.js) bring more balloons, a little faster, and new kinds: presents that fall on a
+// little parachute to be caught, power-up bubbles, star balloons that need the open hand held on them a
+// moment, pairs tied together, friends in baskets to bring down, rainbow balloons whose pop spreads,
+// a bluebird that helps, big balloons that pop into three, a breeze, and new places: the sea and the fair.
+// Prizes fall slowly, drift towards the hand and are caught by the glove just coming near, open or
+// closed. Missing one costs nothing.
 //
 // Nothing flashes: seizures are more common in children with hemiplegia, so pops are small
-// bursts of colour and the screen itself never changes brightness.
+// bursts of colour and the screen itself never changes brightness. New things only move, grow or fade.
 import { Glove, INK, toScreen } from '../../core/glove.js';
-import { balloonLevel, PACES, STAR_HOLD_SECONDS } from './rules.js';
+import {
+  balloonLevel, BASKET_BALLOONS, BIG_SPLITS_INTO, BIRD, BUBBLE_REACH, FIRST_BASKET_AFTER, FIRST_POWER_AFTER, MAGNET,
+  PACES, POWER_SECONDS, PRIZE, STAR_HOLD_SECONDS,
+} from './rules.js';
 
 export { toScreen };
 
@@ -39,6 +46,37 @@ const NUMBER_ROWS = [0.48, 0.7]; // Where they wait, as shares of the screen's h
 const CHOOSE_SECONDS = 0.45;
 const COOL_SECONDS = 1.5; // How long a burnt glove has to be held open.
 const SMOKE_EVERY = 0.22;
+
+// The new things from the higher levels.
+const PRIZE_SHARE = 0.05; // A prize's size, as a share of the screen's height.
+const PRIZE_FLY_SECONDS = 0.7; // On its way up to the tally.
+const LABEL_SECONDS = 2.2; // A new thing's little label, the first time it comes.
+const CHAIN_GAP = 0.14; // Seconds between pops, as a rainbow balloon's pop spreads.
+const CHAIN_REACH = 3.4; // How far it spreads, in balloon sizes.
+const CHAIN_MOST = 6;
+const BIG_SIZE = 1.75;
+const BASKET_FALL = 0.11; // How fast a friend's basket comes down, in screen heights a second.
+const FRIENDS = ['joze', 'mochi', 'frost', 'truffle']; // Joze first.
+const PRIZE_MARKS = { sweet: '🍬', star: '⭐', gem: '💎', heart: '💗' };
+const POWER_MARKS = { bubble: '✋', magnet: '🧲', bird: '🐦' };
+// The little label each new thing gets the first time it comes along, in English and Georgian.
+const LABELS = {
+  present: ['Pop it for a present!', 'გახეთქე, შიგ საჩუქარია!'],
+  sweet: ['Catch the present!', 'დაიჭირე საჩუქარი!'],
+  star: ['Catch the star!', 'დაიჭირე ვარსკვლავი!'],
+  gem: ['A gem!', 'ძვირფასი ქვა!'],
+  heart: ['A heart!', 'გული!'],
+  starBalloon: ['Hold your hand on it!', 'ხელი გააჩერე ბუშტზე!'],
+  pair: ['Pop both!', 'ორივე გახეთქე!'],
+  basket: ['Pop all three!', 'სამივე გახეთქე!'],
+  rainbow: ['Rainbow!', 'ცისარტყელა!'],
+  big: ['Big balloon!', 'დიდი ბუშტი!'],
+  bubble: ['Bubble glove!', 'ბუშტის ხელთათმანი!'],
+  magnet: ['Magnet!', 'მაგნიტი!'],
+  bird: ['Bluebird!', 'ლურჯი ჩიტი!'],
+};
+const RAINBOW = ['#ff5a4f', '#ff9a3c', '#ffd23f', '#27c96b', '#3b82f6', '#a855f7'];
+const ease = (share) => share * share * (3 - 2 * share);
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const between = (low, high) => low + Math.random() * (high - low);
@@ -84,6 +122,165 @@ function makeBalloonSprite(colour) {
   return canvas;
 }
 
+/** A rainbow balloon: the same shape, in soft stripes. It never changes colour, so nothing flickers. */
+function makeRainbowSprite() {
+  const canvas = makeBalloonSprite('#ffd23f');
+  const ctx = canvas.getContext('2d');
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(120, 18);
+  ctx.bezierCurveTo(186, 18, 222, 70, 222, 122);
+  ctx.bezierCurveTo(222, 178, 160, 222, 120, 236);
+  ctx.bezierCurveTo(80, 222, 18, 178, 18, 122);
+  ctx.bezierCurveTo(18, 70, 54, 18, 120, 18);
+  ctx.clip();
+  RAINBOW.forEach((colour, index) => {
+    ctx.fillStyle = colour;
+    ctx.fillRect(0, 18 + index * 37, 240, 38);
+  });
+  const shine = ctx.createRadialGradient(88, 78, 8, 120, 122, 132);
+  shine.addColorStop(0, 'rgb(255 255 255 / 0.55)');
+  shine.addColorStop(0.45, 'rgb(255 255 255 / 0)');
+  shine.addColorStop(1, 'rgb(0 0 0 / 0.18)');
+  ctx.fillStyle = shine;
+  ctx.fillRect(0, 0, 240, 260);
+  ctx.restore();
+  ctx.fillStyle = 'rgb(255 255 255 / 0.6)';
+  ctx.beginPath();
+  ctx.ellipse(82, 76, 15, 28, 0.55, 0, Math.PI * 2);
+  ctx.fill();
+  return canvas;
+}
+
+/** A small picture, such as a prize, drawn once from an emoji. */
+function makeMarkSprite(mark) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.font = '100px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(mark, 64, 70);
+  return canvas;
+}
+
+/** A soap bubble, see-through with a soft edge, for a power-up to float up in. */
+function makeBubbleSprite() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 240;
+  canvas.height = 240;
+  const ctx = canvas.getContext('2d');
+  const body = ctx.createRadialGradient(120, 120, 60, 120, 120, 116);
+  body.addColorStop(0, 'rgb(220 245 255 / 0.18)');
+  body.addColorStop(0.8, 'rgb(190 225 255 / 0.32)');
+  body.addColorStop(0.93, 'rgb(255 200 240 / 0.55)');
+  body.addColorStop(1, 'rgb(255 255 255 / 0)');
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.arc(120, 120, 116, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgb(255 255 255 / 0.8)';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(120, 120, 108, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = 'rgb(255 255 255 / 0.75)';
+  ctx.beginPath();
+  ctx.ellipse(78, 72, 22, 12, -0.7, 0, Math.PI * 2);
+  ctx.fill();
+  return canvas;
+}
+
+/** A friend peeping over the side of a basket: Joze, Mochi, Frost or Truffle, from simple shapes. */
+function makeFriendSprite(who) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 200;
+  canvas.height = 200;
+  const ctx = canvas.getContext('2d');
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = INK;
+  ctx.lineJoin = 'round';
+  const blob = (x, y, rx, ry, colour, angle = 0) => {
+    ctx.fillStyle = colour;
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, angle, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  };
+  const looks = {
+    joze: { face: '#f5c451', inner: '#fff0c9' },
+    mochi: { face: '#ffffff', inner: '#ffc2d8' },
+    frost: { face: '#2f4a6b', inner: '#ffffff' },
+    truffle: { face: '#ffb3c6', inner: '#ff8fae' },
+  }[who];
+  if (who === 'joze') {
+    // Two little horns with round tips, and ears.
+    for (const x of [72, 128]) {
+      ctx.fillStyle = '#c98a3a';
+      ctx.fillRect(x - 5, 40, 10, 34);
+      ctx.strokeRect(x - 5, 40, 10, 34);
+      blob(x, 38, 11, 11, '#8a5a34');
+    }
+    blob(46, 92, 22, 12, looks.face, -0.4);
+    blob(154, 92, 22, 12, looks.face, 0.4);
+  } else if (who === 'mochi') {
+    blob(76, 50, 15, 44, looks.face, -0.15);
+    blob(124, 50, 15, 44, looks.face, 0.15);
+    ctx.fillStyle = looks.inner;
+    for (const [x, a] of [[76, -0.15], [124, 0.15]]) {
+      ctx.beginPath();
+      ctx.ellipse(x, 52, 6, 32, a, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (who === 'truffle') {
+    blob(62, 66, 18, 16, looks.face, -0.6);
+    blob(138, 66, 18, 16, looks.face, 0.6);
+  }
+  blob(100, 120, 62, 56, looks.face);
+  if (who === 'joze') {
+    ctx.fillStyle = '#c98a3a';
+    for (const [x, y, r] of [[64, 100, 9], [138, 96, 8], [126, 140, 7]]) {
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    blob(100, 150, 34, 22, looks.inner);
+  } else if (who === 'frost') {
+    blob(100, 132, 44, 40, looks.inner);
+    blob(100, 140, 13, 8, '#ffb703');
+  } else if (who === 'truffle') {
+    blob(100, 142, 22, 15, looks.inner);
+    ctx.fillStyle = INK;
+    for (const x of [93, 107]) {
+      ctx.beginPath();
+      ctx.arc(x, 142, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    blob(100, 140, 9, 6, '#ff7eb6');
+  }
+  for (const x of [80, 120]) {
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(x, 112, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    ctx.fillStyle = INK;
+    ctx.beginPath();
+    ctx.arc(x + 2, 114, 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = 'rgb(255 120 140 / 0.5)';
+  for (const x of [62, 138]) {
+    ctx.beginPath();
+    ctx.ellipse(x, 134, 9, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  return canvas;
+}
+
 const CLOUD_HEIGHT = 170;
 
 function makeCloudSprite() {
@@ -113,13 +310,32 @@ class BalloonGlove extends Glove {
 }
 
 export class BalloonField {
-  /** events: onPop(total), onBump(side), onGoal(), onWrong(side), onCooled(side) */
-  constructor(canvas, events = {}) {
+  /**
+   * events: onPop(total), onBump(side), onGoal(), onWrong(side), onCooled(side), onPrize(kind, total),
+   * onPower(kind). language() says which language a new thing's label is in, and prizeTarget() where on
+   * the screen the prize tally is, for a caught prize to fly to.
+   */
+  constructor(canvas, events = {}, { language = () => 'en', prizeTarget = () => ({ x: 80, y: 40 }) } = {}) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.events = events;
+    this.language = language;
+    this.prizeTarget = prizeTarget;
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.sprites = COLOURS.map(makeBalloonSprite);
+    this.rainbowSprite = makeRainbowSprite();
+    this.bubbleSprite = makeBubbleSprite();
+    this.marks = Object.fromEntries([...Object.entries(PRIZE_MARKS), ...Object.entries(POWER_MARKS), ['present', '🎁']]
+      .map(([key, mark]) => [key, makeMarkSprite(mark)]));
+    this.friends = Object.fromEntries(FRIENDS.map((who) => [who, makeFriendSprite(who)]));
+    this.prizes = [];
+    this.flying = [];
+    this.labels = [];
+    this.baskets = [];
+    this.chain = [];
+    this.power = null;
+    this.bird = null;
+    this.introduced = new Set();
     this.cloud = makeCloudSprite();
     this.gloves = { left: new BalloonGlove('left'), right: new BalloonGlove('right') };
     this.balloons = [];
@@ -141,23 +357,28 @@ export class BalloonField {
     }));
     this.configure({ goal: 20, pace: 'slow', reach: 'little', side: 'right' });
     this.setLevel(1);
-    this.resetCounts();
+    this.reset({});
 
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
 
   configure({ goal = this.goal, pace = this.paceName, reach = this.reachName, side = this.side }) {
+    const turned = this.side !== side;
     this.goal = goal;
     this.paceName = pace;
     this.reachName = reach;
     this.side = side;
+    // A place's landmarks stand on the side away from the hand in play.
+    if (turned && this.width && this.plan?.place !== 'hills') this.paintBackdrop();
   }
 
-  /** What this level changes: see rules.js. */
+  /** What this level changes: see rules.js. A new place is painted when the level brings one. */
   setLevel(level) {
+    const place = this.plan?.place;
     this.level = level;
     this.plan = balloonLevel(level);
+    if (this.width && place !== this.plan.place) this.paintBackdrop();
   }
 
   /** The chosen speed, with this level's on top. */
@@ -176,6 +397,8 @@ export class BalloonField {
   resetCounts() {
     this.popped = { left: 0, right: 0 };
     this.wrong = { left: 0, right: 0 };
+    this.caught = { left: 0, right: 0 }; // Prizes caught by each hand.
+    this.prizeKinds = { sweet: 0, star: 0, gem: 0, heart: 0 };
     this.reachedGoal = false;
     this.gloves.left.burnt = 0;
     this.gloves.right.burnt = 0;
@@ -189,9 +412,27 @@ export class BalloonField {
     this.shards = [];
     this.rings = [];
     this.smoke = [];
+    this.prizes = [];
+    this.flying = [];
+    this.labels = [];
+    this.baskets = [];
+    this.chain = [];
+    this.spreads = [];
+    this.power = null;
+    this.bird = null;
+    this.introduced = new Set();
+    this.owed = { power: false, basket: false };
+    this.powerTimer = FIRST_POWER_AFTER;
+    this.basketTimer = FIRST_BASKET_AFTER;
+    this.powerTurn = 0;
+    this.friendTurn = 0;
     this.spawnTimer = 0;
     this.numbered = false;
     this.rightNumber = null;
+  }
+
+  get prizeTotal() {
+    return this.caught.left + this.caught.right;
   }
 
   /** Where balloons with answers wait, within reach of the hand, staggered so they don't touch. */
@@ -252,6 +493,8 @@ export class BalloonField {
       goal: this.goal,
       popped: { ...this.popped },
       wrong: { ...this.wrong },
+      caught: { ...this.caught },
+      prizes: { ...this.prizeKinds },
       progress: clamp(this.total / this.goal, 0, 1),
     };
   }
@@ -267,7 +510,11 @@ export class BalloonField {
     this.paintBackdrop();
   }
 
-  /** The sky and hills only change with the window, so they're drawn once and reused. */
+  /**
+   * The sky and the place only change with the window and the level, so they're drawn once and reused:
+   * the hills, the sea from level 5, or the Harvest Fair from level 8. What makes each place itself
+   * stands at the far edge, away from where balloons come up, and nothing in it moves.
+   */
   paintBackdrop() {
     const { width, height, ratio } = this;
     this.backdrop = document.createElement('canvas');
@@ -301,9 +548,156 @@ export class BalloonField {
       ctx.closePath();
       ctx.fill();
     };
+    const place = this.plan?.place ?? 'hills';
+    if (place === 'seaside') {
+      this.paintSeaside(ctx, hill);
+      return;
+    }
+    if (place === 'fair') this.paintFair(ctx);
     hill('#a6e4b4', 0.82, 0.05, 5, 0.6);
     hill('#7ed492', 0.88, 0.045, 7, 2.4);
     hill('#5cc471', 0.95, 0.035, 9, 4.1);
+    if (place === 'fair') this.paintTents(ctx);
+  }
+
+  /** The edge of the screen away from the hand in play, where a place's landmarks stand. */
+  farEdge(share) {
+    return (this.side === 'left' ? 1 - share : share) * this.width;
+  }
+
+  /** By the sea: a far headland, calm water with two sailing boats, a lighthouse, and sand. */
+  paintSeaside(ctx, hill) {
+    const { width, height } = this;
+    hill('#a6e4b4', 0.76, 0.04, 3, 0.6);
+    const sea = ctx.createLinearGradient(0, height * 0.78, 0, height);
+    sea.addColorStop(0, '#7fd0f2');
+    sea.addColorStop(1, '#4fb3e3');
+    ctx.fillStyle = sea;
+    ctx.fillRect(0, height * 0.78, width, height * 0.22);
+    ctx.strokeStyle = 'rgb(255 255 255 / 0.55)';
+    ctx.lineWidth = Math.max(2, height * 0.004);
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 9; i += 1) {
+      const x = ((i * 0.37 + 0.05) % 1) * width;
+      const y = height * (0.83 + ((i * 0.53) % 1) * 0.08);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x + height * 0.03, y - height * 0.012, x + height * 0.06, y);
+      ctx.stroke();
+    }
+    // Sand along the bottom.
+    ctx.fillStyle = '#f6dfa4';
+    ctx.beginPath();
+    ctx.moveTo(0, height);
+    for (let x = 0; x <= width; x += 10) ctx.lineTo(x, height * 0.955 - height * 0.012 * Math.sin((x / width) * 9));
+    ctx.lineTo(width, height);
+    ctx.closePath();
+    ctx.fill();
+    // A red and white lighthouse on the far side.
+    const lx = this.side === 'left' ? width - height * 0.09 : height * 0.09;
+    const top = height * 0.56;
+    const base = height * 0.8;
+    const w = height * 0.05;
+    for (let band = 0; band < 4; band += 1) {
+      ctx.fillStyle = band % 2 ? '#ffffff' : '#ef5b5b';
+      const y0 = top + ((base - top) * band) / 4;
+      const y1 = top + ((base - top) * (band + 1)) / 4;
+      const half0 = w * (0.75 + 0.25 * (band / 4));
+      const half1 = w * (0.75 + 0.25 * ((band + 1) / 4));
+      ctx.beginPath();
+      ctx.moveTo(lx - half0, y0);
+      ctx.lineTo(lx + half0, y0);
+      ctx.lineTo(lx + half1, y1);
+      ctx.lineTo(lx - half1, y1);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = '#fff3b0';
+    ctx.fillRect(lx - w * 0.6, top - height * 0.05, w * 1.2, height * 0.05);
+    ctx.fillStyle = '#ef5b5b';
+    ctx.beginPath();
+    ctx.moveTo(lx - w * 0.9, top - height * 0.05);
+    ctx.lineTo(lx, top - height * 0.1);
+    ctx.lineTo(lx + w * 0.9, top - height * 0.05);
+    ctx.closePath();
+    ctx.fill();
+    // Two little sailing boats, far out.
+    for (const [share, size, colour] of [[0.3, 1, '#ffd23f'], [0.62, 0.8, '#ff7eb6']]) {
+      const x = this.farEdge(share);
+      const y = height * 0.86;
+      const s = height * 0.05 * size;
+      ctx.fillStyle = '#8a5a34';
+      ctx.beginPath();
+      ctx.moveTo(x - s, y);
+      ctx.lineTo(x + s, y);
+      ctx.lineTo(x + s * 0.7, y + s * 0.4);
+      ctx.lineTo(x - s * 0.7, y + s * 0.4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = colour;
+      ctx.beginPath();
+      ctx.moveTo(x, y - s * 1.6);
+      ctx.lineTo(x + s * 0.9, y - s * 0.1);
+      ctx.lineTo(x, y - s * 0.1);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  /** The Harvest Fair: a big wheel standing still behind the hills on the far side. */
+  paintFair(ctx) {
+    const { height } = this;
+    const x = this.side === 'left' ? this.width - height * 0.2 : height * 0.2;
+    const y = height * 0.6;
+    const r = height * 0.17;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = Math.max(3, height * 0.007);
+    ctx.beginPath();
+    ctx.moveTo(x - r * 0.5, height * 0.86);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x + r * 0.5, height * 0.86);
+    ctx.stroke();
+    ctx.strokeStyle = '#ff7eb6';
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = Math.max(2, height * 0.004);
+    ctx.strokeStyle = '#ffffff';
+    for (let i = 0; i < 8; i += 1) {
+      const angle = (i / 8) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(angle) * r, y + Math.sin(angle) * r);
+      ctx.stroke();
+      ctx.fillStyle = COLOURS[i % COLOURS.length];
+      ctx.beginPath();
+      ctx.roundRect(x + Math.cos(angle) * r - height * 0.016, y + Math.sin(angle) * r, height * 0.032, height * 0.026, height * 0.008);
+      ctx.fill();
+    }
+  }
+
+  /** Two striped tents in front of the hills, at the far side. */
+  paintTents(ctx) {
+    const { height } = this;
+    for (const [share, colour] of [[0.05, '#ef5b5b'], [0.17, '#3b82f6']]) {
+      const x = this.farEdge(share);
+      const base = height * 0.93;
+      const w = height * 0.08;
+      for (let stripe = 0; stripe < 4; stripe += 1) {
+        ctx.fillStyle = stripe % 2 ? '#ffffff' : colour;
+        const x0 = x - w + (stripe * w) / 2;
+        ctx.beginPath();
+        ctx.moveTo(x, base - w * 1.4);
+        ctx.lineTo(x0, base);
+        ctx.lineTo(x0 + w / 2, base);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = '#ffd23f';
+      ctx.beginPath();
+      ctx.arc(x, base - w * 1.45, height * 0.008, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   /** Puts a balloon somewhere exact, for the automated tests. */
@@ -311,8 +705,12 @@ export class BalloonField {
     return this.addBalloon({ x, y, still });
   }
 
-  addBalloon({ x, y, still = false, star = false }) {
-    const wanderer = Math.random() < this.plan.wanderers;
+  /**
+   * A balloon. kind is what's special about it, if anything: 'present' carries a present, 'rainbow'
+   * spreads its pop, 'big' pops into three, and 'power' is a soap bubble with a power-up in it.
+   */
+  addBalloon({ x, y, still = false, star = false, kind = null, power = null }) {
+    const wanderer = !kind && Math.random() < this.plan.wanderers;
     const balloon = {
       homeX: x,
       x,
@@ -331,9 +729,21 @@ export class BalloonField {
       star,
       choosing: 0,
       tie: null,
+      kind,
+      power,
+      born: this.time,
     };
+    if (kind === 'big') {
+      balloon.r = this.balloonSize * BIG_SIZE;
+      balloon.pace *= 0.85;
+    } else if (kind === 'power') {
+      balloon.r = this.balloonSize * 1.2;
+      balloon.pace *= 0.9;
+    }
     this.nextColour = (this.nextColour + 1) % this.sprites.length;
     this.balloons.push(balloon);
+    // The first time each new kind comes along, it gets a little label, once it's up on the screen.
+    balloon.intro = kind === 'power' ? power : kind ?? (star ? 'starBalloon' : null);
     return balloon;
   }
 
@@ -351,11 +761,39 @@ export class BalloonField {
     const y = height + this.balloonSize * 1.6;
     const { plan } = this;
     const room = this.pace.most - this.balloons.length;
+    // A friend in a basket, or a power-up, takes the next balloon's turn when one is due.
+    // While a basket is due, no more balloons come until there's room for its three, which is soon, as
+    // balloons float off the top all the time. So there are never more up than the level allows.
+    if (this.owed.basket && this.playing) {
+      if (room < BASKET_BALLOONS) return;
+      this.owed.basket = false;
+      this.addBasket(x, y);
+      return;
+    }
+    if (this.owed.power && this.playing) {
+      this.owed.power = false;
+      // The newest kind first, and then each in turn.
+      const kinds = plan.powers;
+      const power = kinds[(kinds.length - 1 + this.powerTurn) % kinds.length];
+      this.powerTurn += 1;
+      this.addBalloon({ x, y, kind: 'power', power });
+      return;
+    }
     if (room >= 2 && Math.random() < plan.pairs) {
       this.addPair(x, y);
       return;
     }
-    this.addBalloon({ x, y, star: Math.random() < plan.stars });
+    if (plan.big && Math.random() < plan.big) {
+      this.addBalloon({ x, y, kind: 'big' });
+      return;
+    }
+    if (plan.rainbow && Math.random() < plan.rainbow) {
+      this.addBalloon({ x, y, kind: 'rainbow' });
+      return;
+    }
+    const star = Math.random() < plan.stars;
+    const present = !star && plan.presents > 0 && Math.random() < plan.presents;
+    this.addBalloon({ x, y, star, kind: present ? 'present' : null });
   }
 
   /** Two balloons tied together, which go up together until one of them pops. */
@@ -366,10 +804,41 @@ export class BalloonField {
     const second = this.addBalloon({ x: middle + apart, y: y - this.balloonSize * 0.5 });
     // They move as one: the same pace, sway and drift.
     for (const key of ['pace', 'phase', 'swayRate', 'sway', 'drift']) second[key] = first[key];
-    const tie = { members: [first, second] };
+    const tie = { members: [first, second], popped: 0 };
     first.tie = tie;
     second.tie = tie;
+    if (this.plan.prizes.includes('gem')) second.intro = 'pair';
     return tie;
+  }
+
+  /**
+   * A friend in a basket, under three balloons. It rises more slowly with each one popped, and once all
+   * three are, it comes gently down and leaves a heart.
+   */
+  addBasket(x, y) {
+    const size = this.balloonSize;
+    const middle = clamp(x, size * 2.4, this.width - size * 2.4);
+    const basket = {
+      x: middle,
+      y: y + size * 3,
+      r: size * 0.95,
+      friend: FRIENDS[this.friendTurn++ % FRIENDS.length],
+      state: 'rising',
+      left: BASKET_BALLOONS,
+      phase: Math.random() * Math.PI * 2,
+      fade: 1,
+      balloons: [],
+    };
+    const spots = [[-1.05, -2.5], [0, -3.15], [1.05, -2.5]];
+    for (const [dx, dy] of spots) {
+      const balloon = this.addBalloon({ x: middle + dx * size, y: basket.y + dy * size });
+      Object.assign(balloon, { basket, offset: { x: dx * size, y: dy * size }, sway: 0, drift: 0 });
+      basket.balloons.push(balloon);
+    }
+    this.baskets.push(basket);
+    basket.balloons[1].intro = null;
+    basket.intro = 'basket';
+    return basket;
   }
 
   /**
@@ -379,6 +848,8 @@ export class BalloonField {
   update(dt, snapshot, { aspect = this.aspect, popping = false, spawning = true, showHands = false } = {}) {
     this.time += dt;
     this.aspect = aspect;
+    // Power-ups, friends in baskets and the labels for new things are only for play, never behind a card.
+    this.playing = popping;
 
     for (const side of ['left', 'right']) {
       const glove = this.gloves[side];
@@ -387,21 +858,57 @@ export class BalloonField {
       if (popping) this.coolGlove(glove, dt);
     }
 
-    const { pace } = this;
+    const { pace, plan } = this;
     if (spawning && !this.numbered) {
+      // Power-ups and friends in baskets come along every so often, from their levels.
+      if (popping && plan.powerEvery && !this.power && !this.owed.power && !this.balloons.some(({ kind }) => kind === 'power')) {
+        this.powerTimer -= dt;
+        if (this.powerTimer <= 0) {
+          this.owed.power = true;
+          this.powerTimer = plan.powerEvery;
+        }
+      }
+      if (popping && plan.baskets && !this.baskets.length && !this.owed.basket) {
+        this.basketTimer -= dt;
+        if (this.basketTimer <= 0) {
+          this.owed.basket = true;
+          this.basketTimer = plan.baskets;
+        }
+      }
       this.spawnTimer -= dt;
       if (this.spawnTimer <= 0 && this.balloons.length < pace.most) {
         this.spawn();
         this.spawnTimer = pace.every * between(0.8, 1.2);
       }
     }
+    if (popping) {
+      this.updatePower(dt);
+      this.updateBird(dt);
+      this.updateChain();
+    }
+    this.updateBaskets(dt, pace);
 
-    this.balloons = this.balloons.filter((balloon) => {
+    // A pop can add balloons, as a big one pops into three, so they're kept on after the ones gone through.
+    const before = this.balloons;
+    const count = before.length;
+    const kept = [];
+    for (let index = 0; index < count; index += 1) {
+      const balloon = before[index];
+      if (balloon.popNow && !balloon.leaving) {
+        this.pop(balloon, balloon.popNow);
+        continue;
+      }
+      balloon.popNow = null;
       this.moveBalloon(balloon, dt, pace);
-      if (popping && balloon.y < this.height + balloon.r && this.touchGloves(balloon, dt)) return false;
-      return balloon.y > -balloon.r * 3.2;
-    });
+      if (popping && balloon.intro && balloon.y < this.height - balloon.r * 1.5) {
+        if (this.introduce(balloon.intro, balloon) || this.introduced.has(balloon.intro)) balloon.intro = null;
+      }
+      if (popping && balloon.y < this.height + balloon.r && this.touchGloves(balloon, dt)) continue;
+      if (balloon.y > -balloon.r * 3.2) kept.push(balloon);
+    }
+    this.balloons = kept.concat(before.slice(count));
 
+    this.updatePrizes(dt, popping);
     this.updateEffects(dt);
     for (const cloud of this.clouds) {
       if (!this.reducedMotion) cloud.at = (cloud.at + cloud.drift * dt) % 1.3;
@@ -410,6 +917,188 @@ export class BalloonField {
     if (popping && !this.reachedGoal && this.total >= this.goal) {
       this.reachedGoal = true;
       this.events.onGoal?.();
+    }
+  }
+
+  /* ---------- prizes, power-ups and helpers, from the higher levels ---------- */
+
+  /** A new thing's label, the first time it comes along in a game, one at a time so they're read. */
+  introduce(key, target) {
+    if (this.introduced.has(key) || this.labels.length || !LABELS[key]) return false;
+    this.introduced.add(key);
+    const [en, ka] = LABELS[key];
+    this.labels.push({ key, target, life: LABEL_SECONDS, text: this.language() === 'ka' ? ka : en });
+    return true;
+  }
+
+  /** A prize comes out of something popped. It hops a little, then falls slowly. */
+  dropPrize(kind, x, y) {
+    if (!this.plan.prizes.includes(kind)) return null;
+    const prize = {
+      kind,
+      x,
+      y,
+      homeX: x,
+      vy: kind === 'sweet' ? 0 : -this.height * 0.14,
+      r: this.height * PRIZE_SHARE * (kind === 'sweet' ? 1.15 : 1),
+      age: 0,
+      phase: Math.random() * Math.PI * 2,
+      fade: 1,
+    };
+    this.prizes.push(prize);
+    this.introduce(kind, prize);
+    return prize;
+  }
+
+  /** Prizes fall, drift towards a nearby hand, and are caught by the glove coming near, open or closed. */
+  updatePrizes(dt, catching) {
+    const glove = this.gloves[this.side];
+    const magnet = this.power?.kind === 'magnet';
+    const range = (magnet ? MAGNET.pullRange : PRIZE.pullRange) * this.height;
+    const pull = (magnet ? MAGNET.pull : PRIZE.pull) * this.height;
+    const reach = this.palmSize * (PRIZE.catchPalms + (this.power?.kind === 'bubble' ? BUBBLE_REACH : 0));
+    const fall = PRIZE.fall * this.height;
+    this.prizes = this.prizes.filter((prize) => {
+      prize.age += dt;
+      prize.vy = Math.min(prize.vy + this.height * 0.5 * dt, fall * (prize.kind === 'sweet' ? 0.85 : 1));
+      prize.y += prize.vy * dt;
+      if (catching && glove.visible) {
+        const dx = glove.x - prize.x;
+        const dy = glove.y - prize.y;
+        const away = Math.hypot(dx, dy);
+        // A present is seen falling for a moment before it can be caught.
+        if (away <= reach + prize.r && prize.age > (prize.kind === 'sweet' ? 0.6 : 0.3)) {
+          this.catchPrize(prize);
+          return false;
+        }
+        if (away < range && away > 1) {
+          prize.homeX += (dx / away) * pull * dt;
+          prize.y += (dy / away) * pull * dt;
+        }
+      }
+      const sway = (this.reducedMotion ? 0.4 : 1) * Math.sin(this.time * 1.3 + prize.phase) * this.height * 0.018;
+      prize.x = clamp(prize.homeX + sway, prize.r, this.width - prize.r);
+      // One that isn't caught lands on the hills and fades. Missing it costs nothing.
+      if (prize.y > this.height * 0.9) prize.fade -= dt;
+      return prize.fade > 0;
+    });
+    for (const flight of this.flying) flight.t += dt;
+    this.flying = this.flying.filter((flight) => flight.t < PRIZE_FLY_SECONDS);
+    for (const label of this.labels) label.life -= dt;
+    this.labels = this.labels.filter((label) => label.life > 0);
+  }
+
+  catchPrize(prize) {
+    const { side } = this;
+    this.caught[side] += 1;
+    this.prizeKinds[prize.kind] += 1;
+    this.flying.push({ kind: prize.kind, x: prize.x, y: prize.y, t: 0 });
+    this.rings.push({ x: prize.x, y: prize.y, r: prize.r, life: 0.32, colour: '#ffd23f' });
+    this.events.onPrize?.(prize.kind, this.prizeTotal);
+  }
+
+  /** A power-up's bubble was popped: it lasts a few seconds. */
+  startPower(kind, glove) {
+    this.power = { kind, left: POWER_SECONDS };
+    if (kind === 'bird') {
+      this.bird = { x: glove.x, y: glove.y - this.palmSize * 1.4, state: 'with', next: 0.5, flap: 0, target: null };
+    }
+    this.events.onPower?.(kind);
+  }
+
+  updatePower(dt) {
+    if (!this.power) return;
+    this.power.left -= dt;
+    if (this.power.left > 0) return;
+    if (this.power.kind === 'bird' && this.bird) this.bird.state = 'leaving';
+    this.power = null;
+  }
+
+  /** The bluebird stays by the hand, and every so often flies to a balloon near it and pops it. */
+  updateBird(dt) {
+    const { bird } = this;
+    if (!bird) return;
+    bird.flap += dt * (this.reducedMotion ? 3 : 6);
+    const glove = this.gloves[this.side];
+    if (bird.state === 'leaving') {
+      bird.x += this.width * 0.12 * dt;
+      bird.y -= this.height * 0.35 * dt;
+      if (bird.y < -this.height * 0.1) this.bird = null;
+      return;
+    }
+    if (bird.state === 'going') {
+      const { target } = bird;
+      bird.t += dt;
+      const share = ease(Math.min(1, bird.t / BIRD.flySeconds));
+      bird.x = bird.from.x + (target.x - bird.from.x) * share;
+      bird.y = bird.from.y + (target.y - target.r * 0.6 - bird.from.y) * share;
+      if (bird.t >= BIRD.flySeconds) {
+        if (this.balloons.includes(target) && !target.popNow && !target.leaving && !this.numbered) target.popNow = this.side;
+        bird.state = 'with';
+      }
+      return;
+    }
+    if (!glove.visible) return;
+    const home = { x: glove.x + this.palmSize * 1.1, y: glove.y - this.palmSize * 1.3 };
+    const follow = Math.min(1, dt * 4);
+    bird.x += (home.x - bird.x) * follow;
+    bird.y += (home.y - bird.y) * follow;
+    bird.next -= dt;
+    if (bird.next > 0) return;
+    bird.next = BIRD.every;
+    if (this.numbered) return;
+    let best = null;
+    let bestGap = BIRD.range * this.height;
+    for (const balloon of this.balloons) {
+      if (balloon.number !== undefined || balloon.kind === 'power' || balloon.popNow || balloon.leaving || balloon.y > this.height) continue;
+      const gap = Math.hypot(balloon.x - glove.x, balloon.y - glove.y);
+      if (gap < bestGap) {
+        best = balloon;
+        bestGap = gap;
+      }
+    }
+    if (best) Object.assign(bird, { state: 'going', target: best, from: { x: bird.x, y: bird.y }, t: 0 });
+  }
+
+  /** A rainbow balloon's pop spreading, one balloon after another. */
+  updateChain() {
+    this.chain = this.chain.filter(({ balloon, at, side }) => {
+      if (this.numbered) return false;
+      if (this.time < at) return true;
+      if (this.balloons.includes(balloon) && !balloon.popNow && !balloon.leaving) balloon.popNow = side;
+      return false;
+    });
+  }
+
+  /** Friends' baskets rise with their balloons, and come down once they've all been popped. */
+  updateBaskets(dt, pace) {
+    const breeze = this.breezeAt;
+    this.baskets = this.baskets.filter((basket) => {
+      if (basket.state === 'rising') {
+        basket.y -= pace.rise * 0.8 * this.height * dt * (basket.left / BASKET_BALLOONS);
+      } else if (basket.state === 'falling') {
+        basket.y += BASKET_FALL * this.height * dt;
+        if (basket.y >= this.height * 0.86) basket.state = 'landed';
+      } else {
+        basket.fade -= dt / 1.5;
+      }
+      basket.drawX = clamp(basket.x + breeze, basket.r, this.width - basket.r);
+      if (this.playing && basket.intro && basket.y < this.height * 0.85) {
+        if (this.introduce(basket.intro, basket) || this.introduced.has(basket.intro)) basket.intro = null;
+      }
+      return basket.fade > 0 && basket.y > -this.height * 0.25;
+    });
+  }
+
+  /** A big balloon pops into three ordinary ones, which spring out around where it was. */
+  split(balloon) {
+    for (let i = 0; i < BIG_SPLITS_INTO; i += 1) {
+      const angle = -Math.PI / 2 + (i - 1) * 1.1;
+      const x = clamp(balloon.x + Math.cos(angle) * balloon.r * 1.3, this.balloonSize, this.width - this.balloonSize);
+      const little = this.addBalloon({ x, y: balloon.y + Math.sin(angle) * balloon.r * 1.1 });
+      little.pushSpeed = Math.cos(angle) * this.height * 0.5;
+      // A moment to be seen before it can be popped.
+      little.fresh = true;
     }
   }
 
@@ -441,6 +1130,13 @@ export class BalloonField {
 
   moveBalloon(balloon, dt, pace) {
     const { width, height } = this;
+    if (balloon.basket) {
+      // Tied to a friend's basket, and going wherever it goes.
+      const { basket } = balloon;
+      balloon.x = (basket.drawX ?? basket.x) + balloon.offset.x;
+      balloon.y = basket.y + balloon.offset.y + Math.sin(this.time * 1.2 + balloon.phase) * balloon.r * 0.05;
+      return;
+    }
     if (balloon.leaving) {
       balloon.y -= NUMBER_LEAVE * height * dt;
     } else if (balloon.number === undefined) {
@@ -471,6 +1167,20 @@ export class BalloonField {
         if (away > 1 && away < height * REACH_HELP_RANGE) {
           balloon.homeX += (dx / away) * help * dt;
           balloon.y += (dy / away) * help * dt;
+        }
+      }
+    }
+
+    // The magnet draws the balloons near the hand in, for a few seconds.
+    if (this.power?.kind === 'magnet' && !balloon.still && balloon.number === undefined && balloon.kind !== 'power') {
+      const glove = this.gloves[this.side];
+      if (glove.visible) {
+        const dx = glove.x - balloon.x;
+        const dy = glove.y - balloon.y;
+        const away = Math.hypot(dx, dy);
+        if (away > balloon.r && away < height * MAGNET.balloonRange) {
+          balloon.homeX += (dx / away) * MAGNET.balloonPull * height * dt;
+          balloon.y += (dy / away) * MAGNET.balloonPull * height * dt;
         }
       }
     }
@@ -518,9 +1228,19 @@ export class BalloonField {
   touchGloves(balloon, dt) {
     if (balloon.number !== undefined) return this.touchNumbered(balloon, dt);
     if (balloon.leaving) return false;
+    if (balloon.fresh) {
+      if (this.time - balloon.born < 0.5) return false;
+      balloon.fresh = false;
+    }
     let held = false;
+    // The bubble round the glove reaches a little further.
+    const extra = this.power?.kind === 'bubble' ? this.palmSize * BUBBLE_REACH : 0;
     for (const glove of Object.values(this.gloves)) {
-      if (!glove.visible || glove.reachTo(balloon.x, balloon.y, this.palmSize) > balloon.r) continue;
+      if (!glove.visible || glove.reachTo(balloon.x, balloon.y, this.palmSize) > balloon.r + extra) continue;
+      if (glove.status === 'open' && balloon.kind === 'power') {
+        this.popPower(balloon, glove);
+        return true;
+      }
       if (glove.status === 'open' && balloon.star) {
         // A star balloon needs the open hand to stay on it for a moment.
         held = true;
@@ -544,11 +1264,34 @@ export class BalloonField {
     return false;
   }
 
+  /** A power-up's bubble pops softly, and doesn't count as a balloon. */
+  popPower(balloon, glove) {
+    this.rings.push({ x: balloon.x, y: balloon.y, r: balloon.r * 0.8, life: 0.32, colour: '#ffffff' });
+    this.startPower(balloon.power, glove);
+  }
+
   pop(balloon, side) {
     this.popped[side] += 1;
-    // Its partner floats on by itself.
-    if (balloon.tie) balloon.tie.members = balloon.tie.members.filter((member) => member !== balloon);
-    const colour = COLOURS[balloon.sprite];
+    // Its partner floats on by itself. Popping both drops a gem.
+    if (balloon.tie) {
+      balloon.tie.members = balloon.tie.members.filter((member) => member !== balloon);
+      balloon.tie.popped += 1;
+      if (balloon.tie.popped === 2) this.dropPrize('gem', balloon.x, balloon.y);
+    }
+    if (balloon.kind === 'present') this.dropPrize('sweet', balloon.x, balloon.y + balloon.r * 2.1);
+    if (balloon.star) this.dropPrize('star', balloon.x, balloon.y);
+    if (balloon.basket) {
+      const { basket } = balloon;
+      basket.left -= 1;
+      basket.balloons = basket.balloons.filter((member) => member !== balloon);
+      if (basket.left === 0) {
+        basket.state = 'falling';
+        this.dropPrize('heart', basket.drawX ?? basket.x, basket.y - basket.r);
+      }
+    }
+    if (balloon.kind === 'rainbow') this.spreadPop(balloon, side);
+    if (balloon.kind === 'big') this.split(balloon);
+    const colour = balloon.kind === 'rainbow' ? RAINBOW[Math.floor(Math.random() * RAINBOW.length)] : COLOURS[balloon.sprite];
     const count = this.reducedMotion ? 7 : 15;
     for (let i = 0; i < count; i += 1) {
       const angle = (i / count) * Math.PI * 2 + Math.random() * 0.4;
@@ -567,6 +1310,19 @@ export class BalloonField {
     }
     this.rings.push({ x: balloon.x, y: balloon.y, r: balloon.r * 0.7, life: 0.32, colour });
     this.events.onPop?.(this.total);
+  }
+
+  /** A rainbow balloon's pop spreads to the balloons round it, one after another, nearest first. */
+  spreadPop(rainbow, side) {
+    const reach = this.balloonSize * CHAIN_REACH;
+    const near = this.balloons
+      .filter((other) => other !== rainbow && other.number === undefined && other.kind !== 'power' && !other.popNow && !other.leaving && other.y < this.height)
+      .map((other) => ({ other, gap: Math.hypot(other.x - rainbow.x, other.y - rainbow.y) }))
+      .filter(({ gap }) => gap < reach)
+      .sort((a, b) => a.gap - b.gap)
+      .slice(0, CHAIN_MOST);
+    near.forEach(({ other }, index) => this.chain.push({ balloon: other, at: this.time + CHAIN_GAP * (index + 1) * (this.reducedMotion ? 1.5 : 1), side }));
+    this.spreads.push({ x: rainbow.x, y: rainbow.y, r: rainbow.r, life: 0.9 });
   }
 
   updateEffects(dt) {
@@ -592,16 +1348,51 @@ export class BalloonField {
       puff.size += this.palmSize * 0.5 * dt;
     }
     this.smoke = this.smoke.filter((puff) => puff.life > 0);
+    // A rainbow's ring grows slowly and fades.
+    for (const spread of this.spreads) {
+      spread.life -= dt;
+      spread.r += this.balloonSize * 2.6 * dt;
+    }
+    this.spreads = this.spreads.filter((spread) => spread.life > 0);
   }
 
   drawBalloon(balloon) {
     const { ctx } = this;
-    const { x, y, r } = balloon;
-    // Leans into its movement, and its string trails behind.
+    const { x, y } = balloon;
+    if (balloon.kind === 'power') {
+      this.drawPowerBubble(balloon);
+      return;
+    }
+    // The three a big balloon pops into grow quickly to their size.
+    const r = balloon.r * Math.min(1, 0.45 + (this.time - balloon.born) * 2.2);
+    if (balloon.basket) {
+      this.drawBasketString(balloon);
+    } else {
+      this.drawString(balloon, r);
+    }
+    const lean = balloon.basket ? 0 : this.leanOf(balloon);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(lean);
+    ctx.drawImage(balloon.kind === 'rainbow' ? this.rainbowSprite : this.sprites[balloon.sprite], -r * 1.2, -r * 1.22, r * 2.4, r * 3);
+    if (balloon.number !== undefined) this.drawNumber(balloon);
+    else if (balloon.star) this.drawStar(balloon);
+    ctx.restore();
+  }
+
+  /** How far a balloon leans into its movement. */
+  leanOf(balloon) {
     const breezeLean = balloon.still || balloon.number !== undefined || !this.plan.breeze
       ? 0
       : Math.cos(this.time * BREEZE_RATE) * this.plan.breeze * 2.4;
-    const lean = clamp((Math.cos(this.time * balloon.swayRate + balloon.phase) * balloon.sway) / (this.width * 0.6) + balloon.pushSpeed / (this.height * 6) + breezeLean, -0.3, 0.3);
+    return clamp((Math.cos(this.time * balloon.swayRate + balloon.phase) * balloon.sway) / (this.width * 0.6) + balloon.pushSpeed / (this.height * 6) + breezeLean, -0.3, 0.3);
+  }
+
+  /** A balloon's string trailing behind, down to a knot with its partner's, or to a present. */
+  drawString(balloon, r) {
+    const { ctx } = this;
+    const { x, y } = balloon;
+    const lean = this.leanOf(balloon);
     const tail = r * 1.16;
     const flutter = Math.sin(this.time * 1.7 + balloon.phase) * r * 0.26;
 
@@ -617,17 +1408,92 @@ export class BalloonField {
       const knotY = Math.max(pair[0].y, pair[1].y) + tail + r * 1.4;
       ctx.quadraticCurveTo(x - lean * r, y + tail + r * 0.8, knotX, knotY);
       if (balloon === pair[0]) ctx.lineTo(knotX - lean * r - flutter * 0.4, knotY + r * 0.9);
+    } else if (balloon.kind === 'present') {
+      // A shorter string, with a present tied on the end.
+      const endX = x - lean * r * 1.6;
+      const endY = y + tail + r * 0.7;
+      ctx.quadraticCurveTo(x - lean * r + flutter * 0.4, y + tail + r * 0.4, endX, endY);
+      ctx.stroke();
+      const size = r * 0.95;
+      ctx.drawImage(this.marks.present, endX - size / 2, endY - size * 0.12, size, size);
+      return;
     } else {
       ctx.quadraticCurveTo(x - lean * r * 2 + flutter, y + tail + r * 0.75, x - lean * r * 2.8 - flutter * 0.6, y + tail + r * 1.5);
     }
     ctx.stroke();
+  }
 
+  /** A balloon's string going down to its friend's basket. */
+  drawBasketString(balloon) {
+    const { ctx } = this;
+    const { basket } = balloon;
+    const bx = basket.drawX ?? basket.x;
+    ctx.strokeStyle = 'rgb(18 48 77 / 0.45)';
+    ctx.lineWidth = Math.max(1.5, balloon.r * 0.035);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(balloon.x, balloon.y + balloon.r * 1.16);
+    ctx.lineTo(bx + Math.sign(balloon.offset.x) * basket.r * 0.7, basket.y - basket.r * 0.35);
+    ctx.stroke();
+  }
+
+  /** A soap bubble with a power-up inside it. */
+  drawPowerBubble(balloon) {
+    const { ctx } = this;
+    const { x, y, r } = balloon;
+    const wobble = this.reducedMotion ? 0 : Math.sin(this.time * 1.6 + balloon.phase) * 0.03;
+    ctx.drawImage(this.bubbleSprite, x - r * (1 + wobble), y - r * (1 - wobble), r * 2 * (1 + wobble), r * 2 * (1 - wobble));
+    const size = r * 1.05;
+    ctx.drawImage(this.marks[balloon.power], x - size / 2, y - size / 2, size, size);
+  }
+
+  /** A friend's basket, with the friend peeping out and waving once they're on the way down. */
+  drawBasket(basket) {
+    const { ctx } = this;
+    const x = basket.drawX ?? basket.x;
+    const { y, r } = basket;
     ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(lean);
-    ctx.drawImage(this.sprites[balloon.sprite], -r * 1.2, -r * 1.22, r * 2.4, r * 3);
-    if (balloon.number !== undefined) this.drawNumber(balloon);
-    else if (balloon.star) this.drawStar(balloon);
+    ctx.globalAlpha = clamp(basket.fade, 0, 1);
+    if (basket.state !== 'rising') {
+      // A little parachute, the colour of a balloon, for coming down gently.
+      ctx.fillStyle = '#ff7eb6';
+      ctx.beginPath();
+      ctx.arc(x, y - r * 2.1, r * 1.3, Math.PI, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgb(18 48 77 / 0.45)';
+      ctx.lineWidth = Math.max(1.5, r * 0.04);
+      ctx.beginPath();
+      for (const side of [-1, 1]) {
+        ctx.moveTo(x + side * r * 1.25, y - r * 2.05);
+        ctx.lineTo(x + side * r * 0.7, y - r * 0.35);
+      }
+      ctx.stroke();
+    }
+    // The friend, behind the front of the basket.
+    const size = r * 1.7;
+    const bob = basket.state === 'rising' ? 0 : Math.sin(this.time * 2.2) * r * 0.05;
+    ctx.drawImage(this.friends[basket.friend], x - size / 2, y - r * 2.05 + bob, size, size);
+    ctx.fillStyle = '#c98a3a';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = Math.max(2, r * 0.07);
+    ctx.beginPath();
+    ctx.moveTo(x - r * 0.9, y - r * 0.35);
+    ctx.lineTo(x + r * 0.9, y - r * 0.35);
+    ctx.lineTo(x + r * 0.7, y + r * 0.55);
+    ctx.lineTo(x - r * 0.7, y + r * 0.55);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = 'rgb(120 70 30 / 0.6)';
+    ctx.lineWidth = Math.max(1.5, r * 0.04);
+    ctx.beginPath();
+    for (const share of [0.25, 0.55]) {
+      const yy = y - r * 0.35 + r * 0.9 * share;
+      ctx.moveTo(x - r * (0.9 - 0.2 * share), yy);
+      ctx.lineTo(x + r * (0.9 - 0.2 * share), yy);
+    }
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -691,6 +1557,21 @@ export class BalloonField {
     ctx.globalAlpha = 1;
 
     for (const balloon of this.balloons) this.drawBalloon(balloon);
+    for (const basket of this.baskets) this.drawBasket(basket);
+    for (const prize of this.prizes) this.drawPrize(prize);
+
+    for (const spread of this.spreads) {
+      // A soft rainbow ring, growing slowly as the pop spreads.
+      ctx.lineWidth = Math.max(3, height * 0.01);
+      RAINBOW.forEach((colour, index) => {
+        ctx.strokeStyle = colour;
+        ctx.globalAlpha = clamp(spread.life / 0.9, 0, 1) * 0.45;
+        ctx.beginPath();
+        ctx.arc(spread.x, spread.y, spread.r + index * ctx.lineWidth, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+    }
+    ctx.globalAlpha = 1;
 
     for (const ring of this.rings) {
       ctx.strokeStyle = ring.colour;
@@ -713,6 +1594,9 @@ export class BalloonField {
 
     this.gloves.left.draw(ctx, this.palmSize);
     this.gloves.right.draw(ctx, this.palmSize);
+    this.drawPower();
+    if (this.bird) this.drawBird(this.bird);
+    this.drawFlying();
 
     ctx.fillStyle = '#5b5552';
     for (const puff of this.smoke) {
@@ -722,5 +1606,152 @@ export class BalloonField {
       ctx.fill();
     }
     ctx.globalAlpha = 1;
+    for (const label of this.labels) this.drawLabel(label);
+  }
+
+  /** A prize falling: a present on a little parachute, a star, a gem or a heart. */
+  drawPrize(prize) {
+    const { ctx } = this;
+    const { x, y, r } = prize;
+    ctx.save();
+    ctx.globalAlpha = clamp(prize.fade, 0, 1);
+    if (prize.kind === 'sweet') {
+      ctx.fillStyle = 'rgb(255 255 255 / 0.9)';
+      ctx.strokeStyle = 'rgb(18 48 77 / 0.4)';
+      ctx.lineWidth = Math.max(1.5, r * 0.05);
+      ctx.beginPath();
+      ctx.arc(x, y - r * 1.5, r * 1.15, Math.PI, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      for (const side of [-1, 1]) {
+        ctx.moveTo(x + side * r * 1.1, y - r * 1.45);
+        ctx.lineTo(x + side * r * 0.45, y - r * 0.5);
+      }
+      ctx.stroke();
+      ctx.drawImage(this.marks.present, x - r, y - r * 0.85, r * 2, r * 2);
+    } else {
+      // Turns slowly, so it catches the eye without anything flashing.
+      const turn = this.reducedMotion ? 0 : Math.sin(this.time * 1.4 + prize.phase) * 0.25;
+      ctx.translate(x, y);
+      ctx.rotate(turn);
+      ctx.drawImage(this.marks[prize.kind], -r, -r, r * 2, r * 2);
+    }
+    ctx.restore();
+  }
+
+  /** A caught prize flying up to the tally, getting smaller. */
+  drawFlying() {
+    if (!this.flying.length) return;
+    const { ctx } = this;
+    const to = this.prizeTarget();
+    for (const flight of this.flying) {
+      const share = ease(Math.min(1, flight.t / PRIZE_FLY_SECONDS));
+      const x = flight.x + (to.x - flight.x) * share;
+      const y = flight.y + (to.y - flight.y) * share - Math.sin(share * Math.PI) * this.height * 0.08;
+      const size = this.height * PRIZE_SHARE * (1.2 - 0.6 * share);
+      ctx.drawImage(this.marks[flight.kind], x - size, y - size, size * 2, size * 2);
+    }
+  }
+
+  /** What a power-up looks like on the glove, with a ring that goes down as its time runs out. */
+  drawPower() {
+    const { power } = this;
+    const glove = this.gloves[this.side];
+    if (!power || !glove.visible) return;
+    const { ctx, palmSize } = this;
+    const reach = palmSize * (0.62 + BUBBLE_REACH) + palmSize * 0.3;
+    ctx.save();
+    if (power.kind === 'bubble') {
+      ctx.drawImage(this.bubbleSprite, glove.x - reach, glove.y - reach, reach * 2, reach * 2);
+    } else if (power.kind === 'magnet') {
+      const size = palmSize * 0.8;
+      ctx.drawImage(this.marks.magnet, glove.x - size / 2, glove.y - palmSize * 1.9, size, size);
+    }
+    ctx.strokeStyle = 'rgb(255 255 255 / 0.85)';
+    ctx.lineWidth = Math.max(3, palmSize * 0.07);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(glove.x, glove.y, reach + palmSize * 0.12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(power.left / POWER_SECONDS, 0, 1));
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** The bluebird: round and blue, with a yellow beak and slow flapping wings. */
+  drawBird(bird) {
+    const { ctx } = this;
+    const size = this.palmSize * 0.42;
+    const flap = Math.sin(bird.flap) * 0.5;
+    ctx.save();
+    ctx.translate(bird.x, bird.y);
+    ctx.lineWidth = Math.max(2, size * 0.1);
+    ctx.strokeStyle = INK;
+    ctx.fillStyle = '#5fa8ff';
+    for (const side of [-1, 1]) {
+      ctx.save();
+      ctx.rotate(side * (0.4 + flap));
+      ctx.beginPath();
+      ctx.ellipse(side * size * 0.9, -size * 0.2, size * 0.75, size * 0.32, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.beginPath();
+    ctx.arc(0, 0, size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#dff0ff';
+    ctx.beginPath();
+    ctx.ellipse(0, size * 0.4, size * 0.6, size * 0.45, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffb703';
+    ctx.beginPath();
+    ctx.moveTo(size * 0.85, -size * 0.1);
+    ctx.lineTo(size * 1.35, size * 0.05);
+    ctx.lineTo(size * 0.85, size * 0.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = INK;
+    ctx.beginPath();
+    ctx.arc(size * 0.4, -size * 0.25, size * 0.14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /** A new thing's little label, above it, fading in and out. */
+  drawLabel(label) {
+    const { ctx, height } = this;
+    const { target } = label;
+    const alpha = clamp(Math.min((LABEL_SECONDS - label.life) / 0.3, label.life / 0.6), 0, 1);
+    const tx = target.drawX ?? target.x;
+    const size = Math.max(16, height * 0.03);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    // A soft ring round it, growing slowly.
+    if (!this.reducedMotion) {
+      ctx.strokeStyle = 'rgb(255 255 255 / 0.7)';
+      ctx.lineWidth = Math.max(2, height * 0.005);
+      ctx.beginPath();
+      ctx.arc(tx, target.y, target.r * (1.35 + 0.25 * (1 - label.life / LABEL_SECONDS)), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.font = `600 ${Math.round(size)}px Fredoka, "Noto Sans Georgian", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const w = ctx.measureText(label.text).width + size * 1.2;
+    const h = size * 1.7;
+    const x = clamp(tx, w / 2 + 8, this.width - w / 2 - 8);
+    const y = clamp(target.y - target.r * 1.6 - h, h / 2 + 90, height - h);
+    ctx.fillStyle = 'rgb(255 255 255 / 0.95)';
+    ctx.strokeStyle = 'rgb(18 48 77 / 0.25)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x - w / 2, y - h / 2, w, h, h / 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = INK;
+    ctx.fillText(label.text, x, y + 1);
+    ctx.restore();
   }
 }
