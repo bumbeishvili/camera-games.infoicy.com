@@ -52,6 +52,7 @@ export const askFor = (page, name, side = null) => page.evaluate(async ([which, 
   const { coach } = window.__game;
   const { ORDER } = await import('/games/mighty-moves/moves.js');
   coach.nextIndex = ORDER.indexOf(which);
+  coach.queue = [which]; // On the levels where the order is mixed up.
   if (on) coach.sidedCalls = on === coach.side ? 0 : 2;
   coach.computerIn = 1000;
   coach.call = null;

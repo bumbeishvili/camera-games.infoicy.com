@@ -166,41 +166,47 @@ test('a frozen tracker counts as no hand: it stops firing and driving, rather th
   expect((await patrolIs(page)).stats.shots).toBe(stats.shots);
 });
 
-test('nothing flashes: the picture\'s brightness stays steady through firing, stopping a tank and shells landing', async ({ page }) => {
-  test.setTimeout(120_000);
-  await startPatrol(page, { tankLevel: 'tough' });
-  const { x, z } = await oneTankAt(page, 10, -13, { hp: 12 });
-  await pointAt(page, 'tank', 'open');
-  await expect.poll(async () => (await patrolIs(page)).firing, { timeout: 15_000 }).toBe(true);
-  const firing = await brightnessThrough(page, 90);
-  console.log('biggest brightness step while firing', biggestStep(firing));
-  expect(biggestStep(firing)).toBeLessThan(6);
-  expect((await patrolIs(page)).stats.shots).toBeGreaterThan(1);
+// The same at level 10, where there's the most going on at once: see levelPlan in patrol.js.
+for (const level of [1, 10]) {
+  const levels = level === 1 ? {} : { levels: { 'tank-patrol': level } };
+  const atLevel = level === 1 ? '' : ` at level ${level}`;
 
-  // Right as it's stopped, with its smoke, its bolts and its stars.
-  const stopping = page.evaluate(() => {
-    const enemy = window.__enemy;
-    enemy.hp = 1;
-  }).then(() => brightnessThrough(page, 150));
-  const stopped = await stopping;
-  console.log('biggest brightness step as a tank stops', biggestStep(stopped));
-  expect(biggestStep(stopped)).toBeLessThan(6);
-  expect((await patrolIs(page)).stopped).toBe(1);
+  test(`nothing flashes${atLevel}: the picture's brightness stays steady through firing, stopping a tank and shells landing`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await startPatrol(page, { tankLevel: 'tough', ...levels });
+    const { x, z } = await oneTankAt(page, 10, -13, { hp: 12 });
+    await pointAt(page, 'tank', 'open');
+    await expect.poll(async () => (await patrolIs(page)).firing, { timeout: 15_000 }).toBe(true);
+    const firing = await brightnessThrough(page, 90);
+    console.log(`level ${level}: biggest brightness step while firing`, biggestStep(firing));
+    expect(biggestStep(firing)).toBeLessThan(6);
+    expect((await patrolIs(page)).stats.shots).toBeGreaterThan(1);
 
-  // A shell landing right on the tank.
-  await stopPointing(page);
-  await page.evaluate(([tx, tz]) => {
-    const { patrol } = window.__game;
-    const { tank } = patrol;
-    patrol.shells.push({ id: -1, share: 0.75, seconds: 1, blast: 5, from: { x: tx, y: 6, z: tz }, to: { x: tank.x, y: tank.y, z: tank.z } });
-  }, [x, z]);
-  const landing = await brightnessThrough(page, 90);
-  console.log('biggest brightness step as a shell lands', biggestStep(landing));
-  expect(biggestStep(landing)).toBeLessThan(6);
-  // And there's nothing like a big white circle where the gun is.
-  const overall = Math.max(...landing) - Math.min(...landing);
-  expect(overall).toBeLessThan(12);
-});
+    // Right as it's stopped, with its smoke, its bolts and its stars.
+    const stopping = page.evaluate(() => {
+      const enemy = window.__enemy;
+      enemy.hp = 1;
+    }).then(() => brightnessThrough(page, 150));
+    const stopped = await stopping;
+    console.log(`level ${level}: biggest brightness step as a tank stops`, biggestStep(stopped));
+    expect(biggestStep(stopped)).toBeLessThan(6);
+    expect((await patrolIs(page)).stopped).toBe(1);
+
+    // A shell landing right on the tank.
+    await stopPointing(page);
+    await page.evaluate(([tx, tz]) => {
+      const { patrol } = window.__game;
+      const { tank } = patrol;
+      patrol.shells.push({ id: -1, share: 0.75, seconds: 1, blast: 5, from: { x: tx, y: 6, z: tz }, to: { x: tank.x, y: tank.y, z: tank.z } });
+    }, [x, z]);
+    const landing = await brightnessThrough(page, 90);
+    console.log(`level ${level}: biggest brightness step as a shell lands`, biggestStep(landing));
+    expect(biggestStep(landing)).toBeLessThan(6);
+    // And there's nothing like a big white circle where the gun is.
+    const overall = Math.max(...landing) - Math.min(...landing);
+    expect(overall).toBeLessThan(12);
+  });
+}
 
 test('with reduced motion it all still works, with less going on and nothing bobbing about', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -239,43 +245,49 @@ test('a slow computer gives up sharpness and then some of the trees, and keeps g
   expect(await page.evaluate(() => window.__game.screen)).toBe('playing');
 });
 
-test('it keeps up: at least about 30 frames a second with the real tracker running and everything going on', async ({ page }) => {
-  test.setTimeout(120_000);
-  await startPatrol(page, { pace: 'fast', tanks: 15 });
-  await oneTankAt(page, 12, -14, { hp: 50 }).catch(() => {});
-  await page.evaluate(() => {
-    const { patrol } = window.__game;
-    patrol.queue = ['scout', 'basher', 'heavy', 'scout'];
-    patrol.total = 8;
-    patrol.lobIn = 0;
+// The same at level 10, where there's the most going on at once: see levelPlan in patrol.js.
+for (const level of [1, 10]) {
+  const levels = level === 1 ? {} : { levels: { 'tank-patrol': level } };
+  const atLevel = level === 1 ? '' : ` at level ${level}`;
+
+  test(`it keeps up${atLevel}: at least about 30 frames a second with the real tracker running and everything going on`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await startPatrol(page, { pace: 'fast', tanks: 15, ...levels });
+    await oneTankAt(page, 12, -14, { hp: 50 }).catch(() => {});
+    await page.evaluate(() => {
+      const { patrol } = window.__game;
+      patrol.queue = ['scout', 'basher', 'heavy', 'scout'];
+      patrol.total = 8;
+      patrol.lobIn = 0;
+    });
+    await pointAt(page, 'tank', 'open');
+    await expect.poll(async () => (await patrolIs(page)).firing, { timeout: 15_000 }).toBe(true);
+    const measured = await page.evaluate(() => new Promise((done) => {
+      const { field } = window.__game;
+      const gaps = [];
+      let last = performance.now();
+      const tick = (now) => {
+        gaps.push(now - last);
+        last = now;
+        if (gaps.length < 240) requestAnimationFrame(tick);
+        else {
+          const sorted = [...gaps].sort((a, b) => a - b);
+          done({
+            fps: 1000 / (gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length),
+            slowest: sorted[Math.floor(sorted.length * 0.95)],
+            quality: field.quality,
+            calls: field.renderer.info.render.calls,
+            triangles: field.renderer.info.render.triangles,
+          });
+        }
+      };
+      requestAnimationFrame(tick);
+    }));
+    console.log(`level ${level}: frame rate`, JSON.stringify(measured));
+    expect(measured.fps).toBeGreaterThan(28);
+    await stopPointing(page);
   });
-  await pointAt(page, 'tank', 'open');
-  await expect.poll(async () => (await patrolIs(page)).firing, { timeout: 15_000 }).toBe(true);
-  const measured = await page.evaluate(() => new Promise((done) => {
-    const { field } = window.__game;
-    const gaps = [];
-    let last = performance.now();
-    const tick = (now) => {
-      gaps.push(now - last);
-      last = now;
-      if (gaps.length < 240) requestAnimationFrame(tick);
-      else {
-        const sorted = [...gaps].sort((a, b) => a - b);
-        done({
-          fps: 1000 / (gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length),
-          slowest: sorted[Math.floor(sorted.length * 0.95)],
-          quality: field.quality,
-          calls: field.renderer.info.render.calls,
-          triangles: field.renderer.info.render.triangles,
-        });
-      }
-    };
-    requestAnimationFrame(tick);
-  }));
-  console.log('frame rate', JSON.stringify(measured));
-  expect(measured.fps).toBeGreaterThan(28);
-  await stopPointing(page);
-});
+}
 
 const SIZES = [[1280, 720], [1920, 1080], [1024, 768], [1024, 600], [820, 1180], [390, 844]];
 

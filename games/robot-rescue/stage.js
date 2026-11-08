@@ -26,8 +26,8 @@ const HAZE_SECONDS = 0.7; // How long the haze takes to come and go at the edges
 const SHOTS_AT_ONCE = 8;
 const CAGE_BASE = { market: 'cart', canal: 'raft', harbour: 'stone', farm: 'hay', tower: 'stone' };
 // How much of each kind of thing the aim can land on, in metres.
-const AIM_SIZE = { walker: 1, drone: 1, peeker: 0.72, spot: 0.82, goo: 0.5 };
-const BAR_ABOVE = { walker: 3.4, peeker: 2, drone: 1.3, big: 11.3 };
+const AIM_SIZE = { walker: 1, roller: 0.95, drone: 1, peeker: 0.72, spot: 0.82, goo: 0.5 };
+const BAR_ABOVE = { walker: 3.4, roller: 3.1, peeker: 2, drone: 1.3, big: 11.3 };
 const BLASTER_SIZE = 0.5;
 // How far down the view the blaster sits and the dash's top edge is, whatever shape the screen is.
 const BLASTER_DOWN = 0.855;
@@ -321,8 +321,8 @@ export class Stage {
     const style = place.covers[robot.cover ?? 0][2];
     const view = makeRobotView(robot, this.reducedMotion, COVER_HEIGHT[style]);
     view.place = place;
-    if (robot.kind === 'walker' || robot.kind === 'big') {
-      const shadow = blobShadow(this.shadowPaint, robot.kind === 'big' ? 11 : 2.6);
+    if (robot.kind === 'walker' || robot.kind === 'roller' || robot.kind === 'big') {
+      const shadow = blobShadow(this.shadowPaint, { big: 11, roller: 2 }[robot.kind] ?? 2.6);
       view.root.add(shadow);
     }
     this.town.places[place.id].add(view.root);
@@ -583,6 +583,13 @@ export class Stage {
 
   /* ---------- every frame ---------- */
 
+  /** How tall a peeker's cover is, going from one to the other while it hops between them. */
+  coverHeightOf(robot, place) {
+    const height = (cover) => COVER_HEIGHT[place.covers[cover ?? 0][2]];
+    if (robot.state !== 'hopping') return height(robot.cover);
+    return height(robot.hopFrom) + (height(robot.cover) - height(robot.hopFrom)) * robot.hop;
+  }
+
   /** Each friend is a lot to draw, so only the one here is shown, and the last while leaving them. */
   showCages() {
     const { mission } = this;
@@ -667,6 +674,7 @@ export class Stage {
   updateRobots(dt) {
     const resting = this.mission?.resting ?? false;
     for (const [robot, view] of this.views) {
+      if (robot.kind === 'peeker') view.coverHeight = this.coverHeightOf(robot, view.place);
       view.update(dt, { resting });
       const held = this.held.get(robot);
       if (held) {

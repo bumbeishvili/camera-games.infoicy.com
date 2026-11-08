@@ -39,17 +39,21 @@ export function answersFor({ id, a, b, answer }, count, random = Math.random) {
   return shuffled([answer, ...wrong], random);
 }
 
-/** Questions in a shuffled order, none twice until they've all been asked. */
+/**
+ * Questions in a shuffled order, none twice until they've all been asked. extra is how many more answers
+ * to choose from than usual, which the game's levels add (see rules.js), up to most.
+ */
 export class MathsDeck {
-  constructor(level, random = Math.random) {
+  constructor(level, random = Math.random, { extra = 0, most = 5 } = {}) {
     this.level = LEVELS[level];
     this.random = random;
+    this.choices = Math.max(this.level.choices, Math.min(most, this.level.choices + extra));
     this.left = [];
   }
 
   next() {
     if (!this.left.length) this.left = shuffled(this.level.questions, this.random);
     const question = this.left.pop();
-    return { ...question, answers: answersFor(question, this.level.choices, this.random) };
+    return { ...question, answers: answersFor(question, this.choices, this.random) };
   }
 }

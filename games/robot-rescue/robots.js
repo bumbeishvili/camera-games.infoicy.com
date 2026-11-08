@@ -178,6 +178,45 @@ function droneShapes(paint) {
   };
 }
 
+const WHEEL_RADIUS = 0.78;
+
+/** A little tin dome on one big wheel, with its arms out for balance: it comes on the higher levels. */
+function rollerShapes(paint) {
+  const { tin, dark, trim, plate, glow } = paint;
+  return {
+    // The wheel turns, so all of it is close in brightness: spokes that stood out from the hub would
+    // flicker as they went round.
+    wheel: joined([
+      { geometry: new THREE.TorusGeometry(0.62, 0.16, 10, 28), colour: '#3a4356' },
+      { geometry: face(0.5, 0.12, 22), colour: dark },
+      { geometry: roundedBox(0.1, 0.96, 0.15, 0.04), colour: tin },
+      { geometry: roundedBox(0.96, 0.1, 0.15, 0.04), colour: tin },
+      { geometry: ball(0.13), colour: dark, at: [0, 0, 0.08] },
+      { geometry: ball(0.13), colour: dark, at: [0, 0, -0.08] },
+    ]),
+    fork: joined([
+      { geometry: roundedBox(0.14, 0.86, 0.12, 0.04), colour: dark, at: [0, 0.36, 0.22] },
+      { geometry: roundedBox(0.14, 0.86, 0.12, 0.04), colour: dark, at: [0, 0.36, -0.22] },
+      { geometry: roundedBox(0.3, 0.12, 0.6, 0.04), colour: trim, at: [0, 0.8, 0] },
+    ]),
+    body: joined([
+      { geometry: ball(0.66, 0.56, 0.6), colour: tin, at: [0, 0.34, 0] },
+      { geometry: ball(0.7, 0.12, 0.64), colour: dark, at: [0, 0.04, 0] },
+      { geometry: roundedBox(0.5, 0.14, 0.05, 0.03), colour: '#2a2438', at: [0, 0.2, 0.55] },
+      ...[-0.13, 0, 0.13].map((x) => ({ geometry: new THREE.BoxGeometry(0.1, 0.1, 0.03), colour: plate, at: [x, 0.21, 0.58] })),
+      { geometry: limb(0.03, 0.03, 0.3).rotateX(Math.PI), colour: dark, at: [0, 0.86, 0] },
+      { geometry: ball(0.1), colour: glow, at: [0, 1.2, 0] },
+      { geometry: ball(0.11), colour: trim, at: [0.64, 0.26, 0.08] },
+      { geometry: ball(0.11), colour: trim, at: [-0.64, 0.26, 0.08] },
+    ]),
+    arm: joined([
+      { geometry: ball(0.13), colour: trim },
+      { geometry: limb(0.07, 0.06, 0.46), colour: dark, at: [0, -0.02, 0] },
+      { geometry: ball(0.14), colour: trim, at: [0, -0.58, 0] },
+    ]),
+  };
+}
+
 function bigShapes() {
   const tin = '#4f8fd8';
   const dark = '#2f5f9e';
@@ -390,7 +429,9 @@ class PeekerView extends RobotView {
     const overshoot = reducedMotion ? 0 : Math.sin(rise * Math.PI) * 0.22;
     const sway = reducedMotion ? 0 : Math.sin(this.time * 2.6) * 0.09;
     const down = (1 - rise) * 2.2;
-    this.root.position.set(robot.x, this.coverHeight - 0.72 - down + overshoot, -robot.z);
+    // On the higher levels it can spring through the air from one cover to another.
+    const lift = robot.lift ?? 0;
+    this.root.position.set(robot.x, this.coverHeight - 0.72 - down + overshoot + lift, -robot.z);
     this.root.rotation.y = towardsTram(robot.x, robot.z);
     this.spring.scale.y = 0.72 + (robot.state === 'ready' && !reducedMotion ? Math.sin(this.time * 7) * 0.06 : 0) + overshoot * 0.6;
     this.bodyPiece.position.y = this.spring.scale.y;
@@ -401,6 +442,67 @@ class PeekerView extends RobotView {
 
   handPoint(target) {
     return this.bodyPiece.localToWorld(target.set(0.72, 0.3, 0.2));
+  }
+}
+
+/** Turns towards an angle the shortest way round, treating the opposite way as the same, like an axle. */
+function turnAxle(from, to, rate, dt) {
+  let off = Math.atan2(Math.sin(to - from), Math.cos(to - from));
+  if (off > Math.PI / 2) off -= Math.PI;
+  if (off < -Math.PI / 2) off += Math.PI;
+  return from + off * (1 - Math.exp(-rate * dt));
+}
+
+class RollerView extends RobotView {
+  constructor(robot, reducedMotion) {
+    super(robot, reducedMotion);
+    const shape = shapesFor('roller', robot.paint % PAINTS.length, rollerShapes);
+    this.aimHeight = 1.85;
+    this.splatArea = [0.8, 0.6, 0.15];
+    this.splatSize = 0.8;
+    this.splatDepth = 0.5;
+    this.axle = 0; // Which way the wheel is pointing, in the place's own terms.
+    // The wheel and its fork turn with the way it's rolling, and the face always looks at the tram.
+    this.holder = this.add(new THREE.Group(), 0, WHEEL_RADIUS, 0);
+    this.wheel = piece(shape.wheel);
+    this.holder.add(this.wheel, piece(shape.fork));
+    this.lift = new THREE.Group();
+    this.root.add(this.lift);
+    this.bodyPiece = this.add(piece(shape.body), 0, WHEEL_RADIUS + 0.86, 0, this.lift);
+    makeEye(0.17, this.bodyPiece.children[0], 0.23, 0.5, 0.46);
+    makeEye(0.17, this.bodyPiece.children[0], -0.23, 0.5, 0.46);
+    this.armL = this.add(piece(shape.arm), 0.68, WHEEL_RADIUS + 1.18, 0, this.lift);
+    this.armR = this.add(piece(shape.arm), -0.68, WHEEL_RADIUS + 1.18, 0, this.lift);
+    this.update(0);
+  }
+
+  update(dt, { resting = false } = {}) {
+    const { robot, reducedMotion } = this;
+    this.time += dt;
+    this.root.position.set(robot.x, 0, -robot.z);
+    const movedX = robot.x - this.lastX;
+    const movedZ = robot.z - this.lastZ;
+    this.lastX = robot.x;
+    this.lastZ = robot.z;
+    const moved = Math.hypot(movedX, movedZ);
+    if (moved > 0.0001) {
+      // The wheel lines up with the way it's going, and rolls forwards or backwards along it.
+      this.axle = dt ? turnAxle(this.axle, Math.atan2(movedZ, movedX), 9, dt) : Math.atan2(movedZ, movedX);
+      const along = movedX * Math.cos(this.axle) + movedZ * Math.sin(this.axle);
+      this.wheel.rotation.z -= along / WHEEL_RADIUS;
+    }
+    this.holder.rotation.y = this.axle;
+    this.lift.rotation.y = towardsTram(robot.x, robot.z);
+    const rolling = robot.state === 'walking' && !resting;
+    const shake = this.shake();
+    this.lift.position.y = reducedMotion ? 0 : Math.sin(this.time * 2.2) * 0.03;
+    this.lift.rotation.z = shake * 0.5 + (rolling && !reducedMotion ? Math.sin(this.time * 5) * 0.05 : 0);
+    // Arms out for balance while it rolls, and waving while the child rests.
+    this.waving = damp(this.waving, resting ? 1 : 0, 5, dt || 1);
+    const wave = reducedMotion ? 0.2 : Math.sin(this.time * 6.4) * 0.34;
+    const balance = rolling && !reducedMotion ? Math.sin(this.time * 4) * 0.22 : 0;
+    this.armL.rotation.z = 1.05 + balance + this.waving * (1.3 + wave);
+    this.armR.rotation.z = -1.05 + balance - this.waving * (1.3 - wave);
   }
 }
 
@@ -495,6 +597,13 @@ class BigView extends RobotView {
     this.time += dt;
     this.root.position.set(robot.x, 0, -robot.z);
     this.root.rotation.y = towardsTram(robot.x, robot.z);
+    // On the higher levels it steps from side to side, and its legs go with it.
+    const stepping = dt ? Math.min(1, Math.abs(robot.x - this.lastX) / dt) : 0;
+    this.lastX = robot.x;
+    this.stride = (this.stride ?? 0) + stepping * dt * 2.4;
+    const legs = Math.sin(this.stride) * Math.min(1, stepping * 1.5) * (reducedMotion ? 0.06 : 0.16);
+    this.legL.rotation.z = legs;
+    this.legR.rotation.z = legs;
     const sway = reducedMotion ? 0 : Math.sin(this.time * 1.05);
     this.lift.rotation.z = sway * 0.022 + this.shake() * 0.08;
     this.lift.position.y = reducedMotion ? 0 : Math.abs(Math.sin(this.time * 1.05)) * 0.1;
@@ -534,6 +643,7 @@ class BigView extends RobotView {
 /** Makes what the rules have just sent out. coverHeight says how tall its cover is, for a peeker. */
 export function makeRobotView(robot, reducedMotion, coverHeight = 1.5) {
   if (robot.kind === 'walker') return new WalkerView(robot, reducedMotion);
+  if (robot.kind === 'roller') return new RollerView(robot, reducedMotion);
   if (robot.kind === 'drone') return new DroneView(robot, reducedMotion);
   if (robot.kind === 'peeker') return new PeekerView(robot, reducedMotion, coverHeight);
   return new BigView(robot, reducedMotion);

@@ -54,23 +54,26 @@ export const runState = (page) => page.evaluate(() => {
     resting: run.resting,
     stats: run.stats,
     lane: run.lane,
-    next: next ? { kind: next.kind, needs: next.needs, gap: run.gapTo(next), inReach: run.inReach(next) } : null,
+    next: next ? { kind: next.kind, needs: next.needs, gap: run.gapTo(next), inReach: run.inReach(next), lanes: next.lanes, mustJump: run.mustJump } : null,
   };
 });
 
-/** Makes the next obstacle this one, close by, so a test needn't wait for chance to bring it. */
-export function nextObstacleIs(page, kind, gap = 18) {
-  return page.evaluate(async ([chosen, ahead]) => {
+/**
+ * Makes the next obstacle this one, close by, so a test needn't wait for chance to bring it. Unless a
+ * test says which lanes it fills, it goes right across, as every obstacle once did.
+ */
+export function nextObstacleIs(page, kind, gap = 18, lanes = [-1, 0, 1]) {
+  return page.evaluate(async ([chosen, ahead, filled]) => {
     const { OBSTACLES } = await import('/games/leap-trail/run.js');
     const { run, world } = window.__game;
     const next = run.next;
     world.retire(next);
-    Object.assign(next, OBSTACLES[chosen], { kind: chosen, at: run.distance + ahead });
+    Object.assign(next, OBSTACLES[chosen], { kind: chosen, at: run.distance + ahead, lanes: filled });
     run.announced = null; // It may have been asked for already, as something else.
     for (let i = next.index + 1; i < run.course.length; i += 1) {
       world.retire(run.course[i]);
       run.course[i].at = Math.max(run.course[i].at, next.at + 25 * (i - next.index));
     }
     run.end = Math.max(run.end, run.course.at(-1).at + 15);
-  }, [kind, gap]);
+  }, [kind, gap, lanes]);
 }

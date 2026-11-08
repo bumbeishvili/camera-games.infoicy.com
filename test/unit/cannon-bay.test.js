@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { Battle, HEARTS, HULL, LEVELS, MOST_AT_ONCE, PACES, REST_AFTER, forwardOf } from '../../games/cannon-bay/battle.js';
+import { Battle, HEARTS, HULL, LEVELS, MOST_AT_ONCE, PACES, REST_AFTER, SHIP_KINDS, forwardOf, levelPlan } from '../../games/cannon-bay/battle.js';
 import { getChart } from '../../games/cannon-bay/chart.js';
 import { WORLD, heightAt } from '../../games/sky-wings/island-map.js';
 
@@ -733,4 +733,158 @@ test('the game has no method called then, which await would take for a promise',
   assert.equal(new Battle().then, undefined);
   const source = readFileSync(new URL('../../games/cannon-bay/main.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /^\s+then\s*\(/m);
+});
+
+/* ---------- levels ---------- */
+
+const LEVEL_NUMBERS = Array.from({ length: 10 }, (_, index) => index + 1);
+// Which way is harder for each thing a level changes: up, down, or switched on.
+const HARDER = { fireEvery: 'down', apart: 'down', chase: 'up', side: 'down', runEvery: 'down', weave: 'on', sloops: 'on', atOnce: 'up', balls: 'up', flagship: 'on' };
+
+test('level 1 is the game as it always was', () => {
+  const plan = levelPlan(1);
+  for (const key of ['fireEvery', 'apart', 'chase', 'side']) assert.equal(plan[key], 1, key);
+  assert.equal(plan.runEvery, 0.33);
+  assert.deepEqual([plan.weave, plan.sloops, plan.atOnce, plan.balls, plan.flagship], [false, false, 0, 0, false]);
+  for (const level of Object.keys(LEVELS)) {
+    const { battle } = start({ level, ships: 9, levelNumber: 1 });
+    assert.equal(battle.level, LEVELS[level]);
+    assert.equal(battle.mostAtOnce, MOST_AT_ONCE);
+    assert.equal(battle.afloat.length, MOST_AT_ONCE);
+    for (const pirate of battle.afloat) {
+      assert.equal(pirate.kind, 'ship');
+      assert.equal(pirate.hitsLeft, LEVELS[level].shipHits);
+    }
+  }
+});
+
+test('each level is the same or harder than the one before in every way, and harder in at least one', () => {
+  assert.deepEqual(Object.keys(levelPlan(1)).sort(), Object.keys(HARDER).sort());
+  for (const level of LEVEL_NUMBERS.slice(1)) {
+    const before = levelPlan(level - 1);
+    const now = levelPlan(level);
+    let harder = 0;
+    for (const [key, way] of Object.entries(HARDER)) {
+      const [a, b] = way === 'down' ? [now[key], before[key]] : [Number(before[key]), Number(now[key])];
+      assert.ok(a <= b, `level ${level}: ${key} got easier`);
+      if (a < b) harder += 1;
+    }
+    assert.ok(harder >= 1, `level ${level} is no harder than ${level - 1}`);
+  }
+  for (const key of ['weave', 'sloops', 'atOnce', 'balls', 'flagship']) assert.ok(LEVEL_NUMBERS.find((level) => Number(levelPlan(level)[key]) > 0) >= 3, key);
+});
+
+test('a level never changes what a grown-up chose: the zones, the help with lining up, Gentle, the cannons or how many ships', () => {
+  for (const level of LEVEL_NUMBERS) {
+    const { battle } = start({ levelNumber: level, ships: 4, cannons: 'always' });
+    assert.equal(battle.level, LEVELS.gentle);
+    assert.equal(battle.cannons, 'always');
+    assert.equal(battle.total, 4);
+    assert.equal(battle.hearts, HEARTS);
+  }
+  const { battle, types } = start({ levelNumber: 10 });
+  for (let i = 0; i < HEARTS * 3; i += 1) {
+    ballOnHull(battle);
+    battle.update(STEP, OPEN);
+  }
+  assert.equal(battle.hearts, 1);
+  assert.ok(!types().includes('lost'), 'Gentle still can\'t be lost');
+});
+
+/**
+ * A child who has got the idea, sailing beside the nearest pirate, as in sailBeside, and closing the hand
+ * for a moment now and then. Counts the movements: how far the hand goes from side to side, in full
+ * turns of the wheel, and each close and open.
+ */
+function battleLikeAChild(battle) {
+  let seconds = 0;
+  let steer = 0;
+  let travel = 0;
+  while (battle.state === 'sailing' && seconds < 900) {
+    const input = sailBeside(battle);
+    // A hand moves only so fast.
+    const next = steer + Math.max(-STEP * 2.5, Math.min(STEP * 2.5, input.steer - steer));
+    travel += Math.abs(next - steer);
+    steer = next;
+    battle.update(STEP, { ...input, steer });
+    seconds += STEP;
+  }
+  return { seconds, perMinute: (travel / 2 / seconds) * 60, won: battle.state === 'won' };
+}
+
+const average = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
+
+test('level 10 asks no more than twice the movements a minute of level 1, and lasts no more than a third longer', () => {
+  // On Gentle, so that every game gets to the end and they can be compared.
+  for (const [pace, ships] of [['slow', 4], ['medium', 6], ['fast', 9]]) {
+    const play = (levelNumber) => [3, 7, 11, 19].map((seed) => battleLikeAChild(start({ pace, ships, levelNumber, random: seeded(seed) }).battle));
+    const first = play(1);
+    const last = play(10);
+    for (const game of [...first, ...last]) assert.ok(game.won, `${pace}: not finished`);
+    const longer = average(last.map(({ seconds }) => seconds)) / average(first.map(({ seconds }) => seconds));
+    const busier = average(last.map(({ perMinute }) => perMinute)) / average(first.map(({ perMinute }) => perMinute));
+    console.log(`cannon bay ${pace}: level 10 is ${longer.toFixed(2)} times as long, with ${busier.toFixed(2)} times the movements a minute`);
+    assert.ok(longer <= 1.34, `${pace}: ${longer.toFixed(2)} times as long`);
+    assert.ok(busier <= 2, `${pace}: ${busier.toFixed(2)} times the movements`);
+  }
+});
+
+test('at level 10 there\'s still at least 70% of the time to react: balls fly as slowly, and pirates stay alongside long enough', () => {
+  assert.ok(levelPlan(10).side >= 0.7);
+  const { battle, events } = start({ levelNumber: 10 });
+  run(battle, 60, () => ({ ...OPEN, drive: 0.8 }));
+  const balls = events.filter(({ type }) => type === 'pirate-fire');
+  assert.ok(balls.length > 0);
+  for (const { ball } of balls) assert.ok(ball.seconds >= 2, 'slow');
+});
+
+for (const [pace, level] of [['slow', 'gentle'], ['medium', 'medium'], ['fast', 'tough']]) {
+  test(`level 10 at ${pace} speed on ${level} can be finished, steering as a child might`, () => {
+    const { battle, types } = start({ ships: 9, pace, level, levelNumber: 10, random: seeded(17) });
+    let seconds = 0;
+    while (battle.state === 'sailing' && seconds < 900) {
+      battle.update(STEP, sailBeside(battle));
+      if (battle.state === 'sailing') battle.hearts = Math.max(battle.hearts, 2);
+      seconds += STEP;
+    }
+    assert.equal(battle.state, 'won');
+    assert.equal(types().filter((type) => type === 'beaten').length, 9);
+  });
+}
+
+test('at level 10 the new things really happen: weaving, sloops, four at once, bigger broadsides and a flagship last', () => {
+  const { battle, events } = start({ ships: 9, levelNumber: 10, random: seeded(4) });
+  assert.equal(battle.afloat.length, MOST_AT_ONCE + 1);
+  const spawned = () => events.filter(({ type }) => type === 'spawn').map(({ pirate }) => pirate);
+  const kinds = [...battle.afloat.map(({ kind }) => kind)];
+  let weaving = false;
+  let most = 0;
+  let seconds = 0;
+  while (battle.state === 'sailing' && seconds < 900) {
+    battle.update(STEP, sailBeside(battle));
+    for (const pirate of battle.afloat) if (pirate.mode === 'away' && Math.abs(battle.weaving(pirate)) > 0.5) weaving = true;
+    for (const pirate of battle.pirates) most = Math.max(most, pirate.burstLeft);
+    seconds += STEP;
+  }
+  kinds.push(...spawned().map(({ kind }) => kind));
+  assert.equal(battle.state, 'won');
+  assert.ok(weaving, 'weaving');
+  assert.ok(kinds.includes('sloop'), 'sloops');
+  assert.equal(kinds.at(-1), 'flagship');
+  assert.ok(most >= LEVELS.gentle.balls + 1, 'bigger broadsides');
+  const flagship = spawned().at(-1);
+  assert.equal(flagship.maxHits, Math.round(LEVELS.gentle.shipHits * SHIP_KINDS.flagship.hits));
+});
+
+test('at level 10, resting still stops the firing, and the pirates sail in circles', () => {
+  const { battle, events } = start({ levelNumber: 10 });
+  run(battle, 12, OPEN);
+  run(battle, REST_AFTER + 0.5, CLOSED);
+  assert.equal(battle.resting, true);
+  const fired = events.filter(({ type }) => type === 'pirate-fire').length;
+  const { hurts } = battle.stats;
+  run(battle, 60, CLOSED);
+  assert.equal(events.filter(({ type }) => type === 'pirate-fire').length, fired);
+  assert.equal(battle.stats.hurts, hurts);
+  assert.ok(battle.afloat.every(({ mode }) => mode === 'circle'));
 });

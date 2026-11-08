@@ -7,7 +7,7 @@ import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
 import { GameSession, SPOKEN } from '../../core/session.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { BaySound } from './bay-sound.js';
-import { Battle, HEARTS, MOST_AT_ONCE } from './battle.js';
+import { Battle, HEARTS, MOST_AT_ONCE, levelPlan } from './battle.js';
 import { Bay } from './sea.js';
 
 // Every one of these has a rendered voice file: see audio/voice/lines.json.
@@ -103,11 +103,12 @@ class CannonBay {
     };
   }
 
-  makeBattle() {
+  /** level, from 1 to 10, makes it harder within the grown-up's choices: see levelPlan in battle.js. */
+  makeBattle(level = this.session.level ?? 1) {
     const { bayShips, bayPace, bayLevel, bayCannons } = this.session.settings;
     // A different lot of captains each time, when there are fewer ships than characters.
     this.order = shuffled(this.pirateSpecs.map(({ id }) => id)).slice(0, bayShips);
-    this.battle = new Battle({ ships: bayShips, pace: bayPace, level: bayLevel, cannons: bayCannons, onEvent: (event) => this.onBattle(event) });
+    this.battle = new Battle({ ships: bayShips, pace: bayPace, level: bayLevel, levelNumber: level, cannons: bayCannons, onEvent: (event) => this.onBattle(event) });
     this.bay.setBattle(this.battle, this.order);
     this.buildCaptainsRow();
     this.lastShown = {};
@@ -145,10 +146,10 @@ class CannonBay {
 
   /* ---------- the round ---------- */
 
-  prepare() {
+  prepare(level = 1) {
     this.resetHelp();
     this.story.hide();
-    this.makeBattle();
+    this.makeBattle(level);
     this.bay.setSailing(true);
     this.session.sound.startSea();
     this.updateHud();
@@ -237,7 +238,8 @@ class CannonBay {
     const { hands } = this.session.settings;
     const { gold } = this.battle.stats;
     const count = (value) => ({ left: hands === 'left' ? value : 0, right: hands === 'right' ? value : 0 });
-    return { hero: beaten, noun: 'battle', rows: { beaten: count(beaten), gold: count(gold) } };
+    // Being sunk, which only Medium and Tough allow, means trying the same level again.
+    return { hero: beaten, noun: 'battle', rows: { beaten: count(beaten), gold: count(gold) }, won: this.battle.state !== 'lost' };
   }
 
   /* ---------- what happens ---------- */
@@ -432,7 +434,8 @@ class CannonBay {
 
   buildMarks() {
     const holder = byElement('marks');
-    this.marks = Array.from({ length: MOST_AT_ONCE }, () => {
+    // As many as there can ever be at once, which is more on the higher levels.
+    this.marks = Array.from({ length: MOST_AT_ONCE + levelPlan(10).atOnce }, () => {
       const root = document.createElement('div');
       root.className = 'mark';
       root.dataset.where = 'none';
@@ -470,7 +473,7 @@ class CannonBay {
       }
       const firedOn = battle.zones.left.target === pirate || battle.zones.right.target === pirate;
       mark.root.dataset.state = firedOn && battle.firing ? 'fired-on' : pirate.mode === 'side' ? 'hunting' : 'sailing';
-      mark.fill.style.width = `${Math.round((pirate.hitsLeft / battle.level.shipHits) * 100)}%`;
+      mark.fill.style.width = `${Math.round((pirate.hitsLeft / pirate.maxHits) * 100)}%`;
       const seen = bay.project(pirate.x, 47, pirate.z);
       const low = bay.project(pirate.x, 0, pirate.z);
       if (!seen.behind && !low.behind && low.x > 0 && low.x < width && low.y > 0 && low.y < height) {

@@ -6,21 +6,17 @@
 // The wrong one is too hot: the glove goes black with soot and can't pop anything until the child
 // has held the hand open for long enough to cool it, which is the exercise this game is for.
 //
+// Higher levels (rules.js) bring more balloons, a little faster, and new kinds: star balloons that need
+// the open hand held on them a moment, pairs tied together, and a breeze that moves them all.
+//
 // Nothing flashes: seizures are more common in children with hemiplegia, so pops are small
 // bursts of colour and the screen itself never changes brightness.
 import { Glove, INK, toScreen } from '../../core/glove.js';
+import { balloonLevel, PACES, STAR_HOLD_SECONDS } from './rules.js';
 
 export { toScreen };
 
 const COLOURS = ['#ff5a4f', '#ffb703', '#27c96b', '#3b82f6', '#a855f7', '#ff7eb6', '#14b8a6'];
-
-// rise is in screen heights a second, every is seconds between balloons, most is how many
-// can be up at once. Even fast is gentle: this is about reaching, not reaction time.
-const PACES = {
-  slow: { rise: 0.085, every: 1.05, most: 7 },
-  medium: { rise: 0.115, every: 0.8, most: 9 },
-  fast: { rise: 0.16, every: 0.6, most: 11 },
-};
 
 // How strongly a balloon drifts towards a nearby open hand, in screen heights a second, for
 // a child whose reach is limited. It only ever helps a hand that is already open.
@@ -29,7 +25,8 @@ const REACH_HELP_RANGE = 0.36;
 
 const PALM_SHARE = 0.105; // A glove's palm length, as a share of screen height.
 const BALLOON_SHARE = 0.078; // A balloon's radius, as a share of screen height.
-const WANDERER_CHANCE = 0.25; const BUMP_REST_SECONDS = 0.7;
+const BUMP_REST_SECONDS = 0.7;
+const BREEZE_RATE = 0.32; // How fast the breeze turns, in radians a second: slowly, one way and then the other.
 
 
 // Balloons with answers on them.
@@ -143,6 +140,7 @@ export class BalloonField {
       drift: 0.004 + Math.random() * 0.006,
     }));
     this.configure({ goal: 20, pace: 'slow', reach: 'little', side: 'right' });
+    this.setLevel(1);
     this.resetCounts();
 
     window.addEventListener('resize', () => this.resize());
@@ -154,6 +152,25 @@ export class BalloonField {
     this.paceName = pace;
     this.reachName = reach;
     this.side = side;
+  }
+
+  /** What this level changes: see rules.js. */
+  setLevel(level) {
+    this.level = level;
+    this.plan = balloonLevel(level);
+  }
+
+  /** The chosen speed, with this level's on top. */
+  get pace() {
+    const chosen = PACES[this.paceName];
+    const { plan } = this;
+    return { rise: chosen.rise * plan.rise, every: chosen.every * plan.every, most: chosen.most + plan.most };
+  }
+
+  /** How far the breeze has pushed everything sideways just now, in pixels. */
+  get breezeAt() {
+    if (!this.plan.breeze) return 0;
+    return Math.sin(this.time * BREEZE_RATE) * this.plan.breeze * this.width * (this.reducedMotion ? 0.4 : 1);
   }
 
   resetCounts() {
@@ -294,8 +311,8 @@ export class BalloonField {
     return this.addBalloon({ x, y, still });
   }
 
-  addBalloon({ x, y, still = false }) {
-    const wanderer = Math.random() < WANDERER_CHANCE;
+  addBalloon({ x, y, still = false, star = false }) {
+    const wanderer = Math.random() < this.plan.wanderers;
     const balloon = {
       homeX: x,
       x,
@@ -311,6 +328,9 @@ export class BalloonField {
       push: 0,
       pushSpeed: 0,
       bumpedAt: -Infinity,
+      star,
+      choosing: 0,
+      tie: null,
     };
     this.nextColour = (this.nextColour + 1) % this.sprites.length;
     this.balloons.push(balloon);
@@ -328,7 +348,28 @@ export class BalloonField {
       const crowded = this.balloons.some((other) => other.y > height * 0.7 && Math.abs(other.x - x) < other.r * 2.6);
       if (!crowded) break;
     }
-    this.addBalloon({ x, y: height + this.balloonSize * 1.6 });
+    const y = height + this.balloonSize * 1.6;
+    const { plan } = this;
+    const room = this.pace.most - this.balloons.length;
+    if (room >= 2 && Math.random() < plan.pairs) {
+      this.addPair(x, y);
+      return;
+    }
+    this.addBalloon({ x, y, star: Math.random() < plan.stars });
+  }
+
+  /** Two balloons tied together, which go up together until one of them pops. */
+  addPair(x, y) {
+    const apart = this.balloonSize * 1.05;
+    const middle = clamp(x, apart + this.balloonSize, this.width - apart - this.balloonSize);
+    const first = this.addBalloon({ x: middle - apart, y });
+    const second = this.addBalloon({ x: middle + apart, y: y - this.balloonSize * 0.5 });
+    // They move as one: the same pace, sway and drift.
+    for (const key of ['pace', 'phase', 'swayRate', 'sway', 'drift']) second[key] = first[key];
+    const tie = { members: [first, second] };
+    first.tie = tie;
+    second.tie = tie;
+    return tie;
   }
 
   /**
@@ -346,7 +387,7 @@ export class BalloonField {
       if (popping) this.coolGlove(glove, dt);
     }
 
-    const pace = PACES[this.paceName];
+    const { pace } = this;
     if (spawning && !this.numbered) {
       this.spawnTimer -= dt;
       if (this.spawnTimer <= 0 && this.balloons.length < pace.most) {
@@ -435,7 +476,8 @@ export class BalloonField {
     }
 
     const sway = Math.sin(this.time * balloon.swayRate + balloon.phase) * balloon.sway;
-    balloon.x = clamp(balloon.homeX + sway + balloon.push, balloon.r, width - balloon.r);
+    const breeze = balloon.still || balloon.number !== undefined ? 0 : this.breezeAt;
+    balloon.x = clamp(balloon.homeX + sway + breeze + balloon.push, balloon.r, width - balloon.r);
   }
 
   /** Whether a balloon with an answer on it has been chosen, and what that means for the glove. */
@@ -476,8 +518,17 @@ export class BalloonField {
   touchGloves(balloon, dt) {
     if (balloon.number !== undefined) return this.touchNumbered(balloon, dt);
     if (balloon.leaving) return false;
+    let held = false;
     for (const glove of Object.values(this.gloves)) {
       if (!glove.visible || glove.reachTo(balloon.x, balloon.y, this.palmSize) > balloon.r) continue;
+      if (glove.status === 'open' && balloon.star) {
+        // A star balloon needs the open hand to stay on it for a moment.
+        held = true;
+        balloon.choosing += dt;
+        if (balloon.choosing < STAR_HOLD_SECONDS) continue;
+        this.pop(balloon, glove.side);
+        return true;
+      }
       if (glove.status === 'open') {
         this.pop(balloon, glove.side);
         return true;
@@ -489,11 +540,14 @@ export class BalloonField {
         this.events.onBump?.(glove.side);
       }
     }
+    if (!held) balloon.choosing = Math.max(0, balloon.choosing - dt * 2);
     return false;
   }
 
   pop(balloon, side) {
     this.popped[side] += 1;
+    // Its partner floats on by itself.
+    if (balloon.tie) balloon.tie.members = balloon.tie.members.filter((member) => member !== balloon);
     const colour = COLOURS[balloon.sprite];
     const count = this.reducedMotion ? 7 : 15;
     for (let i = 0; i < count; i += 1) {
@@ -544,7 +598,10 @@ export class BalloonField {
     const { ctx } = this;
     const { x, y, r } = balloon;
     // Leans into its movement, and its string trails behind.
-    const lean = clamp((Math.cos(this.time * balloon.swayRate + balloon.phase) * balloon.sway) / (this.width * 0.6) + balloon.pushSpeed / (this.height * 6), -0.3, 0.3);
+    const breezeLean = balloon.still || balloon.number !== undefined || !this.plan.breeze
+      ? 0
+      : Math.cos(this.time * BREEZE_RATE) * this.plan.breeze * 2.4;
+    const lean = clamp((Math.cos(this.time * balloon.swayRate + balloon.phase) * balloon.sway) / (this.width * 0.6) + balloon.pushSpeed / (this.height * 6) + breezeLean, -0.3, 0.3);
     const tail = r * 1.16;
     const flutter = Math.sin(this.time * 1.7 + balloon.phase) * r * 0.26;
 
@@ -553,7 +610,16 @@ export class BalloonField {
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(x - lean * tail, y + tail);
-    ctx.quadraticCurveTo(x - lean * r * 2 + flutter, y + tail + r * 0.75, x - lean * r * 2.8 - flutter * 0.6, y + tail + r * 1.5);
+    const pair = balloon.tie?.members.length === 2 ? balloon.tie.members : null;
+    if (pair) {
+      // Both strings go down to one knot between them.
+      const knotX = (pair[0].x + pair[1].x) / 2 - lean * r * 2;
+      const knotY = Math.max(pair[0].y, pair[1].y) + tail + r * 1.4;
+      ctx.quadraticCurveTo(x - lean * r, y + tail + r * 0.8, knotX, knotY);
+      if (balloon === pair[0]) ctx.lineTo(knotX - lean * r - flutter * 0.4, knotY + r * 0.9);
+    } else {
+      ctx.quadraticCurveTo(x - lean * r * 2 + flutter, y + tail + r * 0.75, x - lean * r * 2.8 - flutter * 0.6, y + tail + r * 1.5);
+    }
     ctx.stroke();
 
     ctx.save();
@@ -561,7 +627,33 @@ export class BalloonField {
     ctx.rotate(lean);
     ctx.drawImage(this.sprites[balloon.sprite], -r * 1.2, -r * 1.22, r * 2.4, r * 3);
     if (balloon.number !== undefined) this.drawNumber(balloon);
+    else if (balloon.star) this.drawStar(balloon);
     ctx.restore();
+  }
+
+  /** A star balloon has a white star on it, and the ring that closes as an open hand stays on it. */
+  drawStar({ r, choosing }) {
+    const { ctx } = this;
+    ctx.fillStyle = 'rgb(255 255 255 / 0.92)';
+    ctx.strokeStyle = 'rgb(18 48 77 / 0.35)';
+    ctx.lineWidth = Math.max(1.5, r * 0.05);
+    ctx.beginPath();
+    for (let i = 0; i < 10; i += 1) {
+      const radius = (i % 2 === 0 ? 0.5 : 0.22) * r;
+      const angle = (i / 10) * Math.PI * 2 - Math.PI / 2;
+      ctx.lineTo(Math.cos(angle) * radius, Math.sin(angle) * radius + r * 0.02);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    if (choosing > 0) {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = r * 0.12;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.14, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, choosing / STAR_HOLD_SECONDS));
+      ctx.stroke();
+    }
   }
 
   /** The answer, and a ring around it that closes as an open hand stays on it. */

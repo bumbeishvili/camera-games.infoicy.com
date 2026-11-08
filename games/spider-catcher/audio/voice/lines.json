@@ -1,0 +1,11 @@
+[
+  {"id": "close-on-one", "text": "Close your hand on a spider!", "ka": "მოკუმე ხელი ობობაზე!"},
+  {"id": "open-on-web", "text": "Bring it to the web, and open your hand!", "ka": "ქსელთან მიიტანე და ხელი გაშალე!"},
+  {"id": "all-home", "text": "Every spider is home!", "ka": "ყველა ობობა სახლშია!"},
+  {"id": "gate-hello", "text": "My little spiders ran off! Please bring them home!", "ka": "ჩემი პატარა ობობები გაიქცნენ! სახლში დააბრუნე, თუ შეიძლება!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "carrots-hello", "text": "Spiders in my carrots! Help them home!", "ka": "ობობები ჩემს სტაფილოებშია! სახლში დააბრუნე!", "voice": "af_sky", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 24},
+  {"id": "honey-hello", "text": "One is swinging from my honey tree!", "ka": "ერთი ჩემს თაფლის ხეზე ქანაობს!", "voice": "bm_george", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -18},
+  {"id": "pond-hello", "text": "They’re playing by the pond. Catch them!", "ka": "ტბორთან თამაშობენ. დაიჭირე!", "voice": "bf_emma", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 18},
+  {"id": "house-hello", "text": "The last ones! Then everyone is home!", "ka": "ესენი ბოლოები არიან! მერე ყველა სახლში იქნება!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "house-done", "text": "Thank you! All my spiders are home!", "ka": "გმადლობ! ჩემი ყველა ობობა სახლშია!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0}
+]

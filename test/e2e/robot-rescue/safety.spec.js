@@ -245,64 +245,70 @@ function judge(reading) {
   return { biggestStep, flickeringShare: flickering / cellCount, seconds, frames: reading.length };
 }
 
-test('nothing flashes: the brightness stays steady through firing, falling apart and freeing', async ({ page }) => {
-  test.setTimeout(240_000);
-  await reachRescue(page, { reach: 'lots', pace: 'fast' });
-  await startHunting(page);
-  await expectSoon(async () => (await rescue(page)).firing).toBe(true);
-  const result = judge(await watchBrightness(page, 240));
-  console.log('firing and falling apart', JSON.stringify(result));
-  expect(result.biggestStep).toBeLessThan(6);
-  expect(result.flickeringShare).toBeLessThan(0.02);
-  await stopHunting(page);
-});
+// The same at level 10, where there's the most going on at once: see levelPlan in rescue.js.
+for (const level of [1, 10]) {
+  const levels = level === 1 ? {} : { levels: { [GAME]: level } };
+  const atLevel = level === 1 ? '' : ` at level ${level}`;
 
-test('nothing flashes: a hand opening and closing as fast as it can doesn\'t flicker the shield', async ({ page }) => {
-  test.setTimeout(240_000);
-  await reachRescue(page);
-  await waitForHand(page, 'open');
-  // Quicker than any child, and quicker than the tracker can follow.
-  await page.evaluate(() => {
-    let open = true;
-    window.__flip = setInterval(() => {
-      open = !open;
-      window.__camera.show({ left: null, right: open ? 'open' : 'fist', scale: 0.7 });
-    }, 220);
+  test(`nothing flashes${atLevel}: the brightness stays steady through firing, falling apart and freeing`, async ({ page }) => {
+    test.setTimeout(240_000);
+    await reachRescue(page, { reach: 'lots', pace: 'fast', ...levels });
+    await startHunting(page);
+    await expectSoon(async () => (await rescue(page)).firing).toBe(true);
+    const result = judge(await watchBrightness(page, 240));
+    console.log(`level ${level}`, 'firing and falling apart', JSON.stringify(result));
+    expect(result.biggestStep).toBeLessThan(6);
+    expect(result.flickeringShare).toBeLessThan(0.02);
+    await stopHunting(page);
   });
-  const result = judge(await watchBrightness(page, 240));
-  console.log('opening and closing', JSON.stringify(result));
-  await page.evaluate(() => clearInterval(window.__flip));
-  expect(result.biggestStep).toBeLessThan(6);
-  expect(result.flickeringShare).toBeLessThan(0.05);
-  // It really was being raised and lowered in that time.
-  const shield = await page.evaluate(() => window.__game.stage.shieldLevel);
-  expect(shield).toBeGreaterThanOrEqual(0);
-});
 
-test('nothing flashes: the shield coming up, goo landing, and the tram moving off', async ({ page }) => {
-  test.setTimeout(240_000);
-  await reachRescue(page);
-  await stayAwake(page);
-  await page.evaluate(() => {
-    const { mission } = window.__game;
-    mission.holdThrows = 0;
-    mission.level = { ...mission.level, throwEvery: 1.2, gooInAir: 3, gooSeconds: 1.6 };
-    mission.throwIn = 0;
+  test(`nothing flashes${atLevel}: a hand opening and closing as fast as it can doesn't flicker the shield`, async ({ page }) => {
+    test.setTimeout(240_000);
+    await reachRescue(page, levels);
+    await waitForHand(page, 'open');
+    // Quicker than any child, and quicker than the tracker can follow.
+    await page.evaluate(() => {
+      let open = true;
+      window.__flip = setInterval(() => {
+        open = !open;
+        window.__camera.show({ left: null, right: open ? 'open' : 'fist', scale: 0.7 });
+      }, 220);
+    });
+    const result = judge(await watchBrightness(page, 240));
+    console.log(`level ${level}`, 'opening and closing', JSON.stringify(result));
+    await page.evaluate(() => clearInterval(window.__flip));
+    expect(result.biggestStep).toBeLessThan(6);
+    expect(result.flickeringShare).toBeLessThan(0.05);
+    // It really was being raised and lowered in that time.
+    const shield = await page.evaluate(() => window.__game.stage.shieldLevel);
+    expect(shield).toBeGreaterThanOrEqual(0);
   });
-  await show(page, ...FIST);
-  await waitForHand(page, 'closed');
-  const result = judge(await watchBrightness(page, 150));
-  console.log('goo on the shield', JSON.stringify(result));
-  expect(result.biggestStep).toBeLessThan(6);
-  await clearHere(page);
-  await show(page, ...OPEN);
-  await expectSoon(async () => (await rescue(page)).phase).toBe('moving');
-  const moving = judge(await watchBrightness(page, 90));
-  console.log('the tram moving', JSON.stringify(moving));
-  expect(moving.biggestStep).toBeLessThan(6);
-  // A quarter of the picture is the most that can go on changing like this, by the usual measure.
-  expect(moving.flickeringShare).toBeLessThan(0.25);
-});
+
+  test(`nothing flashes${atLevel}: the shield coming up, goo landing, and the tram moving off`, async ({ page }) => {
+    test.setTimeout(240_000);
+    await reachRescue(page, levels);
+    await stayAwake(page);
+    await page.evaluate(() => {
+      const { mission } = window.__game;
+      mission.holdThrows = 0;
+      mission.level = { ...mission.level, throwEvery: 1.2, gooInAir: 3, gooSeconds: 1.6 };
+      mission.throwIn = 0;
+    });
+    await show(page, ...FIST);
+    await waitForHand(page, 'closed');
+    const result = judge(await watchBrightness(page, 150));
+    console.log(`level ${level}`, 'goo on the shield', JSON.stringify(result));
+    expect(result.biggestStep).toBeLessThan(6);
+    await clearHere(page);
+    await show(page, ...OPEN);
+    await expectSoon(async () => (await rescue(page)).phase).toBe('moving');
+    const moving = judge(await watchBrightness(page, 90));
+    console.log(`level ${level}`, 'the tram moving', JSON.stringify(moving));
+    expect(moving.biggestStep).toBeLessThan(6);
+    // A quarter of the picture is the most that can go on changing like this, by the usual measure.
+    expect(moving.flickeringShare).toBeLessThan(0.25);
+  });
+}
 
 test('with reduced motion, it all still works, with less going on', async ({ page }) => {
   test.setTimeout(240_000);

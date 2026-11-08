@@ -11,6 +11,7 @@ const GAMES = [
   { name: 'Tank Patrol', folder: 'tank-patrol', start: 'Climb aboard' },
   { name: 'Cannon Bay', folder: 'cannon-bay', start: 'Set sail!' },
   { name: 'Joze’s Long Walk Home', folder: 'joze-walk', start: 'Help Joze' },
+  { name: 'Spider Catcher', folder: 'spider-catcher', start: 'Catch the spiders' },
   { name: 'Joze’s Smoothie Stand', folder: 'smoothie-stand', start: 'Open the stand' },
   { name: 'The Lighthouse Keeper', folder: 'lighthouse', start: 'Climb the lighthouse' },
 ];

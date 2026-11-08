@@ -182,6 +182,11 @@ body[data-screen='fly'] .marks { display: block; }
 .mark[data-hunting='yes'] .mark-box { border-color: #ff5a4f; }
 .mark[data-locked='yes'] .mark-box { border-color: #4dff8f; }
 
+/* The pirate captain, on the higher levels: a bigger mark, and a longer bar for its extra hits. */
+.mark[data-captain='yes'] .mark-box { left: -38px; top: -38px; width: 76px; height: 76px; border-width: 5px; }
+.mark[data-captain='yes'] .mark-bar { left: -38px; top: -54px; width: 76px; height: 10px; }
+.mark[data-captain='yes'] .mark-face { left: 42px; }
+
 .mark-bar {
   position: absolute;
   left: -28px;

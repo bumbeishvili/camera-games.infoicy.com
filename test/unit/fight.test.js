@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { CLIPS } from '../../games/mighty-moves/clips.js';
 import { Coach } from '../../games/mighty-moves/coach.js';
 import { Fight } from '../../games/mighty-moves/fight.js';
-import { COMBOS, DEFENCES, EXERCISES, MOVES, NPC_LEVELS, ORDER, RULES } from '../../games/mighty-moves/moves.js';
+import { CAN_BE_TWICE, COMBOS, DEFENCES, EXERCISES, MOVES, NPC_LEVELS, ORDER, RULES, fightLevel } from '../../games/mighty-moves/moves.js';
 import { DEMOS } from '../../core/body/demos.js';
 import { ICONS } from '../../core/body/icons.js';
 import { ROSTER } from '../../core/body/roster.js';
@@ -621,6 +621,242 @@ test('there\'s a film of every move, which never leaves a limb past where it can
     assert.ok(frames.at(-1)[0] >= 0.8, `${name} is slow enough to follow`);
     for (const [, pose] of frames) {
       for (const value of Object.values(pose)) assert.ok(Number.isFinite(value), name);
+    }
+  }
+});
+
+/* ---------- levels ---------- */
+
+const LEVELS = Array.from({ length: 10 }, (_, index) => index + 1);
+const seeded = (seed = 1) => {
+  let state = seed;
+  return () => {
+    state = (state * 16807) % 2147483647;
+    return (state - 1) / 2147483646;
+  };
+};
+const atLevel = (levelNumber, options = {}, coachOptions = {}) => coached({ levelNumber, ...options }, { random: seeded(3), ...coachOptions });
+
+test('level 1 is the fight as it always was, at every strength', () => {
+  assert.deepEqual(fightLevel(1), { turnEvery: 1, warning: 1, afterMove: RULES.afterMove, defences: [], npcMoves: [], doubles: 0, mixed: false, twice: 0 });
+  for (const strength of Object.values(NPC_LEVELS)) {
+    const { coach, fight } = coached({ level: strength });
+    assert.equal(fight.levelNumber, 1);
+    for (const field of ['every', 'warning', 'defences', 'moves', 'damage', 'mercy']) assert.deepEqual(coach.level[field], strength[field], `${strength.name} ${field}`);
+  }
+  // The same order every time round, and everything asked for once.
+  const { coach } = coached();
+  coach.nextIndex = 0;
+  assert.deepEqual(Array.from({ length: ORDER.length * 2 }, () => coach.nextExercise()), [...ORDER, ...ORDER]);
+  assert.ok(Array.from({ length: 30 }, () => (coach.startCall(), coach.call.times)).every((times) => times === 1));
+});
+
+test('level 1 fights go exactly as they did before there were levels', () => {
+  // A scripted child doing what's asked every 2.4 seconds and blocking now and then, at each strength,
+  // gave exactly these with the code from before levels: the winner, the time, and what happened.
+  const expected = ['player 36.82 72 692', 'player 39.22 77 725', 'player 39.22 77 730'];
+  Object.values(NPC_LEVELS).forEach((strength, index) => {
+    const happened = [];
+    const fight = new Fight({ rounds: 3, level: strength, onEvent: (event) => happened.push(event.type + (event.name ?? event.kind ?? '')) });
+    const reader = fakeReader({ moving: true });
+    const coach = new Coach({ fight, reader });
+    let t = 0;
+    while (fight.state !== 'over' && t < 900) {
+      fight.beginRound();
+      coach.beginRound();
+      let frame = 0;
+      while (fight.state === 'fighting' && t < 900) {
+        t += 0.02;
+        frame += 1;
+        if (coach.phase === 'asking' && frame % 120 === 0) coach.onMoves(whatsAsked(coach));
+        reader.guard = coach.phase === 'defending' && frame % 3 === 0 && coach.defence.kind === 'block';
+        fight.noteActivity(0.02);
+        coach.update(0.02);
+        fight.update(0.02);
+      }
+    }
+    assert.equal(`${fight.winner} ${t.toFixed(2)} ${happened.length} ${happened.join('|').length}`, expected[index], strength.name);
+  });
+});
+
+test('each level is the same as the one before or harder, in every way, and always harder in something', () => {
+  for (const level of LEVELS.slice(1)) {
+    const before = fightLevel(level - 1);
+    const now = fightLevel(level);
+    assert.ok(now.turnEvery <= before.turnEvery && now.warning <= before.warning && now.afterMove <= before.afterMove, `${level}: pace`);
+    assert.ok(before.defences.every((kind) => now.defences.includes(kind)) && before.npcMoves.every((move) => now.npcMoves.includes(move)), `${level}: nothing taken away`);
+    assert.ok(now.doubles >= before.doubles && now.twice >= before.twice && (now.mixed || !before.mixed), `${level}: new things stay`);
+    const harder = [now.turnEvery < before.turnEvery, now.warning < before.warning, now.defences.length > before.defences.length, now.npcMoves.length > before.npcMoves.length, now.doubles > before.doubles, now.mixed && !before.mixed, now.twice > before.twice];
+    assert.ok(harder.some(Boolean), `${level}: something is harder`);
+  }
+  // New kinds of things, from level 3.
+  assert.deepEqual([3, 4, 5, 6, 7].map((level) => {
+    const now = fightLevel(level);
+    return [now.defences.length, now.npcMoves.length, now.doubles > 0, now.mixed, now.twice > 0];
+  }), [[1, 0, false, false, false], [1, 2, false, false, false], [1, 2, true, false, false], [1, 2, true, true, false], [1, 5, true, true, true]]);
+});
+
+test('on the higher levels the computer comes more often and with more moves, but never takes away its warning', () => {
+  for (const strength of Object.values(NPC_LEVELS)) {
+    const { coach } = atLevel(10, { level: strength });
+    assert.ok(coach.level.warning >= strength.warning * 0.7, `${strength.name}: ${coach.level.warning} seconds of warning`);
+    assert.ok(coach.level.every < strength.every);
+    assert.deepEqual(new Set(coach.level.defences), new Set(['block', 'lean']));
+    assert.ok(coach.level.moves.length > strength.moves.length || strength.moves.length >= 7);
+    assert.equal(coach.level.damage, strength.damage, 'how hard it hits is still the grown-ups\' choice');
+    assert.equal(coach.level.mercy, strength.mercy);
+  }
+  // Leaning comes in on Gentle at level 3.
+  const gentle = atLevel(3, { level: NPC_LEVELS.gentle });
+  assert.deepEqual(gentle.coach.level.defences, ['block', 'lean']);
+});
+
+test('from level 5 a turn can be two hits, one to block and one to lean from, each with its whole warning', () => {
+  const { coach, events, fight, reader, pass } = atLevel(10, { level: NPC_LEVELS.medium }, { random: () => 0 });
+  reader.moving = true;
+  pass(coach.level.every + 0.1);
+  assert.equal(coach.phase, 'defending');
+  assert.equal(coach.defence.then, 'lean');
+  reader.guard = true;
+  pass(0.1);
+  reader.guard = false;
+  let secondFrom = null;
+  pass(RULES.swingAfterDefence + 0.4 + RULES.afterSwing + 0.2, () => {
+    if (coach.defence?.second && secondFrom === null) secondFrom = coach.defence.left;
+  });
+  assert.equal(coach.phase, 'defending', 'straight into the second');
+  assert.equal(coach.defence.kind, 'lean');
+  assert.equal(coach.defence.second, true);
+  assert.equal(secondFrom, coach.level.warning, 'with its whole warning');
+  reader.dodge = 0.8;
+  pass(1);
+  reader.dodge = 0;
+  pass(1.5);
+  assert.equal(fight.player.hp, RULES.maxHp, 'both got out of the way of');
+  assert.deepEqual(named(events, 'defended').map(({ kind }) => kind), ['block', 'lean']);
+  assert.equal(coach.phase, 'asking', 'and back to what was being asked for');
+});
+
+test('from level 6 the moves come in a mixed-up order, all of them each time round, with combos together', () => {
+  const { coach } = atLevel(6);
+  coach.queue = [];
+  const rounds = Array.from({ length: 4 }, () => Array.from({ length: ORDER.length }, () => coach.nextExercise()));
+  for (const round of rounds) {
+    assert.deepEqual([...round].sort(), [...ORDER].sort());
+    for (const { steps } of COMBOS) assert.equal(round.indexOf(steps[1]), round.indexOf(steps[0]) + 1, steps.join(' then '));
+  }
+  assert.ok(rounds.some((round) => round.join() !== ORDER.join()), 'and not the same as the list');
+  const noJumps = atLevel(10, {}, { allowJumps: false });
+  const asked = Array.from({ length: 40 }, () => noJumps.coach.nextExercise());
+  assert.ok(!asked.includes('jump') && !asked.includes('starJump'), 'and jumps that are off stay off');
+});
+
+test('from level 7 some moves are asked for twice, and only the second makes the big move', () => {
+  const { coach, events, pass } = atLevel(10, { level: { ...MEDIUM, every: 1000 } }, { random: () => 0 });
+  coach.nextIndex = 0;
+  coach.queue = ['squat'];
+  coach.call = null;
+  coach.startCall();
+  assert.equal(coach.call.times, 2);
+  assert.equal(named(events, 'call').at(-1).times, 2);
+  coach.onMoves(whatsAsked(coach));
+  assert.equal(named(events, 'rep').length, 1);
+  assert.equal(named(events, 'move').length, 0, 'not yet');
+  coach.onMoves(whatsAsked(coach));
+  assert.equal(named(events, 'move').length, 0, 'the same moment can\'t count twice');
+  pass(0.6);
+  coach.onMoves(whatsAsked(coach));
+  assert.equal(named(events, 'move').length, 1);
+  assert.equal(named(events, 'call-done').length, 1);
+  // Jumps, high knees and reaching up are never asked for twice.
+  for (const name of ['jump', 'starJump', 'highKnees', 'skyReach']) {
+    assert.equal(CAN_BE_TWICE.has(name), false, name);
+    coach.queue = [name];
+    coach.call = null;
+    coach.startCall();
+    assert.equal(coach.call.times, 1, name);
+  }
+});
+
+test('at level 10 a child standing still is still left alone, and Gentle still can\'t knock a child out', () => {
+  const resting = atLevel(10, { level: NPC_LEVELS.tough });
+  resting.pass(300);
+  assert.equal(resting.fight.player.hp, RULES.maxHp);
+  assert.equal(named(resting.events, 'move').length, 0);
+
+  const { coach, fight, reader, pass } = atLevel(10, { level: NPC_LEVELS.gentle, rounds: 1 });
+  reader.moving = true;
+  pass(400, () => {
+    if (coach.call) coach.call.trying = 0;
+  });
+  assert.equal(fight.state, 'fighting');
+  assert.equal(fight.player.hp, NPC_LEVELS.gentle.mercy);
+});
+
+/**
+ * A child doing what's asked: react seconds after each thing is asked for, and defend seconds after
+ * each warning. Plays a whole fight, and says how long it took and how many moves it asked for.
+ */
+function playFight({ levelNumber, strength = NPC_LEVELS.gentle, rounds = 3, seed = 1, react = 2.5, defend = 1.2 }) {
+  const fight = new Fight({ rounds, level: strength, levelNumber, onEvent: () => {} });
+  const reader = fakeReader({ moving: true });
+  const coach = new Coach({ fight, reader, random: seeded(seed) });
+  let seconds = 0;
+  let moves = 0;
+  while (fight.state !== 'over' && seconds < 2000) {
+    fight.beginRound();
+    coach.beginRound();
+    let askedFor = null;
+    let askedAt = 0;
+    let warned = null;
+    let warnedAt = 0;
+    while (fight.state === 'fighting' && seconds < 2000) {
+      seconds += 0.02;
+      // A new thing asked for, or the second time of one asked for twice, starts the child's clock.
+      if (coach.phase === 'asking' && (coach.call !== askedFor?.call || askedFor.done !== coach.call.done)) {
+        askedFor = { call: coach.call, done: coach.call.done };
+        askedAt = seconds;
+      }
+      if (coach.phase === 'asking' && seconds - askedAt >= react) {
+        coach.onMoves(whatsAsked(coach));
+        moves += 1;
+        askedAt = Infinity;
+      }
+      if (coach.defence !== warned) {
+        warned = coach.defence;
+        warnedAt = seconds;
+        reader.guard = false;
+        reader.dodge = 0;
+      }
+      if (warned && !warned.done && seconds - warnedAt >= defend) {
+        reader.guard = warned.kind === 'block';
+        reader.dodge = warned.kind === 'lean' ? 0.8 : 0;
+        if (!warned.counted) moves += 1;
+        warned.counted = true;
+      }
+      fight.noteActivity(0.02);
+      coach.update(0.02);
+      fight.update(0.02);
+    }
+    // The break between rounds, the same at every level.
+    seconds += RULES.breakSeconds + 3;
+  }
+  return { seconds, perMinute: moves / (seconds / 60), winner: fight.winner };
+}
+
+test('level 10 is still doable: as long to react, no more than double the moves, and not much longer', () => {
+  for (const strength of Object.values(NPC_LEVELS)) {
+    for (const react of [1.5, 3]) {
+      const mean = (levelNumber) => {
+        const fights = [1, 2, 3, 4, 5, 6, 7, 8].map((seed) => playFight({ levelNumber, strength, seed, react }));
+        assert.ok(fights.every(({ winner }) => winner === 'player'), `${strength.name} at level ${levelNumber}: doing as the coach says wins`);
+        return { seconds: fights.reduce((sum, one) => sum + one.seconds, 0) / fights.length, perMinute: fights.reduce((sum, one) => sum + one.perMinute, 0) / fights.length };
+      };
+      const first = mean(1);
+      const last = mean(10);
+      const name = `${strength.name}, ${react} seconds to each move`;
+      assert.ok(last.seconds <= first.seconds * 1.33, `${name}: ${last.seconds} seconds against ${first.seconds}`);
+      assert.ok(last.perMinute <= first.perMinute * 2, `${name}: ${last.perMinute} moves a minute against ${first.perMinute}`);
     }
   }
 });

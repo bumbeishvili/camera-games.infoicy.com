@@ -1,5 +1,5 @@
 // Things on the road: stars to catch, and ramps to jump. Neither is in the way, and missing either
-// costs nothing.
+// costs nothing. Where they are depends on the level (rules.js), and both are laid out again for each.
 import * as THREE from '../../vendor/three/three.module.js';
 import { canvasTexture, lerp, mod, TAU } from './kit.js';
 import { GATE_SPOTS, RAMP_SPOTS } from './track.js';
@@ -10,6 +10,8 @@ const STAR_SPACING = 8.5;
 const RAMP_LENGTH = 7;
 const RAMP_HEIGHT = 1.05;
 export const RAMP_HALF_WIDTH = 2.9;
+const STAR_ROOM = 160; // Stars the one mesh has room for, which is more than any level has.
+const LEVEL_ONE_RAMPS = RAMP_SPOTS.map((along) => ({ along, lateral: 0 }));
 
 function starGeometry() {
   const shape = new THREE.Shape();
@@ -31,36 +33,51 @@ function starGeometry() {
 export class StarField {
   constructor(scene, track) {
     this.track = track;
+    this.mesh = new THREE.InstancedMesh(
+      starGeometry(),
+      new THREE.MeshStandardMaterial({ color: '#ffd23f', emissive: '#c98a00', emissiveIntensity: 0.55, roughness: 0.35 }),
+      STAR_ROOM,
+    );
+    this.mesh.castShadow = true;
+    this.mesh.frustumCulled = false;
+    this.dummy = new THREE.Object3D();
+    scene.add(this.mesh);
+    this.setLayout(GATE_SPOTS, LEVEL_ONE_RAMPS);
+  }
+
+  /** Stars for a level's big hands, a list of [along, side], and its ramps, a list of { along, lateral }. */
+  setLayout(gateSpots, ramps) {
+    const { track } = this;
     this.stars = [];
     const add = (along, lateral, lift = 0) => {
       const position = track.pointAt(along, lateral, new THREE.Vector3());
       position.y += STAR_HEIGHT + lift;
       this.stars.push({ along: mod(along, track.length), lateral, position, takenOnLap: -2, spin: along * 0.3 });
     };
-    GATE_SPOTS.forEach(([along, side], index) => {
-      const fromSide = index === 0 ? 0 : GATE_SPOTS[index - 1][1] * 1.2;
-      for (let i = 0; i < STARS_PER_TRAIL; i += 1) {
-        const share = i / (STARS_PER_TRAIL - 1);
+    // A ramp to one side has its own stars, so a trail doesn't go through them.
+    const overSideRamp = (along) => ramps.some((ramp) => ramp.lateral !== 0 && along > ramp.along - 4 && along < ramp.along + 30);
+    gateSpots.forEach(([along, side], index) => {
+      const fromSide = index === 0 ? 0 : gateSpots[index - 1][1] * 1.2;
+      // Two big hands close together have a shorter trail, which starts after the first.
+      const after = index === 0 ? -Infinity : gateSpots[index - 1][0] + 6;
+      let count = STARS_PER_TRAIL;
+      while (count > 2 && along - 12 - (count - 1) * STAR_SPACING < after) count -= 1;
+      for (let i = 0; i < count; i += 1) {
+        const share = i / (count - 1);
         const eased = share * share * (3 - 2 * share);
-        add(along - 12 - (STARS_PER_TRAIL - 1 - i) * STAR_SPACING, lerp(fromSide, side * 3.6, eased));
+        const at = along - 12 - (count - 1 - i) * STAR_SPACING;
+        if (!overSideRamp(at)) add(at, lerp(fromSide, side * 3.6, eased));
       }
     });
     // An arc of stars over each ramp, in the air where a jump goes.
-    for (const along of RAMP_SPOTS) {
+    for (const ramp of ramps) {
       for (let i = 0; i < 5; i += 1) {
         const share = i / 4;
-        add(along + 7 + i * 5.2, 0, 0.5 + 1.6 * Math.sin(share * Math.PI));
+        add(ramp.along + 7 + i * 5.2, ramp.lateral, 0.5 + 1.6 * Math.sin(share * Math.PI));
       }
     }
-    this.mesh = new THREE.InstancedMesh(
-      starGeometry(),
-      new THREE.MeshStandardMaterial({ color: '#ffd23f', emissive: '#c98a00', emissiveIntensity: 0.55, roughness: 0.35 }),
-      this.stars.length,
-    );
-    this.mesh.castShadow = true;
-    this.mesh.frustumCulled = false;
-    this.dummy = new THREE.Object3D();
-    scene.add(this.mesh);
+    this.stars = this.stars.slice(0, STAR_ROOM);
+    this.mesh.count = this.stars.length;
   }
 
   reset() {
@@ -134,9 +151,8 @@ function rampTexture() {
 export class Ramps {
   constructor(scene, track) {
     this.track = track;
-    this.spots = RAMP_SPOTS;
-    const top = new THREE.MeshLambertMaterial({ map: rampTexture() });
-    const side = new THREE.MeshLambertMaterial({ color: '#d9553c' });
+    this.scene = scene;
+    this.materials = [new THREE.MeshLambertMaterial({ map: rampTexture() }), new THREE.MeshLambertMaterial({ color: '#d9553c' })];
     const shape = new THREE.BufferGeometry();
     const hw = RAMP_HALF_WIDTH;
     const L = RAMP_LENGTH;
@@ -156,25 +172,41 @@ export class Ramps {
     shape.computeVertexNormals();
     shape.addGroup(0, 6, 0);
     shape.addGroup(6, 12, 1);
-    for (const along of RAMP_SPOTS) {
-      const mesh = new THREE.Mesh(shape, [top, side]);
-      track.pointAt(along, 0, mesh.position);
-      mesh.position.y += 0.06;
+    this.shape = shape;
+    this.pool = [];
+    this.setLayout(LEVEL_ONE_RAMPS);
+  }
+
+  /** Puts the ramps where a level says: a list of { along, lateral }, with lateral 0 for the middle. */
+  setLayout(ramps) {
+    const { track } = this;
+    while (this.pool.length < ramps.length) {
+      const mesh = new THREE.Mesh(this.shape, this.materials);
       mesh.rotation.order = 'YXZ';
-      mesh.rotation.y = track.headingAt(along);
-      mesh.rotation.x = -track.pitchAt(along);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
-      scene.add(mesh);
+      this.scene.add(mesh);
+      this.pool.push(mesh);
     }
+    ramps.forEach(({ along, lateral }, index) => {
+      const mesh = this.pool[index];
+      track.pointAt(along, lateral, mesh.position);
+      mesh.position.y += 0.06;
+      mesh.rotation.y = track.headingAt(along);
+      mesh.rotation.x = -track.pitchAt(along);
+      mesh.visible = true;
+    });
+    for (const mesh of this.pool.slice(ramps.length)) mesh.visible = false;
+    this.layout = ramps.map((ramp) => ({ ...ramp }));
+    this.spots = ramps.map(({ along }) => along);
   }
 
   /** How far up a ramp the road is here, or 0. */
   liftAt(distance, lateral) {
-    if (Math.abs(lateral) > RAMP_HALF_WIDTH) return 0;
     const here = mod(distance, this.track.length);
-    for (const along of this.spots) {
-      const onto = here - along;
+    for (const ramp of this.layout) {
+      if (Math.abs(lateral - ramp.lateral) > RAMP_HALF_WIDTH) continue;
+      const onto = here - ramp.along;
       if (onto >= 0 && onto <= RAMP_LENGTH) return (onto / RAMP_LENGTH) * RAMP_HEIGHT;
     }
     return 0;
@@ -182,10 +214,9 @@ export class Ramps {
 
   /** Whether a car going from one distance to the next just went off the end of a ramp. */
   launches(from, to, lateral) {
-    if (Math.abs(lateral) > RAMP_HALF_WIDTH) return false;
     const a = mod(from, this.track.length);
     const moved = to - from;
     if (moved <= 0 || moved > 6) return false;
-    return this.spots.some((along) => mod(along + RAMP_LENGTH - a, this.track.length) <= moved);
+    return this.layout.some((ramp) => Math.abs(lateral - ramp.lateral) <= RAMP_HALF_WIDTH && mod(ramp.along + RAMP_LENGTH - a, this.track.length) <= moved);
   }
 }

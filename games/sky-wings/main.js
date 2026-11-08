@@ -7,7 +7,7 @@ import { BODY_SAY, BodyGame, byElementId } from '../../core/body/game.js';
 import { ROSTER } from '../../core/body/roster.js';
 import { mountBodyShell } from '../../core/body/shell.js';
 import { FlightSound } from './flight-sound.js';
-import { Flight, HEARTS, MOST_AT_ONCE } from './flight.js';
+import { Flight, HEARTS, MOST_AT_ONCE_EVER } from './flight.js';
 import { Lesson } from './lesson.js';
 import { Sky } from './sky.js';
 
@@ -236,10 +236,12 @@ class SkyWings extends BodyGame {
 
   beginCountdown() {
     const { settings, sky } = this;
+    const levelNumber = this.startLevel();
     this.flight = new Flight({
       planes: settings.planes,
       pace: settings.pace,
       level: settings.level,
+      levelNumber,
       climbing: settings.climbing === 'yes',
       onEvent: (event) => this.onFlightEvent(event),
     });
@@ -369,7 +371,7 @@ class SkyWings extends BodyGame {
 
   buildMarks() {
     const holder = byElementId('marks');
-    this.marks = Array.from({ length: MOST_AT_ONCE }, () => {
+    this.marks = Array.from({ length: MOST_AT_ONCE_EVER }, () => {
       const root = document.createElement('div');
       root.className = 'mark';
       const box = document.createElement('span');
@@ -413,7 +415,8 @@ class SkyWings extends BodyGame {
       const onScreen = !seen.behind && seen.x > 0 && seen.x < width && seen.y > 0 && seen.y < height;
       mark.root.dataset.hunting = enemy.mode === 'hunt' ? 'yes' : 'no';
       mark.root.dataset.locked = enemy === flight.locked ? 'yes' : 'no';
-      mark.fill.style.width = `${Math.round((enemy.hitsLeft / flight.level.enemyHits) * 100)}%`;
+      mark.root.dataset.captain = enemy.captain ? 'yes' : 'no';
+      mark.fill.style.width = `${Math.round((enemy.hitsLeft / enemy.hitsTotal) * 100)}%`;
       if (onScreen) {
         mark.root.dataset.where = 'on';
         mark.root.style.transform = `translate(${Math.round(seen.x)}px, ${Math.round(seen.y)}px)`;
@@ -512,6 +515,8 @@ class SkyWings extends BodyGame {
       { name: 'hits', icon: 'ring', label: 'Hits', value: stats.hits },
       { name: 'hurts', icon: 'wings', label: 'Times hit', value: stats.hurts },
     ]);
+    // Dropping them all moves on a level, and being shot down, on the harder settings, doesn't.
+    this.finishLevel(won);
     if (won) this.confetti.start();
     this.setScreen('finish');
   }

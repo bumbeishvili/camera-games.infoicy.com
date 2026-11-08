@@ -184,46 +184,52 @@ const brightnessOverFrames = (page, frames) => page.evaluate(async (count) => {
 
 const biggestStep = (reading) => Math.max(...reading.slice(1).map((value, index) => Math.abs(value - reading[index])));
 
-test('nothing flashes: the picture\'s brightness stays steady through firing, splashes, hits and sinking', async ({ page }) => {
-  test.setTimeout(120_000);
-  await startPlaying(page, { bayShips: 4 });
-  await holdPirate(page, { off: Math.PI * 0.35, away: 70, quiet: false });
-  // Their balls too, right on the ship, and a lot of them.
-  await page.evaluate(() => {
-    window.__showers = setInterval(() => {
-      const { battle } = window.__game;
-      const [pirate] = battle.afloat;
-      if (pirate) {
-        pirate.burstSide = 1;
-        pirate.burstLeft = 3;
-        pirate.burstIn = 0;
-      }
-    }, 900);
+// The same at level 10, where there's the most going on at once: see levelPlan in battle.js.
+for (const level of [1, 10]) {
+  const levels = level === 1 ? {} : { levels: { 'cannon-bay': level } };
+  const atLevel = level === 1 ? '' : ` at level ${level}`;
+
+  test(`nothing flashes${atLevel}: the picture's brightness stays steady through firing, splashes, hits and sinking`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await startPlaying(page, { bayShips: 4, ...levels });
+    await holdPirate(page, { off: Math.PI * 0.35, away: 70, quiet: false });
+    // Their balls too, right on the ship, and a lot of them.
+    await page.evaluate(() => {
+      window.__showers = setInterval(() => {
+        const { battle } = window.__game;
+        const [pirate] = battle.afloat;
+        if (pirate) {
+          pirate.burstSide = 1;
+          pirate.burstLeft = 3;
+          pirate.burstIn = 0;
+        }
+      }, 900);
+    });
+    const firing = await brightnessOverFrames(page, 90);
+    const steps = biggestStep(firing);
+    console.log(`level ${level}: biggest brightness step while firing`, steps);
+    expect(steps).toBeLessThan(6);
+    expect((await battleState(page)).stats.hits).toBeGreaterThan(1);
+
+    // The zone going from nothing to green, as the hand opens and closes, is the biggest change there is.
+    await show(page, null, 'fist', { scale: 0.7 });
+    const closing = await brightnessOverFrames(page, 50);
+    console.log('biggest brightness step as the cannons stop', biggestStep(closing));
+    expect(biggestStep(closing)).toBeLessThan(6);
+    await show(page, null, 'open', { scale: 0.7 });
+    const opening = await brightnessOverFrames(page, 50);
+    console.log('biggest brightness step as the cannons start', biggestStep(opening));
+    expect(biggestStep(opening)).toBeLessThan(6);
+
+    // A ship beaten right beside the child's, with all its smoke.
+    await page.evaluate(() => clearInterval(window.__showers));
+    await letPirateGo(page);
+    const [sinking] = await Promise.all([brightnessOverFrames(page, 120), beatPirates(page, 1)]);
+    console.log('biggest brightness step as a ship sinks', biggestStep(sinking));
+    expect(biggestStep(sinking)).toBeLessThan(6);
+    await shot(page, level === 1 ? 'c-smoke' : `cannon-bay-level${level}-smoke`);
   });
-  const firing = await brightnessOverFrames(page, 90);
-  const steps = biggestStep(firing);
-  console.log('biggest brightness step while firing', steps);
-  expect(steps).toBeLessThan(6);
-  expect((await battleState(page)).stats.hits).toBeGreaterThan(1);
-
-  // The zone going from nothing to green, as the hand opens and closes, is the biggest change there is.
-  await show(page, null, 'fist', { scale: 0.7 });
-  const closing = await brightnessOverFrames(page, 50);
-  console.log('biggest brightness step as the cannons stop', biggestStep(closing));
-  expect(biggestStep(closing)).toBeLessThan(6);
-  await show(page, null, 'open', { scale: 0.7 });
-  const opening = await brightnessOverFrames(page, 50);
-  console.log('biggest brightness step as the cannons start', biggestStep(opening));
-  expect(biggestStep(opening)).toBeLessThan(6);
-
-  // A ship beaten right beside the child's, with all its smoke.
-  await page.evaluate(() => clearInterval(window.__showers));
-  await letPirateGo(page);
-  const [sinking] = await Promise.all([brightnessOverFrames(page, 120), beatPirates(page, 1)]);
-  console.log('biggest brightness step as a ship sinks', biggestStep(sinking));
-  expect(biggestStep(sinking)).toBeLessThan(6);
-  await shot(page, 'c-smoke');
-});
+}
 
 test('with reduced motion the battle still works, with calmer waves and a steadier ship', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -275,24 +281,30 @@ test('a slow computer gives up sharpness, then waves and trees, and keeps sailin
   expect((await battleState(page)).state).toBe('sailing');
 });
 
-test('it runs quickly enough, with everything going on', async ({ page }) => {
-  await startPlaying(page, { bayShips: 9 });
-  await holdPirate(page, { off: Math.PI * 0.4, away: 95, quiet: false });
-  await page.waitForTimeout(2000);
-  const rate = await page.evaluate(() => new Promise((done) => {
-    let frames = 0;
-    const started = performance.now();
-    const count = () => {
-      frames += 1;
-      if (performance.now() - started > 4000) done(frames / 4);
-      else requestAnimationFrame(count);
-    };
-    requestAnimationFrame(count);
-  }));
-  console.log('frames a second', rate, 'quality', await page.evaluate(() => window.__game.bay.quality));
-  expect(rate).toBeGreaterThan(28);
-  await letPirateGo(page);
-});
+// The same at level 10, where there's the most going on at once: see levelPlan in battle.js.
+for (const level of [1, 10]) {
+  const levels = level === 1 ? {} : { levels: { 'cannon-bay': level } };
+  const atLevel = level === 1 ? '' : ` at level ${level}`;
+
+  test(`it runs quickly enough${atLevel}, with everything going on`, async ({ page }) => {
+    await startPlaying(page, { bayShips: 9, ...levels });
+    await holdPirate(page, { off: Math.PI * 0.4, away: 95, quiet: false });
+    await page.waitForTimeout(2000);
+    const rate = await page.evaluate(() => new Promise((done) => {
+      let frames = 0;
+      const started = performance.now();
+      const count = () => {
+        frames += 1;
+        if (performance.now() - started > 4000) done(frames / 4);
+        else requestAnimationFrame(count);
+      };
+      requestAnimationFrame(count);
+    }));
+    console.log(`level ${level}: frames a second`, rate, 'quality', await page.evaluate(() => window.__game.bay.quality));
+    expect(rate).toBeGreaterThan(28);
+    await letPirateGo(page);
+  });
+}
 
 for (const [width, height, name] of [[1024, 600, 'laptop'], [820, 1180, 'tablet'], [1920, 1080, 'big']]) {
   test(`it all fits on a ${name} screen`, async ({ page }) => {

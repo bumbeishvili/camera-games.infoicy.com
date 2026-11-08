@@ -976,3 +976,62 @@ body:not([data-screen='countdown'], [data-screen='playing']) .count { display: n
   .finger-fill,
   #check-progress-fill { background: Highlight; }
 }
+
+/* ---------- levels: see core/levels.js ---------- */
+.level-badge {
+  background: var(--surface-soft);
+  border-radius: 999px;
+  padding: 6px 20px 7px;
+  font-size: clamp(18px, 2.2vw, 24px);
+  font-weight: 700;
+}
+
+.level-done {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  margin: 6px 0 4px;
+}
+
+.level-done-text {
+  font-size: clamp(19px, 2.3vw, 26px);
+  font-weight: 700;
+}
+
+.level-pips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 8px;
+}
+
+.level-pips li {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--surface-soft);
+  border: 2px solid var(--line);
+}
+
+.level-pips li.is-done { background: var(--good); border-color: var(--good); }
+.level-pips li.is-next { background: var(--sun); border-color: var(--sun-deep); }
+
+/* Below the countdown's numbers, while it counts. */
+.level-now {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  left: 50%;
+  top: 63%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  padding: 8px 26px 10px;
+  font-size: clamp(22px, 3vw, 34px);
+  font-weight: 700;
+  pointer-events: none;
+}
+
+body[data-screen='countdown'] .level-now { display: block; }

@@ -3,13 +3,13 @@
 // Everything to do with the camera, the hand, voice, pausing and the grown-ups' panel lives
 // here. A game supplies what's special about it, as an object with these methods:
 //
-//   prepare()                 a new round is about to start
+//   prepare(level)            a new round is about to start, at this level from 1 to 10 (core/levels.js)
 //   begin()                   the countdown has finished
 //   update(dt, snapshot)      one frame of play
 //   idle(dt, snapshot)        one frame of anything else: title, check, countdown, finish
 //   render()                  draw
 //   prompt(snapshot, dt)      what to tell the child during play, or null
-//   summary()                 { hero, noun, rows } for the finish card
+//   summary()                 { hero, noun, rows } for the finish card, and won: false if it was lost
 //
 // and optionally:
 //
@@ -23,6 +23,7 @@
 import { CameraProblem, TrackingCamera } from './camera.js';
 import { HandCheck, HandMonitor, OPEN_RULES, PlayStats, promptFor } from './hands.js';
 import { Hud } from './hud.js';
+import { Levels, mountLevels } from './levels.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { mountShell } from './shell.js';
 import { Sound } from './sound.js';
@@ -93,6 +94,9 @@ export class GameSession {
     document.getElementById('start').disabled = true;
     this.settings = loadSettings(this.defaults);
     const { settings } = this;
+    this.levels = new Levels(settings);
+    // The level being played, or about to be. Games read it as session.level.
+    this.level = this.levels.current;
 
     const fetchLines = async (url) => (await fetch(url)).json();
     const lines = await fetchLines(new URL('./audio/voice/lines.json', import.meta.url));
@@ -124,6 +128,14 @@ export class GameSession {
       onRecheck: () => {
         this.hud.panel.close();
         this.recheckHands();
+      },
+    });
+
+    this.levelUi = mountLevels(this.levels, {
+      language: () => settings.language,
+      onChoose: (level) => {
+        // Mid-round, the new level starts with the next round.
+        if (this.screen !== 'playing' && this.screen !== 'countdown') this.level = level;
       },
     });
 
@@ -269,7 +281,9 @@ export class GameSession {
   }
 
   beginCountdown(wait = 0) {
-    this.game.prepare();
+    this.level = this.levels.current;
+    this.levelUi.refresh();
+    this.game.prepare(this.level);
     this.countLeft = COUNT_FROM;
     this.countWait = wait;
     this.setScreen('countdown');
@@ -338,7 +352,9 @@ export class GameSession {
     this.sound.finish(this.finishLine);
     this.hud.prompt.clear();
     this.hud.setCount('');
-    this.hud.showSummary(this.stats, this.monitor.side, this.game.summary());
+    const summary = this.game.summary();
+    this.hud.showSummary(this.stats, this.monitor.side, summary);
+    this.levelUi.showResult(this.levels.complete(summary.won !== false));
     this.setScreen('finish');
   }
 

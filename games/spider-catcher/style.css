@@ -1,0 +1,114 @@
+/* Spider Catcher: the garden, then Joze, then the web, the spiders and the glove on top of him. */
+:root { --meter-size: clamp(72px, 8.5vw, 108px); }
+
+#backdrop, #game {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#joze-stage {
+  position: fixed;
+  bottom: 2vh;
+  height: 72vh;
+  aspect-ratio: 0.72;
+  display: block;
+}
+
+/* By the web, across from where the spiders play, so bringing one home is a reach across. */
+body[data-side='right'] #joze-stage { left: 0; }
+body[data-side='left'] #joze-stage { right: 0; }
+
+/* Down here, out of the way of the spiders. */
+body[data-screen='playing'] .prompt { top: auto; bottom: 58px; }
+
+.hands-bar {
+  left: 0;
+  right: 0;
+  transform: none;
+  justify-content: space-between;
+  padding: 0 12px;
+  pointer-events: none;
+}
+
+body[data-hands='right'] .hands-bar { justify-content: flex-end; }
+body[data-hands='left'] .hands-bar { justify-content: flex-start; }
+.meter-caption { font-size: clamp(11px, 1vw, 13px); }
+
+/* One dot for each spider, filled in as each comes home. */
+.spider-dots {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  left: 50%;
+  bottom: 16px;
+  max-width: 46vw;
+  margin: 0;
+  padding: 6px 12px;
+  transform: translateX(-50%);
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  list-style: none;
+  background: var(--surface);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+}
+
+body[data-screen='playing'] .spider-dots { display: flex; }
+
+.spider-dots li {
+  width: clamp(12px, 1.4vw, 18px);
+  height: clamp(12px, 1.4vw, 18px);
+  border-radius: 50%;
+  border: 3px solid #c9d6e2;
+  background: #f1f5f9;
+  transition: background-color 0.6s ease, border-color 0.6s ease;
+}
+
+.spider-dots li.is-home { background: #ff7eb6; border-color: var(--ink); }
+.spider-dots li.is-home:nth-child(3n + 2) { background: #5fc3ff; }
+.spider-dots li.is-home:nth-child(3n) { background: #ffc93c; }
+
+/* A little film: a hand closing on a spider, carrying it across, and opening at its web. */
+.film-web circle { fill: none; stroke: #9fb6c8; stroke-width: 3; }
+.film-web path { fill: none; stroke: #9fb6c8; stroke-width: 3; }
+.film-body { fill: #ff7eb6; stroke: var(--ink); stroke-width: 4; }
+.film-eye { fill: #fff; stroke: var(--ink); stroke-width: 2; }
+.film-legs { fill: none; stroke: #c45285; stroke-width: 5; stroke-linecap: round; }
+.film-spider { animation: film-spider 5s ease-in-out infinite; }
+.film-hand rect { fill: #3ddc84; stroke: var(--ink); stroke-width: 3; }
+.film-finger { fill: none; stroke: #3ddc84; stroke-width: 10; stroke-linecap: round; transform-box: fill-box; transform-origin: bottom center; animation: film-finger 5s ease-in-out infinite; }
+.film-hand { animation: film-carry 5s ease-in-out infinite; }
+
+@keyframes film-carry {
+  0%, 12% { transform: translate(0, 0); }
+  24%, 34% { transform: translate(0, -32px); }
+  62%, 76% { transform: translate(-118px, 2px); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes film-finger {
+  0%, 26% { transform: scaleY(1); }
+  34%, 64% { transform: scaleY(0.4); }
+  74%, 100% { transform: scaleY(1); }
+}
+
+/* The spider strolls a little, is caught and carried, and stays in its web for a moment. */
+@keyframes film-spider {
+  0% { transform: translate(-14px, 0); opacity: 1; }
+  24% { transform: translate(0, 0); opacity: 1; }
+  34% { transform: translate(0, 4px); opacity: 1; }
+  62% { transform: translate(-118px, 34px); opacity: 1; }
+  88% { transform: translate(-120px, 34px); opacity: 1; }
+  94% { transform: translate(-120px, 34px); opacity: 0; }
+  96% { transform: translate(-14px, 0); opacity: 0; }
+  100% { transform: translate(-14px, 0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .film-spider, .film-finger, .film-hand { animation-duration: 7.5s; }
+  .spider-dots li { transition: none; }
+}

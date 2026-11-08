@@ -4,7 +4,7 @@
 // A fighter is driven only through perform(), setGuard() and setDodge(). Today coach.js makes those
 // calls for both sides. Playing over a network later means sending those same calls across, without
 // changing anything in here.
-import { COMBOS, COMBO_SECONDS, EXERCISES, MOVES, RULES } from './moves.js';
+import { COMBOS, COMBO_SECONDS, EXERCISES, MOVES, RULES, fightLevel } from './moves.js';
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const other = (who) => (who === 'player' ? 'npc' : 'player');
@@ -53,10 +53,13 @@ export class Fight {
   /**
    * rounds is how many there are in all, and the first to win more than half takes the fight.
    * level is the computer's strength in moves.js. focusSide is the side being worked on.
+   * levelNumber is the level, from 1 to 10: see fightLevel in moves.js, which the coach follows.
    */
-  constructor({ rounds = 3, level, focusSide = 'right', onEvent = () => {} }) {
+  constructor({ rounds = 3, level, levelNumber = 1, focusSide = 'right', onEvent = () => {} }) {
     this.totalRounds = rounds;
     this.level = level;
+    this.levelNumber = levelNumber;
+    this.levelRules = fightLevel(levelNumber);
     this.focusSide = focusSide;
     this.onEvent = onEvent;
 
@@ -125,13 +128,14 @@ export class Fight {
   /**
    * Starts a move. side is the arm or leg used, and hand is what that hand was seen doing:
    * 'open', 'closed' or null for not known. exercise is the exercise that earned it. small makes
-   * it a small hit, from something the coach didn't ask for.
+   * it a small hit, from something the coach didn't ask for. reps is how many times the child did
+   * it, as some moves are asked for twice on the higher levels.
    */
-  perform(who, move, { side = null, hand = null, exercise = null, small = false } = {}) {
+  perform(who, move, { side = null, hand = null, exercise = null, small = false, reps = 1 } = {}) {
     if (this.state !== 'fighting') return null;
     const definition = MOVES[move];
     const corner = this.corner(who);
-    const times = corner.who === 'player' ? this.scoreMove(corner, move, definition, { side, hand, exercise, small }) : { value: 1, reasons: [], signature: false };
+    const times = corner.who === 'player' ? this.scoreMove(corner, move, definition, { side, hand, exercise, small, reps }) : { value: 1, reasons: [], signature: false };
 
     const action = {
       who,
@@ -152,7 +156,7 @@ export class Fight {
   }
 
   /** Everything that makes the child's move stronger, all of it earned. */
-  scoreMove(corner, move, definition, { side, hand, exercise, small }) {
+  scoreMove(corner, move, definition, { side, hand, exercise, small, reps = 1 }) {
     const reasons = [];
     let value = 1;
     const add = (name, by) => {
@@ -162,6 +166,7 @@ export class Fight {
 
     if (move === 'palm' && hand === 'open') add('open-hand', RULES.openHand);
     if (side && side === this.focusSide) add('focus', RULES.focusSide);
+    if (reps > 1 && !small) add('twice', RULES.twice);
     this.countMove(definition, { side, hand, exercise });
     if (small) return { value, reasons, signature: false };
 

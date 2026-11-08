@@ -6,6 +6,7 @@
 // A hand that's missing, out of the picture or can't be read does nothing at all: it doesn't fire and
 // it doesn't drive. If it's gone for a moment or stays the same for a few seconds, that's a rest, and the
 // robots stop and wait. There's no screen, sound or camera in this file, so it all runs in the unit tests.
+import { ramp, stepsAt } from '../../core/levels.js';
 import { PLAY, SPAWNS, START, clampToPlay, groundY, valleyNav } from './valley-map.js';
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
@@ -17,6 +18,30 @@ const turnBetween = (to, from) => Math.atan2(Math.sin(to - from), Math.cos(to - 
 /** Which way it is from one place to another. Heading 0 is up the valley, away from the camera. */
 export const headingTo = (dx, dz) => Math.atan2(dx, -dz);
 const gapBetween = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+
+/**
+ * What each level changes, from level 1, which is the game as it always was, up to level 10. The
+ * numbers are shares of, or additions to, the speed and difficulty a grown-up chose, so a level never
+ * changes those choices, the number of tanks, the reach help, the tank driving itself, or Gentle being
+ * impossible to lose. Resting stops everything new here, just as it stops the rest.
+ */
+export function levelPlan(level = 1) {
+  return {
+    enemy: ramp(level, 1, 1.3), // Robot tanks roll faster, up to 30% faster at level 10.
+    hold: ramp(level, 1, 0.65), // They wait less long before moving on somewhere else.
+    standoff: ramp(level, 0, 4), // They keep a little further off, so there's more driving to get them in range.
+    lobEvery: ramp(level, 1, 0.65), // Shells come more often.
+    shellSeconds: ramp(level, 1, 0.8), // They come over a little quicker, never under 80% as long.
+    moreFirst: stepsAt(level, { 1: 0, 5: 1 }), // One more robot tank about from the start from level 5.
+    moreMost: stepsAt(level, { 1: 0, 3: 1, 8: 2 }), // And up to one more at once from level 3, and two from level 8.
+    inAir: stepsAt(level, { 1: 0, 6: 1 }), // One more shell can be on its way at once from level 6.
+    dash: level >= 3, // From level 3, scouts dash from place to place.
+    pairs: level >= 4, // From level 4, robot tanks come in pairs and keep together.
+    lead: stepsAt(level, { 1: 0, 5: 0.15, 8: 0.3 }), // From level 5, shells allow for the tank driving along.
+    retreat: level >= 6, // From level 6, a tank that's taken half its hits runs off out of range, once.
+    doubleShell: stepsAt(level, { 1: 0, 7: 1, 9: 2 }), // Heavy tanks lob two shells at once, landing apart, from level 7, and bashers from level 9.
+  };
+}
 
 // How fast it all goes. drive and enemy are in units a second, and out is how many robot tanks are
 // about at once, from the first to the most, as more come when others are stopped.
@@ -52,7 +77,7 @@ export const KINDS = {
 
 const CHILD = { turn: 3.2, accel: 26, brake: 42, arrive: 3.2, stopWithin: 0.9 };
 const ROBOT = { turn: 1.5, accel: 8, brake: 12, turretTurn: 1.8, arrive: 2.5, reached: 2.2 };
-const STANDOFF = [GUN.range + 6, GUN.range + 14]; // Just out of the gun's reach, so that it takes driving.
+export const STANDOFF = [GUN.range + 6, GUN.range + 14]; // Just out of the gun's reach, so that it takes driving.
 const HOLD_SECONDS = [2.5, 5];
 const TOO_NEAR = 10;
 const THINK_AGAIN_SECONDS = 0.6; // Working out a new way to go takes a moment, so it isn't done too often.
@@ -63,6 +88,10 @@ const RATTLE_SECONDS = 1.3; // It rattles to a halt.
 const WAVE_SECONDS = 3.4; // Its crew climbs out and waves.
 const FADE_SECONDS = 1.3; // And it fades away.
 const NEXT_TANK_SECONDS = 0.9;
+const DASH = 1.75; // How much faster a dashing scout goes than the others.
+const PAIR_APART = 10; // How far apart a pair keeps, side by side.
+const SECOND_SHELL_APART = 11; // How far the second of two shells lands from the first.
+const LOBS_TWO = ['heavy', 'basher']; // In this order, as the levels go up: see levelPlan.
 const WON_AFTER = 3.4; // Long enough to see the last crew climb out and wave.
 const LOST_AFTER = 1;
 const HURT_SECONDS = 0.8;
@@ -123,11 +152,14 @@ export class Patrol {
    * AIM_HELP, and driving is 'closed' for a closed hand or 'auto' for the tank driving itself towards
    * whatever's out of range, for a child who can't close easily.
    */
-  constructor({ tanks = 6, pace = 'slow', level = 'gentle', help = 'little', driving = 'closed', random = Math.random, onEvent = () => {} } = {}) {
+  constructor({ tanks = 6, pace = 'slow', level = 'gentle', levelNumber = 1, help = 'little', driving = 'closed', random = Math.random, onEvent = () => {} } = {}) {
     this.nav = valleyNav();
     this.random = random;
     this.onEvent = onEvent;
     this.total = tanks;
+    // The level being played, from 1 to 10, which makes it harder within the grown-up's choices.
+    this.levelNumber = levelNumber;
+    this.plan = levelPlan(levelNumber);
     this.configure({ pace, level, help, driving });
     this.hearts = this.level.hearts;
 
@@ -227,7 +259,25 @@ export class Patrol {
 
   get mostOut() {
     const [first, most] = this.pace.out;
-    return Math.min(most, first + Math.floor(this.stats.stopped / 2));
+    return Math.min(most + this.plan.moreMost, first + this.plan.moreFirst + Math.floor(this.stats.stopped / 2));
+  }
+
+  /* ---------- the numbers in play: the grown-up's choices, made harder by the level ---------- */
+
+  get enemySpeed() {
+    return this.pace.enemy * this.plan.enemy;
+  }
+
+  get shellSeconds() {
+    return this.level.shellSeconds * this.plan.shellSeconds;
+  }
+
+  get inAir() {
+    return this.level.inAir + this.plan.inAir;
+  }
+
+  get lead() {
+    return this.level.lead + this.plan.lead;
   }
 
   fill() {
@@ -273,6 +323,13 @@ export class Patrol {
       slipFor: 0,
     };
     nextId += 1;
+    // On the higher levels, every other one comes in as the partner of the one before, if it's still about.
+    const alone = (other) => other.leader?.state !== 'rolling' && other.partner?.state !== 'rolling';
+    const last = this.rolling.filter(alone).at(-1);
+    if (this.plan.pairs && last) {
+      enemy.leader = last;
+      last.partner = enemy;
+    }
     this.enemies.push(enemy);
     this.emit('spawn', { enemy });
     return true;
@@ -281,10 +338,15 @@ export class Patrol {
   /** Somewhere for a tank to go next: out of the gun's reach, on the side of the child it's on already. */
   chooseGoal(enemy) {
     const { tank, random, nav } = this;
+    if (enemy.leader?.state === 'rolling' && enemy.leader.goal) {
+      this.followLeader(enemy);
+      return;
+    }
+    const standoff = STANDOFF.map((far) => far + this.plan.standoff);
     let spot = null;
     for (let attempt = 0; attempt < 6; attempt += 1) {
       const angle = Math.atan2(enemy.x - tank.x, enemy.z - tank.z) + between(random, [-0.9, 0.9]);
-      const away = between(random, STANDOFF);
+      const away = between(random, standoff);
       const place = clampToPlay(tank.x + Math.sin(angle) * away, tank.z + Math.cos(angle) * away);
       spot = nav.nearestFree(clamp(place.x, PLAY.left + 3, PLAY.right - 3), clamp(place.z, PLAY.far + 2, PLAY.near - 2));
       const roomy = this.enemies.every((other) => other === enemy || !other.goal || gapBetween(other.goal, spot) > APART);
@@ -292,8 +354,28 @@ export class Patrol {
     }
     enemy.goal = spot;
     enemy.flow = nav.flowTo(spot.x, spot.z, enemy.flow);
-    enemy.holdFor = between(random, HOLD_SECONDS);
+    enemy.holdFor = between(random, HOLD_SECONDS) * this.plan.hold;
     enemy.thinkIn = THINK_AGAIN_SECONDS;
+    // A scout on the higher levels dashes to wherever it's going next.
+    enemy.dashing = this.plan.dash && enemy.kind === 'scout';
+    if (enemy.dashing) this.emit('dash', { enemy });
+  }
+
+  /** The second of a pair goes where the first is going, beside it, on the side away from the child's tank. */
+  followLeader(enemy) {
+    const { leader } = enemy;
+    const { nav, tank } = this;
+    const dx = leader.goal.x - tank.x;
+    const dz = leader.goal.z - tank.z;
+    const far = Math.hypot(dx, dz) || 1;
+    const side = enemy.id % 2 ? 1 : -1;
+    const beside = clampToPlay(leader.goal.x - (dz / far) * PAIR_APART * side, leader.goal.z + (dx / far) * PAIR_APART * side);
+    const spot = nav.nearestFree(beside.x, beside.z);
+    enemy.goal = spot;
+    enemy.flow = nav.flowTo(spot.x, spot.z, enemy.flow);
+    enemy.holdFor = leader.holdFor;
+    enemy.thinkIn = THINK_AGAIN_SECONDS;
+    enemy.dashing = leader.dashing;
   }
 
   /**
@@ -349,7 +431,7 @@ export class Patrol {
 
   moveEnemies(dt, moving) {
     const { tank, nav } = this;
-    const top = this.pace.enemy;
+    const top = this.enemySpeed;
     for (const enemy of this.enemies) {
       enemy.hitLeft = Math.max(0, enemy.hitLeft - dt);
       if (enemy.state !== 'rolling') {
@@ -363,14 +445,22 @@ export class Patrol {
       } else {
         enemy.thinkIn = Math.max(0, enemy.thinkIn - dt);
         const crowded = gapBetween(enemy, tank) < TOO_NEAR && enemy.goal && gapBetween(enemy.goal, tank) < TOO_NEAR;
-        if (!enemy.goal || (crowded && enemy.thinkIn === 0)) this.chooseGoal(enemy);
+        // The second of a pair sets off again when the first does.
+        const leaderMoved = enemy.leader?.state === 'rolling' && enemy.leader.goal && enemy.followed !== enemy.leader.goal;
+        if (!enemy.goal || (crowded && enemy.thinkIn === 0) || leaderMoved) {
+          this.chooseGoal(enemy);
+          if (enemy.leader) enemy.followed = enemy.leader.goal;
+        }
         const there = gapBetween(enemy, enemy.goal) < ROBOT.reached;
         if (there) {
           this.coast(enemy, ROBOT, dt);
+          enemy.dashing = false;
+          enemy.running = false;
           enemy.holdFor -= dt;
-          if (enemy.holdFor <= 0) this.chooseGoal(enemy);
+          if (enemy.holdFor <= 0 && !(enemy.leader?.state === 'rolling')) this.chooseGoal(enemy);
         } else {
-          this.roll(enemy, nav.waypoint(enemy.flow, enemy.x, enemy.z, enemy.goal), top * enemy.top, ROBOT, dt);
+          const speed = top * enemy.top * (enemy.dashing ? DASH : 1);
+          this.roll(enemy, nav.waypoint(enemy.flow, enemy.x, enemy.z, enemy.goal), speed, ROBOT, dt);
         }
       }
       const toChild = headingTo(tank.x - enemy.x, tank.z - enemy.z);
@@ -425,28 +515,39 @@ export class Patrol {
     const { level, random, tank } = this;
     this.lobIn -= dt;
     // Nothing new while the hand has gone, as there'd be no way of getting out from under it.
-    if (this.lobIn > 0 || this.goneFor > 0 || this.shells.length >= level.inAir) return;
+    if (this.lobIn > 0 || this.goneFor > 0 || this.shells.length >= this.inAir) return;
     const able = this.rolling.filter(({ stun }) => stun === 0);
     if (!able.length) return;
     const enemy = able[Math.floor(random() * able.length)];
-    this.lobIn = between(random, level.lobEvery);
-    const seconds = level.shellSeconds;
-    const lead = tank.speed * seconds * level.lead;
+    this.lobIn = between(random, level.lobEvery) * this.plan.lobEvery;
+    const seconds = this.shellSeconds;
+    const lead = tank.speed * seconds * this.lead;
     const toX = tank.x + Math.sin(tank.heading) * lead;
     const toZ = tank.z - Math.cos(tank.heading) * lead;
-    const landing = this.nav.nearestFree(toX, toZ);
+    const first = !this.firstLobbed;
+    this.lob(enemy, this.nav.nearestFree(toX, toZ), seconds, first);
+    // On the higher levels a heavy lobs two, the second landing off to one side of the first.
+    if (LOBS_TWO.slice(0, this.plan.doubleShell).includes(enemy.kind) && this.shells.length < this.inAir) {
+      const side = random() < 0.5 ? -1 : 1;
+      const across = { x: Math.cos(tank.heading) * side, z: Math.sin(tank.heading) * side };
+      const spot = clampToPlay(toX + across.x * SECOND_SHELL_APART, toZ + across.z * SECOND_SHELL_APART);
+      this.lob(enemy, this.nav.nearestFree(spot.x, spot.z), seconds, false, true);
+    }
+  }
+
+  lob(enemy, landing, seconds, first, second = false) {
     const shell = {
       id: nextId,
       share: 0,
       seconds,
-      blast: level.blast,
+      blast: this.level.blast,
       from: { x: enemy.x, y: enemy.y + 4, z: enemy.z },
       to: { x: landing.x, y: groundY(landing.x, landing.z), z: landing.z },
     };
     nextId += 1;
     this.shells.push(shell);
     enemy.lobbedAt = this.time;
-    this.emit('lob', { enemy, shell, first: !this.firstLobbed });
+    this.emit('lob', { enemy, shell, first, second });
     this.firstLobbed = true;
   }
 
@@ -567,9 +668,32 @@ export class Patrol {
       const gap = Math.hypot(dx, dz);
       // Straight along the way it's pointing, if it's right on top of the place.
       const [wayX, wayZ] = gap < 1 ? [Math.sin(tank.heading), -Math.cos(tank.heading)] : [dx / gap, dz / gap];
-      return clampToPlay(shell.to.x + wayX * (shell.blast + 4), shell.to.z + wayZ * (shell.blast + 4));
+      const away = clampToPlay(shell.to.x + wayX * (shell.blast + 4), shell.to.z + wayZ * (shell.blast + 4));
+      // With two shells coming down side by side, somewhere clear of both of them.
+      return this.plan.doubleShell > 0 ? this.clearOfShells(away, shell) : away;
     }
     return locked && !this.inRange(locked) ? { x: locked.x, z: locked.z } : null;
+  }
+
+  /** A place clear of every shell on its way, as near as can be to the one first thought of. */
+  clearOfShells(wanted, shell) {
+    const clear = (spot) => this.shells.every(({ to, blast }) => gapBetween(spot, to) > blast + 1);
+    if (clear(wanted)) return wanted;
+    const reach = shell.blast + 4;
+    let best = wanted;
+    let bestGap = Infinity;
+    for (let i = 0; i < 16; i += 1) {
+      for (const far of [reach, reach * 1.6]) {
+        const angle = (i / 16) * Math.PI * 2;
+        const spot = clampToPlay(this.tank.x + Math.sin(angle) * far, this.tank.z - Math.cos(angle) * far);
+        const gap = gapBetween(spot, wanted);
+        if (clear(spot) && gap < bestGap) {
+          best = spot;
+          bestGap = gap;
+        }
+      }
+    }
+    return best;
   }
 
   /** The way to where the hand is pointing, worked out again when that's changed. */
@@ -661,10 +785,36 @@ export class Patrol {
     if (enemy.state !== 'rolling') return;
     enemy.hp -= 1;
     enemy.hitLeft = HIT_SECONDS;
-    enemy.stun = STUN_SECONDS;
+    // One running for it doesn't stop to be fired at, until it's got where it's going.
+    enemy.stun = enemy.running ? 0 : STUN_SECONDS;
     this.stats.hits += 1;
     this.emit('hit', { enemy });
-    if (enemy.hp <= 0) this.stop(enemy);
+    if (enemy.hp <= 0) {
+      this.stop(enemy);
+      return;
+    }
+    // On the higher levels, once it's taken half its hits it runs for it, out of range, and has to be chased.
+    if (this.plan.retreat && !enemy.ranOff && enemy.hp <= enemy.maxHp / 2) this.runOff(enemy);
+  }
+
+  runOff(enemy) {
+    const { tank, nav } = this;
+    enemy.ranOff = true;
+    enemy.stun = 0;
+    enemy.leader = null;
+    const dx = enemy.x - tank.x;
+    const dz = enemy.z - tank.z;
+    const far = Math.hypot(dx, dz) || 1;
+    const away = STANDOFF[1] + this.plan.standoff;
+    const place = clampToPlay(tank.x + (dx / far) * away, tank.z + (dz / far) * away);
+    const spot = nav.nearestFree(clamp(place.x, PLAY.left + 3, PLAY.right - 3), clamp(place.z, PLAY.far + 2, PLAY.near - 2));
+    enemy.goal = spot;
+    enemy.flow = nav.flowTo(spot.x, spot.z, enemy.flow);
+    enemy.holdFor = between(this.random, HOLD_SECONDS) * this.plan.hold;
+    enemy.thinkIn = THINK_AGAIN_SECONDS * 3;
+    enemy.dashing = true;
+    enemy.running = true;
+    this.emit('run-off', { enemy });
   }
 
   /** It doesn't blow up. It rattles to a halt, and its crew climbs out and waves. */

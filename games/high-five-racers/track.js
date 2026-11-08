@@ -34,14 +34,8 @@ export const PLACES = {
   fair: [1085, 1205],
 };
 
-/** The big hands to high five, on alternating sides: -1 is the left of the road and 1 the right. */
-export const GATE_SPOTS = [
-  [90, 1], [190, -1], [300, 1], [470, -1], [560, 1], [660, -1], [745, 1],
-  [860, -1], [960, 1], [1060, -1], [1150, 1], [1250, -1], [1345, 1],
-];
-
-/** Ramps down the middle of the road. Taking one is up to the child, and it's always safe. */
-export const RAMP_SPOTS = [610, 910, 1200];
+// The big hands and the ramps at level 1. Where they are at other levels is in rules.js.
+export { GATE_SPOTS, RAMP_SPOTS } from './rules.js';
 
 /** A smooth curve through ROAD_HEIGHTS, which carries on round the lap. */
 function roadHeight(distance, length) {

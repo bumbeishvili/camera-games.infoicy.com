@@ -113,7 +113,131 @@ const OBSTACLE_BUILDERS = {
     }
     return solid(parts, '#1d5a84', 0.008);
   },
+  // From level 4: a wooden fence right across the trail.
+  fence() {
+    const parts = [];
+    for (const x of [-2.75, -1.65, -0.55, 0.55, 1.65, 2.75]) {
+      parts.push({ geometry: roundedBox(0.17, 1, 0.17, 0.04), colour: '#a8794a', at: [x, 0.5, -0.25] });
+      parts.push({ geometry: taper(0.1, 0.02, 0.12, 4), colour: '#a8794a', at: [x, 1.0, -0.25] });
+    }
+    for (const y of [0.42, 0.8]) parts.push({ geometry: roundedBox(PATH_WIDTH + 0.3, 0.13, 0.08, 0.03), colour: '#f2e2c2', at: [0, y, -0.15] });
+    return solid(parts);
+  },
+  // From level 6: three round bales, one in each lane, that roll in and stop before the painted stretch.
+  bale(lanes = [-1, 0, 1]) {
+    const parts = [];
+    for (const x of lanes.map(laneX)) {
+      parts.push({ geometry: cylinderAcross(0.6, 1.5), colour: '#e8c25a', at: [x, 0, 0] });
+      for (const end of [-0.76, 0.76]) {
+        parts.push({ geometry: cylinderAcross(0.42, 0.02), colour: '#c99a3a', at: [x + end, 0, 0] });
+        parts.push({ geometry: cylinderAcross(0.2, 0.03), colour: '#b5862f', at: [x + end, 0, 0] });
+      }
+      parts.push({ geometry: cylinderAcross(0.615, 0.1), colour: '#b5482f', at: [x - 0.35, 0, 0] });
+      parts.push({ geometry: cylinderAcross(0.615, 0.1), colour: '#b5482f', at: [x + 0.35, 0, 0] });
+    }
+    const rolling = solid(parts);
+    rolling.position.set(0, 0.6, -0.62);
+    const model = new THREE.Group();
+    model.add(rolling);
+    model.userData.rolling = rolling;
+    return model;
+  },
+  // From level 8: a flock of sheep crossing the trail.
+  sheep(lanes = [-1, 0, 1]) {
+    const flock = new THREE.Group();
+    const across = lanes.length === 3 ? [[-2.2, 0], [-0.75, 0.25], [0.75, -0.15], [2.2, 0.1]] : lanes.map((lane) => [laneX(lane), lane * 0.15]);
+    for (const [x, turn] of across) {
+      const parts = [];
+      for (const [dx, dy, size] of [[-0.25, 0.62, 0.36], [0.05, 0.68, 0.4], [0.3, 0.62, 0.34], [0, 0.55, 0.38]]) {
+        parts.push({ geometry: ball(size, size * 0.85, size * 0.8), colour: '#fbf8f1', at: [dx, dy, 0] });
+      }
+      parts.push({ geometry: ball(0.17, 0.2, 0.16), colour: '#3d3a3f', at: [0.55, 0.78, 0] });
+      parts.push({ geometry: ball(0.07, 0.03, 0.12), colour: '#3d3a3f', at: [0.5, 0.92, 0.14] });
+      parts.push({ geometry: ball(0.07, 0.03, 0.12), colour: '#3d3a3f', at: [0.5, 0.92, -0.14] });
+      parts.push({ geometry: ball(0.035), colour: '#ffffff', at: [0.66, 0.83, 0.08] });
+      parts.push({ geometry: ball(0.035), colour: '#ffffff', at: [0.66, 0.83, -0.08] });
+      for (const [lx, lz] of [[-0.25, 0.12], [-0.25, -0.12], [0.28, 0.12], [0.28, -0.12]]) {
+        parts.push({ geometry: limb(0.045, 0.04, 0.36, 6).rotateX(Math.PI), colour: '#3d3a3f', at: [lx, 0, lz] });
+      }
+      const sheep = solid(parts, INK, 0.014);
+      sheep.position.set(x, 0, -0.4);
+      sheep.rotation.y = turn;
+      sheep.userData.phase = x;
+      flock.add(sheep);
+    }
+    flock.userData.sheep = [...flock.children];
+    return flock;
+  },
 };
+
+/* Obstacles that fill only one or two lanes: the same things, a lane wide, in the lanes they fill. */
+const PIECE_WIDTH = LANE_WIDTH + 0.12;
+const PIECES = {
+  log: (x) => [
+    { geometry: cylinderAcross(0.38, PIECE_WIDTH), colour: '#8a5a2b', at: [x, 0.38, -0.45] },
+    { geometry: cylinderAcross(0.28, PIECE_WIDTH + 0.04), colour: '#d9b277', at: [x, 0.38, -0.45] },
+    { geometry: ball(0.05, 0.3, 0.02), colour: '#6d4520', at: [x - 0.35, 0.5, -0.1], turn: [0.5, 0, 1.57] },
+    { geometry: ball(0.05, 0.3, 0.02), colour: '#6d4520', at: [x + 0.45, 0.5, -0.1], turn: [0.5, 0, 1.57] },
+  ],
+  hay: (x) => [
+    { geometry: roundedBox(PIECE_WIDTH, 1.05, 1.2, 0.16), colour: '#eec04f', at: [x, 0.53, -0.6] },
+    { geometry: roundedBox(0.09, 1.09, 1.24, 0.04), colour: '#b5482f', at: [x - 0.45, 0.53, -0.6] },
+    { geometry: roundedBox(0.09, 1.09, 1.24, 0.04), colour: '#b5482f', at: [x + 0.45, 0.53, -0.6] },
+    ...[-0.6, -0.15, 0.3, 0.7].map((dx, i) => ({ geometry: ball(0.3, 0.012, 0.02), colour: '#d3a43a', at: [x + dx, 0.25 + (i % 3) * 0.28, 0.005] })),
+  ],
+  rocks: (x) => [
+    { geometry: ball(0.62, 0.66, 0.66), colour: '#9aa3ab', at: [x - 0.3, 0.3, -0.7] },
+    { geometry: ball(0.5, 0.5, 0.52), colour: '#8d969e', at: [x + 0.45, 0.24, -0.62] },
+    { geometry: ball(0.34, 0.3, 0.34), colour: '#b8c0c6', at: [x + 0.1, 0.14, -0.3] },
+    { geometry: ball(0.2, 0.05, 0.18), colour: '#7fbf63', at: [x - 0.3, 0.92, -0.65] },
+  ],
+  fence: (x) => {
+    const parts = [];
+    for (const post of [x - PIECE_WIDTH / 2 + 0.12, x + PIECE_WIDTH / 2 - 0.12]) {
+      parts.push({ geometry: roundedBox(0.17, 1, 0.17, 0.04), colour: '#a8794a', at: [post, 0.5, -0.25] });
+      parts.push({ geometry: taper(0.1, 0.02, 0.12, 4), colour: '#a8794a', at: [post, 1.0, -0.25] });
+    }
+    for (const y of [0.42, 0.8]) parts.push({ geometry: roundedBox(PIECE_WIDTH, 0.13, 0.08, 0.03), colour: '#f2e2c2', at: [x, y, -0.15] });
+    return parts;
+  },
+};
+
+/** An obstacle filling these lanes: right across is the obstacle as it always was. */
+function buildObstacle(kind, lanes) {
+  if (lanes.length === 3 || kind === 'stream') return OBSTACLE_BUILDERS[kind]();
+  if (kind === 'bale' || kind === 'sheep') return OBSTACLE_BUILDERS[kind](lanes);
+  const ink = kind === 'rocks' ? '#39424a' : INK;
+  return solid(lanes.flatMap((lane) => PIECES[kind](laneX(lane))), ink);
+}
+
+// A round bale rolls in from further away and stops this far short of where a jump starts to count.
+const BALE_STOPS_SHORT = 6;
+const BALE_ROLLS = 0.45; // How much further it starts, for each metre it still has to go.
+const BALE_RADIUS = 0.6;
+// The golden star: bigger than the rest, and higher, over one lane.
+const GOLD_SIZE = 2.1;
+const GOLD_ABOVE = 1.55;
+
+function goldTexture() {
+  const star = (ctx, outer, inner) => {
+    ctx.beginPath();
+    for (let i = 0; i < 10; i += 1) {
+      const radius = i % 2 ? inner : outer;
+      const angle = (i / 5) * Math.PI - Math.PI / 2;
+      ctx[i ? 'lineTo' : 'moveTo'](Math.cos(angle) * radius, Math.sin(angle) * radius);
+    }
+    ctx.closePath();
+    ctx.fill();
+  };
+  return spriteTexture((ctx) => {
+    ctx.fillStyle = '#ffffff';
+    star(ctx, 49, 23);
+    ctx.fillStyle = '#ffb21f';
+    star(ctx, 41, 18);
+    ctx.fillStyle = '#ffe27a';
+    star(ctx, 22, 10);
+  }, 128);
+}
 
 function buildFinish() {
   const parts = [
@@ -548,6 +672,7 @@ export class World {
     this.scene.add(this.cue);
     this.cue.scale.setScalar(1.5);
     this.starMap = spriteTexture(SHAPES.star, 96);
+    this.goldMap = goldTexture();
     this.buildStarLines();
     this.buildStreaks();
     this.finishGate = buildFinish();
@@ -707,20 +832,29 @@ export class World {
   /* ---------- what's on the trail ---------- */
 
   arrive(obstacle) {
-    const pool = this.spare.get(obstacle.kind) ?? [];
-    const model = pool.pop() ?? OBSTACLE_BUILDERS[obstacle.kind]();
+    const lanes = obstacle.lanes ?? [-1, 0, 1];
+    const pool = this.spare.get(this.poolName(obstacle)) ?? [];
+    const model = pool.pop() ?? buildObstacle(obstacle.kind, lanes);
     model.visible = true;
     model.rotation.set(0, 0, 0);
     model.position.set(0, 0, 0);
     this.scene.add(model);
 
+    // The painted stretch where a jump counts, under the lanes the obstacle fills. A free lane stays
+    // plain path, so from far off it can be seen to be the way round.
     const reach = this.run.reachDistance;
-    const zone = new THREE.Mesh(
-      new THREE.PlaneGeometry(PATH_WIDTH - 0.3, reach).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: '#2fd16f', map: this.zoneMap.clone(), transparent: true, opacity: 0.62, depthWrite: false }),
-    );
-    zone.material.map.repeat.set(1, Math.max(1, Math.round(reach / 1.6)));
-    zone.material.map.needsUpdate = true;
+    const zonePaint = new THREE.MeshBasicMaterial({ color: '#2fd16f', map: this.zoneMap.clone(), transparent: true, opacity: 0.62, depthWrite: false });
+    zonePaint.map.repeat.set(1, Math.max(1, Math.round(reach / 1.6)));
+    zonePaint.map.needsUpdate = true;
+    const zone = new THREE.Group();
+    if (lanes.length === 3) zone.add(new THREE.Mesh(new THREE.PlaneGeometry(PATH_WIDTH - 0.3, reach).rotateX(-Math.PI / 2), zonePaint));
+    else {
+      for (const lane of lanes) {
+        const piece = new THREE.Mesh(new THREE.PlaneGeometry(LANE_WIDTH - 0.15, reach).rotateX(-Math.PI / 2), zonePaint);
+        piece.position.x = laneX(lane);
+        zone.add(piece);
+      }
+    }
     this.scene.add(zone);
 
     // Stars to catch, where the child will be if they make the move.
@@ -731,21 +865,35 @@ export class World {
       return { sprite, index, taken: false, at: obstacle.at + obstacle.length * (index * 0.5), y: obstacle.height + 0.85 + (index === 1 ? 0.28 : 0) };
     });
 
-    this.items.set(obstacle, { model, zone, stars, knocked: 0 });
+    let gold = null;
+    if (obstacle.gold) {
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.goldMap, transparent: true }));
+      sprite.scale.setScalar(GOLD_SIZE);
+      this.scene.add(sprite);
+      gold = { sprite, y: obstacle.height + GOLD_ABOVE, done: false };
+    }
+
+    this.items.set(obstacle, { model, zone, zonePaint, stars, gold, knocked: 0 });
+  }
+
+  /** Obstacles are kept to use again, by kind and the lanes they fill. */
+  poolName(obstacle) {
+    return `${obstacle.kind}:${(obstacle.lanes ?? [-1, 0, 1]).join(',')}`;
   }
 
   retire(obstacle) {
     const item = this.items.get(obstacle);
     if (!item) return;
     this.scene.remove(item.model);
-    const pool = this.spare.get(obstacle.kind) ?? [];
+    const name = this.poolName(obstacle);
+    const pool = this.spare.get(name) ?? [];
     pool.push(item.model);
-    this.spare.set(obstacle.kind, pool);
+    this.spare.set(name, pool);
     this.scene.remove(item.zone);
-    item.zone.geometry.dispose();
-    item.zone.material.map.dispose();
-    item.zone.material.dispose();
-    for (const { sprite } of item.stars) {
+    for (const piece of item.zone.children) piece.geometry.dispose();
+    item.zonePaint.map.dispose();
+    item.zonePaint.dispose();
+    for (const { sprite } of [...item.stars, ...(item.gold ? [item.gold] : [])]) {
       this.scene.remove(sprite);
       sprite.material.dispose();
     }
@@ -762,6 +910,22 @@ export class World {
       star.y = move.height * 4 * through * (1 - through) + 1;
     });
     item.zone.visible = false;
+    // A golden star goes to where the jump will be over the obstacle, so it's caught on the way.
+    if (item.gold) {
+      const through = Math.min(1, Math.max(0, (obstacle.at + obstacle.length / 2 - move.from) / move.travel));
+      item.gold.y = Math.max(obstacle.height + 0.9, move.height * 4 * through * (1 - through) + 1.1);
+    }
+  }
+
+  /** A golden star caught, in its lane. */
+  tookGold(obstacle) {
+    const item = this.items.get(obstacle);
+    if (!item?.gold) return;
+    item.gold.done = true;
+    item.gold.sprite.visible = false;
+    const at = item.gold.sprite.position.clone();
+    this.burst(at, { shapes: ['star', 'spark'], colours: ['#ffb21f', '#ffe27a', '#ffffff'], count: 12, speed: 2.2, size: 0.3, life: 0.55 });
+    this.runner.body.setExpression('happy', 1.4);
   }
 
   moved(kind, counts) {
@@ -918,17 +1082,30 @@ export class World {
         this.retire(obstacle);
         continue;
       }
+      const reach = run.reachDistance;
       item.model.position.z = -ahead;
+      if (obstacle.kind === 'bale') this.rollBale(item, ahead, reach);
+      if (obstacle.kind === 'sheep') this.mill(item);
       if (item.knocked > 0) {
-        // Knocked aside, and out of the way.
+        // Knocked aside, and out of the way. Sheep just trot off.
         item.knocked = Math.min(1, item.knocked + dt * 2.2);
         const eased = item.knocked * (2 - item.knocked);
         item.model.position.x = eased * 7;
-        item.model.rotation.z = -eased * 0.5;
+        item.model.rotation.z = obstacle.kind === 'sheep' ? 0 : -eased * 0.5;
       }
-      const reach = run.reachDistance;
+      if (item.gold && !item.gold.done) {
+        const { sprite } = item.gold;
+        const bob = this.reducedMotion ? 0 : Math.sin(this.time * 2.6 + obstacle.index) * 0.12;
+        // It glides, rather than jumps, to the height of the jump once one counts.
+        const y = item.gold.placed ? damp(sprite.position.y, item.gold.y + bob, 6, dt) : item.gold.y + bob;
+        item.gold.placed = true;
+        sprite.position.set(laneX(obstacle.gold.lane), y, -ahead);
+        sprite.material.rotation = this.reducedMotion ? 0 : Math.sin(this.time * 1.8 + obstacle.index) * 0.2;
+        // Missed costs nothing: it stays where it was, a little paler, and goes by.
+        sprite.material.opacity = obstacle.gold.missed ? 0.45 : 1;
+      }
       item.zone.position.set(0, 0.03, -ahead + reach / 2);
-      if (obstacle.state === 'ahead' && ahead <= reach) item.zone.material.opacity = 0.82;
+      if (obstacle.state === 'ahead' && ahead <= reach) item.zonePaint.opacity = 0.82;
 
       for (const star of item.stars) {
         if (star.taken) continue;
@@ -944,9 +1121,9 @@ export class World {
       }
     }
 
-    // The arrow over what's next, once the move would count.
+    // The arrow over what's next, once a jump would count and it's in the runner's lane.
     const next = run.next;
-    const asking = next && run.inReach(next) && next.state === 'ahead';
+    const asking = run.mustJump;
     this.cue.visible = Boolean(asking);
     if (asking) {
       this.cue.material.map = this.arrows[next.needs];
@@ -957,6 +1134,26 @@ export class World {
     const gateAhead = run.end - distance;
     this.finishGate.visible = gateAhead < SEEN_AHEAD && gateAhead > -SEEN_BEHIND;
     this.finishGate.position.z = -gateAhead;
+  }
+
+  /** A round bale rolls in from further off, faster than the trail, and comes to rest. */
+  rollBale(item, ahead, reach) {
+    const { rolling } = item.model.userData;
+    const still = this.reducedMotion || item.knocked > 0;
+    const further = still ? 0 : Math.max(0, ahead - reach - BALE_STOPS_SHORT) * BALE_ROLLS;
+    item.model.position.z = -(ahead + further);
+    rolling.rotation.x = -further / BALE_RADIUS;
+  }
+
+  /** Sheep milling about as they cross, nodding as they go. */
+  mill(item) {
+    if (this.reducedMotion) return;
+    for (const sheep of item.model.userData.sheep) {
+      const { phase } = sheep.userData;
+      sheep.position.y = Math.abs(Math.sin(this.time * 5 + phase)) * 0.05;
+      sheep.rotation.z = Math.sin(this.time * 2.5 + phase) * 0.04;
+    }
+    if (item.knocked === 0) item.model.position.x = Math.sin(this.time * 0.7) * 0.3;
   }
 
   updateStarLines(distance) {

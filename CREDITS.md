@@ -67,6 +67,9 @@ Shared sounds are in `core/audio/sfx/`, and each game's own are in its `audio/` 
 | `music.ogg` (Cannon Bay) | [A sailor's chant](https://opengameart.org/content/a-sailors-chant) | Thimras | CC0 | Level set, join hidden |
 | `slap.ogg` (High Five Racers) | `clap.ogg` and `thump.ogg` above | Santiago Sanchez Cifuentes; OwlishMedia | CC0 | One clap slowed, a hand drum put under it, top softened, level set |
 | `rush.ogg` (High Five Racers) | [Car 1](https://opengameart.org/content/car-1-1) | Yaroslav_Novikov | CC0 | The car coming closer cut out, top softened, ends faded |
+| `home.ogg` (Spider Catcher) | [Boing Cartoon #2](https://bigsoundbank.com/boing-cartoon-2-s2278.html), a harp | Joseph Sardin, BigSoundBank | CC0 | 1.5 seconds from the start, softened, end faded, with `games/spider-catcher/build_sounds.py` |
+| `rustle.ogg` (Spider Catcher) | [Miscanthus sinensis #3](https://bigsoundbank.com/miscanthus-sinensis-3-s1813.html), long grass | Joseph Sardin, BigSoundBank | CC0 | 1.3 seconds, softened at each end |
+| `birds.ogg` (Spider Catcher) | [Forest](https://bigsoundbank.com/forest-s0100.html) | Joseph Sardin, BigSoundBank | CC0 | 24 seconds from the quietest part, looped |
 
 The engine loop's CC-BY licence requires this credit to stay with the game: **"Car Engine Loop 96kHz, 4s" by qubodup, CC-BY 3.0, resampled and level adjusted.**
 
@@ -78,7 +81,7 @@ The folders called `voice/ka/` were rendered with Microsoft's `ka-GE-EkaNeural` 
 
 ## Characters
 
-All ten characters in `core/body/roster.js`, and the worlds of High Five Racers, Leap Trail, Sky Wings, Robot Rescue, Tank Patrol, Cannon Bay and the games with a mission, with Robot Rescue's robots, are original designs made for these games.
+All ten characters in `core/body/roster.js`, and the worlds of High Five Racers, Leap Trail, Sky Wings, Robot Rescue, Tank Patrol, Cannon Bay, Spider Catcher and the games with a mission, with Robot Rescue's robots and Spider Catcher's spiders, are original designs made for these games.
 
 ## Test footage
 

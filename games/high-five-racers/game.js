@@ -8,13 +8,15 @@
 // Nothing flashes or strobes: seizures are more common in children with hemiplegia, so road markings
 // are low contrast and long, there are no full-screen effects, and the tunnel is as bright as outdoors.
 // Anything that happens is a burst of small shapes where it happened.
+//
+// Each level (rules.js, racePlan) brings more cars, more big hands and ramps, and keener racing.
 import * as THREE from '../../vendor/three/three.module.js';
 import { makeDriver, RaceCar, RIVAL_STYLES } from './cars.js';
 import { Particles, SpeedLines } from './effects.js';
 import { HAND_COLOURS, HighFiveGates, PALM_HEIGHT } from './gates.js';
 import { canvasTexture, clamp, damp, mod, softCircleTexture } from './kit.js';
 import { Ramps, StarField } from './pickups.js';
-import { CAR_LENGTH, CAR_WIDTH, FASTEST_SPEED, FistAndOpen, gateOutcome, REACH, ReachEasing, rivalSpeed, SLAP, TOP_SPEED, touching, TurboMeter, wantedSpeed } from './rules.js';
+import { CAR_LENGTH, CAR_WIDTH, FASTEST_SPEED, FistAndOpen, gateOutcome, racePlan, REACH, ReachEasing, RIVAL_TURBO, rivalSpeed, SLAP, TOP_SPEED, touching, TurboMeter, wantedSpeed } from './rules.js';
 import { LANE_LIMIT, START_BEHIND_LINE, Track } from './track.js';
 import { World } from './world.js';
 
@@ -23,10 +25,14 @@ const COAST_DOWN = 13;
 const OVER_TOP_DOWN = 7; // Slowing from a boost is gentler than slowing to a stop.
 
 const RIVAL_CRUISE = 0.82 * TOP_SPEED;
-const RIVAL_LANES = [-3.2, 3.2, 0];
-const RIVAL_WISHES = [9, 17, 25]; // The middle of how far ahead each likes to be.
+// For each of the other cars, in order: the first three race at every level, and the others from level 4 and 8.
+const RIVAL_LANES = [-3.2, 3.2, 0, -1.6, 1.6];
+const RIVAL_WISHES = [9, 17, 25, 33, 41]; // The middle of how far ahead each likes to be.
 const RIVAL_WISH_SWING = 12;
-const RIVAL_COMES_BACK_FROM = [24, 32, 40]; // How far behind each gets before it comes past again.
+const RIVAL_COMES_BACK_FROM = [24, 32, 40, 48, 56]; // How far behind each gets before it comes past again.
+const RIVAL_TURBO_NEAR = [-45, 12];
+const GRID_ROWS = [1, 2, 3, 2, 1];
+const SOARING_MAKES_ROOM = 30; // Metres either side of a flying car that the others make room in. // Which row of the grid each starts in, 11 m apart. // A rival only uses turbo with the child in sight, from behind to a little ahead.
 const LAST_STRETCH = 170; // In the last of the race they ease off, so that the child wins clearly.
 const TURBO_PULLS_AWAY_SECONDS = 4; // After this they keep up with turbo, or nobody would ever see them again.
 const RIVAL_SLAP_REACH = 1.5;
@@ -87,10 +93,10 @@ export class Race {
    * events: onStar(total), onPlace(place, previous), onOvertake(spec, byPlayer), onLap(lap), onFinish(),
    * onFive(total, side, streak), onGate(gate, outcome), onBump(), onTurbo(on), onJump(), onFly(), onLanded(), onCrowd().
    * Modes: attract (title screen), grid (waiting on the line), race, finished.
-   * driver is who's driving the child's car, rivals who's in the others, and reach how far to reach
-   * for a big hand.
+   * driver is who's driving the child's car, rivals who could be in the others, in order, and reach how
+   * far to reach for a big hand. level is from 1 to 10: see setLevel.
    */
-  constructor(canvas, events = {}, { driver, rivals, reach = 'medium' }) {
+  constructor(canvas, events = {}, { driver, rivals, reach = 'medium', level = 1 }) {
     this.events = events;
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -116,34 +122,19 @@ export class Race {
 
     const environment = skyReflection(this.renderer);
     const glowTexture = softCircleTexture('rgba(255,255,255,1)', 'rgba(255,255,255,0)', 64);
+    this.environment = environment;
+    this.glowTexture = glowTexture;
     this.player = new RaceCar({ styleName: 'roadster', paint: '#ff5a4f', trim: '#ffd23f', spec: driver, environment, glowTexture, isPlayer: true });
     this.driver = makeDriver();
     this.driver.setSleeveColour(driver.colours.arm ?? driver.colours.body);
     this.player.group.add(this.driver.group);
     this.scene.add(this.player.group);
 
-    this.rivals = rivals.map((spec, index) => {
-      const [paint, trim] = this.paintsFor(spec, index);
-      const car = new RaceCar({ styleName: RIVAL_STYLES[index % RIVAL_STYLES.length], paint, trim, spec, environment, glowTexture });
-      this.scene.add(car.group);
-      return {
-        car,
-        spec,
-        lane: RIVAL_LANES[index],
-        distance: 0,
-        lateral: 0,
-        shove: 0,
-        speed: 0,
-        wishPhase: index * 2.2,
-        wanderPhase: index * 1.7,
-        bumpWait: 0,
-        lift: 0,
-        liftSpeed: 0,
-        flying: false,
-      };
-    });
-
-    this.racers = [null, ...this.rivals]; // In order, with null for the player. See order.
+    // Everyone who could be in the other cars, and the cars made so far. More are made when a level needs them.
+    this.cast = rivals;
+    this.garage = [];
+    this.rivals = [];
+    this.racers = [null]; // In order, with null for the player. See order.
     this.stars = new StarField(this.scene, this.track);
     this.ramps = new Ramps(this.scene, this.track);
     this.reach = new ReachEasing(REACH[reach] ?? REACH.medium);
@@ -155,6 +146,8 @@ export class Race {
     this.speedLines = new SpeedLines(this.scene);
     this.turbo = new TurboMeter();
     this.otherHand = new FistAndOpen();
+
+    this.setLevel(level);
 
     this.camera = new THREE.PerspectiveCamera(60, 1, 0.5, 3200);
     this.cameraTarget = new THREE.Vector3();
@@ -176,6 +169,58 @@ export class Race {
     this.resize();
     // Gets the graphics card ready for everything now, so the first flames or big hand don't make it stutter.
     this.renderer.compile(this.scene, this.camera);
+  }
+
+  /** The next of the other cars, which then waits in the garage for any level that has it. */
+  makeRival(index) {
+    const spec = this.cast[index];
+    const [paint, trim] = this.paintsFor(spec, index);
+    const car = new RaceCar({ styleName: RIVAL_STYLES[index % RIVAL_STYLES.length], paint, trim, spec, environment: this.environment, glowTexture: this.glowTexture });
+    this.scene.add(car.group);
+    return {
+      car,
+      spec,
+      lane: RIVAL_LANES[index],
+      distance: 0,
+      lateral: 0,
+      shove: 0,
+      speed: 0,
+      wishPhase: index * 2.2,
+      wanderPhase: index * 1.7,
+      bumpWait: 0,
+      lift: 0,
+      liftSpeed: 0,
+      flying: false,
+      turboLeft: 0,
+      turboIn: Infinity,
+    };
+  }
+
+  /**
+   * What this level's race has: how many other cars and how they race, where the big hands, stars and
+   * ramps are. See racePlan in rules.js. Called before a race, and before reset().
+   */
+  setLevel(level) {
+    this.level = level;
+    const plan = racePlan(level);
+    this.plan = plan;
+    while (this.garage.length < plan.rivals) {
+      const rival = this.makeRival(this.garage.length);
+      this.garage.push(rival);
+      // A car made after the start is got ready now, so that it can't stutter when it first comes into view.
+      if (this.camera) {
+        rival.car.setDetail(this.quality.level < 3);
+        this.renderer.compile(rival.car.group, this.camera, this.scene);
+      }
+    }
+    this.rivals = this.garage.slice(0, plan.rivals);
+    this.garage.forEach((rival, index) => {
+      rival.car.group.visible = index < plan.rivals;
+    });
+    this.racers = [null, ...this.rivals];
+    this.gates.setLayout(plan.gates);
+    this.stars.setLayout(plan.gates, plan.ramps);
+    this.ramps.setLayout(plan.ramps);
   }
 
   paintsFor(spec, index) {
@@ -229,7 +274,9 @@ export class Race {
     this.restingFor = 0;
     this.turbo.reset();
     this.rivals.forEach((rival, index) => {
-      rival.distance = -START_BEHIND_LINE + 11 * (index + 1);
+      // The first three line up one behind another, and the others from higher levels beside them, in the
+      // other half of the road, so they're no closer together and all start behind the line.
+      rival.distance = -START_BEHIND_LINE + 11 * GRID_ROWS[index];
       rival.lateral = rival.lane;
       rival.shove = 0;
       rival.speed = 0;
@@ -240,6 +287,9 @@ export class Race {
       rival.liftSpeed = 0;
       rival.flying = false;
       rival.comingBack = false;
+      rival.turboLeft = 0;
+      // Spread out, so they take turns.
+      rival.turboIn = this.plan.rivalTurboEvery * (0.5 + index * 0.37);
     });
     this.stars.reset();
     this.snapCamera = true;
@@ -272,7 +322,8 @@ export class Race {
     this.player.setCharacter(driver);
     this.player.setFreeArm(this.handSide);
     this.driver.setSleeveColour(driver.colours.arm ?? driver.colours.body);
-    this.rivals.forEach((rival, index) => {
+    this.cast = rivals;
+    this.garage.forEach((rival, index) => {
       rival.spec = rivals[index];
       rival.car.setCharacter(rivals[index]);
     });
@@ -532,6 +583,11 @@ export class Race {
     const lastStretch = this.raceDistance - this.distance < LAST_STRETCH;
     this.restingFor = resting ? this.restingFor + dt : 0;
     const finishLine = this.raceDistance - FINISH_STOP;
+    const pace = this.plan.rivalPace;
+    // From level 5 the others use turbo now and then, one at a time, but never on the last stretch or while
+    // a child is resting.
+    const turboAllowed = chasing && !resting && !lastStretch;
+    let anyTurbo = this.rivals.some((rival) => rival.turboLeft > 0);
 
     this.rivals.forEach((rival, index) => {
       const gap = rival.distance - this.distance;
@@ -540,10 +596,26 @@ export class Race {
         // Each drifts nearer and further ahead, at its own pace.
         const wish = lastStretch
           ? -10 - index * 9
-          : RIVAL_WISHES[index] + RIVAL_WISH_SWING * Math.sin(this.time * (0.21 + index * 0.05) + rival.wishPhase);
-        if (gap < -RIVAL_COMES_BACK_FROM[index]) rival.comingBack = true;
+          : RIVAL_WISHES[index] + pace.wishAhead + RIVAL_WISH_SWING * Math.sin(this.time * (0.21 + index * 0.05) + rival.wishPhase);
+        if (gap < -RIVAL_COMES_BACK_FROM[index] * pace.comesBackScale) rival.comingBack = true;
         if (gap > wish || lastStretch) rival.comingBack = false;
-        wanted = rivalSpeed({ gap, wish, playerSpeed: this.speed, resting, rushing, comingBack: rival.comingBack, cruise: RIVAL_CRUISE });
+        wanted = rivalSpeed({ gap, wish, playerSpeed: this.speed, resting, rushing, comingBack: rival.comingBack, cruise: RIVAL_CRUISE, pace });
+      }
+      if (turboAllowed) {
+        rival.turboIn -= dt;
+        const inSight = gap > RIVAL_TURBO_NEAR[0] && gap < RIVAL_TURBO_NEAR[1];
+        if (rival.turboIn <= 0 && !anyTurbo && !rushing && inSight && this.speed > RESTING_SPEED) {
+          rival.turboLeft = RIVAL_TURBO.seconds;
+          rival.turboIn = this.plan.rivalTurboEvery;
+          anyTurbo = true;
+          this.events.onRivalTurbo?.(rival.spec);
+        }
+      } else {
+        rival.turboLeft = 0;
+      }
+      if (rival.turboLeft > 0) {
+        rival.turboLeft = Math.max(0, rival.turboLeft - dt);
+        wanted = Math.max(wanted, Math.min(FASTEST_SPEED, this.speed + RIVAL_TURBO.gain));
       }
       rival.speed = damp(rival.speed, wanted, 2.2, dt);
       if (chasing) rival.speed = Math.min(rival.speed, Math.max(0, finishLine - rival.distance) * 1.6);
@@ -562,6 +634,12 @@ export class Race {
       }
       if (chasing && Math.abs(gap) < 9 && Math.abs(rival.lateral - this.lateral) < 2.6) {
         lane += rival.lateral >= this.lateral ? 2.4 : -2.4;
+      }
+      // While the child's car flies, those near it make room at the edges of the road, so that they go past
+      // beside the camera rather than right under it, which with a crowd behind could change much of the
+      // picture at once.
+      if (chasing && this.soaring && gap > -SOARING_MAKES_ROOM && gap < SOARING_MAKES_ROOM) {
+        lane = (rival.lateral >= this.lateral ? 1 : -1) * LANE_LIMIT;
       }
       rival.shove = damp(rival.shove, 0, 3.4, dt);
       const before = rival.lateral;
@@ -788,14 +866,15 @@ export class Race {
       });
       const stoppedWaiting = racing && rival.speed < 3;
       rival.car.setBraking(stoppedWaiting ? 0.7 : 0, dt);
-      rival.car.setFlames(0, dt, true);
+      const rivalFlames = racing && rival.turboLeft > 0 ? 0.6 : 0;
+      rival.car.setFlames(rivalFlames, dt, this.reducedMotion);
       const gap = rival.distance - this.distance;
       const near = Math.abs(gap) < (this.quality.level >= QUALITY_LEVELS ? 60 : 110);
       rival.car.fighter.root.visible = near;
       if (near) rival.car.updateDriver(dt, { steer: rivalYaw * -2 });
       // A name over each car ahead, but not over one so close to the camera that it would be in the way.
       rival.car.showTag(racing && gap > -3 ? 1 - clamp((gap - 14) / 36, 0, 1) : 0);
-      if (near) this.emitExhaust(dt, rival.car, rival.speed, rival.speed > 6, false);
+      if (near) this.emitExhaust(dt, rival.car, rival.speed, rival.speed > 6, rivalFlames > 0);
     }
 
     this.poseDriver(dt, input);
@@ -899,7 +978,7 @@ export class Race {
   setCarDetail() {
     const full = this.quality.level < 3;
     this.player.setDetail(full);
-    for (const rival of this.rivals) rival.car.setDetail(full);
+    for (const rival of this.garage) rival.car.setDetail(full);
   }
 
   /**

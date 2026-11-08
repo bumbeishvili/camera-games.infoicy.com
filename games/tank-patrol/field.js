@@ -308,6 +308,8 @@ export class Field {
       land: () => this.onLand(event.shell, event.hit),
       fizzle: () => this.onFizzle(event.shell),
       hurt: () => this.onHurt(),
+      dash: () => this.dust(event.enemy),
+      'run-off': () => this.dust(event.enemy),
     };
     handlers[event.type]?.();
   }
@@ -403,6 +405,12 @@ export class Field {
     const at = this.point.set(to.x, to.y + 0.5, to.z);
     this.puffs(at, { count: 8, colours: ['#d9c9a0', '#c4b188', '#b9b3a9'], size: 1.6, speed: 3.4, life: 0.9, grow: 1.7, opacity: 0.66, up: 0.7 });
     this.bits(at, { count: hit ? 5 : 4, shapes: ['rock', 'rock', 'star'], colours: ['#9b8660', '#b39e74', '#ffd23f'], size: 0.5, speed: 6, life: 0.55 });
+  }
+
+  /** A little dust behind a robot tank setting off in a hurry, on the higher levels. */
+  dust(enemy) {
+    const at = this.point.set(enemy.x, enemy.y + 0.8, enemy.z);
+    this.puffs(at, { count: 3, colours: ['#d9c9a0', '#c4b188'], size: 1.2, speed: 1.8, life: 0.7, grow: 1.5, opacity: 0.55, up: 0.5 });
   }
 
   /** A rest has begun, and whatever was coming goes up in a harmless puff. */

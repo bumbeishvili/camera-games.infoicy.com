@@ -1,6 +1,9 @@
 // Every move in the game, and the exercises that earn them. The words here are what the voice
 // says, so each has a rendered file: see audio/voice/lines.json.
 //
+// Each level, from 1 to 10, is a little harder than the one before: see fightLevel at the end.
+import { ramp, stepsAt } from '../../core/levels.js';
+
 // There are two sizes of move. Whatever fighting moves the child makes by themselves are small
 // hits, which feel good but can't win. The moves the coach asks for are what win a round.
 
@@ -164,6 +167,8 @@ export const RULES = {
   focusSide: 1.2,
   // After Sky Charge, the next move does this much more.
   charged: 1.5,
+  // A move asked for twice, on the higher levels, does this much more, so a round isn't longer for it.
+  twice: 1.7,
   // Power fills with each move, and when it's full the next move is the fighter's own.
   powerPerHit: 5,
   powerPerExercise: 12,
@@ -190,3 +195,35 @@ export const NPC_LEVELS = {
   medium: { name: 'Medium', every: 8, warning: 3, damage: 1.8, mercy: 0, defences: ['block', 'lean'], moves: ['palm', 'kick', 'uppercut', 'knee'] },
   tough: { name: 'Tough', every: 7, warning: 2.5, damage: 2.4, mercy: 0, defences: ['block', 'lean'], moves: ['palm', 'kick', 'uppercut', 'knee', 'chop', 'stomp', 'flying'] },
 };
+
+// Moves that can be asked for twice on the higher levels. Not jumps, which are tiring and need balance,
+// nor high knees, which are three lifts already, nor reaching up, which is held.
+export const CAN_BE_TWICE = new Set(['clap', 'squat', 'handCircle', 'kneeLift', 'push', 'kick', 'toeTouch']);
+
+/**
+ * What a level changes, on top of the computer's strength a grown-up chose, which stays theirs: how
+ * hard it hits, and whether it can knock a child out. Level 1 is the game as it always was. A child
+ * standing still is still never hit, and nothing waits on how quickly a move is made.
+ */
+export function fightLevel(level = 1) {
+  return {
+    // The computer takes its turn more often: by level 10, every 80% of the time it did.
+    turnEvery: ramp(level, 1, 0.8),
+    // Its warning gets a little shorter, to 80% of the strength's by level 10.
+    warning: ramp(level, 1, 0.8),
+    // A shorter pause after a big move before the next thing is asked for.
+    afterMove: ramp(level, RULES.afterMove, 0.45),
+    // From level 3, leaning out of the way joins blocking, on every strength.
+    defences: stepsAt(level, { 1: [], 3: ['lean'] }),
+    // The computer's moves to get out of the way of, more of them from levels 4 and 7.
+    npcMoves: stepsAt(level, { 1: [], 4: ['uppercut', 'knee'], 7: ['uppercut', 'knee', 'chop', 'stomp', 'flying'] }),
+    // From level 5 some of its turns are two hits, one after the other: one to block and one to lean
+    // from. Each has its whole warning.
+    doubles: stepsAt(level, { 1: 0, 5: 0.2, 8: 0.35 }),
+    // From level 6 the coach's moves come in a mixed-up order each time round, rather than always the
+    // same one, with the two parts of a combo still together.
+    mixed: stepsAt(level, { 1: false, 6: true }),
+    // From level 7 some moves have to be done twice before the fighter makes its big move.
+    twice: stepsAt(level, { 1: 0, 7: 0.2, 9: 0.3 }),
+  };
+}

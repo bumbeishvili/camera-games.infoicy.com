@@ -7,21 +7,38 @@
 // No screen or camera in this file: reader is a BodyReader, or anything with the same few fields,
 // so all of it runs in the unit tests.
 import { Easing } from '../../core/body/easing.js';
-import { DEFENCES, EXERCISES, MOVES, ORDER, RULES, SMALL_HITS } from './moves.js';
+import { CAN_BE_TWICE, COMBOS, DEFENCES, EXERCISES, MOVES, ORDER, RULES, SMALL_HITS } from './moves.js';
 
 // Moves big enough to be sure the child is doing something else, rather than just getting ready.
 const CLEARLY_SOMETHING_ELSE = new Set(['stomp', 'flying', 'starBurst', 'sweep']);
 const OTHER = { left: 'right', right: 'left' };
 const OTHER_SIDE_EVERY = 3; // One move in this many is on the side that isn't being worked on.
+const REP_GAP = 0.5; // Seconds between the two of a move asked for twice, so one can't count as both.
+const unique = (list) => [...new Set(list)];
 
 export class Coach {
-  /** side is the side being worked on, and allowJumps says whether it may ask for jumps. */
-  constructor({ fight, reader, side = 'right', allowJumps = true }) {
+  /**
+   * side is the side being worked on, and allowJumps says whether it may ask for jumps. The fight's
+   * level, from 1 to 10, adds to the computer's strength: see fightLevel in moves.js.
+   */
+  constructor({ fight, reader, side = 'right', allowJumps = true, random = Math.random }) {
     this.fight = fight;
     this.reader = reader;
     this.side = side;
     this.allowJumps = allowJumps;
-    this.level = fight.level;
+    this.random = random;
+    this.rules = fight.levelRules;
+    const { every, warning, defences, moves } = fight.level;
+    // The computer's strength, as this level plays it.
+    this.level = {
+      ...fight.level,
+      every: every * this.rules.turnEvery,
+      warning: warning * this.rules.warning,
+      defences: unique([...defences, ...this.rules.defences]),
+      moves: unique([...moves, ...this.rules.npcMoves]),
+    };
+    this.queue = [];
+    this.followUp = null;
     this.phase = 'waiting'; // waiting, asking or defending
     this.timer = 0;
     this.call = null;
@@ -42,6 +59,7 @@ export class Coach {
   beginRound() {
     this.call = null;
     this.defence = null;
+    this.followUp = null;
     this.computerIn = this.level.every;
     this.fight.setGuard('player', false);
     this.fight.setDodge('player', 0);
@@ -64,11 +82,30 @@ export class Coach {
   nextExercise() {
     const allowed = (name) => (this.allowJumps || !EXERCISES[name].needsJump) && !this.gaveUpOn.has(name);
     if (!ORDER.some(allowed)) this.gaveUpOn.clear();
+    if (this.rules.mixed) {
+      for (;;) {
+        if (!this.queue.length) this.queue = this.mixedOrder();
+        const name = this.queue.shift();
+        if (allowed(name)) return name;
+      }
+    }
     for (;;) {
       const name = ORDER[this.nextIndex % ORDER.length];
       this.nextIndex += 1;
       if (allowed(name)) return name;
     }
+  }
+
+  /** The whole list in a new order, with the two steps of each combo still one after the other. */
+  mixedOrder() {
+    const pairs = COMBOS.map(({ steps }) => steps);
+    const units = ORDER.filter((name) => !pairs.some((steps) => steps.slice(1).includes(name)))
+      .map((name) => pairs.find((steps) => steps[0] === name) ?? [name]);
+    for (let i = units.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(this.random() * (i + 1));
+      [units[i], units[j]] = [units[j], units[i]];
+    }
+    return units.flat();
   }
 
   nextSide() {
@@ -80,16 +117,21 @@ export class Coach {
     const name = this.nextExercise();
     const exercise = EXERCISES[name];
     const side = exercise.sided ? this.nextSide() : null;
+    const { twice } = this.rules;
     this.call = {
       name,
       exercise,
       side,
+      // How many times to do it, which is twice for some moves on the higher levels.
+      times: twice > 0 && CAN_BE_TWICE.has(name) && this.random() < twice ? 2 : 1,
+      done: 0,
+      lastAt: -Infinity,
       trying: 0,
       askAgainIn: RULES.askAgainEvery,
       easing: exercise.ease ? new Easing(this.reader, exercise.ease, { side: side ?? this.side }) : null,
     };
     this.phase = 'asking';
-    this.fight.emit('call', { name, side });
+    this.fight.emit('call', { name, side, times: this.call.times, done: 0 });
   }
 
   /** The child did something. It only matters if it's what was asked for. */
@@ -98,7 +140,11 @@ export class Coach {
     const { exercise, side } = this.call;
     const done = moves.find(({ move, side: used }) => exercise.reads.includes(move) && (!side || used === side));
     if (done) {
-      this.succeed(done);
+      if (this.time - this.call.lastAt < REP_GAP) return;
+      this.call.lastAt = this.time;
+      this.call.done += 1;
+      if (this.call.done < this.call.times) this.rep();
+      else this.succeed(done);
       return;
     }
     for (const move of moves) this.smallHit(move);
@@ -128,13 +174,21 @@ export class Coach {
     this.fight.emit('nudge', { name: this.call.name, side: this.call.side });
   }
 
+  /** One of a move asked for twice: seen, and once more to go. */
+  rep() {
+    const { call, fight } = this;
+    call.trying = 0;
+    fight.noteActivity(0);
+    fight.emit('rep', { name: call.name, side: call.side, done: call.done, times: call.times });
+  }
+
   succeed({ hand = null }) {
     const { name, exercise, side } = this.call;
     this.fight.noteActivity(0);
     this.fight.emit('call-done', { name, side });
-    this.fight.perform('player', exercise.move, { side, hand, exercise: name });
+    this.fight.perform('player', exercise.move, { side, hand, exercise: name, reps: this.call.times });
     this.call = null;
-    this.wait(MOVES[exercise.move].hitAt + RULES.afterMove);
+    this.wait(MOVES[exercise.move].hitAt + this.rules.afterMove);
   }
 
   updateAsking(dt) {
@@ -156,7 +210,7 @@ export class Coach {
       this.gaveUpOn.add(call.name);
       fight.emit('try-another', { name: call.name });
       this.call = null;
-      this.wait(RULES.afterMove);
+      this.wait(this.rules.afterMove);
       return;
     }
     // The computer gets its turn if the child is up and moving, whatever they're doing.
@@ -164,17 +218,23 @@ export class Coach {
     if (this.computerIn <= 0) this.startDefence();
   }
 
-  /** The computer's turn. Whatever the coach was asking for waits until it's over. */
-  startDefence() {
+  /**
+   * The computer's turn. Whatever the coach was asking for waits until it's over. On the higher
+   * levels it can be two hits, the second needing the other way out, and each with its own warning.
+   */
+  startDefence(kind = null) {
     const { level, fight } = this;
-    const kind = level.defences[this.defences % level.defences.length];
+    const second = Boolean(kind);
+    kind ??= level.defences[this.defences % level.defences.length];
     const move = level.moves[this.computerMoves % level.moves.length];
-    this.defences += 1;
+    if (!second) this.defences += 1;
     this.computerMoves += 1;
-    this.defence = { kind, move, left: level.warning, done: false, waited: false };
+    const other = level.defences.find((one) => one !== kind);
+    const then = !second && other && this.rules.doubles > 0 && this.random() < this.rules.doubles ? other : null;
+    this.defence = { kind, move, left: level.warning, done: false, waited: false, then, second };
     this.phase = 'defending';
     fight.warn('npc', move);
-    fight.emit('defend', { kind });
+    fight.emit('defend', { kind, second });
   }
 
   updateDefending(dt) {
@@ -206,6 +266,7 @@ export class Coach {
     fight.clearWarning('npc');
     fight.perform('npc', defence.move);
     this.computerIn = level.every;
+    this.followUp = defence.then;
     this.wait(MOVES[defence.move].hitAt + RULES.afterSwing);
     this.defence = null;
   }
@@ -214,10 +275,14 @@ export class Coach {
   advance() {
     this.fight.setGuard('player', false);
     this.fight.setDodge('player', 0);
-    if (this.call) {
+    if (this.followUp) {
+      const kind = this.followUp;
+      this.followUp = null;
+      this.startDefence(kind);
+    } else if (this.call) {
       this.phase = 'asking';
       this.call.askAgainIn = RULES.askAgainEvery;
-      this.fight.emit('call', { name: this.call.name, side: this.call.side });
+      this.fight.emit('call', { name: this.call.name, side: this.call.side, times: this.call.times, done: this.call.done });
     } else {
       this.startCall();
     }

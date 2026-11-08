@@ -96,8 +96,11 @@ class TankGame {
 
   /* ---------- a new game ---------- */
 
-  /** The robot tanks are on their way before the countdown has finished, so there's nothing to wait for. */
-  prepare() {
+  /**
+   * The robot tanks are on their way before the countdown has finished, so there's nothing to wait for.
+   * level, from 1 to 10, makes it harder within the grown-up's choices: see levelPlan in patrol.js.
+   */
+  prepare(level = 1) {
     const { settings, sound } = this.session;
     this.story.hide();
     this.storyFor = 0;
@@ -114,6 +117,7 @@ class TankGame {
       tanks: settings.tanks,
       pace: settings.pace,
       level: settings.tankLevel,
+      levelNumber: level,
       help: settings.reach,
       driving: settings.driving,
       onEvent: (event) => this.onEvent(event),
@@ -345,7 +349,8 @@ class TankGame {
     const { stats } = this.patrol;
     const { hands } = this.session.settings;
     const onHand = (value) => ({ left: hands === 'left' ? value : 0, right: hands === 'right' ? value : 0 });
-    return { hero: stats.stopped, noun: 'patrol', rows: { tanks: onHand(stats.stopped) } };
+    // Running out of hearts, which only Medium and Tough allow, means trying the same level again.
+    return { hero: stats.stopped, noun: 'patrol', rows: { tanks: onHand(stats.stopped) }, won: this.patrol.state !== 'lost' };
   }
 }
 

@@ -11,10 +11,40 @@
 // to fire slow cannonballs in high arcs. Nobody gets hurt: a beaten ship lowers its sails and slowly
 // sinks, and its crew rows away in a lifeboat. A hand that's gone or stays closed is a rest: the
 // pirates stop firing and sail in circles, and nothing bad can happen.
+import { ramp, stepsAt } from '../../core/levels.js';
 import { WORLD } from '../sky-wings/island-map.js';
 import { getChart } from './chart.js';
 
 const degrees = (value) => (value * Math.PI) / 180;
+
+/**
+ * What each level changes, from level 1, which is the game as it always was, up to level 10. The
+ * numbers are shares of, or additions to, the speed and difficulty a grown-up chose, so a level never
+ * changes those choices, the number of ships, the firing zones, the help with lining up, the cannons
+ * firing always, or Gentle being impossible to lose. Resting stops everything new here, just as it
+ * stops the rest.
+ */
+export function levelPlan(level = 1) {
+  return {
+    fireEvery: ramp(level, 1, 0.7), // Pirates reload quicker.
+    apart: ramp(level, 1, 0.7), // And broadsides come closer together.
+    chase: ramp(level, 1, 1.15), // They sail up to 15% faster when chasing or running.
+    side: ramp(level, 1, 0.75), // They stay alongside for less long before sailing off, never under three quarters as long.
+    runEvery: ramp(level, 0.33, 0.22), // Being hit, they run for it more often: this is a share of their hits.
+    weave: level >= 3, // From level 3, a pirate running for it zigzags, so it takes more steering to stay with.
+    sloops: level >= 5, // From level 5, every third pirate sails a quick little sloop.
+    atOnce: stepsAt(level, { 1: 0, 6: 1 }), // From level 6, four pirates at once rather than three.
+    balls: stepsAt(level, { 1: 0, 7: 1 }), // From level 7, each broadside has one more ball.
+    flagship: level >= 9, // From level 9, the last captain sails a big flagship.
+  };
+}
+
+// The kinds of pirate ship: how many of the level's hits beat it, how fast it is, and how big it looks.
+export const SHIP_KINDS = {
+  ship: { hits: 1, speed: 1, size: 1, balls: 0 },
+  sloop: { hits: 0.6, speed: 1.2, size: 0.72, balls: 0 },
+  flagship: { hits: 1.5, speed: 1, size: 1.3, balls: 1 },
+};
 
 // How fast the child's ship can go, in units a second.
 export const PACES = {
@@ -99,6 +129,7 @@ const PIRATE = {
   nextIn: 1,
   apart: 46,
 };
+const WEAVE = { turn: 0.75, every: 1.4 }; // How far each way, in radians, and how quickly a weaving pirate turns.
 const GIVE_WAY = { within: 82, cone: degrees(42), turn: 2.2 }; // The child's ship steers round a pirate right in front of it.
 // Nobody sails into the place the child is watching from, behind their ship, and blocks the view.
 const VIEW_KEPT_CLEAR = { behind: 72, radius: 50 };
@@ -186,10 +217,13 @@ function keepOnTheWater(ship, dt) {
 
 export class Battle {
   /** ships is how many there are to beat. pace, level and cannons are the grown-ups' settings. */
-  constructor({ ships = 6, pace = 'slow', level = 'gentle', cannons = 'open', random = Math.random, onEvent = () => {} } = {}) {
+  constructor({ ships = 6, pace = 'slow', level = 'gentle', levelNumber = 1, cannons = 'open', random = Math.random, onEvent = () => {} } = {}) {
     this.random = random;
     this.onEvent = onEvent;
     this.total = ships;
+    // The level being played, from 1 to 10, which makes it harder within the grown-up's choices.
+    this.levelNumber = levelNumber;
+    this.plan = levelPlan(levelNumber);
     this.setPace(pace);
     this.setLevel(level);
     this.cannons = cannons;
@@ -270,8 +304,20 @@ export class Battle {
 
   /* ---------- pirates ---------- */
 
+  /** How many pirates there are about at once. */
+  get mostAtOnce() {
+    return MOST_AT_ONCE + this.plan.atOnce;
+  }
+
   fill() {
-    while (this.waiting > 0 && this.afloat.length < MOST_AT_ONCE) this.spawn();
+    while (this.waiting > 0 && this.afloat.length < this.mostAtOnce) this.spawn();
+  }
+
+  /** What sort of ship the next pirate sails: the last is a flagship and every third a sloop, on the higher levels. */
+  kindFor(index) {
+    if (this.plan.flagship && index === this.total - 1) return 'flagship';
+    if (this.plan.sloops && index % 3 === 1) return 'sloop';
+    return 'ship';
   }
 
   /** Somewhere for a ship to come from, out in front of the child if there's water there. */
@@ -296,19 +342,23 @@ export class Battle {
     const { random } = this;
     this.waiting -= 1;
     const { x, z } = this.findOpenWater();
+    const kind = this.kindFor(this.nextPirate);
+    const hits = Math.round(this.level.shipHits * SHIP_KINDS[kind].hits);
     const pirate = {
       index: this.nextPirate,
+      kind,
+      maxHits: hits,
       x,
       z,
       heading: headingTo(this.x - x, this.z - z) + (random() - 0.5),
       speed: this.pace.speed * PIRATE.chase,
       state: 'sailing',
-      hitsLeft: this.level.shipHits,
+      hitsLeft: hits,
       hitLeft: 0,
       mode: 'chase',
       modeLeft: 0,
       spot: null,
-      runAt: this.level.shipHits * 0.66,
+      runAt: hits * 0.66,
       childSide: random() < 0.5 ? -1 : 1, // Which side of the child's ship it comes up on.
       way: random() < 0.5 ? -1 : 1,
       fireIn: between(random, PIRATE.firstFire),
@@ -329,6 +379,11 @@ export class Battle {
     this.emit('spawn', { pirate });
   }
 
+  /** How much faster than usual this pirate sails when chasing or running for it: see levelPlan and SHIP_KINDS. */
+  quicker(pirate) {
+    return this.plan.chase * SHIP_KINDS[pirate.kind].speed;
+  }
+
   /** Sails a pirate towards a direction, and round anything in the way. */
   sailPirate(pirate, wanted, share, dt) {
     const before = pirate.heading;
@@ -346,7 +401,7 @@ export class Battle {
   stationFor(pirate) {
     const chart = getChart();
     const across = rightOf(this.heading);
-    const out = Math.min(PIRATE.alongside + (pirate.index % MOST_AT_ONCE) * PIRATE.alongsideMore, this.level.zone.reach * 0.85);
+    const out = Math.min(PIRATE.alongside + (pirate.index % this.mostAtOnce) * PIRATE.alongsideMore, this.level.zone.reach * 0.85);
     const spot = (side) => ({ x: this.x + across.x * side * out, z: this.z + across.z * side * out });
     // With the child's ship turning hard, it can only keep up on the inside of the turn.
     if (Math.abs(this.turning) > 0.5) pirate.childSide = this.turning > 0 ? 1 : -1;
@@ -405,13 +460,13 @@ export class Battle {
       const toX = pirate.spot.x - pirate.x;
       const toZ = pirate.spot.z - pirate.z;
       if (pirate.modeLeft <= 0 || Math.hypot(toX, toZ) < 30) pirate.mode = 'chase';
-      else this.sailPirate(pirate, headingTo(toX, toZ), PIRATE.awayShare, dt);
+      else this.sailPirate(pirate, headingTo(toX, toZ) + this.weaving(pirate), PIRATE.awayShare * this.quicker(pirate), dt);
     }
     if (pirate.mode === 'chase') {
       if (away < PIRATE.closeEnough) {
         pirate.mode = 'side';
         pirate.chasing = 0;
-        pirate.modeLeft = between(this.random, PIRATE.sideSeconds);
+        pirate.modeLeft = between(this.random, PIRATE.sideSeconds) * this.plan.side;
         // The side it's on already, rather than crossing the child's bows to get to the other.
         const across = rightOf(this.heading);
         pirate.childSide = -dx * across.x - dz * across.z >= 0 ? 1 : -1;
@@ -420,7 +475,7 @@ export class Battle {
         // longer it goes on, so that nobody can be left going round and round out of reach.
         pirate.chasing += dt;
         const station = away > PIRATE.far ? this.stationFor(pirate) : this;
-        const share = (away > PIRATE.far ? PIRATE.catchUp : PIRATE.chase) + Math.min(PIRATE.keenestMore, pirate.chasing * PIRATE.keener);
+        const share = ((away > PIRATE.far ? PIRATE.catchUp : PIRATE.chase) + Math.min(PIRATE.keenestMore, pirate.chasing * PIRATE.keener)) * this.quicker(pirate);
         this.sailPirate(pirate, headingTo(station.x - pirate.x, station.z - pirate.z), share, dt);
       }
     }
@@ -434,6 +489,11 @@ export class Battle {
       }
     }
     this.carryOnFiring(pirate, dt);
+  }
+
+  /** On the higher levels, a pirate running for it zigzags from side to side. */
+  weaving(pirate) {
+    return this.plan.weave ? Math.sin(this.time * WEAVE.every + pirate.index * 1.7) * WEAVE.turn : 0;
   }
 
   /** Side on to the child and going the same way, as ships really did, and firing when it's ready. */
@@ -459,11 +519,11 @@ export class Battle {
   fireWhenSideOn(pirate, away, off, facing) {
     if (pirate.burstLeft > 0 || pirate.fireIn > 0 || this.broadsideIn > 0 || away > PIRATE.leaveRange) return;
     if (Math.abs(Math.abs(off) - Math.PI / 2) > PIRATE.beamWithin) return;
-    pirate.burstLeft = this.level.balls;
+    pirate.burstLeft = this.level.balls + this.plan.balls + SHIP_KINDS[pirate.kind].balls;
     pirate.burstIn = 0;
     pirate.burstSide = facing;
-    pirate.fireIn = between(this.random, this.level.fireEvery);
-    this.broadsideIn = this.level.apart;
+    pirate.fireIn = between(this.random, this.level.fireEvery) * this.plan.fireEvery;
+    this.broadsideIn = this.level.apart * this.plan.apart;
   }
 
   carryOnFiring(pirate, dt) {
@@ -662,7 +722,7 @@ export class Battle {
     }
     // Being fired at, it runs for it now and then, and has to be chased.
     if (pirate.hitsLeft <= pirate.runAt) {
-      pirate.runAt -= this.level.shipHits * 0.33;
+      pirate.runAt -= pirate.maxHits * this.plan.runEvery;
       this.sendAway(pirate);
     }
   }

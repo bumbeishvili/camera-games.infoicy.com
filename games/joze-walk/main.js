@@ -15,7 +15,6 @@ const OPEN_FOR_JOZE = 'Bring it to Joze, and open your hand!';
 const HOME = 'Joze is home!';
 
 const LAST_WORDS_SECONDS = 2.4;
-const WALK_SECONDS = 2.8; // Between one tree and the next.
 const HINT_AFTER_SECONDS = 4;
 const FILM_SECONDS = 16;
 const MOUTH_HOLD_MS = 2200;
@@ -78,13 +77,15 @@ class WalkGame {
     this.joze.show(name, this.session.settings.hands);
   }
 
-  prepare() {
+  /** A new walk home, at this level: see walkAt in journey.js for what each level brings. */
+  prepare(level) {
     this.applySettings();
     this.story.hide();
     this.walk.fruit = [];
     this.walk.fed = { left: 0, right: 0 };
     this.walk.arriveAt(STOPS[0].place);
-    this.journey = new Journey({ onEvent: (event) => this.onJourney(event) });
+    this.walk.setLevel(level);
+    this.journey = new Journey({ level, onEvent: (event) => this.onJourney(event) });
     this.jozeDoes('jozeWaits');
     this.showProgress();
   }
@@ -129,20 +130,21 @@ class WalkGame {
   /** Off to the next tree straight away, except at the very end, where there's a thank-you. */
   onStopDone({ stop }) {
     this.walk.fruit = [];
-    const next = STOPS[this.journey.index + 1];
+    const next = this.journey.stops[this.journey.index + 1];
     if (!next) {
       this.story.say(stop.who, stop.done);
       this.later(LAST_WORDS_SECONDS, () => this.journey.nextStop());
       return;
     }
     this.jozeDoes('walk');
-    this.walk.walkTo(next.place, WALK_SECONDS);
+    this.walk.walkTo(next.place, this.journey.level.walkSeconds);
   }
 
   showProgress() {
     const { journey } = this;
     const share = journey.progress;
-    byId('chip-stops').textContent = `${Math.max(1, Math.min(STOPS.length, journey.index + 1))} of ${STOPS.length}`;
+    const { length } = journey.stops;
+    byId('chip-stops').textContent = `${Math.max(1, Math.min(length, journey.index + 1))} of ${length}`;
     byId('race-progress-fill').style.width = `${Math.round(share * 100)}%`;
     byId('map-joze').style.left = `${Math.round(share * 1000) / 10}%`;
   }

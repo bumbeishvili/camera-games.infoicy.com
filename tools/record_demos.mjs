@@ -220,6 +220,64 @@ const FILMS = {
     },
     report: (page) => page.evaluate(() => window.__game.journey.stats),
   },
+  'spider-catcher': {
+    settings: { reach: 'little', levels: { 'spider-catcher': 3 } },
+    css: '.camera-frame { --camera-small: 24vw !important; left: 66% !important; }',
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: null, right: 'open', scale: 0.7 }));
+      await page.addScriptTag({ content: CHASE });
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await page.waitForFunction(() => window.__game.garden.spiders.some((spider) => window.__game.garden.catchable(spider)), null, { timeout: 30_000 });
+      await wait(page, 600);
+    },
+    async play(page) {
+      // An open hand goes after a spider that's moving, shuts on it, carries it across to the web, and
+      // opens there to put it home.
+      await page.evaluate(() => new Promise((done) => {
+        const { garden } = window.__game;
+        const glove = garden.gloves.right;
+        let phase = 'reach';
+        let since = performance.now();
+        let chosen = null;
+        const go = (next) => {
+          phase = next;
+          since = performance.now();
+        };
+        const stop = window.__chase(
+          () => glove,
+          () => {
+            if (phase === 'reach' || phase === 'shut') {
+              if (!chosen || !garden.catchable(chosen)) chosen = garden.spiders.find((spider) => garden.catchable(spider));
+              return chosen;
+            }
+            if (phase === 'carry' || phase === 'open') return garden.web;
+            return null;
+          },
+          () => (phase === 'shut' || phase === 'carry' ? 'fist' : 'open'),
+          0.16,
+        );
+        const steps = setInterval(() => {
+          const held = performance.now() - since;
+          const near = (at) => at && Math.hypot(at.x - glove.x, at.y - glove.y) < garden.palmSize * 0.6;
+          if (phase === 'reach' && held > 400 && near(chosen)) go('shut');
+          if (phase === 'shut' && garden.holding) go('carry');
+          if (phase === 'shut' && held > 1500) go('reach');
+          if (phase === 'carry' && held > 400 && garden.onWeb) go('open');
+          if (phase === 'open' && held > 900) {
+            chosen = null;
+            go('reach');
+          }
+        }, 50);
+        setTimeout(() => {
+          stop();
+          clearInterval(steps);
+          done();
+        }, 14_000);
+      }));
+    },
+    report: (page) => page.evaluate(() => window.__game.gathering.stats),
+  },
   'smoothie-stand': {
     settings: { pace: 'medium' },
     async ready(page) {
@@ -312,31 +370,33 @@ const FILMS = {
       await wait(page, 1200);
     },
     async play(page) {
-      const obstacle = (kind, gap) => page.evaluate(async ([chosen, ahead]) => {
+      // Each obstacle fills the lanes given, right across unless it says.
+      const obstacle = (kind, gap, lanes = [-1, 0, 1]) => page.evaluate(async ([chosen, ahead, filled]) => {
         const { OBSTACLES } = await import('/games/leap-trail/run.js');
         const { run, world } = window.__game;
         const next = run.next;
         world.retire(next);
-        Object.assign(next, OBSTACLES[chosen], { kind: chosen, at: run.distance + ahead });
+        delete next.gold;
+        Object.assign(next, OBSTACLES[chosen], { kind: chosen, at: run.distance + ahead, lanes: filled });
         run.announced = null;
         for (let i = next.index + 1; i < run.course.length; i += 1) {
           world.retire(run.course[i]);
           run.course[i].at = Math.max(run.course[i].at, next.at + 40 * (i - next.index));
         }
         run.end = Math.max(run.end, run.course.at(-1).at + 15);
-      }, [kind, gap]);
+      }, [kind, gap, lanes]);
       await obstacle('log', 46);
       await footage(page, 'demo-trail', { from: 0, playing: true });
       await wait(page, 3700);
-      // A step to the side, into the lane where the next stars are, and back again.
-      await obstacle('rocks', 160);
+      // Rocks in two lanes, and stars in the free one: a step to the side goes round them, and back.
+      await obstacle('rocks', 62, [-1, 0]);
       await page.evaluate(() => {
         const { run } = window.__game;
-        const at = run.distance + 30;
-        for (let i = 0; i < 6; i += 1) run.starLines.splice(run.nextStar + i, 0, { at: at + i * 2.6, lane: 1, taken: false });
+        const at = run.distance + 22;
+        for (let i = 0; i < 8; i += 1) run.starLines.splice(run.nextStar + i, 0, { at: at + i * 5, lane: 1, taken: false });
         window.__camera.shiftFootage(0.09);
       });
-      await wait(page, 3000);
+      await wait(page, 4200);
       await page.evaluate(() => window.__camera.shiftFootage(0));
       await wait(page, 600);
       await obstacle('hay', 40);

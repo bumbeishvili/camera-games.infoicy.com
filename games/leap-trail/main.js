@@ -7,7 +7,7 @@ import { BODY_SAY, BodyGame, byElementId } from '../../core/body/game.js';
 import { mountBodyShell } from '../../core/body/shell.js';
 import { bodyAcross, LaneReader } from './lanes.js';
 import { Practice } from './practice.js';
-import { Run } from './run.js';
+import { GOLD_STARS, Run } from './run.js';
 import { TrailSound } from './trail-sound.js';
 import { World } from './world.js';
 
@@ -351,11 +351,13 @@ class LeapTrail extends BodyGame {
 
   beginCountdown() {
     const { settings, world } = this;
+    const levelNumber = this.startLevel();
     this.run = new Run({
       obstacles: settings.obstacles,
       pace: settings.pace,
       lanes: this.hasLanes,
       whenMissed: settings.onMissed,
+      levelNumber,
       onEvent: (event) => this.onRunEvent(event),
     });
     world.won = false;
@@ -418,8 +420,9 @@ class LeapTrail extends BodyGame {
     run.setLane(this.readLane(dt));
     this.world.setLive(reader.hasPose ? reader.pose : null);
     this.updateMeter();
-    const asked = run.next && run.inReach(run.next) ? this.askFor(run.next.needs).demo : null;
+    const asked = run.mustJump ? this.askFor(run.next.needs).demo : null;
     if (asked) this.setCoachEffort(reader.effortFor(asked, this.settings.hands));
+    this.followLanes();
     const handPrompt = this.raisingHand ? this.readRaisedHand(now / 1000, () => run.jump({ hand: 'open' })) : null;
     run.update(dt);
     if (run.state === 'finished') return;
@@ -439,6 +442,21 @@ class LeapTrail extends BodyGame {
     if (!prompt && problemFeet) prompt = { key: 'see-feet', text: BODY_SAY.seeFeet, side: null };
     this.prompt.show(prompt, now);
     this.updateHud();
+  }
+
+  /**
+   * An obstacle that leaves a lane free only needs a jump in a lane it fills. Stepping out of its way
+   * puts the film away, and stepping back in brings it back, said only the once.
+   */
+  followLanes() {
+    const { run } = this;
+    const showing = byElementId('coach').classList.contains('is-visible');
+    if (run.move?.obstacle) return;
+    if (!run.mustJump && showing) this.hideCoach();
+    else if (run.mustJump && !showing && run.announced === run.next.index) {
+      const { demo, text } = this.askFor(run.next.needs);
+      this.showCoach(demo, this.translate(text), { side: this.settings.hands });
+    }
   }
 
   feetProblem(dt) {
@@ -490,6 +508,7 @@ class LeapTrail extends BodyGame {
     const handlers = {
       ask: () => this.onAsk(event),
       'star-line': () => this.onStarLine(),
+      gold: () => this.onGold(event),
       lane: () => this.sound.across(),
       move: () => this.onMove(event),
       cleared: () => this.onCleared(event),
@@ -549,6 +568,13 @@ class LeapTrail extends BodyGame {
     this.sound.bump();
   }
 
+  /** A golden star, caught by jumping over in its lane. */
+  onGold({ obstacle }) {
+    this.world.tookGold(obstacle);
+    this.sound.gold();
+    this.callout(`+${GOLD_STARS} ★`, { kind: 'is-number', x: 0.52, y: 0.32 });
+  }
+
   onStarLine() {
     this.world.tookStar();
     this.sound.star();
@@ -583,7 +609,10 @@ class LeapTrail extends BodyGame {
     const seconds = Math.round(stats.movingSeconds);
     const moving = seconds >= 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} sec` : `${seconds} seconds`;
     const movingWords = seconds > 0 ? `, with ${moving} of moving` : '';
-    byElementId('finish-line').textContent = `${this.chosen.name} cleared ${stats.cleared} of ${course.length} obstacles${movingWords}.`;
+    const golden = course.filter(({ gold }) => gold).length;
+    const roundWords = stats.stepped ? `, ${stats.stepped} of them by stepping round` : '';
+    const goldWords = golden ? `, and caught ${stats.gold} of ${golden} golden stars` : '';
+    byElementId('finish-line').textContent = `${this.chosen.name} cleared ${stats.cleared} of ${course.length} obstacles${roundWords}${goldWords}${movingWords}.`;
     const raised = this.raisingHand;
     const overCard = {
       jump: { name: 'jumps', icon: 'jump', label: 'Jumps', value: stats.jumps },
@@ -596,6 +625,8 @@ class LeapTrail extends BodyGame {
       { name: 'streak', icon: 'starJump', label: 'Most in a row', value: stats.bestStreak },
     ].filter(({ name }) => this.hasLanes || name !== 'across');
     this.fillTallyCards(byElementId('finish-tally'), entries);
+    // Nobody fails a run, so every finished run moves on a level.
+    this.finishLevel(true);
     this.confetti.start();
     this.setScreen('finish');
   }

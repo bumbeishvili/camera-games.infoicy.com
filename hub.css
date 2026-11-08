@@ -138,6 +138,20 @@ body.hub {
 .art-fruit { fill: #e8433f; stroke: var(--ink); stroke-width: 2; }
 .art-carry { fill: none; stroke: #fff; stroke-width: 5; stroke-linecap: round; stroke-dasharray: 2 12; }
 
+.game-art-spiders { background: linear-gradient(#8fd3ff, #e9f8ff 70%); }
+.game-art-spiders .art-hill { fill: #7cc65e; }
+.art-spider-branch { fill: none; stroke: #8a5a34; stroke-width: 8; stroke-linecap: round; }
+.art-spider-web circle, .art-spider-web path { fill: none; stroke: #fff; stroke-width: 2.500; }
+.art-spider-web circle:first-child { fill: rgb(255 255 255 / 0.35); }
+.art-spider-thread { fill: none; stroke: #fff; stroke-width: 2; }
+.art-spider-legs-pink path { fill: none; stroke: #c45285; stroke-width: 5; stroke-linecap: round; }
+.art-spider-legs-blue path { fill: none; stroke: #2f86b8; stroke-width: 4; stroke-linecap: round; }
+.art-spider-pink { fill: #ff7eb6; stroke: var(--ink); stroke-width: 3; }
+.art-spider-blue { fill: #5fc3ff; stroke: var(--ink); stroke-width: 3; }
+.art-spider-eye { fill: #fff; stroke: var(--ink); stroke-width: 1.500; }
+.art-spider-pupil { fill: var(--ink); }
+.art-spider-smile { fill: none; stroke: var(--ink); stroke-width: 2.500; stroke-linecap: round; }
+
 .game-art-smoothie { background: linear-gradient(#8fd2fa, #e6f7ff 75%); }
 .art-stand { fill: #c98d4e; }
 .art-glass-cup path:first-child { fill: #f4fbff; stroke: var(--ink); stroke-width: 3; }

@@ -8,7 +8,7 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { Sparks } from '../../core/body/sparks.js';
 import { Island } from '../sky-wings/island.js';
-import { forwardOf, rightOf } from './battle.js';
+import { SHIP_KINDS, forwardOf, rightOf } from './battle.js';
 import { CHART, getChart } from './chart.js';
 import { Coins, Dolphins, Floats } from './sea-life.js';
 import { HeroShip, Lifeboat, PirateShip, LOOKS } from './ships.js';
@@ -605,6 +605,7 @@ export class Bay {
     this.smokeIn.clear();
     for (const ship of this.fleet.values()) {
       ship.reset();
+      ship.root.scale.setScalar(1);
       ship.lifeboat.root.visible = false;
       ship.lifeboat.captain = null;
       ship.wake = null;
@@ -934,6 +935,8 @@ export class Bay {
         sails: pirate.state === 'sinking' ? pirate.sails : 1,
         wind: 0.5 + clamp(going, 0, 1) * 0.5,
       });
+      // A quick little sloop or a big flagship, on the higher levels.
+      ship.root.scale.setScalar(SHIP_KINDS[pirate.kind]?.size ?? 1);
 
       const away = Math.hypot(pirate.x - camera.position.x, pirate.z - camera.position.z);
       const near = away < NEAR_CAPTAIN[this.quality];

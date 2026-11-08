@@ -78,146 +78,153 @@ function mostFlashesInASecond(parts, seconds) {
   return most;
 }
 
-test('the picture\'s brightness stays steady through high fives and turbo', async ({ page }) => {
-  await raceWithOpenHand(page, { steering: 'auto' });
-  // Right up to a big hand, with the hand wide open, so that a slap and turbo both happen.
-  await page.evaluate(() => {
-    const { race } = window.__game;
-    const { gate } = race.gates.next(race.distance + 40);
-    const lap = race.track.length * Math.max(0, race.lapIndex);
-    race.distance = gate.along + lap - 45;
-    race.lateral = gate.side * 4;
-    race.snapCamera = true;
-  });
-  const fivesBefore = await page.evaluate(() => window.__game.race.fives);
-  const { whole } = await watchPicture(page, 120);
-  const step = biggestStep(whole);
-  console.log('biggest brightness step through a slap', step.toFixed(2));
-  expect(step).toBeLessThan(15);
-  expect(await page.evaluate(() => window.__game.race.fives)).toBeGreaterThan(fivesBefore);
-  expect(await page.evaluate(() => window.__game.race.turbo.active)).toBe(true);
-});
+// Each of these at level 1, and again at level 10, which has the most going on: more cars, big hands
+// and ramps, and the others using turbo.
+const levelSettings = (level) => (level === 1 ? {} : { levels: { 'high-five-racers': level } });
+const atLevel = (level) => (level === 1 ? '' : `, at level ${level}`);
 
-test('going through the tunnel doesn\'t change how bright the picture is', async ({ page }) => {
-  await raceWithOpenHand(page, { steering: 'help' });
-  await page.evaluate(() => {
-    const { race } = window.__game;
-    const lap = race.track.length * Math.max(0, race.lapIndex);
-    race.distance = 340 + lap - 50;
-    race.snapCamera = true;
-    for (const rival of race.rivals) rival.distance = race.distance - 200;
-  });
-  await page.waitForTimeout(150);
-  // Long enough to go in and be well inside, at the speed the car's going.
-  const { whole, parts, distance, seconds } = await watchPicture(page, 600, 'if (race.distance % race.track.length > 432) return true;');
-  await shot(page, 'r-tunnel-inside');
-  const mean = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
-  // The camera is about 12 metres behind the car.
-  const outside = mean(whole.filter((_, frame) => distance[frame] < 335));
-  const inside = mean(whole.filter((_, frame) => distance[frame] > 362 && distance[frame] < 430));
-  const step = biggestStep(whole);
-  const flashes = mostFlashesInASecond(parts, seconds);
-  console.log('tunnel: outside', outside.toFixed(1), 'inside', inside.toFixed(1), 'biggest step', step.toFixed(2), 'most flashes in a second', flashes);
-  expect(inside).toBeGreaterThan(0);
-  expect(Math.abs(inside - outside)).toBeLessThan(15);
-  expect(step).toBeLessThan(15);
-  expect(flashes).toBeLessThanOrEqual(1);
-});
-
-test('flying from the other hand\'s turbo doesn\'t change how bright the picture is', async ({ page }) => {
-  await raceWithOpenHand(page, { steering: 'help' });
-  await page.evaluate(() => {
-    window.__highest = 0;
-  });
-  const { whole, parts, seconds } = await watchPicture(page, 300, `
-    if (frame === 5) { race.turbo.burst(); race.takeOff(); }
-    window.__highest = Math.max(window.__highest, race.lift);
-  `);
-  const highest = await page.evaluate(() => window.__highest);
-  const step = biggestStep(whole);
-  const flashes = mostFlashesInASecond(parts, seconds);
-  console.log('flight: highest', highest.toFixed(1), 'biggest step', step.toFixed(2), 'most flashes in a second', flashes);
-  expect(highest).toBeGreaterThan(4);
-  expect(step).toBeLessThan(15);
-  expect(flashes).toBeLessThanOrEqual(1);
-});
-
-test('a whole lap at full speed never flashes more than once in a second', async ({ page }) => {
-  test.setTimeout(180_000);
-  await raceWithOpenHand(page, { steering: 'auto', laps: 2 });
-  const { whole, parts, seconds } = await watchPicture(page, 1500);
-  const step = biggestStep(whole);
-  const flashes = mostFlashesInASecond(parts, seconds);
-  console.log('lap: seconds', seconds.toFixed(1), 'biggest step', step.toFixed(2), 'most flashes in a second', flashes);
-  expect(step).toBeLessThan(15);
-  expect(flashes).toBeLessThanOrEqual(1);
-});
-
-test('closing the hand doesn\'t change the brightness either', async ({ page }) => {
-  await raceWithOpenHand(page, { steering: 'help' });
-  const reading = watchPicture(page, 90);
-  await show(page, null, 'fist');
-  const { whole } = await reading;
-  const step = biggestStep(whole);
-  console.log('braking step', step.toFixed(2));
-  expect(step).toBeLessThan(15);
-});
-
-test('with reduced motion there are no speed lines or moving flames, and it still all works', async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await raceWithOpenHand(page, { steering: 'auto' });
-  await expect.poll(() => page.evaluate(() => window.__game.race.fives), { timeout: 40_000 }).toBeGreaterThan(0);
-  const state = await page.evaluate(() => {
-    const { race } = window.__game;
-    return {
-      lines: race.speedLines.mesh.visible,
-      time: race.world.time.value,
-      animation: getComputedStyle(document.querySelector('#turbo .turbo-flame')).animationName,
-      fov: race.camera.fov,
-    };
-  });
-  expect(state.lines).toBe(false);
-  expect(state.time).toBe(0);
-  expect(state.animation).toBe('none');
-  expect(state.fov).toBe(60);
-  await shot(page, 'r-reduced-motion');
-});
-
-test('a slow computer drops the small things last of all, and keeps playing', async ({ page }) => {
-  await raceWithOpenHand(page);
-  const levels = await page.evaluate(() => {
-    const { race } = window.__game;
-    const slowFor = () => {
-      race.quality.frames = 40;
-      race.quality.seconds = 4;
-      race.watchFrameRate(0);
-    };
-    const read = () => ({
-      level: race.quality.level,
-      sharp: race.renderer.getPixelRatio(),
-      shadows: race.renderer.shadowMap.enabled,
-      small: race.world.small.visible,
-      medium: race.world.medium.visible,
-      ink: race.player.inkLines.visible,
+for (const level of [1, 10]) {
+  test(`the picture's brightness stays steady through high fives and turbo${atLevel(level)}`, async ({ page }) => {
+    await raceWithOpenHand(page, { steering: 'auto', ...levelSettings(level) });
+    // Right up to a big hand, with the hand wide open, so that a slap and turbo both happen.
+    await page.evaluate(() => {
+      const { race } = window.__game;
+      const { gate } = race.gates.next(race.distance + 40);
+      const lap = race.track.length * Math.max(0, race.lapIndex);
+      race.distance = gate.along + lap - 45;
+      race.lateral = gate.side * 4;
+      race.snapCamera = true;
     });
-    const seen = [];
-    for (let i = 0; i < 6; i += 1) {
-      slowFor();
-      seen.push(read());
-    }
-    return seen;
+    const fivesBefore = await page.evaluate(() => window.__game.race.fives);
+    const { whole } = await watchPicture(page, 120);
+    const step = biggestStep(whole);
+    console.log(`level ${level}:`, 'biggest brightness step through a slap', step.toFixed(2));
+    expect(step).toBeLessThan(15);
+    expect(await page.evaluate(() => window.__game.race.fives)).toBeGreaterThan(fivesBefore);
+    expect(await page.evaluate(() => window.__game.race.turbo.active)).toBe(true);
   });
-  expect(levels[0]).toMatchObject({ level: 1, sharp: 1, shadows: true, small: true, medium: true, ink: true });
-  expect(levels[1]).toMatchObject({ level: 2, shadows: false, small: true, medium: true, ink: true });
-  expect(levels[2]).toMatchObject({ level: 3, small: false, medium: true, ink: false });
-  expect(levels[3]).toMatchObject({ level: 4, small: false, medium: false });
-  // It stops there, and the race goes on.
-  expect(levels[5].level).toBe(4);
-  const { distance, speed } = await page.evaluate(() => ({ distance: window.__game.race.distance, speed: window.__game.race.speed }));
-  expect(speed).toBeGreaterThan(5);
-  await expect.poll(() => page.evaluate(() => window.__game.race.distance)).toBeGreaterThan(distance + 10);
-  await shot(page, 'r-lowest-quality');
-});
+
+  test(`going through the tunnel doesn't change how bright the picture is${atLevel(level)}`, async ({ page }) => {
+    await raceWithOpenHand(page, { steering: 'help', ...levelSettings(level) });
+    await page.evaluate(() => {
+      const { race } = window.__game;
+      const lap = race.track.length * Math.max(0, race.lapIndex);
+      race.distance = 340 + lap - 50;
+      race.snapCamera = true;
+      for (const rival of race.rivals) rival.distance = race.distance - 200;
+    });
+    await page.waitForTimeout(150);
+    // Long enough to go in and be well inside, at the speed the car's going.
+    const { whole, parts, distance, seconds } = await watchPicture(page, 600, 'if (race.distance % race.track.length > 432) return true;');
+    await shot(page, level === 1 ? 'r-tunnel-inside' : 'high-five-racers-level10-tunnel');
+    const mean = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
+    // The camera is about 12 metres behind the car.
+    const outside = mean(whole.filter((_, frame) => distance[frame] < 335));
+    const inside = mean(whole.filter((_, frame) => distance[frame] > 362 && distance[frame] < 430));
+    const step = biggestStep(whole);
+    const flashes = mostFlashesInASecond(parts, seconds);
+    console.log(`level ${level}:`, 'tunnel: outside', outside.toFixed(1), 'inside', inside.toFixed(1), 'biggest step', step.toFixed(2), 'most flashes in a second', flashes);
+    expect(inside).toBeGreaterThan(0);
+    expect(Math.abs(inside - outside)).toBeLessThan(15);
+    expect(step).toBeLessThan(15);
+    expect(flashes).toBeLessThanOrEqual(1);
+  });
+
+  test(`flying from the other hand's turbo doesn't change how bright the picture is${atLevel(level)}`, async ({ page }) => {
+    await raceWithOpenHand(page, { steering: 'help', ...levelSettings(level) });
+    await page.evaluate(() => {
+      window.__highest = 0;
+    });
+    const { whole, parts, seconds } = await watchPicture(page, 300, `
+      if (frame === 5) { race.turbo.burst(); race.takeOff(); }
+      window.__highest = Math.max(window.__highest, race.lift);
+    `);
+    const highest = await page.evaluate(() => window.__highest);
+    const step = biggestStep(whole);
+    const flashes = mostFlashesInASecond(parts, seconds);
+    console.log(`level ${level}:`, 'flight: highest', highest.toFixed(1), 'biggest step', step.toFixed(2), 'most flashes in a second', flashes);
+    expect(highest).toBeGreaterThan(4);
+    expect(step).toBeLessThan(15);
+    expect(flashes).toBeLessThanOrEqual(1);
+  });
+
+  test(`a whole lap at full speed never flashes more than once in a second${atLevel(level)}`, async ({ page }) => {
+    test.setTimeout(180_000);
+    await raceWithOpenHand(page, { steering: 'auto', laps: 2, ...levelSettings(level) });
+    const { whole, parts, seconds } = await watchPicture(page, 1500);
+    const step = biggestStep(whole);
+    const flashes = mostFlashesInASecond(parts, seconds);
+    console.log(`level ${level}:`, 'lap: seconds', seconds.toFixed(1), 'biggest step', step.toFixed(2), 'most flashes in a second', flashes);
+    expect(step).toBeLessThan(15);
+    expect(flashes).toBeLessThanOrEqual(1);
+  });
+
+  test(`closing the hand doesn't change the brightness either${atLevel(level)}`, async ({ page }) => {
+    await raceWithOpenHand(page, { steering: 'help', ...levelSettings(level) });
+    const reading = watchPicture(page, 90);
+    await show(page, null, 'fist');
+    const { whole } = await reading;
+    const step = biggestStep(whole);
+    console.log(`level ${level}:`, 'braking step', step.toFixed(2));
+    expect(step).toBeLessThan(15);
+  });
+
+  test(`with reduced motion there are no speed lines or moving flames, and it still all works${atLevel(level)}`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await raceWithOpenHand(page, { steering: 'auto', ...levelSettings(level) });
+    await expect.poll(() => page.evaluate(() => window.__game.race.fives), { timeout: 40_000 }).toBeGreaterThan(0);
+    const state = await page.evaluate(() => {
+      const { race } = window.__game;
+      return {
+        lines: race.speedLines.mesh.visible,
+        time: race.world.time.value,
+        animation: getComputedStyle(document.querySelector('#turbo .turbo-flame')).animationName,
+        fov: race.camera.fov,
+      };
+    });
+    expect(state.lines).toBe(false);
+    expect(state.time).toBe(0);
+    expect(state.animation).toBe('none');
+    expect(state.fov).toBe(60);
+    await shot(page, level === 1 ? 'r-reduced-motion' : 'high-five-racers-level10-reduced-motion');
+  });
+
+  test(`a slow computer drops the small things last of all, and keeps playing${atLevel(level)}`, async ({ page }) => {
+    await raceWithOpenHand(page, levelSettings(level));
+    const levels = await page.evaluate(() => {
+      const { race } = window.__game;
+      const slowFor = () => {
+        race.quality.frames = 40;
+        race.quality.seconds = 4;
+        race.watchFrameRate(0);
+      };
+      const read = () => ({
+        level: race.quality.level,
+        sharp: race.renderer.getPixelRatio(),
+        shadows: race.renderer.shadowMap.enabled,
+        small: race.world.small.visible,
+        medium: race.world.medium.visible,
+        ink: race.player.inkLines.visible,
+      });
+      const seen = [];
+      for (let i = 0; i < 6; i += 1) {
+        slowFor();
+        seen.push(read());
+      }
+      return seen;
+    });
+    expect(levels[0]).toMatchObject({ level: 1, sharp: 1, shadows: true, small: true, medium: true, ink: true });
+    expect(levels[1]).toMatchObject({ level: 2, shadows: false, small: true, medium: true, ink: true });
+    expect(levels[2]).toMatchObject({ level: 3, small: false, medium: true, ink: false });
+    expect(levels[3]).toMatchObject({ level: 4, small: false, medium: false });
+    // It stops there, and the race goes on.
+    expect(levels[5].level).toBe(4);
+    const { distance, speed } = await page.evaluate(() => ({ distance: window.__game.race.distance, speed: window.__game.race.speed }));
+    expect(speed).toBeGreaterThan(5);
+    await expect.poll(() => page.evaluate(() => window.__game.race.distance)).toBeGreaterThan(distance + 10);
+    await shot(page, level === 1 ? 'r-lowest-quality' : 'high-five-racers-level10-lowest-quality');
+  });
+}
 
 test('a word from the last race doesn\'t come back at the start of the next', async ({ page }) => {
   await raceWithOpenHand(page, { laps: 1, steering: 'auto' });

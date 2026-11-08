@@ -11,6 +11,7 @@ Camera games for children with hemiplegia, played by moving in front of a webcam
 - **Tank Patrol:** robot tanks are rolling into Joze's valley, and he rides along with his long neck sticking out of the hatch. With one hand: closing it drives the tank to where it points, and opening it fires at any robot tank under the crosshair that the gun can reach. See [below](#tank-patrol).
 - **Cannon Bay:** a sea battle around the 3D island, with one hand. Moving it from side to side turns the ship's wheel, and opening it raises the sails. The cannons fire by themselves at any pirate ship in a firing zone. See [below](#cannon-bay).
 - **Joze's Long Walk Home:** Joze the giraffe is lost and hungry. The child closes a hand on fruit, carries it across to his mouth and opens the hand to feed him, and each stop fed takes him closer to his family.
+- **Spider Catcher:** Joze's little spider friends have run off all over the garden, scuttling about and swinging on their threads. The child opens a hand by one and closes it to pick it up, carries it across to its web and opens the hand to put it home. See [below](#spider-catcher).
 - **Joze's Smoothie Stand:** at the Harvest Fair, each customer orders a smoothie, and the child slices what they ordered with a swipe of the open hand. Bad fruit makes the glove sticky until it has been held open.
 - **The Lighthouse Keeper:** mud from a storm has covered the windows and ships are lost at sea. Wiping a window clean with an open hand lets the light out, and brings a ship home.
 
@@ -39,6 +40,7 @@ core/                   what every game shares
   sound.js, audio/      voice lines and shared sound effects
   camera.js, tracker.worker.js    the webcam and hand tracking
   settings.js, base.css
+  levels.js             the ten levels every game has, and where they show
   glove.js              the glove that copies a hand, finger by finger
   story.js, fruit.js    who's speaking, and the fruit, in the games with a mission
   body/                 what the whole-body games share
@@ -59,6 +61,7 @@ games/
   tank-patrol/          its patrol rules, valley map, tanks, 3D valley and sounds
   cannon-bay/           its battle rules and sea chart, the waves, ships and sea life, and its sounds
   joze-walk/            its journey, the land Joze walks through and its sounds
+  spider-catcher/       its rules and levels, the garden, the spiders and webs, and its sounds
   smoothie-stand/       its customers and orders, the fair and its sounds
   lighthouse/           its storm and ships, the lamp room and its sounds
 tools/                  the local server, and what prepares voices and sounds
@@ -101,6 +104,14 @@ Choose **Hand to play with** under the gear icon. It's remembered across the gam
 
 **How it tells left from right.** It uses the tracker's own left or right label, because the hand could be anywhere in the picture. The label swapped correctly on every mirrored photo, at angles up to 60° and including fists, with confidence never below 0.88. It also named both hands correctly in a photo with crossed arms. When the tracker is less than 70% sure, the hand's side of the mirror decides instead, so a child doesn't get stuck being asked for a hand they're showing. If the tracker is sure it's seeing the other hand, that hand doesn't count, and the panel says "Only sees the other hand".
 
+## Levels
+
+Every game has ten levels, and each is a little harder than the one before. Winning a game moves it on to the next level, up to level 10. A game that's lost comes round again at the same level. Sky Wings and Mighty Moves can be lost, and so can Robot Rescue, Tank Patrol and Cannon Bay on Medium or Tough, but never on Gentle. Each game remembers its own level. It's on the title card, under the countdown's numbers and on the finish card, with a dot for each level. A grown-up can choose any level under the gear icon, and the new level starts with the next game.
+
+Level 1 plays the way each game always has. After that, levels bring more going on at once and a quicker pace, and from about level 4, new kinds of things to deal with. What each game changes is in its own section below, and its numbers are in its rules file.
+
+**What a level never changes:** anything a grown-up or therapist chose. That's the hand in play, how open a hand has to be, how far there is to reach, how big a movement has to be, a gentle mode that can't be lost, help like a car that steers itself, and how long a game was set to be. Resting is never punished at any level. Even at level 10, there's still at least about 70% of level 1's time to react, no more than about twice as many moves a minute, and a game lasts at most about a third longer. Every level-10 game is also tested to make sure nothing flashes.
+
 ## Choices made for these children
 
 - **The hand check never asks for a fist,** since making one is the opposite of what's being practised.
@@ -117,6 +128,8 @@ Choose **Hand to play with** under the gear icon. It's remembered across the gam
 It's off unless a grown-up chooses it under **Maths challenge**: adding up to 10, adding and taking away up to 20, or times tables. A question is shown big on the screen, the voice says "Pop the right answer!", and balloons with answers on them come up and wait, for as long as it takes. A child reaching for one answer may have to pass another, so an open hand has to stay on a balloon for about half a second to choose it, with a ring closing around it to show that's happening.
 
 The right answer pops, and the next question comes. The wrong one goes up in smoke and burns the glove: it turns black with soot and can't pop anything until the hand has been held open to cool it, which takes about a second and a half of being open, and a fist doesn't cool it. That makes the penalty the exercise itself. No right answers are taken away. The burn is cartoon soot, and nothing flashes. The summary counts the too-hot balloons as well as the right ones.
+
+**Levels in Balloon Pop.** Level 1 is the game as described above. Each level brings balloons a little faster and a little more often, with more up at once and more of them drifting wide. From level 4 some are star balloons, which only pop once the open hand has stayed on them for about a third of a second, with a ring closing round them. From level 5 some come up as pairs tied together, and from level 7 a gentle breeze pushes them all slowly one way and back. Even at level 10 each balloon is on the screen for three quarters of the time it was at level 1, and no more than twice as many come along a minute. How many to pop, the speed chosen, reach help and the hand stay as a grown-up set them. With the maths challenge on, levels 4 and 8 each add one more answer to choose from, up to five. Missing a balloon still costs nothing. The numbers are in `balloonLevel` in `rules.js`.
 
 ## High Five Racers
 
@@ -135,6 +148,10 @@ A race round a lap with grandstands, a village, a tunnel, a farm, a lake, a fore
 - **The summary counts high fives to each side.**
 - **Nothing flashes.** Measured through slaps, turbo, the tunnel, a flight and a whole lap, brightness changed by less than 5% from one frame to the next. The tunnel is as bright as outdoors, and anything repeating along the road goes past fewer than three times a second.
 - **On a slow computer** it gives up sharpness, then shadows, then flowers and grass, then bushes, rocks, distant things and half the crowd.
+
+**Turbo and flying are shown, not just said.** Until turbo starts, the meter shows a hand spread wide with "Open wide!", then "Keep it open!" while it fills. If the hand has been open for a while without turbo, the meter bounces and a little film shows a hand opening wide, again every 20 seconds or so, but it's only said aloud once a race. When turbo runs out, a film by the meter shows the other hand, on its own side as in a mirror, making a fist and opening, and the car taking off. It shows the first three times each race, and after that only until the car has flown.
+
+**Levels.** Level 1 is the race described above. Level by level the other cars race a little harder, and new things come in. From level 3 there are two big hands in a row on one side, and from level 4 a fourth car joins, with a fifth at level 8. From level 5 the others use turbo now and then, one at a time, and the child passes them back. From level 6 there's a ramp to one side of the road that jumps straight into a high five, and from level 7 a slalom of big hands through the village. At level 10 there are 19 big hands a lap instead of 13, but two on opposite sides are never less than 62 m apart, which leaves at least 70% of the time to get across. The car's speed, the laps, how far to reach, steering help and the hand never change with the level. The others still ease off at the end so the child wins, nobody uses turbo while a child rests, and while the car flies, the others make room at the edges of the road. The numbers are in `racePlan` in `rules.js`.
 
 ## Mighty Moves
 
@@ -182,11 +199,13 @@ Saying the moves in this order makes two combos come up by themselves, a squat t
 
 **Playing over a network** isn't built yet, but it's been kept in mind. The rules in [fight.js](games/mighty-moves/fight.js) have no screen or camera in them, and a fighter is only driven through `perform()`, `setGuard()` and `setDodge()`. [coach.js](games/mighty-moves/coach.js) makes those calls for both sides today, so another player's moves can arrive over a connection in the computer's place. Only moves would need sending, never camera pictures.
 
+**Levels.** Levels go from 1 to 10, one fight each, and winning a fight moves on a level, while losing one stays. The computer's strength stays the grown-ups' choice: a level never makes it hit harder, and on Gentle it still can't knock a child out. Higher levels bring its turns a little more often, with a warning down to 80% as long, and a shorter pause between moves. From level 3 leaning out of the way joins blocking, and from level 4 the computer has more moves. From level 5 some turns are two hits in a row, one to block and one to lean from, and from level 6 the coach's moves come in a mixed-up order. From level 7 some moves are asked for twice, with a dot on the coach's card for each, and the fighter's move is stronger for it. Jumps, high knees and reaching up are never asked for twice, and a child standing still is never hit at any level. The numbers are in `fightLevel` in `moves.js`.
+
 ## Leap Trail
 
 The character runs fast down the trail by itself, through a village, past fences and poles that rush by. The child's real jumps get it over what's in the way, and a jump as soon as it's asked for sends it over in a dash. Jumping is the only move asked for: there are no squats, so a child never has to work out which move is wanted, and going down before a jump is never taken for anything. All the time a child gets is set in seconds, so the running being fast doesn't ask them to move any sooner. Stars hang along the way a jump will go.
 
-**The trail has three lanes.** The middle one is wherever the child is standing when the run starts. Stepping to one side moves the runner into the lane on that side, as in a mirror, and stepping back brings it back, with a soft swish. Obstacles go right across the trail, so every one still needs a jump, but the lines of stars between them are in one lane or another, often a different one from the last, and only the lane the runner is in picks them up. A missed star costs nothing. It goes by the middle of the shoulders and hips, in torso lengths, so it's the same near the camera or far away: half a torso length out moves into a side lane, and coming back within a quarter of one returns to the middle. In between nothing changes, so standing still or swaying doesn't drift, and a move has to last 0.15 seconds, so one jumpy frame from the tracker doesn't count. A body the camera loses leaves the runner where it is. Each game uses the same ten characters, and the trail, its obstacles and the rules are all original to this game.
+**The trail has three lanes.** The middle one is wherever the child is standing when the run starts. Stepping to one side moves the runner into the lane on that side, as in a mirror, and stepping back brings it back, with a soft swish. Obstacles fill one, two or all three lanes. One that leaves a lane free can be gone round by stepping into that lane, which counts as clearing it, or jumped; one right across needs a jump. Only the lanes it fills are painted, so the way round shows from far off, and the film and the word "Jump!" only come when the runner is in its way. The lines of stars between them are in one lane or another, and the line before a narrow obstacle leads towards its free lane. Only the lane the runner is in picks them up. A missed star costs nothing. It goes by the middle of the shoulders and hips, in torso lengths, so it's the same near the camera or far away: half a torso length out moves into a side lane, and coming back within a quarter of one returns to the middle. In between nothing changes, so standing still or swaying doesn't drift, and a move has to last 0.15 seconds, so one jumpy frame from the tracker doesn't count. A body the camera loses leaves the runner where it is. Each game uses the same ten characters, and the trail, its obstacles and the rules are all original to this game.
 
 **A short practice comes first,** so a child knows what the game can see. Their character shows each move in a looping film, first a jump and then a step to the side, the runner copies their body beside it, and a meter shows how close they are to a jump, from standing at the bottom. As soon as a move is seen it's confirmed in words, with a chime and a green frame. If they're trying but not reaching what counts, what counts comes down to just below their best, though never as low as someone standing still. It can be skipped, and isn't repeated on the next run. There's no keyboard control: only the body moves the runner.
 
@@ -196,13 +215,15 @@ The character runs fast down the trail by itself, through a village, past fences
 
 - **Jumping isn't the only way.** Under **How to get over things**, a grown-up can choose lifting a knee, for a child who can stand but not jump, or raising an open hand. Raising a hand can be done sitting down, as the camera then only needs the top half of the child, and then it's leaning to the side that moves across the lanes, going by the shoulders, which needs a little less. It's also the open-hand exercise: a raised fist is asked to open and doesn't count, and neither does a hand that can't be read.
 - **An affected leg doesn't stop a jump counting.** It goes by the hips rising and the higher foot, so a lopsided jump is still a jump.
-- **Moving across can be turned off,** under **Moving from side to side**, for a child who can't step sideways safely. The runner and every star then stay in the middle lane.
+- **Moving across can be turned off,** under **Moving from side to side**, for a child who can't step sideways safely. The runner and every star then stay in the middle lane, and every obstacle fills the middle lane, so the whole trail is still jumps.
 - **How big a movement has to be** is the same setting as in Mighty Moves. On *Small*, a bob up and down can count as a jump, and a smaller step moves across.
 - **The panel says what the camera is seeing,** and what it needs right now, to help tell why a move is being missed.
 - **Resting is always fine.** After 9 seconds without moving, the runner stops and waits, even when set to stumble.
 - **Speed** and **length of the trail** can be set. Even *Fast* is forgiving.
 - **A missed move is only a stumble,** so that the run keeps its pace. For a child who needs longer, **When a move is missed** can make the runner stop and wait for as long as it takes.
-- **Nothing flashes.** Measured through jumps and landings, brightness changed by less than 1% from one frame to the next.
+- **Nothing flashes.** Measured through jumps, landings and a long dash, at level 1 and level 10, brightness changed by less than 3% from one frame to the next.
+
+**Levels.** Each level is a little harder than the last, always from the pace a grown-up chose: a little faster, obstacles a little closer, and the stretch where a jump counts down to 85% of what it was. Higher levels also have more obstacles that fill one or two lanes, with the free lane switching sides, and lines of stars change lanes more often. From level 3 a golden star hangs over some obstacles in one lane, caught by jumping over in that lane. A fence comes in at level 4, lines of stars that cross a lane halfway at 5, round hay bales that roll in and stop before the painted stretch at 6, and a flock of sheep at 8. Finishing a run moves on a level, as nobody loses one. The numbers are in `trailLevel` in `run.js`.
 
 ## Sky Wings
 
@@ -227,6 +248,8 @@ The child's two arms are the wings of a toy plane, sitting or standing, and it's
 
 This game doesn't read the hand at all, as the guns fire by themselves, so it doesn't practise opening the hand. It's all about the shoulders and both arms.
 
+**Levels.** Dropping every plane moves on a level, and being shot down, on Medium or Tough, stays. A level never changes the ring's size, the help with lining up, how hard the pirates shoot, Gentle's hearts or flying up and down by itself. Higher levels make the pirates a little faster and sharper in the turn, but never as fast as the child's plane. They also hunt the child a little more often and dodge for longer when hit. From level 3 they weave from side to side as they cross, and from level 5 they climb and dive more. From level 8 the last one is the pirate captain, a bigger plane with a flag that takes more hits, and from level 9 there can be four in the air at once. Being hunted gives as long to turn as ever. The numbers are in `flightLevel` in `flight.js`.
+
 ## Robot Rescue
 
 The hand is the aim, like an arcade light gun, so small movements cover the screen. An open hand fires by itself at whatever is in the crosshair, and a closed hand raises a shield and reloads. That makes one hand do two things, and a natural open and close builds up, with closing useful rather than a mistake. The tram does all the moving, from place to place, so there's no steering to do while aiming. Each place has a friend in a cage, freed by dealing with the robots there, and the last has a big robot whose weak spots open one at a time. A little film shows what to do until the child has fired and closed.
@@ -239,6 +262,8 @@ The hand is the aim, like an arcade light gun, so small movements cover the scre
 - **Resting is always fine.** With the hand gone or closed for 4 seconds, the robots stop throwing and wave, and any goo in the air goes.
 - **On Gentle, the default, a child can't lose.** Hearts stop at one, and goo takes over 3 seconds to arrive. At the first stop nothing is thrown until a robot has been dropped, or 14 seconds have gone by. On the harder settings, running out of hearts ends it with "So close!", counts the robots dropped, and they can go again straight away.
 - **Nothing flashes.** There's no muzzle flash and nothing lights up. A hit is small shapes where it happened, and the shield is see-through and rises and falls at a steady rate, so a quick open and close can't flicker it. Measured with the crosshair and shield included, brightness changed by less than 2% from one frame to the next. A haze softens the sides of the view while the tram moves, as walls going past were the one thing that flickered.
+
+**Levels.** Each level makes walkers a little quicker and keener to move on, and peekers pop down sooner. Goo comes more often and a little faster, though never in under 2 seconds. From level 3 drones swoop down towards the tram and back up, and from level 4 peekers spring through the air from one cover to the next, and can be hit on the way. From level 5 robots on one big wheel roll from spot to spot in place of some walkers, stopping for a moment at each and never throwing. From level 6 one more robot is out at once, and one more blob of goo can be in the air. From level 7 some robots throw a second blob straight after the first, and from level 8 the big one steps from side to side, taking its weak spots with it. Swoops, hops and rollers are kept slow, so the crosshair, which goes with whatever it's on, doesn't dart about. The speed, Reach help, Reloading, How hard and the number of stops stay as a grown-up set them, and Gentle still can't be lost. Running out of hearts on Medium or Tough tries the same level again. The numbers are in `levelPlan` in `rescue.js`.
 
 ## Tank Patrol
 
@@ -261,6 +286,8 @@ The camera stays still, high over one toy valley that fits on the screen, so the
 - **A little film** shows a hand closing to drive and opening to fire, until the child has done both, and comes back if nothing has happened for a while.
 - **Nothing flashes.** There's no muzzle flash and no explosion, and the picture's brightness is tested through firing, stops and shells landing.
 
+**Levels.** Each level makes the robot tanks a little quicker, keener to move on and keep further off, and shells come more often and a little faster, never under 80% as long. From level 3 scouts dash from place to place, and from level 4 tanks come in pairs and keep together. From level 5 shells allow for the tank driving along. From level 6 a tank that has taken half its hits runs off out of range, once, and has to be chased. From level 7 heavy tanks lob two shells at once, landing apart, with bashers doing it too from level 9. One more tank is about from level 3, and two from level 8. Driving by itself still chases a tank that runs, and gets out from under both shells. The speed, Reach help, Driving, How hard and the number of tanks stay as a grown-up set them, and Gentle still can't be lost. Running out of hearts on Medium or Tough tries the same level again. The numbers are in `levelPlan` in `patrol.js`.
+
 ## Cannon Bay
 
 Pirates have come for the island's treasure, and Captain Joze, with his long neck above the rail, asks the child to drive them off. It's the island from Sky Wings seen from the sea, from behind and a little above the ship.
@@ -282,6 +309,8 @@ Pirates have come for the island's treasure, and Captain Joze, with his long nec
 - **A little film** shows the sails and the wheel until the child has done each, and comes back if they seem stuck.
 - **Nothing flashes.** There are no muzzle flashes, only soft smoke and small shapes. Measured through firing, splashes and sinking, brightness changed by less than 2 out of 255 from one frame to the next.
 
+**Levels.** Each level has pirates reload quicker and fire closer together, and sail a little faster when chasing or running. They stay alongside for less long, though never under three quarters as long, and run for it more often when hit. From level 3 a pirate running for it zigzags, and from level 5 every third pirate sails a quick little sloop that takes fewer hits. From level 6 there are four pirates at once instead of three, and from level 7 each broadside has one more ball. From level 9 the last captain sails a big flagship. The cannonballs fly just as slowly as ever. The speed, the firing zones, the help with lining up, Cannons, How hard and the number of ships stay as a grown-up set them, and Gentle still can't be sunk. Being sunk on Medium or Tough tries the same level again. The numbers are in `levelPlan` in `battle.js`.
+
 ## The games with a mission
 
 These three use the same hand tracking as Balloon Pop, so they start with the hand check and can be played sitting close to the camera. Each one is a story, with the characters from the other games asking for help in their own voices, because a hard movement is easier to repeat for someone who needs it.
@@ -291,6 +320,30 @@ These three use the same hand tracking as Balloon Pop, so they start with the ha
 - **Joze's Long Walk Home** is about closing a hand, keeping it closed while it moves, and opening it in the right place. Dropping a fruit costs nothing: it just goes back on the tree. **How far to reach** moves the tree closer to Joze.
 - **Joze's Smoothie Stand** is right-handed unless a grown-up picks the left, like all of these. An open hand has to be moving to slice, so that it's a swipe. **How to slice** can make a touch enough, for slow or limited movement. A closed hand only bumps the fruit and is asked to open. Rotten fruit only comes with the last customers, and all it does is make the glove sticky for a moment. There's no way to lose.
 - **The Lighthouse Keeper** is about reaching all over a big window with an open hand. Only an open hand wipes, and a closed one is asked to open. **Size of the window** sets how far there is to reach. A window only has to be mostly clean, as the last corners may be out of reach. The storm has no lightning, and the picture brightens slowly as each ship comes home.
+
+**Levels in these three games:**
+
+- **The Lighthouse Keeper:** the storm throws a little more at the window each level, but only while the child is wiping, so resting never brings anything new, and nothing has a time limit. From level 2 a wave throws a splat of mud back onto glass that's been wiped, and from level 5 two of them, sooner and a little bigger each level. From level 4 seaweed lands on the glass, and from level 7 every other window has a smiling starfish instead, which creeps slowly about. They come off by rubbing with an open hand, and a window isn't clean until they're gone. They always land in the middle of the window, never the corners. The numbers are in `stormAt` in `storm.js`.
+- **Joze's Long Walk Home:** from level 2 Joze is hungrier at the river, and from level 6 at the hill too, and he walks a little quicker between trees each level. From level 3 the fruit sways on its branch in the wind, a little more each level. From level 4 there's green fruit that isn't ripe yet: a closed hand on it only gives it a wiggle, and it ripens by itself after a while. From level 7 a butterfly sits on a ripe fruit now and then, and that one can't be picked until the butterfly flies off, which it does when an open hand comes near. There's always a ripe fruit free, and the extra fruit hangs between the usual places, so there's no further to reach. The tree fades in and out between stops. The numbers are in `walkAt` and `stopsAt` in `journey.js`.
+- **Joze's Smoothie Stand:** the customers' orders stay the same at every level. On top of the speed a grown-up chose, fruit falls a little faster each level, though at level 10 it's still up about 88% as long, and comes up more often, with more that isn't on the order mixed in. What's on the order still comes up at least as often as at level 1. Rotten fruit comes with earlier customers as the levels go up, and with everyone from level 8. From level 4 some fruit is thrown across from one side to the other, always within reach, and from level 6 a rotten fruit sometimes flies right beside a wanted one. From level 8 some fruit is tough, with a thick brown skin: the first swipe cracks it, and the second slices it. There are never more than 12 fruit in the air, as on Fast. The numbers are in `fairAt` in `orders.js`.
+
+## Spider Catcher
+
+The same grasp, carry and let go as Joze's Long Walk Home, but what's caught won't keep still. Joze's little spider friends have run off all over a sunny garden. They're round and colourful, with big eyes, rosy cheeks, smiles and short soft legs, and nothing pointy. Some scuttle about on smooth looping paths and some swing up and down on threads from a branch. Their web hangs across from where they play, by Joze, so bringing one home is a reach across. Each spider home makes its web a little fuller and whiter, and Joze claps. There are five places in the garden, each with its own web and a friend who says one short line while the spiders are already out: Joze at the gate, Mochi in the carrots, Bramble at the honey tree, Frost by the pond, and Joze again at his house. It ends when everyone is home. It uses the same hand tracking as Balloon Pop, so it starts with the hand check and can be played sitting close to the camera.
+
+**Catching.** A hand has to be seen open and then close by a spider, within about a second, so it's a real grasp, and a fist held still can't collect spiders as they go past. Closing anywhere near one is enough, with a circle a little bigger than the palm. The spider stays in the closed hand, peeping out, wherever it goes. Opening the hand over the web lets it in. Opening anywhere else just lets it scurry back to playing, at no cost.
+
+**It fails closed.** Only a hand the tracker is sure of counts as open or closed. A hand at the edge of the picture, too far away or overlapping the other is neither, so it can't catch a spider, and a spider it's holding stays held until the hand can be read again. A hand that leaves the picture lets go, and that never puts a spider in its web.
+
+**The levels** ([games/spider-catcher/spiders.js](games/spider-catcher/spiders.js)). Level 1 has two spiders out at a time, slow, on simple loops, with a still web. After that there are more out at once (three from level 3, four from level 6), they go a little quicker each level, their paths go further and get twistier (figures of eight from level 3, pretzels from level 8), and the swings get longer. From level 4 the web sways slowly on its branch. From level 5 some spiders are shy: the first time a hand comes near, one scuttles a little way off, and after that it can be caught like any other. From level 7 some come in twos, holding hands, to bring home one after the other. The middle places have one more spider from level 3, and another from level 8. Level 10 is at most 1.35 times as fast as level 1, so there's still about 74% of the time to catch one going past.
+
+**For children with hemiplegia:**
+
+- **How far to reach** sets how far from the web the spiders play. No level changes it.
+- **Resting is always fine.** The spiders just keep playing, and nothing is lost.
+- **With reduced motion,** the web sways half as far, a shy spider dashes off more gently, and legs patter more slowly.
+- **The summary counts spiders brought home with each hand.**
+- **Nothing flashes.** Colours stay steady, a web fills in slowly, places fade into each other, and legs patter no more than about one and a half times a second. Measured through spiders moving, landing in webs, Joze clapping and moving between places, at level 1 and level 10, brightness changed by no more than 1.2 out of 255 from one frame to the next. Every place is bright, with an average brightness of over 190 out of 255.
 
 ## Sound
 
@@ -326,11 +379,13 @@ Each recording is trimmed and set to the same level as the rest. Any lines not r
 
 **The sea** in Cannon Bay is real waves, gulls, wind in real masts and a big rope creaking, with a CC0 sea shanty under them. The wind and the water follow the sails. The cannon is a real bird-scaring gun recorded from far away, slowed and softened into a friendly thump.
 
+**The garden** in Spider Catcher is a real wood full of birds, kept quiet underneath. A spider landing in its web is a real harp playing a cartoon bounce, and one let go scurries off through real long grass.
+
 Where each sound came from is in [CREDITS.md](CREDITS.md).
 
 ## Privacy
 
-Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, and the camera turns off as soon as a round ends. Only settings are stored, in the browser. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
+Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
 
 ## Tests
 
@@ -356,6 +411,7 @@ There's no free footage of a person clapping, circling a hand or holding their a
 - **How Tank Patrol feels.** The gun's range, the speeds and how tiring it is were tuned without a real hand, and nobody has listened to its sound.
 - **How Cannon Bay feels.** Whether the zones read clearly to a child, how long a hand can stay open, and whether the shanty gets tiring.
 - **How far the big hands should be, and how wide turbo should need, on a real hand.**
+- **How Spider Catcher feels.** Whether the spiders are slow enough to catch with a real affected hand, whether closing within about a second of opening is long enough for a hand that closes slowly, how big the catching circle should be, and whether a child finds the spiders cute. It was only played with photos of an adult hand, moved about by the tests, and nobody has listened to its sound.
 - **Flying with the other hand, on a real child.** It was tested with photos of a fist and an open hand. A hand with hemiplegia might not read as a clear fist, and nobody has checked whether reaching out the second hand pulls the hand in play out of view.
 - **Kicks seen from the front.** The only kick footage available was filmed from the side, which confuses the tracker's left and right legs, so kicks were tested with a real standing body that had its legs moved by the test.
 - **A real webcam.** Only simulated camera feeds have been used. Real lighting, backgrounds and motion may need some tuning. That goes double for Balloon Pop: how hard balloons are to reach, and how it feels to chase them, can only be judged with a real hand moving.

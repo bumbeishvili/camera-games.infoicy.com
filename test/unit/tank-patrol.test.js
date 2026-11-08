@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { AIM_HELP, GUN, LEVELS, PACES, Patrol, readHand, shellPoint, tanksFor } from '../../games/tank-patrol/patrol.js';
+import { AIM_HELP, GUN, LEVELS, PACES, Patrol, STANDOFF, levelPlan, readHand, shellPoint, tanksFor } from '../../games/tank-patrol/patrol.js';
 import { BRIDGES, PLAY, SPAWNS, START, TANK_RADIUS, groundY, heightAt, riverNear, seeded, solidNear, valleyNav } from '../../games/tank-patrol/valley-map.js';
 
 const STEP = 1 / 60;
@@ -633,4 +633,219 @@ test('Tank Patrol keeps its talking short, and everything it says has a voice in
   }
   const source = readFileSync(new URL('../../games/tank-patrol/main.js', import.meta.url), 'utf8');
   for (const { text } of lines) assert.ok(source.includes(text), `nothing says: ${text}`);
+});
+
+/* ---------- levels ---------- */
+
+const LEVEL_NUMBERS = Array.from({ length: 10 }, (_, index) => index + 1);
+// Which way is harder for each thing a level changes: up, down, or switched on.
+const HARDER = { enemy: 'up', hold: 'down', standoff: 'up', lobEvery: 'down', shellSeconds: 'down', moreFirst: 'up', moreMost: 'up', inAir: 'up', dash: 'on', pairs: 'on', lead: 'up', retreat: 'on', doubleShell: 'on' };
+
+test('level 1 is the game as it always was, with every speed and difficulty', () => {
+  for (const pace of Object.keys(PACES)) {
+    for (const level of Object.keys(LEVELS)) {
+      const patrol = started({ pace, level, levelNumber: 1 });
+      assert.equal(patrol.pace, PACES[pace]);
+      assert.equal(patrol.level, LEVELS[level]);
+      assert.equal(patrol.enemySpeed, PACES[pace].enemy);
+      assert.equal(patrol.shellSeconds, LEVELS[level].shellSeconds);
+      assert.equal(patrol.inAir, LEVELS[level].inAir);
+      assert.equal(patrol.lead, LEVELS[level].lead);
+      assert.equal(patrol.mostOut, PACES[pace].out[0]);
+    }
+  }
+  const plan = levelPlan(1);
+  assert.deepEqual([plan.standoff, plan.moreFirst, plan.moreMost, plan.dash, plan.pairs, plan.retreat, plan.doubleShell], [0, 0, 0, false, false, false, 0]);
+  for (const key of ['enemy', 'hold', 'lobEvery', 'shellSeconds']) assert.equal(plan[key], 1, key);
+});
+
+test('each level is the same or harder than the one before in every way, and harder in at least one', () => {
+  assert.deepEqual(Object.keys(levelPlan(1)).sort(), Object.keys(HARDER).sort());
+  for (const level of LEVEL_NUMBERS.slice(1)) {
+    const before = levelPlan(level - 1);
+    const now = levelPlan(level);
+    let harder = 0;
+    for (const [key, way] of Object.entries(HARDER)) {
+      const [a, b] = way === 'down' ? [now[key], before[key]] : [Number(before[key]), Number(now[key])];
+      assert.ok(a <= b, `level ${level}: ${key} got easier`);
+      if (a < b) harder += 1;
+    }
+    assert.ok(harder >= 1, `level ${level} is no harder than ${level - 1}`);
+  }
+  for (const key of ['dash', 'pairs', 'retreat', 'doubleShell']) assert.ok(LEVEL_NUMBERS.find((level) => levelPlan(level)[key]) >= 3, key);
+});
+
+test('a level never changes what a grown-up chose: hearts, Gentle, how many tanks, reach help or driving', () => {
+  for (const level of LEVEL_NUMBERS) {
+    const patrol = started({ levelNumber: level, tanks: 10, help: 'lots', driving: 'auto' });
+    assert.equal(patrol.total, 10);
+    assert.equal(patrol.hearts, LEVELS.gentle.hearts);
+    assert.equal(patrol.level, LEVELS.gentle);
+    assert.equal(patrol.help, AIM_HELP.lots);
+    assert.equal(patrol.autoDrive, true);
+    assert.equal(patrol.queue.length + patrol.enemies.length, 10);
+  }
+  const patrol = started({ levelNumber: 10 });
+  oneTankAt(patrol, 30);
+  lotsOfHits(patrol, 20);
+  run(patrol, 2, closedAt(patrol.tank.x, patrol.tank.z));
+  assert.equal(patrol.state, 'playing', 'Gentle still can\'t be lost');
+  assert.equal(patrol.hearts, 1);
+});
+
+/**
+ * A child playing: driving at the nearest robot tank with a closed hand until it's in range, then
+ * opening to fire, and driving away from a shell that's coming down on them. Changing from one to the
+ * other takes a moment. Counts the movements asked for: each open or close, and each new tank to aim at.
+ */
+function patrolLikeAChild(patrol, { switchSeconds = 0.45, dodge = true, auto = false } = {}) {
+  let hand = 'closed';
+  let waitFor = 0;
+  let target = null;
+  let movements = 0;
+  let seconds = 0;
+  while (patrol.state === 'playing' && seconds < 900) {
+    const { tank } = patrol;
+    const nearest = patrol.rolling.slice().sort((a, b) => Math.hypot(a.x - tank.x, a.z - tank.z) - Math.hypot(b.x - tank.x, b.z - tank.z))[0];
+    if (nearest && nearest !== target) {
+      target = nearest;
+      movements += 1;
+    }
+    const shell = dodge && !auto && patrol.shells.find(({ to, blast, share }) => share > 0.25 && Math.hypot(tank.x - to.x, tank.z - to.z) <= blast + 1);
+    let wanted = 'closed';
+    let pointer = target ? { x: target.x, z: target.z } : { x: tank.x, z: tank.z };
+    if (shell) {
+      const dx = tank.x - shell.to.x;
+      const dz = tank.z - shell.to.z;
+      const gap = Math.hypot(dx, dz) || 1;
+      pointer = { x: tank.x + (dx / gap) * 12, z: tank.z + (dz / gap) * 12 };
+    } else if (auto || (target && patrol.inRange(target))) {
+      wanted = 'open';
+    }
+    if (wanted !== hand) {
+      waitFor += STEP;
+      if (waitFor >= switchSeconds) {
+        hand = wanted;
+        waitFor = 0;
+        movements += 1;
+      }
+    } else {
+      waitFor = 0;
+    }
+    patrol.update(STEP, { hand, pointer });
+    seconds += STEP;
+  }
+  return { seconds, perMinute: (movements / seconds) * 60, won: patrol.state === 'won' };
+}
+
+const average = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
+
+test('level 10 asks no more than twice the movements a minute of level 1, and lasts no more than a third longer', () => {
+  // On Gentle, so that every game gets to the end and they can be compared.
+  for (const [pace, tanks] of [['slow', 6], ['medium', 10], ['fast', 15]]) {
+    const play = (levelNumber) => [3, 7, 11, 19].map((seed) => patrolLikeAChild(started({ pace, tanks, levelNumber, random: seeded(seed) })));
+    const first = play(1);
+    const last = play(10);
+    for (const game of [...first, ...last]) assert.ok(game.won, `${pace}: not finished`);
+    const longer = average(last.map(({ seconds }) => seconds)) / average(first.map(({ seconds }) => seconds));
+    const busier = average(last.map(({ perMinute }) => perMinute)) / average(first.map(({ perMinute }) => perMinute));
+    console.log(`tank patrol ${pace}: level 10 is ${longer.toFixed(2)} times as long, with ${busier.toFixed(2)} times the movements a minute`);
+    assert.ok(longer <= 1.34, `${pace}: ${longer.toFixed(2)} times as long`);
+    assert.ok(busier <= 2, `${pace}: ${busier.toFixed(2)} times the movements`);
+  }
+});
+
+test('at level 10 there\'s still at least 70% of the time to get out from under a shell', () => {
+  for (const level of Object.keys(LEVELS)) {
+    const first = started({ level, levelNumber: 1 });
+    const last = started({ level, levelNumber: 10 });
+    assert.ok(last.shellSeconds >= first.shellSeconds * 0.7, level);
+  }
+  assert.ok(started({ levelNumber: 10 }).shellSeconds >= 3, 'on Gentle, still three seconds or more');
+});
+
+test('every speed, difficulty and way of driving can be played right through at level 10', () => {
+  for (const pace of Object.keys(PACES)) {
+    for (const level of Object.keys(LEVELS)) {
+      for (const driving of ['closed', 'auto']) {
+        const patrol = started({ tanks: 10, pace, level, driving, levelNumber: 10, random: seeded(pace.length * 13 + level.length) });
+        const { won } = patrolLikeAChild(patrol, { auto: driving === 'auto' });
+        assert.ok(won || (patrol.state === 'lost' && LEVELS[level].canLose), `${pace} ${level} ${driving}: ${patrol.state}`);
+        if (won) assert.equal(patrol.stopped, 10);
+        assert.ok(Number.isFinite(patrol.tank.x + patrol.tank.z + patrol.tank.heading + patrol.tank.turret));
+      }
+    }
+  }
+});
+
+test('at level 10 the new things really happen: dashing scouts, pairs, shells aimed ahead, running off and two shells at once', () => {
+  const events = [];
+  const patrol = started({ tanks: 15, levelNumber: 10, random: seeded(5), onEvent: (event) => events.push({ ...event, paired: Boolean(event.enemy?.leader) }) });
+  const count = (type) => events.filter((event) => event.type === type).length;
+  const log = { events, count };
+  const result = patrolLikeAChild(patrol);
+  assert.ok(result.won);
+  assert.ok(log.count('dash') > 0, 'dashes');
+  assert.ok(log.count('run-off') > 0, 'runs off');
+  assert.ok(log.events.some(({ type, second }) => type === 'lob' && second), 'two shells at once');
+  assert.ok(log.events.some(({ type, paired }) => type === 'spawn' && paired), 'pairs');
+  assert.equal(patrol.mostOut, PACES.slow.out[1] + 2);
+});
+
+test('a pair keeps together, and a tank running off can still be chased down and stopped', () => {
+  const patrol = started({ tanks: 6, levelNumber: 10, random: seeded(8) });
+  const follower = patrol.enemies.find(({ leader }) => leader);
+  assert.ok(follower);
+  let closest = Infinity;
+  for (let t = 0; t < 30; t += STEP) {
+    patrol.update(STEP, closedAt(START.x + Math.sin(t) * 3, START.z));
+    if (t > 8 && follower.leader?.state === 'rolling') closest = Math.min(closest, Math.hypot(follower.x - follower.leader.x, follower.z - follower.leader.z));
+  }
+  assert.ok(closest < 20, `${closest} apart`);
+
+  const chase = started({ levelNumber: 10 });
+  const log = eventsOf(chase);
+  const enemy = oneTankAt(chase, GUN.range - 4);
+  enemy.hp = 12;
+  enemy.maxHp = 12;
+  let gotAway = false;
+  for (let t = 0; t < 6; t += STEP) {
+    chase.update(STEP, openAt(enemy.x, enemy.z));
+    if (log.count('run-off') && !chase.inRange(enemy)) gotAway = true;
+  }
+  assert.equal(log.count('run-off'), 1);
+  assert.ok(gotAway, 'it got out of range');
+  assert.equal(enemy.state, 'rolling');
+  // Driving after it and opening again stops it.
+  let seconds = 0;
+  while (enemy.state === 'rolling' && seconds < 60) {
+    chase.update(STEP, chase.inRange(enemy) ? openAt(enemy.x, enemy.z) : closedAt(enemy.x, enemy.z));
+    seconds += STEP;
+  }
+  assert.notEqual(enemy.state, 'rolling');
+  assert.ok(Math.max(...STANDOFF) > GUN.range);
+});
+
+test('driving by itself gets out from under two shells at once', () => {
+  const patrol = started({ driving: 'auto', levelNumber: 10 });
+  oneTankAt(patrol, GUN.range + 14);
+  const { tank } = patrol;
+  for (const dx of [0, 9]) patrol.shells.push({ share: 0.3, seconds: 3, blast: patrol.level.blast, from: { x: 0, y: 0, z: 0 }, to: { x: tank.x + dx, y: 0, z: tank.z } });
+  patrol.lobIn = 999;
+  run(patrol, 3, () => openAt(START.x + 20, START.z));
+  assert.equal(patrol.stats.hurts, 0);
+});
+
+test('at level 10, resting still stops it all, and nothing bad happens', () => {
+  const patrol = started({ levelNumber: 10, tanks: 15 });
+  const log = eventsOf(patrol);
+  run(patrol, 6, (t) => closedAt(START.x + Math.sin(t) * 8, START.z - 3));
+  run(patrol, 3.2, { hand: 'none', pointer: null });
+  assert.equal(patrol.resting, true);
+  run(patrol, 2, { hand: 'none', pointer: null }); // Coming to a stop.
+  const where = patrol.rolling.map(({ x, z }) => [x, z]);
+  const before = { lob: log.count('lob'), hearts: patrol.hearts, dash: log.count('dash') };
+  run(patrol, 30, { hand: 'none', pointer: null });
+  assert.deepEqual([log.count('lob'), patrol.hearts, log.count('dash')], [before.lob, before.hearts, before.dash]);
+  patrol.rolling.forEach(({ x, z }, index) => assert.ok(Math.hypot(x - where[index][0], z - where[index][1]) < 0.5));
 });

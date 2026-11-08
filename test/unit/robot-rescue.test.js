@@ -10,8 +10,11 @@ import {
   DRAIN_SECONDS,
   FILLS_ITSELF_AFTER,
   FIRE_RATE,
+  GOO_LEAST_SECONDS,
   LEVELS,
   Mission,
+  levelPlan,
+  lineUp,
   PACES,
   PLACES,
   REFILL_SECONDS,
@@ -864,7 +867,9 @@ test('no game object has a method called then, which would make await hang for e
 test('the rules have no screen in them, so that they can run here', () => {
   const rules = readFileSync(new URL('rescue.js', FOLDER), 'utf8');
   assert.ok(!/\b(document|window|THREE)\b/.test(rules));
-  assert.ok(!/^import /m.test(rules));
+  // Only the shared levels, which have no screen in them either.
+  const imports = rules.match(/^import .*$/gm) ?? [];
+  assert.deepEqual(imports.map((line) => line.match(/from '([^']+)'/)[1]), ['../../core/levels.js']);
 });
 
 test('everything is on this computer', () => {
@@ -891,4 +896,223 @@ test('nothing lights up the whole screen: there are no full-screen effects to fi
     assert.ok(!/fillRect\(0,\s*0,\s*width,\s*height\)/.test(source), file);
     assert.ok(!/emissive/.test(source), file);
   }
+});
+
+/* ---------- levels ---------- */
+
+const LEVEL_NUMBERS = Array.from({ length: 10 }, (_, index) => index + 1);
+// Which way is harder for each thing a level changes: up, down, or switched on.
+const HARDER = { walk: 'up', shuffle: 'down', peek: 'down', throwEvery: 'down', gooSeconds: 'down', atOnce: 'up', gooInAir: 'up', swoop: 'on', hop: 'on', rollers: 'up', doubleThrow: 'up', bigSteps: 'on' };
+
+test('level 1 is the game as it always was, with every pace and difficulty', () => {
+  for (const pace of Object.keys(PACES)) {
+    for (const level of Object.keys(LEVELS)) {
+      const { mission } = makeMission({ pace, level, levelNumber: 1 });
+      const was = { ...PACES[pace], ...LEVELS[level] };
+      assert.equal(mission.walkSpeed, was.walk);
+      assert.equal(mission.shuffleEvery, was.shuffleEvery);
+      assert.equal(mission.peekSeconds, was.peekSeconds);
+      assert.equal(mission.atOnce, was.atOnce);
+      assert.equal(mission.throwEvery, was.throwEvery);
+      assert.equal(mission.gooSeconds, was.gooSeconds);
+      assert.equal(mission.gooInAir, was.gooInAir);
+      assert.equal(mission.pace, PACES[pace]);
+      assert.equal(mission.level, LEVELS[level]);
+    }
+  }
+  const plan = levelPlan(1);
+  assert.deepEqual([plan.swoop, plan.hop, plan.rollers, plan.doubleThrow, plan.bigSteps], [false, false, 0, 0, false]);
+  for (const place of PLACES) assert.deepEqual(lineUp(place, levelPlan(1).rollers), place.robots);
+  // The same robots come out in the same order, and nothing new happens.
+  const old = makeMission({ levelNumber: 1 });
+  const log = old.log;
+  playThrough(old.mission);
+  for (const type of ['swoop', 'hop']) assert.equal(log.count(type), 0, type);
+  assert.ok(!log.events.some(({ type, robot }) => type === 'robot' && robot.kind === 'roller'));
+});
+
+test('each level is the same or harder than the one before in every way, and harder in at least one', () => {
+  assert.deepEqual(Object.keys(levelPlan(1)).sort(), Object.keys(HARDER).sort());
+  for (const level of LEVEL_NUMBERS.slice(1)) {
+    const before = levelPlan(level - 1);
+    const now = levelPlan(level);
+    let harder = 0;
+    for (const [key, way] of Object.entries(HARDER)) {
+      const [a, b] = way === 'down' ? [now[key], before[key]] : [Number(before[key]), Number(now[key])];
+      assert.ok(a <= b, `level ${level}: ${key} got easier`);
+      if (a < b) harder += 1;
+    }
+    assert.ok(harder >= 1, `level ${level} is no harder than ${level - 1}`);
+  }
+});
+
+test('new kinds of thing come in from level 3 on, and level 10 has them all', () => {
+  const firstAt = (key) => LEVEL_NUMBERS.find((level) => Number(levelPlan(level)[key]) > 0);
+  for (const key of ['swoop', 'hop', 'rollers', 'doubleThrow', 'bigSteps']) {
+    assert.ok(firstAt(key) >= 3, key);
+    assert.ok(Number(levelPlan(10)[key]) > 0, key);
+  }
+});
+
+test('a level never changes what a grown-up chose: hearts, Gentle, reloading, reach or the number of stops', () => {
+  for (const level of LEVEL_NUMBERS) {
+    const { mission } = makeMission({ levelNumber: level, stops: 3, reloading: false });
+    assert.equal(mission.level, LEVELS.gentle);
+    assert.equal(mission.hearts, LEVELS.gentle.hearts);
+    assert.equal(mission.stops.length, 3);
+    assert.equal(mission.blaster.reloading, false);
+    assert.equal(mission.level.canLose, false);
+    assert.equal(mission.level.bigSpots, LEVELS.gentle.bigSpots);
+  }
+});
+
+test('at level 10 on Gentle, goo still can\'t win: hearts stop at one', () => {
+  const { mission, log } = makeMission({ levelNumber: 10 });
+  mission.holdThrows = 0;
+  for (let i = 0; i < 12; i += 1) {
+    const goo = throwOne(mission);
+    run(mission, goo.seconds + 0.1, { hand: 'open' });
+  }
+  assert.equal(mission.hearts, 1);
+  assert.equal(log.count('lost'), 0);
+});
+
+test('at level 10, resting still stops it all: no throwing, swooping, hopping, rolling or stepping', () => {
+  const { mission, log } = makeMission({ levelNumber: 10, level: 'tough' });
+  while (mission.place.id !== 'tower') {
+    mission.queue = [];
+    for (const robot of [...mission.robots]) mission.drop(robot);
+    while (mission.phase !== 'fighting' || mission.leftHere === 0) mission.update(DT, { hand: 'open' });
+  }
+  mission.spawn('roller');
+  run(mission, REST_AFTER_SECONDS + 0.1, { hand: 'none' });
+  assert.equal(mission.resting, true);
+  run(mission, 3, { hand: 'none' }); // Anything already under way finishes.
+  const where = () => mission.robots.filter(({ kind }) => kind !== 'drone').map(({ x, z }) => `${x.toFixed(4)},${z.toFixed(4)}`);
+  const before = { at: where(), goo: log.count('goo'), swoop: log.count('swoop'), hop: log.count('hop'), hearts: mission.hearts };
+  run(mission, 40, { hand: 'none' });
+  assert.deepEqual(where(), before.at);
+  assert.deepEqual([log.count('goo'), log.count('swoop'), log.count('hop'), mission.hearts], [before.goo, before.swoop, before.hop, before.hearts]);
+  assert.equal(mission.goo.length, 0);
+});
+
+/**
+ * A child playing, more slowly than a test would: moving the hand onto a new target takes a moment,
+ * closing to reload takes a while, and the shield goes up for goo that's about to arrive. Counts the
+ * movements asked for: each close of the hand, and each move of the hand onto a new target.
+ */
+function playLikeAChild(mission, { aimSeconds = 0.6, reloadSeconds = 0.9 } = {}) {
+  let target = null;
+  let aimingFor = 0;
+  let closedFor = 0;
+  let closes = 0;
+  let moves = 0;
+  let seconds = 0;
+  while (!['won', 'lost'].includes(mission.phase) && seconds < 1500) {
+    if (closedFor <= 0) {
+      const arriving = mission.goo.find((goo) => (1 - goo.t) * goo.seconds < 0.7);
+      if (mission.blaster.empty || arriving) {
+        closedFor = arriving ? (1 - arriving.t) * arriving.seconds + 0.25 : reloadSeconds;
+        closes += 1;
+      }
+    }
+    let hand = 'open';
+    if (closedFor > 0) {
+      closedFor -= DT;
+      hand = 'closed';
+    } else {
+      const robots = mission.targets().filter(({ kind }) => kind !== 'goo');
+      if (!robots.includes(target)) {
+        target = robots[0] ?? null;
+        if (target) {
+          aimingFor = aimSeconds;
+          moves += 1;
+        }
+      }
+      aimingFor -= DT;
+    }
+    mission.update(DT, { hand, target: hand === 'open' && aimingFor <= 0 ? target : null });
+    seconds += DT;
+  }
+  return { seconds, perMinute: ((closes + moves) / seconds) * 60, won: mission.phase === 'won' };
+}
+
+const average = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
+
+test('level 10 asks no more than twice the movements a minute of level 1, and lasts no more than a third longer', () => {
+  // On Gentle, so that every game gets to the end and they can be compared.
+  for (const [pace, stops] of [['slow', 5], ['medium', 5], ['fast', 3]]) {
+    const play = (levelNumber) => [3, 7, 11, 19].map((seed) => {
+      const mission = new Mission({ pace, stops, levelNumber, random: steady(seed) });
+      mission.start();
+      return playLikeAChild(mission);
+    });
+    const first = play(1);
+    const last = play(10);
+    for (const game of [...first, ...last]) assert.ok(game.won, `${pace}: not finished`);
+    const longer = average(last.map(({ seconds }) => seconds)) / average(first.map(({ seconds }) => seconds));
+    const busier = average(last.map(({ perMinute }) => perMinute)) / average(first.map(({ perMinute }) => perMinute));
+    console.log(`robot rescue ${pace}: level 10 is ${longer.toFixed(2)} times as long, with ${busier.toFixed(2)} times the movements a minute`);
+    assert.ok(longer <= 1.34, `${pace}: ${longer.toFixed(2)} times as long`);
+    assert.ok(busier <= 2, `${pace}: ${busier.toFixed(2)} times the movements`);
+  }
+});
+
+test('at level 10 there\'s still at least 70% of the time to react that level 1 gives', () => {
+  for (const pace of Object.keys(PACES)) {
+    for (const level of Object.keys(LEVELS)) {
+      const first = makeMission({ pace, level, levelNumber: 1 }).mission;
+      const last = makeMission({ pace, level, levelNumber: 10 }).mission;
+      assert.ok(last.gooSeconds >= first.gooSeconds * 0.7, `${pace} ${level}: goo`);
+      assert.ok(last.gooSeconds >= Math.min(first.gooSeconds, GOO_LEAST_SECONDS), `${pace} ${level}: goo under 2 seconds`);
+      assert.ok(last.peekSeconds >= first.peekSeconds * 0.7, `${pace} ${level}: peekers`);
+    }
+  }
+});
+
+test('at level 10 the new things really happen, and the whole rescue can still be finished', () => {
+  const { mission, log } = makeMission({ levelNumber: 10 });
+  const result = playLikeAChild(mission);
+  assert.ok(result.won);
+  assert.equal(mission.stats.friends, PLACES.length);
+  assert.ok(log.count('swoop') > 0, 'swoops');
+  assert.ok(log.count('hop') > 0, 'hops');
+  assert.ok(log.events.some(({ type, robot }) => type === 'robot' && robot.kind === 'roller'), 'rollers');
+  assert.ok(log.events.some(({ type, again }) => type === 'windup' && again), 'second throws');
+  assert.equal(mission.atOnce, PACES.slow.atOnce + 1);
+});
+
+test('rollers keep moving, never throw, and the big one steps from side to side', () => {
+  const { mission, log } = makeMission({ levelNumber: 10 });
+  mission.holdThrows = 0;
+  const roller = mission.spawn('roller');
+  const seen = new Set();
+  for (let t = 0; t < 20; t += DT) {
+    mission.update(DT, { hand: 'open' });
+    seen.add(`${Math.round(roller.x)},${Math.round(roller.z)}`);
+  }
+  assert.ok(seen.size > 6, 'it rolls about');
+  assert.ok(!log.events.some(({ type, robot }) => type === 'windup' && robot === roller));
+  const { mission: there } = atTheBigOne({ levelNumber: 10 });
+  const steps = [];
+  for (let t = 0; t < 8; t += DT) {
+    there.update(DT, { hand: 'open' });
+    steps.push(there.robots.find(({ kind }) => kind === 'big').x);
+  }
+  assert.ok(Math.max(...steps) - Math.min(...steps) > 2, 'the big one steps');
+  assert.ok(Math.max(...steps.map(Math.abs)) <= PLACES.at(-1).big[0] + 2.5);
+});
+
+test('a hopping peeker flies from one cover to another, and can be aimed at as it goes', () => {
+  const { mission, log } = makeMission({ levelNumber: 10 });
+  const peeker = outKind(mission, 'peeker');
+  let hopping = false;
+  for (let t = 0; t < 30 && !hopping; t += DT) {
+    mission.update(DT, { hand: 'open' });
+    hopping = peeker.state === 'hopping' && peeker.hop > 0.3 && peeker.hop < 0.7;
+  }
+  assert.ok(hopping);
+  assert.ok(peeker.lift > 0.8);
+  assert.ok(mission.targets().includes(peeker));
+  assert.ok(log.count('hop') >= 1);
 });

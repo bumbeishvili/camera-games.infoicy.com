@@ -10,6 +10,9 @@
 // the guns fire by themselves at any plane inside it. Nobody gets hurt: a plane that's dropped falls
 // away smoking, and its pilot comes down by parachute. A child who lowers their arms glides, and after
 // a while nobody shoots at them, however long they rest.
+//
+// Each level, from 1 to 10, is a little harder than the one before: see flightLevel.
+import { ramp, stepsAt } from '../../core/levels.js';
 import { WORLD, floorAt } from './island-map.js';
 
 const degrees = (value) => (value * Math.PI) / 180;
@@ -31,7 +34,35 @@ export const LEVELS = {
 };
 
 export const HEARTS = 5;
-export const MOST_AT_ONCE = 3;
+export const MOST_AT_ONCE = 3; // At level 1. See flightLevel.
+const CAPTAIN_HITS = 1.4; // The pirate captain takes this many times the hits of the others.
+const WEAVE_RATE = 1.3; // How quickly a weaving pirate swings from side to side, in radians a second.
+
+/**
+ * What a level changes. Level 1 is the game as it always was. What a grown-up chose stays theirs: the
+ * ring's size, the help with lining up, how hard the pirates shoot, whether the child can be shot
+ * down, the speed and how many planes there are to drop. Being hunted gives as long to turn as ever.
+ */
+export function flightLevel(level = 1) {
+  return {
+    // The pirates fly a little faster, as a share of the child's plane, but never as fast as it.
+    enemySpeed: ramp(level, ENEMY.speed, 0.88),
+    // And turn more sharply, in radians a second.
+    enemyTurn: ramp(level, ENEMY.turn, 0.95),
+    // One turns to hunt the child a little more often, down to 80% of the time between by level 10.
+    huntEvery: ramp(level, 1, 0.8),
+    // A plane being shot at tries for longer to get out of the ring.
+    dodgeSeconds: ramp(level, ENEMY.dodgeSeconds, 2.4),
+    // From level 3 the pirates weave from side to side as they cross, as far as this either way.
+    weave: stepsAt(level, { 1: 0, 3: 0.15, 6: 0.22, 9: 0.3 }),
+    // From level 5 they go higher and lower, by this much more, to be followed up and down.
+    climbs: stepsAt(level, { 1: 1, 5: 1.2 }),
+    // From level 9 there can be four in the air at once.
+    atOnce: stepsAt(level, { 1: MOST_AT_ONCE, 9: 4 }),
+    // From level 8 the last one is the pirate captain: a bigger plane with a flag, which takes more hits.
+    captain: stepsAt(level, { 1: false, 8: true }),
+  };
+}
 // The camera, from the plane: behind and above, looking the way the plane points. The ring is in the
 // middle of its view, so what's in the ring on the screen is what the guns fire at.
 export const CAMERA = { back: 15, up: 4.4 };
@@ -82,6 +113,7 @@ const ENEMY = {
 };
 const BEHIND_EVERY = 14; // Seconds at the least between being told a plane is behind.
 const WON_AFTER = 0.9;
+export const MOST_AT_ONCE_EVER = flightLevel(10).atOnce; // For the marks on the screen.
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const between = (random, [low, high]) => low + random() * (high - low);
@@ -111,10 +143,15 @@ export class Flight {
   /**
    * planes is how many there are to drop, pace and level are from PACES and LEVELS, and climbing says
    * whether the child's arms control how high they go. If not, the plane does that by itself.
+   * levelNumber is the level, from 1 to 10: see flightLevel.
    */
-  constructor({ planes = 6, pace = 'slow', level = 'gentle', climbing = true, random = Math.random, onEvent = () => {} } = {}) {
+  constructor({ planes = 6, pace = 'slow', level = 'gentle', levelNumber = 1, climbing = true, random = Math.random, onEvent = () => {} } = {}) {
     this.pace = PACES[pace];
     this.level = LEVELS[level];
+    this.levelNumber = levelNumber;
+    this.levelRules = flightLevel(levelNumber);
+    this.atOnce = this.levelRules.atOnce;
+    this.enemyHits = this.level.enemyHits;
     this.climbing = climbing;
     this.random = random;
     this.onEvent = onEvent;
@@ -144,7 +181,7 @@ export class Flight {
     this.shotIn = 0;
     this.locked = null;
     this.firing = false;
-    this.huntIn = 4 + between(random, this.level.huntEvery);
+    this.huntIn = 4 + between(random, this.huntEvery);
     this.hunted = null;
     this.saidBehindAt = -Infinity;
     this.wonIn = null;
@@ -160,6 +197,11 @@ export class Flight {
     this.state = 'flying';
     this.speed = this.pace.speed;
     this.fill();
+  }
+
+  /** Seconds between hunts, as this level plays them. */
+  get huntEvery() {
+    return this.level.huntEvery.map((seconds) => seconds * this.levelRules.huntEvery);
   }
 
   get dropped() {
@@ -207,7 +249,7 @@ export class Flight {
   /* ---------- other planes ---------- */
 
   fill() {
-    while (this.waiting > 0 && this.flying.length < MOST_AT_ONCE) this.spawn();
+    while (this.waiting > 0 && this.flying.length < this.atOnce) this.spawn();
   }
 
   spawn() {
@@ -218,17 +260,23 @@ export class Flight {
     const direction = this.heading + side;
     const x = this.x + Math.sin(direction) * away;
     const z = this.z - Math.cos(direction) * away;
+    const { climbs, captain, weave, enemySpeed } = this.levelRules;
+    const isCaptain = captain && this.waiting === 0 && this.total > 1;
+    const hits = Math.round(this.enemyHits * (isCaptain ? CAPTAIN_HITS : 1));
     const enemy = {
       index: this.nextPilot,
       x,
       z,
-      y: this.y + between(random, ENEMY.upDown),
+      y: this.y + between(random, ENEMY.upDown.map((height) => height * climbs)),
       heading: this.heading + Math.PI + (random() - 0.5),
       pitch: 0,
       roll: 0,
-      speed: this.pace.speed * ENEMY.speed,
+      speed: this.pace.speed * enemySpeed,
       state: 'flying',
-      hitsLeft: this.level.enemyHits,
+      captain: isCaptain,
+      weavePhase: weave > 0 ? random() * Math.PI * 2 : 0,
+      hitsTotal: hits,
+      hitsLeft: hits,
       hitLeft: 0,
       mode: 'cross',
       modeLeft: 0,
@@ -252,22 +300,24 @@ export class Flight {
     const across = between(random, dodging ? ENEMY.dodgeAcross : ENEMY.across) * (random() < 0.5 ? -1 : 1);
     const x = this.x + forward.x * ahead + forward.z * across;
     const z = this.z + forward.z * ahead - forward.x * across;
-    const way = { x, z, y: this.y + forward.y * ahead + between(random, ENEMY.upDown) };
+    const way = { x, z, y: this.y + forward.y * ahead + between(random, ENEMY.upDown.map((height) => height * this.levelRules.climbs)) };
     keepInside(way);
     way.y = Math.max(way.y, floorAt(way.x, way.z) + 14);
     enemy.way = way;
     enemy.modeLeft = 7;
   }
 
-  flyEnemyTowards(enemy, target, share, dt) {
+  /** weave turns it from side to side on the way, by up to that much either way. */
+  flyEnemyTowards(enemy, target, share, dt, weave = 0) {
     const dx = target.x - enemy.x;
     const dy = target.y - enemy.y;
     const dz = target.z - enemy.z;
-    const wanted = headingTo(dx, dz);
-    const turn = clamp(turnBetween(wanted, enemy.heading), -ENEMY.turn * dt, ENEMY.turn * dt);
+    const wanted = headingTo(dx, dz) + (weave ? Math.sin(this.time * WEAVE_RATE + enemy.weavePhase) * weave : 0);
+    const most = this.levelRules.enemyTurn * dt;
+    const turn = clamp(turnBetween(wanted, enemy.heading), -most, most);
     enemy.heading += turn;
     enemy.pitch = damp(enemy.pitch, clamp(Math.atan2(dy, Math.hypot(dx, dz) || 1), -ENEMY.pitch, ENEMY.pitch), 2, dt);
-    const sharpness = dt > 0 ? clamp(turn / (ENEMY.turn * dt), -1, 1) : 0;
+    const sharpness = dt > 0 ? clamp(turn / most, -1, 1) : 0;
     enemy.roll = damp(enemy.roll, sharpness * FLY.roll * 0.85, 4, dt);
     const forward = forwardOf(enemy.heading, enemy.pitch);
     const speed = this.pace.speed * share;
@@ -358,8 +408,9 @@ export class Flight {
 
       enemy.modeLeft -= dt;
       if (!enemy.way || enemy.modeLeft <= 0 || Math.hypot(enemy.x - enemy.way.x, enemy.y - enemy.way.y, enemy.z - enemy.way.z) < ENEMY.reached) this.pickWay(enemy);
-      const share = enemy.dodgeLeft > 0 ? ENEMY.dodgeSpeed : behindChild && away > 90 ? ENEMY.catchUp : ENEMY.speed;
-      this.flyEnemyTowards(enemy, enemy.way, share, dt);
+      const share = enemy.dodgeLeft > 0 ? ENEMY.dodgeSpeed : behindChild && away > 90 ? ENEMY.catchUp : this.levelRules.enemySpeed;
+      const weave = enemy.dodgeLeft > 0 ? 0 : this.levelRules.weave;
+      this.flyEnemyTowards(enemy, enemy.way, share, dt, weave);
     }
     this.enemies = this.enemies.filter(({ state }) => state !== 'gone');
   }
@@ -369,7 +420,7 @@ export class Flight {
     if (this.resting) return;
     this.huntIn -= dt;
     if (this.huntIn > 0) return;
-    this.huntIn = between(this.random, this.level.huntEvery);
+    this.huntIn = between(this.random, this.huntEvery);
     const hunting = this.flying.some(({ mode }) => mode === 'hunt');
     if (hunting) return;
     const free = this.flying.filter((enemy) => enemy !== this.locked);
@@ -454,7 +505,7 @@ export class Flight {
     // Being shot at, it stops hunting and tries to get out of the ring, so it has to be chased.
     if (enemy.dodgeLeft === 0) {
       enemy.mode = 'cross';
-      enemy.dodgeLeft = ENEMY.dodgeSeconds;
+      enemy.dodgeLeft = this.levelRules.dodgeSeconds;
       this.pickWay(enemy, { dodging: true });
     }
   }

@@ -98,8 +98,11 @@ class RescueGame {
 
   /* ---------- a new game ---------- */
 
-  /** The robots are on their way before the countdown has finished, so there's nothing to wait for. */
-  prepare() {
+  /**
+   * The robots are on their way before the countdown has finished, so there's nothing to wait for.
+   * level, from 1 to 10, makes it harder within the grown-up's choices: see levelPlan in rescue.js.
+   */
+  prepare(level = 1) {
     const { settings } = this.session;
     this.applySettings();
     this.story.hide();
@@ -118,6 +121,7 @@ class RescueGame {
       stops: settings.stops,
       pace: settings.pace,
       level: settings.rescueLevel,
+      levelNumber: level,
       reloading: settings.reloading !== 'off',
       onEvent: (event) => this.onEvent(event),
     });
@@ -149,6 +153,7 @@ class RescueGame {
       'robot-hit': () => sound.hit(),
       'spot-hit': () => sound.hit(),
       peek: () => sound.popUp(),
+      hop: () => sound.popUp(),
       'robot-dropped': () => this.onDropped(event),
       'spot-open': () => this.onSpotOpen(),
       'spot-done': () => sound.spotDone(),
@@ -356,7 +361,9 @@ class RescueGame {
     const { stats } = this.mission;
     const { hands } = this.session.settings;
     const onHand = (value) => ({ left: hands === 'left' ? value : 0, right: hands === 'right' ? value : 0 });
-    return { hero: this.heroCount(), noun: 'rescue', rows: { robots: onHand(stats.robots), friends: onHand(stats.friends) } };
+    // Running out of hearts, which only Medium and Tough allow, means trying the same level again.
+    const won = this.ended !== SO_CLOSE;
+    return { hero: this.heroCount(), noun: 'rescue', rows: { robots: onHand(stats.robots), friends: onHand(stats.friends) }, won };
   }
 }
 

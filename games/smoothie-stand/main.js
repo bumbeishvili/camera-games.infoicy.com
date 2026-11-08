@@ -40,6 +40,11 @@ class SmoothieGame {
         this.bump = { side, at: session.playSeconds };
       },
       onShaken: () => session.sound.handsOpen(),
+      // The first swipe on a tough fruit, from the higher levels: a crack, and one more to go.
+      onCrack: () => {
+        this.idleFor = 0;
+        session.sound.play('chop', { gain: 0.5, rate: 1.25 });
+      },
     });
     this.field.joze = Object.assign(new Image(), { src: session.portraits.joze });
     this.applySettings();
@@ -65,8 +70,10 @@ class SmoothieGame {
     this.applySettings();
   }
 
-  prepare() {
+  /** A new fair, at this level: see fairAt in orders.js for what each level brings. */
+  prepare(level) {
     this.applySettings();
+    this.field.setLevel(level);
     this.field.reset();
     this.story.hide();
     byId('order').replaceChildren();
@@ -75,9 +82,11 @@ class SmoothieGame {
     this.saidSticky = false;
     this.stand = new Stand({
       short: this.session.settings.customers === 3,
+      level,
       onEvent: (event) => this.onStandEvent(event),
     });
     this.field.nextFruit = () => this.stand.nextFruit();
+    this.field.nextThrow = () => this.stand.nextThrow();
     this.showProgress();
   }
 

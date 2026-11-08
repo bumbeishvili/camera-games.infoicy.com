@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { Practice } from '../../games/leap-trail/practice.js';
 import { LANE_STEP, LaneReader, bodyAcross } from '../../games/leap-trail/lanes.js';
-import { LANES, OBSTACLES, PACES, Run, layCourse } from '../../games/leap-trail/run.js';
+import { GOLD_STARS, LANES, OBSTACLES, PACES, Run, fills, layCourse, paceAt, trailLevel } from '../../games/leap-trail/run.js';
 
 function seeded(seed = 7) {
   let state = seed;
@@ -74,9 +74,9 @@ test('every obstacle is a jump: nothing asks for a squat, and there\'s no way to
   }
   assert.ok(Object.values(OBSTACLES).every(({ needs }) => needs === 'jump'));
   assert.equal(typeof new Run().squat, 'undefined');
-  // All four kinds still turn up.
+  // All four kinds of level 1 still turn up, and only those. Later levels bring more: see below.
   const { course } = layCourse({ obstacles: 200, pace: 'slow', random: seeded(5) });
-  assert.deepEqual(new Set(course.map(({ kind }) => kind)), new Set(Object.keys(OBSTACLES)));
+  assert.deepEqual(new Set(course.map(({ kind }) => kind)), new Set(['log', 'hay', 'rocks', 'stream']));
 });
 
 test('lines of stars move between the three lanes, one lane at a time, starting in the middle', () => {
@@ -533,4 +533,324 @@ test('everything Leap Trail says has a voice file, in English and in Georgian', 
   assert.ok(asked.size >= 12, `only found ${asked.size} lines`);
   assert.deepEqual([...asked].filter((text) => !known.has(text)), []);
   assert.deepEqual(lines.map(({ text }) => text).filter((text) => !asked.has(text)), [], 'nothing rendered that can no longer be said');
+});
+
+/* ---------- levels ---------- */
+
+const LEVELS = Array.from({ length: 10 }, (_, index) => index + 1);
+
+test('level 1 keeps the trail\'s pace and obstacles as they always were', () => {
+  const rules = trailLevel(1);
+  assert.deepEqual(
+    { speed: rules.speed, gaps: rules.gaps, early: rules.early, laneMoves: rules.laneMoves, gold: rules.gold, zigzag: rules.zigzag, kinds: rules.kinds },
+    { speed: 1, gaps: 1, early: 1, laneMoves: 0.65, gold: 0, zigzag: 0, kinds: ['log', 'hay', 'rocks', 'stream'] },
+  );
+  // What's new at level 1 is that some obstacles leave a lane free: most still go right across.
+  assert.deepEqual([rules.full, rules.single], [0.75, 0]);
+  for (const pace of Object.keys(PACES)) assert.deepEqual(paceAt(pace, 1), PACES[pace]);
+  // The same obstacles in the same places, to the millimetre, as before there were levels.
+  const round = (value) => Math.round(value * 1000) / 1000;
+  const expected = {
+    slow: { at: [42, 96.502, 142.355, 192.467, 245.143, 296.383, 347.795, 395.244, 447.364, 491.443, 540.738, 595.312], end: 612.044 },
+    fast: { at: [72, 136.559, 191.191, 250.662, 313.092, 373.709, 434.666, 490.951, 552.744, 605.32, 663.858, 728.285], end: 759.279 },
+  };
+  for (const [pace, { at, end }] of Object.entries(expected)) {
+    const laid = layCourse({ obstacles: 12, pace, random: seeded(7), levelNumber: 1 });
+    assert.equal(laid.course.map(({ kind }) => kind).join(','), 'log,hay,rocks,hay,stream,rocks,stream,hay,rocks,rocks,stream,log');
+    assert.deepEqual(laid.course.map((obstacle) => round(obstacle.at)), at);
+    assert.equal(round(laid.end), end);
+    assert.ok(laid.course.every(({ gold }) => !gold), 'no golden stars');
+  }
+  const run = new Run({ pace: 'medium', random: seeded() });
+  assert.equal(run.levelNumber, 1);
+  assert.deepEqual(run.settings, PACES.medium);
+});
+
+test('each level is the same as the one before or harder, in every way, and always harder in something', () => {
+  for (const level of LEVELS.slice(1)) {
+    const before = trailLevel(level - 1);
+    const now = trailLevel(level);
+    const harder = [now.speed > before.speed, now.gaps < before.gaps, now.early < before.early, now.laneMoves > before.laneMoves, now.gold > before.gold, now.zigzag > before.zigzag, now.kinds.length > before.kinds.length];
+    assert.ok(now.speed >= before.speed && now.gaps <= before.gaps && now.early <= before.early, `${level}: pace`);
+    assert.ok(now.laneMoves >= before.laneMoves && now.gold >= before.gold && now.zigzag >= before.zigzag, `${level}: stars`);
+    assert.ok(now.full <= before.full && now.single >= before.single && now.freeSwitch >= before.freeSwitch && now.freeStars >= before.freeStars, `${level}: lanes to choose between`);
+    assert.ok(before.kinds.every((kind) => now.kinds.includes(kind)), `${level}: nothing taken away`);
+    assert.ok(harder.some(Boolean), `${level}: something is harder`);
+  }
+  // New kinds of thing from level 3 on.
+  assert.equal(trailLevel(2).gold, 0);
+  assert.ok(trailLevel(3).gold > 0, 'golden stars from level 3');
+  assert.deepEqual(trailLevel(4).kinds.slice(4), ['fence']);
+  assert.ok(trailLevel(5).zigzag > 0, 'lines across a lane from level 5');
+  assert.deepEqual(trailLevel(10).kinds, Object.keys(OBSTACLES));
+});
+
+test('new obstacles still ask for a jump, aren\'t taller than a good jump, and all turn up at level 10', () => {
+  for (const level of LEVELS) {
+    const { course } = layCourse({ obstacles: 200, pace: 'slow', random: seeded(level), levelNumber: level });
+    assert.ok(course.every(({ needs }) => needs === 'jump'), `${level}`);
+    assert.deepEqual(new Set(course.map(({ kind }) => kind)), new Set(trailLevel(level).kinds), `${level}`);
+  }
+  for (const [name, { height }] of Object.entries(OBSTACLES)) assert.ok(height < 1.3, name);
+  assert.equal(typeof new Run({ levelNumber: 10 }).squat, 'undefined', 'and there are still no squats');
+});
+
+test('golden stars hang over one lane, one step at most from the stars before, and only from level 3', () => {
+  for (const level of LEVELS) {
+    const { course, starLines } = layCourse({ obstacles: 100, pace: 'slow', random: seeded(3), levelNumber: level });
+    const golden = course.filter(({ gold }) => gold);
+    if (level < 3) assert.equal(golden.length, 0);
+    else assert.ok(Math.abs(golden.length / course.length - trailLevel(level).gold) < 0.15, `${level}: ${golden.length}`);
+    // Following everything never asks for more than a step at a time.
+    const path = [...starLines.map(({ at, lane }) => ({ at, lane })), ...golden.map(({ at, length, gold }) => ({ at: at + length / 2, lane: gold.lane }))].sort((a, b) => a.at - b.at);
+    path.forEach((point, i) => assert.ok(i === 0 || Math.abs(point.lane - path[i - 1].lane) <= 1, `${level} at ${i}`));
+  }
+});
+
+test('from level 5 some lines of stars cross into the next lane halfway along', () => {
+  const crossing = (level, lanes = true) => {
+    const starLines = layCourse({ obstacles: 80, pace: 'slow', lanes, random: seeded(11), levelNumber: level }).starLines.filter(({ beside }) => !beside);
+    let count = 0;
+    for (let i = 0; i < starLines.length; i += 6) if (starLines[i].lane !== starLines[i + 5].lane) count += 1;
+    return count;
+  };
+  assert.equal(crossing(4), 0);
+  assert.ok(crossing(5) > 5);
+  // Fewer lines are free to cross at level 10, as more lead into a free lane, but more of those do.
+  assert.ok(crossing(10) > 5);
+  assert.ok(trailLevel(10).zigzag > trailLevel(5).zigzag);
+});
+
+test('a golden star is caught by jumping over in its lane, and missing it costs nothing', () => {
+  const golden = (lane) => {
+    const events = [];
+    const run = new Run({ obstacles: 2, random: seeded(), levelNumber: 10, onEvent: (event) => events.push(event) });
+    run.begin();
+    run.course[0].gold = { lane: 1, taken: false, missed: false };
+    run.setLane(lane);
+    untilInReach(run);
+    run.jump();
+    step(run, 3, () => run.noteActivity());
+    return { run, events };
+  };
+  const caught = golden(1);
+  assert.equal(caught.run.course[0].gold.taken, true);
+  assert.equal(caught.run.stats.gold, 1);
+  assert.equal(caught.run.stats.stars, 3 + GOLD_STARS);
+  assert.equal(caught.events.filter(({ type }) => type === 'gold').length, 1);
+
+  const missed = golden(0);
+  assert.equal(missed.run.course[0].gold.missed, true);
+  assert.equal(missed.run.stats.gold, 0);
+  assert.equal(missed.run.stats.stars, 3, 'the jump still counts');
+  assert.equal(missed.run.stats.streak, 1, 'and so does the streak');
+  assert.equal(missed.run.stats.bumps, 0);
+});
+
+test('with the lanes off, every star and golden star is in the middle at every level', () => {
+  for (const level of LEVELS) {
+    const { course, starLines } = layCourse({ obstacles: 60, pace: 'slow', lanes: false, random: seeded(level), levelNumber: level });
+    assert.ok(starLines.every(({ lane }) => lane === 0), `${level}`);
+    assert.ok(course.every(({ gold }) => !gold || gold.lane === 0), `${level}`);
+  }
+  // So staying in the middle catches every golden star.
+  const run = new Run({ obstacles: 20, lanes: false, random: seeded(4), levelNumber: 10 });
+  run.begin();
+  perfectRun(run);
+  assert.equal(run.stats.gold, run.course.filter(({ gold }) => gold).length);
+  assert.ok(run.stats.gold > 0);
+});
+
+/**
+ * A child catching everything: always in the lane of the next star or golden star, and jumping
+ * delay seconds after a jump starts to count. Says how long it took and how many moves it asked for.
+ */
+function followEverything({ levelNumber, pace, lanes = true, seed, delay = 0 }) {
+  const run = new Run({ obstacles: 20, pace, lanes, random: seeded(seed), levelNumber });
+  run.begin();
+  let laneChanges = 0;
+  let asked = 0;
+  while (run.state === 'running') {
+    const star = run.starLines[run.nextStar];
+    const golden = run.course.find(({ gold, state }) => gold && (state === 'ahead' || state === 'passing'));
+    const goldAt = golden ? golden.at + golden.length / 2 : Infinity;
+    let wanted = golden && goldAt < (star?.at ?? Infinity) ? golden.gold.lane : star?.lane ?? run.lane;
+    // Going round what's coming, when it leaves a lane free: the free lane nearest where it was going.
+    const { next } = run;
+    if (lanes && next && next.state === 'ahead' && run.gapTo(next) < 30 && fills(next, wanted) && next.lanes.length < 3 && !(golden === next && wanted === next.gold.lane)) {
+      wanted = LANES.filter((lane) => !fills(next, lane)).sort((a, b) => Math.abs(a - wanted) - Math.abs(b - wanted))[0];
+    }
+    if (wanted !== run.lane) {
+      laneChanges += 1;
+      run.setLane(wanted);
+    }
+    if (run.mustJump) {
+      asked += 1 / 30;
+      if (asked >= delay) run.jump();
+    } else asked = 0;
+    run.noteActivity();
+    run.update(1 / 30);
+  }
+  const minutes = run.stats.seconds / 60;
+  return { seconds: run.stats.seconds, jumps: run.stats.jumps / minutes, moves: (run.stats.jumps + laneChanges) / minutes, gold: run.stats.gold, lined: run.stats.linedStars, all: run.starLines.length, cleared: run.stats.cleared, bumps: run.stats.bumps };
+}
+
+test('level 10 is still doable: as much time to move, no more than double the moves, and not much longer', () => {
+  for (const pace of Object.keys(PACES)) {
+    assert.ok(paceAt(pace, 10).early >= PACES[pace].early * 0.7, `${pace}: time to jump`);
+    for (const [lanes, delay] of [[true, 0], [true, 0.9], [false, 0.9]]) {
+      const total = (levelNumber) => {
+        const runs = [1, 2, 3, 4, 5].map((seed) => followEverything({ levelNumber, pace, lanes, seed, delay }));
+        const mean = (field) => runs.reduce((sum, one) => sum + one[field], 0) / runs.length;
+        return { seconds: mean('seconds'), jumps: mean('jumps'), moves: mean('moves'), caught: runs.every(({ lined, all }) => lined >= all * 0.9), clean: runs.every(({ cleared, bumps }) => cleared === 20 && bumps === 0) };
+      };
+      const first = total(1);
+      const last = total(10);
+      const name = `${pace}, lanes ${lanes ? 'on' : 'off'}, jumping after ${delay}s`;
+      assert.ok(first.caught && last.caught, `${name}: nearly every star can be caught`);
+      assert.ok(first.clean && last.clean, `${name}: every obstacle cleared, none run into`);
+      assert.ok(last.moves <= first.moves * 2, `${name}: ${last.moves} moves a minute against ${first.moves}`);
+      assert.ok(last.jumps <= first.jumps * 1.5, `${name}: ${last.jumps} jumps a minute against ${first.jumps}`);
+      assert.ok(last.seconds <= first.seconds * 1.33, `${name}: ${last.seconds} seconds against ${first.seconds}`);
+    }
+  }
+});
+
+test('at every level a jump made as soon as it counts goes over, and lands before the next obstacle', () => {
+  for (const level of LEVELS) {
+    for (const pace of Object.keys(PACES)) {
+      const run = new Run({ obstacles: 30, pace, random: seeded(level * 13), levelNumber: level });
+      run.begin();
+      let lowest = Infinity;
+      perfectRun(run);
+      for (let i = 1; i < run.course.length; i += 1) lowest = Math.min(lowest, run.course[i].at - (run.course[i - 1].at + run.course[i - 1].length));
+      assert.equal(run.stats.cleared, 30, `${level} ${pace}`);
+      assert.equal(run.stats.bumps, 0, `${level} ${pace}`);
+      assert.ok(lowest > run.reachDistance, `${level} ${pace}: a jump can always land before the next one counts`);
+    }
+  }
+});
+
+/* ---------- obstacles that fill one, two or three lanes ---------- */
+
+/** A run whose first obstacle fills these lanes, with nothing else to get in the way. */
+function oneObstacle(lanes, options = {}) {
+  const events = [];
+  const run = new Run({ obstacles: 2, random: seeded(), onEvent: (event) => events.push(event), ...options });
+  run.begin();
+  run.course[0].lanes = lanes;
+  run.course[1].lanes = [...LANES];
+  return { run, events, obstacle: run.course[0] };
+}
+
+test('obstacles fill three, two or one lane, more often fewer as the levels go up, and a stream always goes across', () => {
+  const share = (level, width) => {
+    const { course } = layCourse({ obstacles: 400, pace: 'slow', random: seeded(level + 20), levelNumber: level });
+    const kinds = course.filter(({ kind }) => kind !== 'stream');
+    assert.ok(course.filter(({ kind }) => kind === 'stream').every(({ lanes }) => lanes.length === 3), `${level}: streams`);
+    return kinds.filter(({ lanes }) => lanes.length === width).length / kinds.length;
+  };
+  assert.ok(Math.abs(share(1, 3) - 0.75) < 0.07, 'level 1: mostly right across');
+  assert.ok(Math.abs(share(1, 2) - 0.25) < 0.07, 'and some two-lane ones');
+  assert.equal(share(1, 1), 0);
+  assert.ok(share(10, 1) > 0.25 && share(10, 2) > 0.25 && share(10, 3) < 0.4, 'level 10: plenty of each');
+  // On the higher levels the free lane mostly switches sides, so it's a step each time.
+  const switches = (level) => {
+    const narrow = layCourse({ obstacles: 400, pace: 'slow', random: seeded(3), levelNumber: level }).course.filter(({ lanes }) => lanes.length < 3);
+    // How often one fills a lane the last one left free.
+    let filled = 0;
+    for (let i = 1; i < narrow.length; i += 1) if (LANES.some((lane) => !fills(narrow[i - 1], lane) && fills(narrow[i], lane))) filled += 1;
+    return filled / (narrow.length - 1);
+  };
+  assert.ok(switches(10) > switches(1) + 0.15, `${switches(1)} then ${switches(10)}`);
+});
+
+test('a line of stars leads into the free lane, and stars wait there beside the obstacle', () => {
+  const { course, starLines } = layCourse({ obstacles: 200, pace: 'slow', random: seeded(8), levelNumber: 10 });
+  const beside = starLines.filter((star) => star.beside);
+  assert.ok(beside.length > 50);
+  for (const star of beside) {
+    const obstacle = course.find(({ at, length }) => star.at >= at - 6 && star.at <= at + length + 5);
+    assert.ok(obstacle && !fills(obstacle, star.lane), 'in a free lane');
+  }
+  // Following every star and golden star is never more than a step at a time.
+  const path = [...starLines, ...course.filter(({ gold }) => gold).map(({ at, length, gold }) => ({ at: at + length / 2, lane: gold.lane }))].sort((a, b) => a.at - b.at);
+  path.forEach((point, i) => assert.ok(i === 0 || Math.abs(point.lane - path[i - 1].lane) <= 1, `at ${i}`));
+});
+
+test('with the lanes off, every obstacle fills the middle lane, at every level, so there are as many jumps as ever', () => {
+  for (const level of LEVELS) {
+    const { course } = layCourse({ obstacles: 200, pace: 'slow', lanes: false, random: seeded(level), levelNumber: level });
+    assert.ok(course.every((obstacle) => fills(obstacle, 0)), `${level}`);
+    assert.ok(course.some(({ lanes }) => lanes.length < 3) || level === 1 && course.every(({ lanes }) => lanes.length >= 2), `${level}: still a mix to look at`);
+    const run = new Run({ obstacles: 20, lanes: false, random: seeded(level), levelNumber: level });
+    run.begin();
+    perfectRun(run);
+    assert.deepEqual([run.stats.cleared, run.stats.jumps, run.stats.stepped, run.stats.bumps], [20, 20, 0, 0], `${level}`);
+  }
+});
+
+test('stepping into a free lane goes round an obstacle: it\'s cleared, with its stars, and no jump asked for', () => {
+  const { run, events, obstacle } = oneObstacle([-1, 0], { whenMissed: 'stumble' });
+  run.setLane(1);
+  step(run, 8, () => {
+    run.noteActivity();
+    if (obstacle.state === 'cleared') run.state = 'finished';
+  });
+  assert.equal(obstacle.state, 'cleared');
+  assert.equal(obstacle.steppedRound, true);
+  assert.deepEqual([run.stats.cleared, run.stats.stepped, run.stats.bumps, run.stats.jumps, run.stats.streak], [1, 1, 0, 0, 1]);
+  assert.ok(run.stats.stars >= 3);
+  assert.equal(events.filter(({ type, obstacle: which }) => type === 'ask' && which === obstacle).length, 0, 'never asked to jump it');
+  assert.ok(events.some(({ type }) => type === 'passed-by'));
+});
+
+test('in a lane an obstacle fills, it still needs a jump, and a jump clears it from any lane', () => {
+  const stood = oneObstacle([0], { whenMissed: 'stumble' });
+  untilInReach(stood.run);
+  assert.equal(stood.run.mustJump, true);
+  assert.equal(stood.events.filter(({ type }) => type === 'ask').length, 1);
+  step(stood.run, 4, () => stood.run.noteActivity());
+  assert.equal(stood.obstacle.state, 'bumped', 'standing in its lane runs into it');
+
+  const jumped = oneObstacle([0]);
+  untilInReach(jumped.run);
+  assert.equal(jumped.run.jump(), true);
+  step(jumped.run, 3, () => jumped.run.noteActivity());
+  assert.equal(jumped.obstacle.state, 'cleared');
+
+  const fromFree = oneObstacle([0]);
+  fromFree.run.setLane(1);
+  untilInReach(fromFree.run);
+  assert.equal(fromFree.run.mustJump, false, 'nothing to jump in a free lane');
+  assert.equal(fromFree.run.jump(), true, 'but a jump there still goes over it');
+  step(fromFree.run, 3, () => fromFree.run.noteActivity());
+  assert.deepEqual([fromFree.obstacle.state, fromFree.run.stats.stepped], ['cleared', 0]);
+
+  const across = oneObstacle([...LANES], { whenMissed: 'stumble' });
+  across.run.setLane(1);
+  step(across.run, 8, () => across.run.noteActivity());
+  assert.equal(across.obstacle.state, 'bumped', 'one right across can\'t be gone round');
+});
+
+test('set to wait, the runner only waits at an obstacle in its own lane, and never runs into one stepped in front of', () => {
+  const free = oneObstacle([-1], { whenMissed: 'wait' });
+  step(free.run, 8, () => {
+    free.run.noteActivity();
+    if (free.obstacle.state === 'cleared') free.run.state = 'finished';
+  });
+  assert.equal(free.obstacle.state, 'cleared', 'one in another lane is just gone past');
+  assert.equal(free.run.stats.bumps, 0);
+
+  const late = oneObstacle([1], { whenMissed: 'wait' });
+  while (late.run.gapTo(late.obstacle) > 0.5) {
+    late.run.noteActivity();
+    late.run.update(1 / 60);
+  }
+  late.run.setLane(1);
+  step(late.run, 3, () => late.run.noteActivity());
+  assert.equal(late.obstacle.state, 'ahead');
+  assert.equal(late.run.stats.bumps, 0);
+  assert.equal(late.run.speed, 0);
+  assert.ok(late.run.gapTo(late.obstacle) >= 0);
 });

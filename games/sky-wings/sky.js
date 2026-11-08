@@ -16,6 +16,7 @@ const SLOW_FRAME_SECONDS = 1 / 40;
 const SLOW_CHECK_FRAMES = 90;
 const PILOT_SIZE = 0.8;
 const ENEMY_SIZE = 1.8; // Bigger than life, so that they can be seen from further away.
+const CAPTAIN_SIZE = 1.4; // The pirate captain's plane, on the higher levels, as a share of that.
 const TRACERS = 70;
 const TRACER_LENGTH = 10;
 const FLY_FOV = 62;
@@ -70,6 +71,18 @@ class Plane {
     second.rotation.z = Math.PI / 2;
     this.propeller.add(second);
     this.root.add(this.propeller);
+
+    // The pirate captain's flag, on the tail, only shown on the captain's plane.
+    this.flag = new THREE.Group();
+    const flagPaint = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toon(), side: THREE.DoubleSide });
+    this.flag.add(new THREE.Mesh(mergeParts([
+      { geometry: new THREE.CylinderGeometry(0.05, 0.05, 1.5, 6), colour: '#5a4632', at: [0, 0.75, 0] },
+      { geometry: new THREE.BoxGeometry(0.04, 0.7, 1.05), colour: '#26283a', at: [0, 1.15, 0.55] },
+      { geometry: ball(0.2, 0.2, 0.05).rotateY(Math.PI / 2), colour: '#ffd23f', at: [0.03, 1.15, 0.55] },
+    ]), flagPaint));
+    this.flag.position.set(0, 1.25, 2.1);
+    this.flag.visible = false;
+    this.root.add(this.flag);
 
     this.pilot = new Fighter3D(spec);
     this.pilot.faceTowards(Math.PI);
@@ -404,11 +417,13 @@ export class Sky {
       seen.add(plane);
       plane.root.visible = true;
       plane.root.position.set(enemy.x, enemy.y, enemy.z);
+      plane.root.scale.setScalar(ENEMY_SIZE * (enemy.captain ? CAPTAIN_SIZE : 1));
+      plane.flag.visible = Boolean(enemy.captain);
       plane.wobble = enemy.hitLeft * 2;
       plane.update(dt, { spin: 1, heading: enemy.heading, pitch: enemy.pitch, roll: enemy.roll });
 
       const falling = enemy.state === 'falling';
-      const damaged = enemy.hitsLeft <= flight.level.enemyHits / 2;
+      const damaged = enemy.hitsLeft <= enemy.hitsTotal / 2;
       if (falling || damaged) {
         const wait = (this.smokeIn.get(enemy) ?? 0) - dt;
         this.smokeIn.set(enemy, wait);

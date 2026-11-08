@@ -12,6 +12,7 @@
 // A game's screens are its own, apart from welcome, choose, loading, problem and bodycheck.
 import { CameraProblem, TrackingCamera } from '../camera.js';
 import { Confetti, PromptBox } from '../hud.js';
+import { Levels, mountLevels } from '../levels.js';
 import { loadSettings, saveSettings } from '../settings.js';
 import { MoveDemo } from './demo.js';
 import { ICONS } from './icons.js';
@@ -91,6 +92,9 @@ export class BodyGame {
     this.settings = loadSettings(this.defaults);
     const { settings } = this;
     if (!byId(settings.fighter)) settings.fighter = this.defaults.fighter;
+    this.levels = new Levels(settings);
+    // The level being played, or about to be: see startLevel() and finishLevel().
+    this.level = this.levels.current;
 
     const coreUrl = new URL('../audio/voice/lines.json', import.meta.url);
     const sharedBase = new URL('./voice/', import.meta.url);
@@ -126,6 +130,13 @@ export class BodyGame {
 
     this.buildFighterGrid();
     this.wireControls();
+    this.levelUi = mountLevels(this.levels, {
+      language: () => settings.language,
+      onChoose: (level) => {
+        // In the middle of play, the new level starts next time.
+        if (!this.levelUnderway) this.level = level;
+      },
+    });
     this.chooseFighter(settings.fighter, { silent: true });
 
     if (new URLSearchParams(location.search).has('debug')) this.exposeForTests();
@@ -146,6 +157,22 @@ export class BodyGame {
     };
     // Keeps a game's getters as getters, so tests read what's there now.
     if (this.debug) Object.defineProperties(window.__game, Object.getOwnPropertyDescriptors(this.debug()));
+  }
+
+  /* ---------- levels ---------- */
+
+  /** A game calls this as it starts something new to play, and builds it for this.level. */
+  startLevel() {
+    this.level = this.levels.current;
+    this.levelUnderway = true;
+    this.levelUi.refresh();
+    return this.level;
+  }
+
+  /** A game calls this at its finish. A level that's won moves on to the next one. */
+  finishLevel(won = true) {
+    this.levelUnderway = false;
+    return this.levelUi.showResult(this.levels.complete(won));
   }
 
   /* ---------- controls ---------- */

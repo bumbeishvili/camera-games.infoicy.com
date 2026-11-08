@@ -1,5 +1,5 @@
-// Grown-ups' settings, shared between the games. Settings only: nothing about the child or
-// their hands is ever stored.
+// Grown-ups' settings, shared between the games, and which level each game is on (core/levels.js).
+// Nothing about the child or their hands is ever stored.
 import { OPEN_RULES } from './hands.js';
 
 const STORAGE_KEY = 'camera-games-settings';

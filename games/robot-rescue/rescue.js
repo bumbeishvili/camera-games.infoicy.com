@@ -6,9 +6,36 @@
 //
 // Everything is in metres: x to the right of the tram, z straight ahead of it and y up, all measured
 // from where the tram stops at that place.
+import { ramp, rampWhole, stepsAt } from '../../core/levels.js';
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const mix = (from, to, share) => from + (to - from) * share;
+const between = (random, [low, high]) => low + random() * (high - low);
+
+/**
+ * What each level changes, from level 1, which is the game as it always was, up to level 10. The
+ * numbers are shares of, or additions to, the speed and difficulty a grown-up chose, so a level never
+ * changes those choices, the reach help, reloading, or Gentle being impossible to lose. Resting stops
+ * everything new here, just as it stops the rest.
+ */
+export function levelPlan(level = 1) {
+  return {
+    walk: ramp(level, 1, 1.25), // Walkers walk faster, up to a quarter faster at level 10.
+    shuffle: ramp(level, 1, 0.8), // They move on to another spot sooner.
+    peek: ramp(level, 1, 0.78), // Peekers stay up for less long, though never under three quarters as long.
+    throwEvery: ramp(level, 1, 0.7), // Goo is thrown more often.
+    gooSeconds: ramp(level, 1, 0.82), // It flies a little quicker, never under 2 seconds unless it already was.
+    // One more robot out at once from level 6. More than that crowds round the crosshair, which then
+    // jumps about so much that the middle of the picture starts to flicker.
+    atOnce: rampWhole(level, 0, 1),
+    gooInAir: stepsAt(level, { 1: 0, 6: 1 }), // One more blob of goo can be in the air at once from level 6.
+    swoop: level >= 3, // From level 3, drones swoop down towards the tram now and then, and back up.
+    hop: level >= 4, // From level 4, peekers spring through the air from one cover to the next.
+    rollers: stepsAt(level, { 1: 0, 5: 2, 9: 3 }), // From level 5, robots on one big wheel take the place of some walkers.
+    doubleThrow: stepsAt(level, { 1: 0, 7: 0.35, 10: 0.5 }), // From level 7, some robots throw a second blob straight after the first.
+    bigSteps: level >= 8, // From level 8, the big one steps from side to side, taking its weak spots with it.
+  };
+}
 
 // How fast things happen. walk is in metres a second, and atOnce is how many robots are out together.
 export const PACES = {
@@ -32,11 +59,13 @@ export const AIM_HELP = {
   lots: { radius: 0.46, pull: 1 },
 };
 
-// How many hits each can take. The big one is different: it only takes hits in its weak spots.
+// How many hits each can take. The big one is different: it only takes hits in its weak spots. Rollers
+// only come on the higher levels.
 export const ROBOT_KINDS = {
   walker: { hp: 5 },
   drone: { hp: 3 },
   peeker: { hp: 3 },
+  roller: { hp: 3 },
   big: { hp: 0 },
 };
 
@@ -143,6 +172,20 @@ const AHEAD_START = 0.6; // How far along their way the first robots already are
 export const GOO_STOPS_AT = 2.4; // Metres in front of the tram, where the shield is.
 const GOO_FROM_EYE = 0.1; // How far below the eye it arrives.
 const GOO_LOB = 1.5; // How high its arc goes above a straight line.
+export const GOO_LEAST_SECONDS = 2; // However high the level, goo takes at least this long to arrive.
+
+// What the higher levels bring: see levelPlan.
+// Swoops and hops are slow and low, as the crosshair follows what it's on, and a quick bob up and
+// down would make it flicker.
+export const SWOOP = { seconds: 3.4, every: [5, 9], down: 2.3, nearer: 3.8, across: 2.2 };
+export const HOP = { seconds: 1.5, height: 1.8, share: 0.6 }; // share is how often a peeker hops rather than ducks.
+// Rollers keep going, but not quickly, and stop for a moment at each spot: the crosshair goes with
+// whatever it's on, and one dashing to and fro made the middle of the picture flicker.
+const ROLL_SPEED = 1.5; // Metres a second at the slow pace, before the level's own speeding up.
+const ROLL_FASTEST = 2.2; // Metres a second, however fast everything else is.
+const ROLL_PAUSE_SECONDS = 1; // At each spot, to turn round.
+const SECOND_THROW_SECONDS = 0.5; // The wind up for a second blob, straight after the first.
+export const BIG_STEP = { across: 2.4, speed: 0.55 }; // Metres each way, and how quickly it goes from side to side.
 
 /** The hand in play, as this game needs it. Anything uncertain neither fires nor raises the shield. */
 export function readHand(snapshot) {
@@ -297,12 +340,30 @@ export class Aim {
 
 let nextId = 1;
 
+/** A place's robots in the order they come out, with rollers in place of the last few walkers on the higher levels. */
+export function lineUp(place, rollers = 0) {
+  const line = [...place.robots];
+  let left = rollers;
+  for (let i = line.length - 1; i >= 0 && left > 0; i -= 1) {
+    if (line[i] !== 'walker') continue;
+    line[i] = 'roller';
+    left -= 1;
+  }
+  return line;
+}
+
 export class Mission {
-  constructor({ stops = PLACES.length, pace = 'slow', level = 'gentle', reloading = true, random = Math.random, onEvent = () => {} } = {}) {
+  /**
+   * pace and level are the grown-up's choices from PACES and LEVELS, and levelNumber is the level being
+   * played, from 1 to 10, which makes it harder within those choices: see levelPlan.
+   */
+  constructor({ stops = PLACES.length, pace = 'slow', level = 'gentle', levelNumber = 1, reloading = true, random = Math.random, onEvent = () => {} } = {}) {
     this.stops = stops >= PLACES.length ? PLACES : PLACES.filter(({ id }) => SHORT_RESCUE.includes(id));
     this.random = random;
     this.onEvent = onEvent;
     this.blaster = new Blaster({ reloading });
+    this.levelNumber = levelNumber;
+    this.plan = levelPlan(levelNumber);
     this.configure({ pace, level });
     this.hearts = this.level.hearts;
     this.index = -1;
@@ -336,6 +397,37 @@ export class Mission {
       }
     }
     if (this.hearts !== undefined) this.hearts = clamp(this.hearts, 1, this.level.hearts);
+  }
+
+  /* ---------- the numbers in play: the grown-up's choices, made harder by the level ---------- */
+
+  get walkSpeed() {
+    return this.pace.walk * this.plan.walk;
+  }
+
+  get shuffleEvery() {
+    return this.pace.shuffleEvery * this.plan.shuffle;
+  }
+
+  get peekSeconds() {
+    return this.pace.peekSeconds * this.plan.peek;
+  }
+
+  get atOnce() {
+    return this.pace.atOnce + this.plan.atOnce;
+  }
+
+  get throwEvery() {
+    return this.level.throwEvery * this.plan.throwEvery;
+  }
+
+  get gooSeconds() {
+    const { gooSeconds } = this.level;
+    return Math.max(gooSeconds * this.plan.gooSeconds, Math.min(gooSeconds, GOO_LEAST_SECONDS));
+  }
+
+  get gooInAir() {
+    return this.level.gooInAir + this.plan.gooInAir;
   }
 
   get place() {
@@ -378,7 +470,7 @@ export class Mission {
   }
 
   beginPlace() {
-    this.queue = [...this.place.robots];
+    this.queue = lineUp(this.place, this.plan.rollers);
     this.robots = [];
     this.goo = [];
     this.shots = [];
@@ -391,7 +483,7 @@ export class Mission {
 
   spawnSome(ahead = 0) {
     const out = this.robots.filter(({ kind }) => kind !== 'big').length;
-    let room = this.pace.atOnce - out;
+    let room = this.atOnce - out;
     // The big one doesn't count towards how many are out, and always comes first.
     while (this.queue.length && (room > 0 || this.queue[0] === 'big')) {
       const kind = this.queue.shift();
@@ -418,7 +510,13 @@ export class Mission {
       throwing: 0,
     };
     nextId += 1;
-    const placed = { walker: () => this.placeWalker(robot, ahead), drone: () => this.placeDrone(robot, ahead), peeker: () => this.placePeeker(robot), big: () => this.placeBig(robot) };
+    const placed = {
+      walker: () => this.placeWalker(robot, ahead),
+      roller: () => this.placeRoller(robot, ahead),
+      drone: () => this.placeDrone(robot, ahead),
+      peeker: () => this.placePeeker(robot),
+      big: () => this.placeBig(robot),
+    };
     placed[kind]();
     this.robots.push(robot);
     this.emit('robot', { robot });
@@ -440,7 +538,12 @@ export class Mission {
     const [x, z] = posts[robot.post];
     robot.x = mix(door[0], x, ahead);
     robot.z = mix(door[1], z, ahead);
-    robot.shuffleIn = this.pace.shuffleEvery * (0.7 + this.random() * 0.6);
+    robot.shuffleIn = this.shuffleEvery * (0.7 + this.random() * 0.6);
+  }
+
+  /** It comes out of a door like a walker, and then never stops for long. */
+  placeRoller(robot, ahead) {
+    this.placeWalker(robot, ahead);
   }
 
   placeDrone(robot, ahead) {
@@ -448,6 +551,10 @@ export class Mission {
     robot.spot = this.freeSpot(air, ({ spot }) => spot);
     robot.enter = ahead;
     robot.fromX = (robot.spot % 2 ? 1 : -1) * 22;
+    robot.swoopFor = 0;
+    robot.swoopSide = 1;
+    robot.dive = 0;
+    if (this.plan.swoop) robot.swoopIn = between(this.random, SWOOP.every);
     this.moveDrone(robot, 0);
   }
 
@@ -517,7 +624,10 @@ export class Mission {
       // Nothing bad happens to someone who's resting, so what's in the air goes too.
       for (const goo of this.goo) this.emit('goo-gone', { goo });
       this.goo = [];
-      for (const robot of this.robots) robot.throwing = 0;
+      for (const robot of this.robots) {
+        robot.throwing = 0;
+        robot.secondThrow = false;
+      }
       this.emit('rest');
     } else {
       this.throwIn = Math.max(this.throwIn, THROW_AGAIN_AFTER_REST);
@@ -611,6 +721,7 @@ export class Mission {
       robot.stateFor += dt;
       robot.shakeFor = Math.max(0, robot.shakeFor - dt);
       if (robot.kind === 'walker') this.updateWalker(robot, dt);
+      else if (robot.kind === 'roller') this.updateRoller(robot, dt);
       else if (robot.kind === 'drone') this.moveDrone(robot, dt);
       else if (robot.kind === 'peeker') this.updatePeeker(robot);
       else this.updateBig(robot, dt);
@@ -621,7 +732,7 @@ export class Mission {
 
   spawnOne() {
     const out = this.robots.filter(({ kind }) => kind !== 'big').length;
-    if (out < this.pace.atOnce || this.queue[0] === 'big') this.spawn(this.queue.shift());
+    if (out < this.atOnce || this.queue[0] === 'big') this.spawn(this.queue.shift());
   }
 
   setState(robot, state) {
@@ -636,7 +747,7 @@ export class Mission {
       const gapX = x - robot.x;
       const gapZ = z - robot.z;
       const gap = Math.hypot(gapX, gapZ);
-      const step = this.pace.walk * dt;
+      const step = this.walkSpeed * dt;
       if (gap <= step) {
         robot.x = x;
         robot.z = z;
@@ -651,8 +762,32 @@ export class Mission {
     robot.shuffleIn -= dt;
     if (robot.shuffleIn <= 0 && robot.throwing === 0) {
       robot.post = this.freeSpot(this.place.posts, ({ post }) => post);
-      robot.shuffleIn = this.pace.shuffleEvery * (0.7 + this.random() * 0.6);
+      robot.shuffleIn = this.shuffleEvery * (0.7 + this.random() * 0.6);
       this.setState(robot, 'walking');
+    }
+  }
+
+  /** A roller is always on the move, from spot to spot, with only a moment at each to turn round. */
+  updateRoller(robot, dt) {
+    if (this.resting) return; // It's stopped to wave, like everyone else.
+    if (robot.state === 'ready') {
+      if (robot.stateFor < ROLL_PAUSE_SECONDS) return;
+      robot.post = this.freeSpot(this.place.posts, ({ post }) => post);
+      this.setState(robot, 'walking');
+    }
+    const [x, z] = this.place.posts[robot.post];
+    const gapX = x - robot.x;
+    const gapZ = z - robot.z;
+    const gap = Math.hypot(gapX, gapZ);
+    // Quicker on the faster paces, but never so quick that it's hard to follow.
+    const step = Math.min(ROLL_FASTEST, ROLL_SPEED * this.plan.walk * (this.pace.walk / PACES.slow.walk)) * dt;
+    if (gap <= step) {
+      robot.x = x;
+      robot.z = z;
+      this.setState(robot, 'ready');
+    } else {
+      robot.x += (gapX / gap) * step;
+      robot.z += (gapZ / gap) * step;
     }
   }
 
@@ -661,13 +796,35 @@ export class Mission {
     robot.enter = Math.min(1, robot.enter + dt / DRONE_ENTER_SECONDS);
     if (robot.enter === 1 && robot.state === 'walking') this.setState(robot, 'ready');
     const time = this.time + robot.phase;
-    const hoverX = x + Math.sin(time * 0.62) * 2.2;
-    const hoverY = y + Math.sin(time * 1.15) * 0.45;
-    const hoverZ = z + Math.cos(time * 0.47) * 1.1;
+    let hoverX = x + Math.sin(time * 0.62) * 2.2;
+    let hoverY = y + Math.sin(time * 1.15) * 0.45;
+    let hoverZ = z + Math.cos(time * 0.47) * 1.1;
+    if (this.plan.swoop) {
+      robot.dive = this.updateSwoop(robot, dt);
+      hoverX += robot.dive * robot.swoopSide * SWOOP.across;
+      hoverY -= robot.dive * SWOOP.down;
+      hoverZ -= robot.dive * SWOOP.nearer;
+    }
     const smooth = robot.enter * robot.enter * (3 - 2 * robot.enter);
     robot.x = mix(robot.fromX, hoverX, smooth);
     robot.y = mix(8, hoverY, smooth);
     robot.z = mix(z + 7, hoverZ, smooth);
+  }
+
+  /** How far down into a swoop a drone is, as a smooth dip from 0 to 1 and back up. */
+  updateSwoop(robot, dt) {
+    if (robot.swoopFor > 0) {
+      robot.swoopFor = Math.max(0, robot.swoopFor - dt);
+      return Math.sin((1 - robot.swoopFor / SWOOP.seconds) * Math.PI) ** 2;
+    }
+    robot.swoopIn -= dt;
+    // Not while it's throwing, and never while the child is resting.
+    if (robot.swoopIn > 0 || robot.state !== 'ready' || robot.throwing > 0 || this.resting || this.phase !== 'fighting') return 0;
+    robot.swoopFor = SWOOP.seconds;
+    robot.swoopSide = this.random() < 0.5 ? -1 : 1;
+    robot.swoopIn = between(this.random, SWOOP.every);
+    this.emit('swoop', { robot });
+    return 0;
   }
 
   updatePeeker(robot) {
@@ -677,7 +834,11 @@ export class Mission {
       if (robot.rise === 1) this.setState(robot, 'ready');
     } else if (state === 'ready') {
       if (this.resting || robot.throwing > 0) return; // Stay up to wave, or to finish throwing.
-      if (stateFor > this.pace.peekSeconds) this.setState(robot, 'ducking');
+      if (stateFor <= this.peekSeconds) return;
+      if (this.plan.hop && this.random() < HOP.share) this.startHop(robot);
+      else this.setState(robot, 'ducking');
+    } else if (state === 'hopping') {
+      this.updateHop(robot);
     } else if (state === 'ducking') {
       robot.rise = Math.max(0, 1 - stateFor / PEEK_RISE_SECONDS);
       if (robot.rise === 0) this.setState(robot, 'hidden');
@@ -690,7 +851,35 @@ export class Mission {
     }
   }
 
+  /** Out over the top of its cover and through the air to another, and it can be hit on the way. */
+  startHop(robot) {
+    robot.hopFrom = robot.cover;
+    robot.cover = this.freeSpot(this.place.covers, ({ cover }) => cover);
+    robot.hop = 0;
+    robot.lift = 0;
+    this.setState(robot, 'hopping');
+    this.emit('hop', { robot });
+  }
+
+  updateHop(robot) {
+    const [fromX, fromZ] = this.place.covers[robot.hopFrom];
+    const [toX, toZ] = this.place.covers[robot.cover];
+    robot.hop = Math.min(1, robot.stateFor / HOP.seconds);
+    robot.x = mix(fromX, toX, robot.hop);
+    robot.z = mix(fromZ, toZ, robot.hop) + 0.5;
+    robot.lift = 4 * HOP.height * robot.hop * (1 - robot.hop);
+    if (robot.hop === 1) {
+      robot.lift = 0;
+      this.setState(robot, 'ready');
+    }
+  }
+
   updateBig(robot, dt) {
+    // From side to side on the higher levels, and still while the child rests.
+    if (this.plan.bigSteps && this.phase === 'fighting' && !this.resting) {
+      robot.stepTime = (robot.stepTime ?? 0) + dt;
+      robot.x = this.place.big[0] + Math.sin(robot.stepTime * BIG_STEP.speed) * BIG_STEP.across;
+    }
     // Nothing opens until the tram has got here, so that it can be seen happening.
     if (this.phase !== 'fighting' || robot.spots.some(({ open }) => open)) return;
     const next = robot.spots.find(({ done }) => !done);
@@ -712,14 +901,19 @@ export class Mission {
     }
     this.throwIn -= dt;
     if (this.throwIn > 0) return;
-    const inHand = this.robots.filter(({ throwing }) => throwing > 0).length;
-    if (this.goo.length + inHand >= this.level.gooInAir) return;
-    const able = this.robots.filter((robot) => robot.state === 'ready' && robot.throwing === 0 && (robot.kind !== 'peeker' || robot.rise === 1));
+    if (this.goo.length + this.inHand >= this.gooInAir) return;
+    // Rollers are too busy rolling to throw anything.
+    const able = this.robots.filter((robot) => robot.state === 'ready' && robot.throwing === 0 && robot.kind !== 'roller' && (robot.kind !== 'peeker' || robot.rise === 1));
     if (!able.length) return;
     const thrower = able[Math.floor(this.random() * able.length)];
     thrower.throwing = WINDUP_SECONDS;
-    this.throwIn = this.level.throwEvery * (0.8 + this.random() * 0.4);
+    this.throwIn = this.throwEvery * (0.8 + this.random() * 0.4);
     this.emit('windup', { robot: thrower });
+  }
+
+  /** How many robots have goo in their hands, ready to throw. */
+  get inHand() {
+    return this.robots.filter(({ throwing }) => throwing > 0).length;
   }
 
   updateThrow(robot, dt) {
@@ -728,6 +922,17 @@ export class Mission {
     robot.throwing = 0;
     if (this.resting || this.phase !== 'fighting') return;
     this.throwGoo(robot);
+    if (robot.secondThrow) {
+      robot.secondThrow = false;
+      return;
+    }
+    // On the higher levels, now and then another straight after it, if there's room for one more.
+    const { doubleThrow } = this.plan;
+    if (doubleThrow > 0 && robot.kind !== 'big' && this.goo.length + this.inHand < this.gooInAir && this.random() < doubleThrow) {
+      robot.secondThrow = true;
+      robot.throwing = SECOND_THROW_SECONDS;
+      this.emit('windup', { robot, again: true });
+    }
   }
 
   throwGoo(robot) {
@@ -745,7 +950,7 @@ export class Mission {
       y: 0,
       z: 0,
       t: 0,
-      seconds: this.level.gooSeconds,
+      seconds: this.gooSeconds,
       big: robot.kind === 'big',
     };
     nextId += 1;

@@ -5,7 +5,7 @@
 // of juice where it happened, and the picture itself never changes brightness.
 import { LOOKS, paintFruit } from '../../core/fruit.js';
 import { Glove, INK } from '../../core/glove.js';
-import { nearestOnPath } from './orders.js';
+import { fairAt, nearestOnPath } from './orders.js';
 
 // gravity is in screen heights a second squared, every is the seconds between throws, volley is how
 // few and how many go up in a throw, and most is how many can be up at once. There's always plenty to
@@ -15,6 +15,10 @@ const PACES = {
   medium: { gravity: 0.5, every: 0.7, volley: [1, 3], most: 10 },
   fast: { gravity: 0.68, every: 0.55, volley: [2, 3], most: 12 },
 };
+// However high the level, never more than the fastest pace has at once, or in a throw, so the sky
+// never gets so full that fruit flickers past.
+const MOST_EVER = 12;
+const VOLLEY_EVER = 3;
 const PALM_SHARE = 0.105;
 const FRUIT_SHARE = 0.085; // A fruit's radius, as a share of the screen's height.
 const SWIPE_SPEED = 0.28; // How fast a hand has to be going to slice, in screen heights a second.
@@ -24,6 +28,11 @@ const STICKY_COLOUR = '#7a5c3a';
 const BUMP_REST_SECONDS = 1.2;
 const REACH = { left: [0.1, 0.62], right: [0.38, 0.9] };
 const TRAIL_SECONDS = 0.22;
+const ACROSS_FROM = 0.08; // Thrown across from this far inside one end of the reach to as far inside the other.
+const PAIR_GAP = 2.8; // A rotten one beside another, this many fruit sizes apart, so one can be sliced alone.
+const CRACK_KICK = 0.12; // The first swipe on a tough fruit knocks it up this far, in screen heights.
+const CRACK_REST_SECONDS = 0.35; // The same swipe can't slice it straight after cracking it.
+const SKIN = '#8a5a2b';
 
 const between = (low, high) => low + Math.random() * (high - low);
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
@@ -54,6 +63,9 @@ export class SmoothieField {
     this.throwIn = 0;
     this.throwing = false;
     this.nextFruit = () => 'apple';
+    // What the next throw is: see Stand.nextThrow. Only the kind, unless a level says more.
+    this.nextThrow = () => ({ kind: this.nextFruit() });
+    this.level = fairAt(1);
     this.blenderLevel = 0;
     this.blenderSpin = 0;
     this.joze = null;
@@ -62,6 +74,23 @@ export class SmoothieField {
     this.configure({ pace: 'slow', side: 'right', slicing: 'swipe' });
     window.addEventListener('resize', () => this.resize());
     this.resize();
+  }
+
+  /** What this level brings, on top of the grown-ups' pace: see fairAt in orders.js. */
+  setLevel(level) {
+    this.level = fairAt(level);
+  }
+
+  /** The pace the grown-ups chose, with the level's on top. */
+  get pace() {
+    const pace = PACES[this.paceName];
+    const { gravity, every, volley, most } = this.level;
+    return {
+      gravity: pace.gravity * gravity,
+      every: pace.every * every,
+      volley: [pace.volley[0], Math.max(pace.volley[1], Math.min(VOLLEY_EVER, pace.volley[1] + volley))],
+      most: Math.max(pace.most, Math.min(MOST_EVER, pace.most + most)),
+    };
   }
 
   configure({ pace = this.paceName, side = this.side, slicing = this.slicing }) {
@@ -83,28 +112,55 @@ export class SmoothieField {
     for (const glove of Object.values(this.gloves)) glove.sticky = 0;
   }
 
-  /** Throws one up now, somewhere exact if asked for, for the automated tests. */
-  throwFruit(kind, { x, y } = {}) {
+  /**
+   * Throws one up now, somewhere exact if asked for, for the automated tests. across throws it from
+   * one side of the reach to the other, tough makes it take two swipes, and withRotten throws a
+   * rotten one up beside it.
+   */
+  throwFruit(kind, { x, y, across = false, tough = false, withRotten = false } = {}) {
     const { width, height } = this;
-    const pace = PACES[this.paceName];
+    const { pace } = this;
     const [low, high] = REACH[this.side];
-    const startX = x ?? between(low, high) * width;
     const startY = y ?? height + this.fruitSize * 1.4;
     const peak = between(0.34, 0.62) * height;
     const gravity = pace.gravity * height;
-    const fruit = {
-      kind,
-      x: startX,
+    const vy = y === undefined ? -Math.sqrt(2 * gravity * (startY - peak)) : 0;
+    let startX = x ?? between(low, high) * width;
+    let vx = x === undefined ? between(-0.03, 0.03) * width : 0;
+    if (across && x === undefined) {
+      // From near one end of the reach, landing near the other, so it's never out of reach.
+      const leftFirst = Math.random() < 0.5;
+      const from = (leftFirst ? low + ACROSS_FROM : high - ACROSS_FROM) * width;
+      const to = (leftFirst ? high - ACROSS_FROM : low + ACROSS_FROM) * width;
+      startX = from;
+      vx = (to - from) / ((2 * -vy) / gravity);
+    }
+    const make = (what, atX) => ({
+      kind: what,
+      x: atX,
       y: startY,
-      vx: x === undefined ? between(-0.03, 0.03) * width : 0,
-      vy: y === undefined ? -Math.sqrt(2 * gravity * (startY - peak)) : 0,
+      vx,
+      vy,
       still: y !== undefined,
       turn: Math.random() * 6,
       spin: this.reducedMotion ? 0.3 : between(-1.6, 1.6),
       r: this.fruitSize,
       phase: Math.random() * 6,
-    };
+      across,
+      tough,
+      cracked: false,
+      rest: 0,
+    });
+    const fruit = make(kind, startX);
     this.fruit.push(fruit);
+    if (withRotten) {
+      // On whichever side there's room for it, within reach.
+      const gap = this.fruitSize * PAIR_GAP;
+      const right = startX + gap <= high * width ? startX + gap : null;
+      const left = startX - gap >= low * width ? startX - gap : null;
+      const at = Math.random() < 0.5 ? left ?? right : right ?? left;
+      if (at !== null && this.fruit.length < pace.most) this.fruit.push({ ...make('rotten', at), tough: false, partner: fruit });
+    }
     return fruit;
   }
 
@@ -189,19 +245,24 @@ export class SmoothieField {
       if (slicing) this.shakeOff(glove, dt);
     }
 
-    const pace = PACES[this.paceName];
+    const { pace } = this;
     if (this.throwing) {
       this.throwIn -= dt;
       if (this.throwIn <= 0) {
         const [few, many] = pace.volley;
         const count = Math.round(between(few, many));
-        for (let i = 0; i < count && this.fruit.length < pace.most; i += 1) this.throwFruit(this.nextFruit());
+        for (let i = 0; i < count && this.fruit.length < pace.most; i += 1) {
+          const { kind, ...how } = this.nextThrow();
+          this.throwFruit(kind, how);
+        }
         this.throwIn = pace.every * between(0.85, 1.15);
       }
     }
 
     const gravity = pace.gravity * this.height;
+    this.gravityNow = gravity;
     this.fruit = this.fruit.filter((fruit) => {
+      fruit.rest = Math.max(0, (fruit.rest ?? 0) - dt);
       if (!fruit.still) {
         fruit.vy += gravity * dt;
         fruit.x += fruit.vx * dt;
@@ -256,10 +317,29 @@ export class SmoothieField {
       if (glove.sticky > 0) continue;
       // Just touching is enough if a grown-up has chosen that.
       if (this.slicing === 'swipe' && glove.speed < SWIPE_SPEED) continue;
+      if (fruit.rest > 0) continue;
+      if (fruit.tough && !fruit.cracked) {
+        this.crack(fruit, glove);
+        return false;
+      }
       this.slice(fruit, glove);
       return true;
     }
     return false;
+  }
+
+  /** The first swipe on a tough fruit cracks it, and knocks it up a little, for time for the second. */
+  crack(fruit, glove) {
+    fruit.cracked = true;
+    fruit.rest = CRACK_REST_SECONDS;
+    if (!fruit.still) fruit.vy = Math.min(fruit.vy, -Math.sqrt(2 * (this.gravityNow ?? this.height) * CRACK_KICK * this.height));
+    const { flesh } = LOOKS[fruit.kind];
+    for (let i = 0; i < (this.reducedMotion ? 2 : 5); i += 1) {
+      const angle = (i / 5) * Math.PI * 2 + Math.random();
+      const speed = between(0.15, 0.35) * this.height;
+      this.drops.push({ x: fruit.x, y: fruit.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, size: fruit.r * between(0.06, 0.1), life: 0.4, colour: flesh });
+    }
+    this.events.onCrack?.(fruit.kind, glove.side);
   }
 
   slice(fruit, glove) {
@@ -322,11 +402,41 @@ export class SmoothieField {
     this.tokens = this.tokens.filter(({ share }) => share < 1);
   }
 
-  drawFruit(ctx, { kind, x, y, r, turn }) {
+  drawFruit(ctx, { kind, x, y, r, turn, tough = false, cracked = false }) {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(turn);
     ctx.drawImage(this.sprites[kind], -r * 1.2, -r * 1.2, r * 2.4, r * 2.4);
+    if (tough && !cracked) {
+      // A thick brown skin all round, as a tough one has.
+      ctx.lineWidth = r * 0.2;
+      ctx.strokeStyle = SKIN;
+      ctx.setLineDash([r * 0.35, r * 0.2]);
+      ctx.beginPath();
+      ctx.arc(0, r * 0.03, r * 1.02, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if (cracked) {
+      // A crack across it, showing the fruit inside.
+      const crack = () => {
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.8, -r * 0.1);
+        ctx.lineTo(-r * 0.35, r * 0.15);
+        ctx.lineTo(0, -r * 0.12);
+        ctx.lineTo(r * 0.38, r * 0.16);
+        ctx.lineTo(r * 0.8, -r * 0.05);
+        ctx.stroke();
+      };
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = r * 0.2;
+      crack();
+      ctx.strokeStyle = LOOKS[kind].flesh;
+      ctx.lineWidth = r * 0.1;
+      crack();
+    }
     ctx.restore();
   }
 

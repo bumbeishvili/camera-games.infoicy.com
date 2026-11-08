@@ -162,9 +162,11 @@ class MightyMoves extends BodyGame {
     byElementId('versus-player').textContent = this.chosen.name;
     byElementId('versus-npc').textContent = this.opponent.name;
 
+    const levelNumber = this.startLevel();
     this.fight = new Fight({
       rounds: settings.rounds,
       level: NPC_LEVELS[settings.level] ?? NPC_LEVELS.gentle,
+      levelNumber,
       focusSide: settings.hands,
       onEvent: (event) => this.onFightEvent(event),
     });
@@ -332,6 +334,7 @@ class MightyMoves extends BodyGame {
       call: () => this.onCall(event),
       'call-again': () => this.sayCall(event),
       'call-done': () => this.onCallDone(event),
+      rep: () => this.onRep(event),
       nudge: () => this.onNudge(event),
       'try-another': () => this.onTryAnother(),
       'small-hits-spent': () => this.coach.nudge(),
@@ -362,8 +365,23 @@ class MightyMoves extends BodyGame {
 
   onCall(event) {
     const { demo } = EXERCISES[event.name];
-    this.showCoach(demo, this.translate(this.callWords(event)), { side: event.side ?? this.settings.hands });
+    this.showCoach(demo, this.coachWords(event), { side: event.side ?? this.settings.hands });
     this.sayCall(event);
+  }
+
+  /**
+   * What the coach's card says. A move asked for twice, on the higher levels, has a dot for each time,
+   * filled in as it's done, so it needs no reading.
+   */
+  coachWords({ name, side, times = 1, done = 0 }) {
+    const words = this.translate(this.callWords({ name, side }));
+    return times > 1 ? `${words} ${'●'.repeat(done)}${'○'.repeat(times - done)}` : words;
+  }
+
+  /** One of a move asked for twice: seen, and the card shows one more to go. */
+  onRep(event) {
+    byElementId('coach-text').textContent = this.coachWords(event);
+    this.showSeen(EXERCISES[event.name].seen, { x: 0.3, y: 0.55 });
   }
 
   onCallDone({ name }) {
@@ -517,6 +535,8 @@ class MightyMoves extends BodyGame {
     byElementId('finish-hands').textContent = seen
       ? `Hand seen open in ${open} of the ${seen} arm moves it could be read in.`
       : 'The hands were too far away to read in any arm move.';
+    // A fight that's won moves on a level, and one that's lost stays on it.
+    this.finishLevel(won);
     if (won) this.confetti.start();
     this.setScreen('finish');
   }

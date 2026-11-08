@@ -4,6 +4,7 @@ import { GameSession } from '../../core/session.js';
 import { Sound } from '../../core/sound.js';
 import { BalloonField } from './balloons.js';
 import { MathsDeck } from './maths.js';
+import { MOST_ANSWERS } from './rules.js';
 
 const POP_HINT_SECONDS = 6;
 const DEMO_MATHS_SECONDS = 14;
@@ -65,9 +66,13 @@ class BalloonGame {
       onGoal: () => session.finish(),
     });
     this.field.configure({ pace: settings.pace, reach: settings.reach, goal: settings.balloons, side: settings.hands });
+    this.field.setLevel(session.level);
     const game = this;
     this.debug = {
       balloons: this.field,
+      get deck() {
+        return game.deck;
+      },
       get question() {
         return game.question;
       },
@@ -80,7 +85,8 @@ class BalloonGame {
   setUpMaths() {
     const { maths, balloons } = this.session.settings;
     const on = maths !== 'off';
-    this.deck = on ? new MathsDeck(maths) : null;
+    // Higher levels have more answers to choose from: see rules.js.
+    this.deck = on ? new MathsDeck(maths, Math.random, { extra: this.field.plan.answers, most: MOST_ANSWERS }) : null;
     this.question = null;
     this.field.configure({ goal: on ? Math.round(balloons * MATHS_GOAL_SHARE) : balloons });
     this.field.numbered = on;
@@ -173,8 +179,10 @@ class BalloonGame {
     this.showProgress();
   }
 
-  prepare() {
+  /** Each level brings more balloons, a little faster, and new kinds of them: see rules.js. */
+  prepare(level) {
     const { balloons, pace, reach, hands } = this.session.settings;
+    this.field.setLevel(level);
     this.field.reset({ goal: balloons, pace, reach, side: hands });
     this.bump = null;
     this.saidHint = false;

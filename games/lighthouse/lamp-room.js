@@ -4,6 +4,7 @@
 //
 // Nothing flashes, as seizures are more common in children with hemiplegia. The beam comes on slowly
 // and stays steady, there's no lightning, and the picture brightens gradually as the storm clears.
+// Splats, seaweed and starfish from the higher levels are small, and arrive and leave over a moment.
 import { Glove, INK, mixColours } from '../../core/glove.js';
 
 const PALM_SHARE = 0.105;
@@ -14,6 +15,7 @@ const BOTTOM = 0.88;
 const SAIL_SECONDS = 2.4;
 const BEAM_SECONDS = 0.8;
 const BOAT_COLOURS = { ice: '#d7f2ff', fishing: '#ff9a5c', tin: '#a9b6c4', honey: '#ffcf4a' };
+const FALL_SECONDS = 1; // Seaweed and starfish sliding down and off the glass.
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 
@@ -39,6 +41,9 @@ export class LampRoom {
     this.wipeSpeed = 0;
     this.last = null;
     this.drops = [];
+    this.swell = 1; // How wild the sea is: more at higher levels.
+    this.lumps = []; // Seaweed and starfish on the glass, from the rules.
+    this.falling = []; // Seaweed and starfish on their way down.
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
@@ -88,6 +93,55 @@ export class LampRoom {
     this.mud = mud;
     this.mudLeft = 1;
     this.last = null;
+    this.falling = [];
+  }
+
+  /**
+   * Mud thrown back on by a wave, at a place given in shares of the window. It goes onto the mud at
+   * once, so that what's on the screen is always what's left to wipe, with drops flying off it.
+   */
+  splat({ x, y, rx, ry }) {
+    this.paintSplat({ x, y, rx, ry, seed: Math.random() * 6 });
+    const { window: glass, height } = this;
+    if (this.reducedMotion) return;
+    for (let i = 0; i < 6; i += 1) {
+      const angle = (i / 6) * Math.PI * 2 + Math.random();
+      this.drops.push({
+        x: glass.x + x * glass.width,
+        y: glass.y + y * glass.height,
+        vx: Math.cos(angle) * height * 0.12,
+        vy: Math.sin(angle) * height * 0.12,
+        life: 0.5,
+        size: height * (0.005 + Math.random() * 0.005),
+      });
+    }
+  }
+
+  paintSplat(splat) {
+    if (!this.mud) return;
+    const ctx = this.mud.getContext('2d');
+    // The mud's own size, which is the window's when it was muddied.
+    const cx = splat.x * this.mud.width;
+    const cy = splat.y * this.mud.height;
+    // A little wider than the cells it covers, so that nothing the rules count as muddy looks clean.
+    const rx = splat.rx * this.mud.width * 1.08;
+    const ry = splat.ry * this.mud.height * 1.08;
+    ctx.fillStyle = '#6b4a2b';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#5e3f24';
+    for (let i = 0; i < 4; i += 1) {
+      const angle = splat.seed + i * 1.7;
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(angle) * rx * 0.62, cy + Math.sin(angle) * ry * 0.62, Math.min(rx, ry) * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  /** Seaweed or a starfish lets go of the glass, and slides off it into the sea. */
+  dropLump(lump) {
+    this.falling.push({ ...lump, fall: 0 });
   }
 
   /** The last of the mud slides away. */
@@ -125,8 +179,11 @@ export class LampRoom {
 
     for (const drop of this.drops) {
       drop.life -= dt;
+      drop.x += (drop.vx ?? 0) * dt;
       drop.y += drop.vy * dt;
     }
+    for (const lump of this.falling) lump.fall += dt / FALL_SECONDS;
+    this.falling = this.falling.filter(({ fall }) => fall < 1);
     this.drops = this.drops.filter(({ life }) => life > 0);
 
     if (this.mudFading) {
@@ -169,13 +226,15 @@ export class LampRoom {
     ctx.stroke();
     ctx.restore();
 
-    // Along the way too, as a quick hand can go a long way between pictures.
+    // Along the way too, as a quick hand can go a long way between pictures. How far it went, in
+    // lengths of a wipe, is what rubs seaweed and starfish off.
     let added = 0;
-    const steps = Math.max(1, Math.ceil(Math.hypot(x - from.x, y - from.y) / (size * 0.5)));
+    const distance = Math.hypot(x - from.x, y - from.y);
+    const steps = Math.max(1, Math.ceil(distance / (size * 0.5)));
     for (let i = 1; i <= steps; i += 1) {
       const px = from.x + ((x - from.x) * i) / steps;
       const py = from.y + ((y - from.y) * i) / steps;
-      added += wipe(px / glass.width, py / glass.height, size / glass.width, size / glass.height);
+      added += wipe(px / glass.width, py / glass.height, size / glass.width, size / glass.height, distance / size / steps);
     }
     this.last = { x, y };
     if (added) this.addDrips(glove);
@@ -205,7 +264,7 @@ export class LampRoom {
       ctx.fillStyle = colour;
       ctx.beginPath();
       ctx.moveTo(glass.x, glass.y + glass.height);
-      const swell = this.reducedMotion ? 0.4 : 1;
+      const swell = this.reducedMotion ? 0.4 : this.swell;
       for (let x = 0; x <= glass.width; x += 14) {
         const height2 = Math.sin(x / length + time * rate) * size * swell * (1 - calm * 0.65);
         ctx.lineTo(glass.x + x, base + height2);
@@ -266,6 +325,93 @@ export class LampRoom {
     ctx.restore();
   }
 
+  /** Seaweed and starfish, on the glass or sliding off it, over the mud. */
+  drawLumps(ctx) {
+    if (!this.lumps.length && !this.falling.length) return;
+    const { window: glass } = this;
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(glass.x, glass.y, glass.width, glass.height, 22);
+    ctx.clip();
+    for (const lump of this.lumps) this.drawLump(ctx, lump, Math.min(1, lump.rubbed / lump.needs), 0);
+    for (const lump of this.falling) this.drawLump(ctx, lump, 1, lump.fall);
+    ctx.restore();
+  }
+
+  /** loose is how far it's been rubbed off, and fall how far it is on its way down. */
+  drawLump(ctx, lump, loose, fall) {
+    const { window: glass, height, time } = this;
+    const size = height * 0.085;
+    const x = glass.x + lump.x * glass.width;
+    const y = glass.y + lump.y * glass.height + fall * fall * height * 0.5;
+    // The more it's been rubbed, the more it wobbles, to show it's coming loose. Slowly, though.
+    const wobble = this.reducedMotion ? 0 : Math.sin(time * 5 + lump.x * 20) * 0.18 * loose;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.globalAlpha = (1 - fall) * (1 - loose * 0.35);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (lump.kind === 'star') {
+      ctx.rotate(Math.sin(lump.heading) * 0.25 + wobble + fall * 2);
+      ctx.beginPath();
+      for (let i = 0; i < 10; i += 1) {
+        const angle = (i / 10) * Math.PI * 2 - Math.PI / 2;
+        const reach = i % 2 ? size * 0.42 : size;
+        ctx.lineTo(Math.cos(angle) * reach, Math.sin(angle) * reach);
+      }
+      ctx.closePath();
+      ctx.fillStyle = '#ff8a5c';
+      ctx.fill();
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = Math.max(2, height * 0.004);
+      ctx.stroke();
+      ctx.fillStyle = '#ffd0a8';
+      for (let i = 0; i < 5; i += 1) {
+        const angle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+        ctx.beginPath();
+        ctx.arc(Math.cos(angle) * size * 0.62, Math.sin(angle) * size * 0.62, size * 0.07, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // A friendly face, as it's only visiting.
+      ctx.fillStyle = INK;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.arc(side * size * 0.15, -size * 0.08, size * 0.065, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.lineWidth = Math.max(1.5, height * 0.0035);
+      ctx.beginPath();
+      ctx.arc(0, size * 0.02, size * 0.14, 0.3, Math.PI - 0.3);
+      ctx.stroke();
+    } else {
+      ctx.rotate(wobble);
+      // A tangle of seaweed, its fronds hanging down the glass every which way.
+      const fronds = [[-0.55, -0.35, 0.95, -1], [-0.2, -0.6, 1.15, 1], [0.15, -0.5, 0.85, -1], [0.5, -0.3, 1.05, 1], [-0.05, -0.15, 0.7, 1], [0.35, 0.05, 0.6, -1]];
+      const frond = ([dx, dy, length, curl]) => {
+        ctx.beginPath();
+        ctx.moveTo(dx * size, dy * size);
+        ctx.bezierCurveTo((dx + curl * 0.35) * size, (dy + length * 0.35) * size, (dx - curl * 0.3) * size, (dy + length * 0.7) * size, (dx + curl * 0.12) * size, (dy + length) * size);
+        ctx.stroke();
+      };
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = size * 0.3;
+      fronds.forEach(frond);
+      fronds.forEach((one, i) => {
+        ctx.strokeStyle = ['#3f9d4a', '#5cb85c', '#2f8a43'][i % 3];
+        ctx.lineWidth = size * 0.21;
+        frond(one);
+      });
+      // Little bladders along them, as real seaweed has.
+      ctx.fillStyle = '#7fcf6a';
+      for (const [dx, dy, length] of fronds) {
+        ctx.beginPath();
+        ctx.arc(dx * size, (dy + length * 0.5) * size, size * 0.08, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
   drawBeam(ctx) {
     if (this.beam <= 0) return;
     const { window: glass, height, side } = this;
@@ -311,6 +457,7 @@ export class LampRoom {
       ctx.restore();
       ctx.globalAlpha = 1;
     }
+    this.drawLumps(ctx);
 
     ctx.strokeStyle = '#e7dcc4';
     ctx.lineWidth = height * 0.018;

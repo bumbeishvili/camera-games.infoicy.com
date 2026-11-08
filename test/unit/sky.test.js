@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { DEMOS } from '../../core/body/demos.js';
 import { BodyReader, viewProblem } from '../../core/body/reader.js';
-import { CAMERA, Flight, HEARTS, LEVELS, MOST_AT_ONCE, PACES, RANGE, forwardOf } from '../../games/sky-wings/flight.js';
+import { CAMERA, Flight, HEARTS, LEVELS, MOST_AT_ONCE, MOST_AT_ONCE_EVER, PACES, RANGE, flightLevel, forwardOf } from '../../games/sky-wings/flight.js';
 import { PLACES, WORLD, coastAt, floorAt, heightAt } from '../../games/sky-wings/island-map.js';
 import { Lesson } from '../../games/sky-wings/lesson.js';
 
@@ -636,4 +636,172 @@ test('everything Sky Wings says has a voice file, in English and in Georgian', (
   assert.ok(asked.size >= 14, `only found ${asked.size} lines`);
   assert.deepEqual([...asked].filter((text) => !known.has(text)), []);
   assert.deepEqual(lines.map(({ text }) => text).filter((text) => !asked.has(text)), [], 'nothing rendered that can no longer be said');
+});
+
+/* ---------- levels ---------- */
+
+const LEVEL_NUMBERS = Array.from({ length: 10 }, (_, index) => index + 1);
+
+/** A minute of a child steering for the nearest plane, as a line of what came of it. */
+function aMinuteOf(options) {
+  const { flight } = flying({ planes: 6, random: seeded(9), ...options });
+  for (let i = 0; i < 1800 && flight.state === 'flying'; i += 1) {
+    const nearest = flight.flying.slice().sort((a, b) => Math.hypot(a.x - flight.x, a.z - flight.z) - Math.hypot(b.x - flight.x, b.z - flight.z))[0];
+    const off = nearest ? turnBetween(Math.atan2(nearest.x - flight.x, -(nearest.z - flight.z)), flight.heading) : 0;
+    flight.update(1 / 30, nearest ? { out: true, bank: Math.max(-1, Math.min(1, off * 2)), climb: 0.2 } : { out: true });
+  }
+  return [flight.state, flight.stats.dropped, flight.stats.hits, flight.stats.hurts, flight.x.toFixed(3), flight.z.toFixed(3)].join(',');
+}
+
+test('level 1 is the dogfight as it always was', () => {
+  assert.deepEqual(flightLevel(1), { enemySpeed: 0.84, enemyTurn: 0.82, huntEvery: 1, dodgeSeconds: 2.2, weave: 0, climbs: 1, atOnce: MOST_AT_ONCE, captain: false });
+  // The same flights, to the millimetre, as before there were levels.
+  assert.equal(aMinuteOf({ pace: 'slow', level: 'gentle' }), 'flying,4,78,3,76.702,957.743');
+  assert.equal(aMinuteOf({ pace: 'fast', level: 'medium' }), 'flying,1,53,3,-320.143,565.902');
+  assert.equal(aMinuteOf({ pace: 'medium', level: 'tough' }), 'flying,0,41,4,-121.350,-133.508');
+  assert.equal(aMinuteOf({ pace: 'slow', level: 'gentle', levelNumber: 1 }), 'flying,4,78,3,76.702,957.743');
+  const { flight } = flying();
+  assert.equal(flight.levelNumber, 1);
+  assert.ok(flight.enemies.every(({ captain, hitsTotal }) => !captain && hitsTotal === LEVELS.gentle.enemyHits));
+});
+
+test('each level is the same as the one before or harder, in every way, and always harder in something', () => {
+  for (const level of LEVEL_NUMBERS.slice(1)) {
+    const before = flightLevel(level - 1);
+    const now = flightLevel(level);
+    assert.ok(now.enemySpeed >= before.enemySpeed && now.enemyTurn >= before.enemyTurn && now.huntEvery <= before.huntEvery && now.dodgeSeconds >= before.dodgeSeconds, `${level}: the pirates`);
+    assert.ok(now.weave >= before.weave && now.climbs >= before.climbs && now.atOnce >= before.atOnce && (now.captain || !before.captain), `${level}: new things stay`);
+    const harder = [now.enemySpeed > before.enemySpeed, now.enemyTurn > before.enemyTurn, now.huntEvery < before.huntEvery, now.dodgeSeconds > before.dodgeSeconds, now.weave > before.weave, now.climbs > before.climbs, now.atOnce > before.atOnce, now.captain && !before.captain];
+    assert.ok(harder.some(Boolean), `${level}: something is harder`);
+  }
+  assert.ok(flightLevel(10).enemySpeed < 1, 'a pirate is never as fast as the child\'s plane');
+  assert.equal(MOST_AT_ONCE_EVER, 4);
+  assert.deepEqual([3, 5, 8, 9].map((level) => {
+    const now = flightLevel(level);
+    return [now.weave > 0, now.climbs > 1, now.captain, now.atOnce];
+  }), [[true, false, false, 3], [true, true, false, 3], [true, true, true, 3], [true, true, true, 4]]);
+});
+
+test('a level never changes what a grown-up chose: the ring, the help, how hard they shoot, or being shot down', () => {
+  for (const level of Object.keys(LEVELS)) {
+    const { flight } = flying({ level, levelNumber: 10 });
+    assert.deepEqual(flight.level, LEVELS[level]);
+    assert.equal(flight.enemyHits, LEVELS[level].enemyHits);
+    assert.equal(flight.total, 6);
+  }
+  const gentle = flying({ levelNumber: 10 }).flight;
+  for (let i = 0; i < 40; i += 1) gentle.hurt();
+  assert.equal(gentle.state, 'flying', 'Gentle still can\'t be shot down');
+  const byItself = flying({ climbing: false, levelNumber: 10, planes: 1 }).flight;
+  assert.equal(byItself.climbing, false, 'and flying up and down is still left to the plane');
+});
+
+test('from level 3 the pirates weave from side to side as they cross', () => {
+  const swings = (levelNumber) => {
+    const { flight } = flying({ levelNumber, planes: 1, random: seeded(2) });
+    const [enemy] = flight.enemies;
+    flight.huntIn = 1000;
+    let turns = 0;
+    let last = 0;
+    fly(flight, 12, () => {
+      enemy.way = { x: enemy.x + Math.sin(enemy.heading) * 500, y: enemy.y, z: enemy.z - Math.cos(enemy.heading) * 500 };
+      enemy.modeLeft = 5;
+      const side = Math.sign(Math.round(enemy.roll * 10));
+      if (side && side !== last) {
+        turns += 1;
+        last = side;
+      }
+      return { out: false };
+    });
+    return turns;
+  };
+  assert.ok(swings(1) <= 1, 'flying straight at level 1');
+  assert.ok(swings(3) >= 4, 'and from side to side from level 3');
+});
+
+test('from level 9 there can be four in the air at once, never more', () => {
+  const { flight } = flying({ levelNumber: 9, planes: 9 });
+  assert.equal(flight.flying.length, 4);
+  let safety = 0;
+  while (flight.state === 'flying' && safety < 2000) {
+    safety += 1;
+    flight.flying[0] && flight.hit(flight.flying[0]);
+    fly(flight, 0.3, { out: true });
+    assert.ok(flight.flying.length <= 4);
+  }
+  assert.equal(flight.state, 'won');
+  assert.equal(flight.dropped, 9);
+});
+
+test('from level 8 the last pirate is the captain, which takes more hits, and dropping it wins', () => {
+  const { flight, events } = flying({ levelNumber: 8, planes: 6 });
+  let captain = null;
+  while (flight.state === 'flying') {
+    const [enemy] = flight.flying;
+    if (!enemy) {
+      fly(flight, 1.2, { out: true });
+      continue;
+    }
+    if (enemy.captain) captain = enemy;
+    while (enemy.state === 'flying') flight.hit(enemy);
+    fly(flight, 1.2, { out: true });
+  }
+  assert.equal(flight.state, 'won');
+  assert.ok(captain, 'there was a captain');
+  assert.equal(captain.index, 5, 'the last one');
+  assert.ok(captain.hitsTotal > flight.enemyHits);
+  assert.equal(named(events, 'spawn').filter(({ enemy }) => enemy.captain).length, 1);
+  // At level 7, and with only one plane to drop, there isn't one.
+  assert.equal(flying({ levelNumber: 7 }).flight.enemies.some(({ captain: is }) => is), false);
+  const one = flying({ levelNumber: 10, planes: 1 }).flight;
+  assert.equal(one.enemies[0].captain, false);
+});
+
+test('at level 10, resting is still never punished: nobody hunts, shoots or hurts a child with arms down', () => {
+  const { flight } = flying({ levelNumber: 10, level: 'tough' });
+  fly(flight, 5, { out: false });
+  assert.equal(flight.resting, true);
+  const { hurts, shots } = flight.stats;
+  for (const enemy of flight.flying) {
+    enemy.mode = 'hunt';
+    enemy.modeLeft = 100;
+  }
+  fly(flight, 90, { out: false });
+  assert.equal(flight.stats.hurts, hurts);
+  assert.equal(flight.stats.shots, shots);
+  assert.equal(flight.state, 'flying');
+});
+
+/** A whole dogfight flown well, and how long it took and how many changes of direction it asked for. */
+function flyItAll({ levelNumber, pace, seed }) {
+  const { flight } = flying({ planes: 6, pace, levelNumber, random: seeded(seed) });
+  const steer = huntingWell(flight);
+  let changes = 0;
+  const side = { bank: 0, climb: 0 };
+  const count = (name, value) => {
+    const now = value > 0.4 ? 1 : value < -0.4 ? -1 : side[name];
+    if (now !== side[name] && side[name]) changes += 1;
+    side[name] = now;
+  };
+  for (let t = 0; t < 600 && flight.state === 'flying'; t += 1 / 30) {
+    const arms = steer();
+    count('bank', arms.bank ?? 0);
+    count('climb', arms.climb ?? 0);
+    flight.update(1 / 30, arms);
+  }
+  return { won: flight.state === 'won', seconds: flight.stats.seconds, perMinute: changes / (flight.stats.seconds / 60) };
+}
+
+test('level 10 is still doable: won by steering for the planes, not much longer, and no more than double the moves', () => {
+  for (const pace of Object.keys(PACES)) {
+    const mean = (levelNumber) => {
+      const flights = Array.from({ length: 100 }, (_, i) => flyItAll({ levelNumber, pace, seed: i + 1 }));
+      assert.ok(flights.every(({ won }) => won), `${pace} at level ${levelNumber}: every one won`);
+      return { seconds: flights.reduce((sum, one) => sum + one.seconds, 0) / flights.length, perMinute: flights.reduce((sum, one) => sum + one.perMinute, 0) / flights.length };
+    };
+    const first = mean(1);
+    const last = mean(10);
+    assert.ok(last.seconds <= first.seconds * 1.33, `${pace}: ${last.seconds} seconds against ${first.seconds}`);
+    assert.ok(last.perMinute <= first.perMinute * 2, `${pace}: ${last.perMinute} changes a minute against ${first.perMinute}`);
+  }
 });

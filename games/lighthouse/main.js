@@ -60,7 +60,8 @@ class LighthouseGame {
     this.after = what;
   }
 
-  prepare() {
+  /** A new storm, at this level: see stormAt in storm.js for what each level brings. */
+  prepare(level) {
     this.applySettings();
     this.story.hide();
     this.room.mud = null;
@@ -70,8 +71,11 @@ class LighthouseGame {
     this.room.shownCalm = 0;
     this.storm = new Storm({
       ships: this.session.settings.ships,
+      level,
       onEvent: (event) => this.onStorm(event),
     });
+    this.room.swell = this.storm.level.swell;
+    this.room.lumps = this.storm.lumps;
     this.showProgress();
   }
 
@@ -87,6 +91,15 @@ class LighthouseGame {
     const handlers = {
       ship: () => this.onShip(event),
       'window-clean': () => this.onWindowClean(),
+      splat: () => this.room.splat(event),
+      lump: () => {
+        this.room.lumps = this.storm.lumps;
+      },
+      'lump-off': () => {
+        this.room.lumps = this.storm.lumps;
+        this.room.dropLump(event.lump);
+        this.session.sound.handsOpen();
+      },
       'ship-home': () => this.onShipHome(),
       'all-home': () => this.onAllHome(),
     };
@@ -96,6 +109,7 @@ class LighthouseGame {
   onShip({ ship }) {
     if (!this.room.mud) this.room.muddy();
     this.room.setBoat(ship.boat);
+    this.room.lumps = this.storm.lumps;
     this.story.say(ship.who, ship.ask);
     this.showProgress();
   }
@@ -132,7 +146,7 @@ class LighthouseGame {
     byId('race-progress-fill').style.width = `${Math.round(((storm.home + Math.min(1, windowShare) * 0.999) / storm.ships.length) * 100)}%`;
   }
 
-  wipe = (x, y, sizeX, sizeY) => this.storm.wipe(x, y, sizeX, sizeY);
+  wipe = (x, y, sizeX, sizeY, moved) => this.storm.wipe(x, y, sizeX, sizeY, moved);
 
   update(dt, snapshot) {
     if (this.after) {
@@ -144,6 +158,7 @@ class LighthouseGame {
       }
     }
     const { room, storm } = this;
+    storm.update(dt, { still: room.reducedMotion });
     // Only with a ship waiting, so that the story is heard first.
     const wiping = Boolean(storm.ship) && Boolean(room.mud) && !room.mudFading && room.sailing === 0;
     room.update(dt, snapshot, { aspect: this.session.camera.aspect, wiping, showHands: true, wipe: this.wipe });

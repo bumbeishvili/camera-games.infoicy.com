@@ -1,5 +1,8 @@
 // The big hands at the roadside, on alternating sides, waiting for a high five. Steering over to one
 // with an open hand slaps it: that's what makes the child reach to each side.
+//
+// Where they stand depends on the level (rules.js). They're made once and moved, and more are only made
+// when a level needs more than have been made so far.
 import * as THREE from '../../vendor/three/three.module.js';
 import { ball, mergeParts, outlineMaterial, roundedBox, toon } from '../../core/body/characters.js';
 import { canvasTexture, damp, lerp, mod, starPath, TAU } from './kit.js';
@@ -80,47 +83,20 @@ export class HighFiveGates {
     this.reducedMotion = reducedMotion;
     this.reachFor = () => 2.6;
 
-    const handShapes = { '-1': handGeometry(1), 1: handGeometry(-1) };
-    const outline = outlineMaterial('#27384b', 0.018);
-    const paints = HAND_COLOURS.map((colour) => new THREE.MeshToonMaterial({ color: colour, gradientMap: toon() }));
+    this.scene = scene;
+    this.handShapes = { '-1': handGeometry(1), 1: handGeometry(-1) };
+    this.outline = outlineMaterial('#27384b', 0.018);
+    this.paints = HAND_COLOURS.map((colour) => new THREE.MeshToonMaterial({ color: colour, gradientMap: toon() }));
     // Whichever hand is next wears this, which goes smoothly to green once the car is lined up with it.
     this.nextPaint = new THREE.MeshToonMaterial({ gradientMap: toon() });
     this.readyColour = new THREE.Color(READY_COLOUR);
-    const palm = new THREE.MeshBasicMaterial({ map: palmTexture(), transparent: true });
-    const palmShape = new THREE.CircleGeometry(0.46, 28);
-    const armPaint = new THREE.MeshLambertMaterial({ vertexColors: true });
-    const beamShape = new THREE.CylinderGeometry(0.17, 0.17, 1, 8).rotateZ(Math.PI / 2);
-    const beamPaint = new THREE.MeshLambertMaterial({ color: '#f7fafc' });
-
-    this.gates = GATE_SPOTS.map(([along, side], index) => {
-      const root = new THREE.Group();
-      track.pointAt(along, 0, root.position);
-      // Facing whoever's coming up the road. Across this, +X is the driver's right.
-      root.rotation.y = track.headingAt(along) + Math.PI;
-
-      const paint = paints[index % paints.length];
-      const pivot = new THREE.Group();
-      const hand = new THREE.Group();
-      hand.scale.setScalar(HAND_SIZE);
-      const glove = new THREE.Mesh(handShapes[side], paint);
-      glove.castShadow = true;
-      const lines = new THREE.Mesh(handShapes[side], outline);
-      const face = new THREE.Mesh(palmShape, palm);
-      face.position.set(0, 0.68, 0.272);
-      hand.add(glove, lines, face);
-      pivot.add(hand);
-      root.add(pivot);
-
-      const arm = new THREE.Mesh(this.armGeometry(paint.color), armPaint);
-      arm.castShadow = true;
-      root.add(arm);
-      const beam = new THREE.Mesh(beamShape, beamPaint);
-      beam.castShadow = true;
-      root.add(beam);
-      scene.add(root);
-
-      return { along, side, index, root, pivot, hand, glove, arm, beam, paint, swing: 0, swingSpeed: 0, ready: 0, handX: 0, tucked: 0, wave: index * 1.3 };
-    });
+    this.palm = new THREE.MeshBasicMaterial({ map: palmTexture(), transparent: true });
+    this.palmShape = new THREE.CircleGeometry(0.46, 28);
+    this.armPaint = new THREE.MeshLambertMaterial({ vertexColors: true });
+    this.beamShape = new THREE.CylinderGeometry(0.17, 0.17, 1, 8).rotateZ(Math.PI / 2);
+    this.beamPaint = new THREE.MeshLambertMaterial({ color: '#f7fafc' });
+    this.pool = []; // Every big hand made so far.
+    this.gates = []; // The ones in this level's race, in order along the lap.
 
     // One painted strip on the road, which moves along to whichever big hand is next.
     this.stripMaterial = new THREE.MeshBasicMaterial({
@@ -152,6 +128,51 @@ export class HighFiveGates {
     this.stripReach = 0;
 
     this.corner = new THREE.Vector3();
+    this.setLayout(GATE_SPOTS);
+  }
+
+  /** One big hand on its arm. Each keeps its colour, so the first ones look the same at every level. */
+  makeGate(index) {
+    const paint = this.paints[index % this.paints.length];
+    const root = new THREE.Group();
+    const pivot = new THREE.Group();
+    const hand = new THREE.Group();
+    hand.scale.setScalar(HAND_SIZE);
+    const glove = new THREE.Mesh(this.handShapes[1], paint);
+    glove.castShadow = true;
+    const lines = new THREE.Mesh(this.handShapes[1], this.outline);
+    const face = new THREE.Mesh(this.palmShape, this.palm);
+    face.position.set(0, 0.68, 0.272);
+    hand.add(glove, lines, face);
+    pivot.add(hand);
+    root.add(pivot);
+
+    const arm = new THREE.Mesh(this.armGeometry(paint.color), this.armPaint);
+    arm.castShadow = true;
+    root.add(arm);
+    const beam = new THREE.Mesh(this.beamShape, this.beamPaint);
+    beam.castShadow = true;
+    root.add(beam);
+    this.scene.add(root);
+    return { along: 0, side: 1, index, root, pivot, hand, glove, lines, arm, beam, paint, swing: 0, swingSpeed: 0, ready: 0, handX: 0, tucked: 0, wave: index * 1.3 };
+  }
+
+  /** Puts the big hands where a level says: a list of [along, side], in order along the lap. */
+  setLayout(spots) {
+    while (this.pool.length < spots.length) this.pool.push(this.makeGate(this.pool.length));
+    this.gates = spots.map(([along, side], index) => {
+      const gate = this.pool[index];
+      Object.assign(gate, { along, side, swing: 0, swingSpeed: 0, ready: 0, tucked: 0 });
+      this.track.pointAt(along, 0, gate.root.position);
+      // Facing whoever's coming up the road. Across this, +X is the driver's right.
+      gate.root.rotation.y = this.track.headingAt(along) + Math.PI;
+      gate.glove.geometry = this.handShapes[side];
+      gate.lines.geometry = this.handShapes[side];
+      gate.root.visible = true;
+      return gate;
+    });
+    for (const gate of this.pool.slice(spots.length)) gate.root.visible = false;
+    this.stripGate = null;
     this.applyReach();
   }
 

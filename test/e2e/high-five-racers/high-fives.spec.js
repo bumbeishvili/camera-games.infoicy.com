@@ -231,3 +231,33 @@ test('the summary says how many high fives there were, and to each side', async 
   await page.waitForTimeout(600);
   await shot(page, 'r-summary');
 });
+
+test('the first big hand\'s hint is said aloud once, and after that only shown', async ({ page }) => {
+  await openGame(page, { steering: 'help', voice: true, sound: true });
+  await page.evaluate(() => {
+    const { sound } = window.__game;
+    const say = sound.say.bind(sound);
+    window.__spoken = [];
+    sound.say = (...args) => {
+      const playing = say(...args);
+      if (playing) window.__spoken.push(args[0]);
+      return playing;
+    };
+  });
+  await show(page, null, 'open');
+  await reachRace(page);
+  await waitForHand(page, 'open');
+  await waitUntilMoving(page);
+  const said = () => page.evaluate(() => window.__spoken.filter((line) => line === 'High five the big hand!').length);
+  await beforeGate(page, 1, 58);
+  await expect(page.locator('#prompt')).toHaveText(/High five the big hand!/, { timeout: 5000 });
+  await expect.poll(said, { timeout: 8000 }).toBe(1);
+  // The next big hand, missed on purpose so the hint stays: shown, and not said again.
+  await page.evaluate(() => {
+    window.__game.race.fives = 0;
+  });
+  await beforeGate(page, -1, 58);
+  await expect(page.locator('#prompt')).toHaveText(/High five the big hand!/, { timeout: 5000 });
+  await page.waitForTimeout(2500);
+  expect(await said()).toBe(1);
+});

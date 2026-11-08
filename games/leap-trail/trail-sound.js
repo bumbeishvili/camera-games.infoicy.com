@@ -72,6 +72,12 @@ export class TrailSound extends Sound {
     this.play('win', { gain: 0.16, rate: 1.5 });
   }
 
+  /** A golden star: a star's chime, higher, with a little of the win under it. */
+  gold() {
+    this.play('star', { gain: 0.75, rate: 1.5 });
+    this.play('win', { gain: 0.14, rate: 1.7 });
+  }
+
   bump() {
     this.play('bump', { gain: 0.6, rate: near(0.08) });
   }

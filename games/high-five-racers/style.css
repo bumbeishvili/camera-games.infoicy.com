@@ -15,7 +15,7 @@ body[data-screen='playing'][data-turbo-hint] .hand-demo { display: block; }
   padding: 0;
   list-style: none;
   width: calc(var(--row) * 1.75);
-  height: calc(var(--row) * 4);
+  height: calc(var(--row) * var(--cars, 4)); /* One row for each car in the race: see buildOrder. */
 }
 
 .order-row {
@@ -83,6 +83,31 @@ body[data-screen='playing'][data-turbo-hint] .hand-demo { display: block; }
 
 .turbo-flame-core { fill: #e6ecf1; }
 
+/* Until it's turbo, the meter shows a hand spread wide, which is how to fill it. Once it's turbo, the flame. */
+.turbo:not([data-state='on']) .turbo-flame { display: none; }
+.turbo[data-state='on'] .turbo-hand { display: none; }
+
+.turbo-hand {
+  flex: none;
+  width: clamp(30px, 3.6vw, 46px);
+  height: auto;
+}
+
+.turbo-hand rect { fill: var(--good); stroke: var(--ink); stroke-width: 2.5; }
+.turbo-hand path { fill: none; stroke: var(--good); stroke-width: 7; stroke-linecap: round; }
+
+/* The fingers spread a little wider and back, slowly, to say "wider". Only ever a turn, never a colour. */
+.turbo-finger { transform-box: view-box; transform-origin: 26px 40px; animation: turbo-spread 2.4s ease-in-out infinite; }
+.turbo-finger-1 { --spread: -9deg; }
+.turbo-finger-2 { --spread: -4deg; }
+.turbo-finger-3 { --spread: 4deg; }
+.turbo-finger-4, .turbo-thumb { --spread: 9deg; }
+
+@keyframes turbo-spread {
+  0%, 100% { transform: rotate(0); }
+  50% { transform: rotate(var(--spread)); }
+}
+
 .turbo-parts {
   flex: 1;
   display: grid;
@@ -99,7 +124,7 @@ body[data-screen='playing'][data-turbo-hint] .hand-demo { display: block; }
   line-height: 1;
 }
 
-.turbo-word { font-size: clamp(16px, 2vw, 25px); }
+.turbo-word { font-size: clamp(15px, 1.8vw, 23px); white-space: nowrap; }
 
 .turbo-speed {
   font-size: clamp(15px, 1.8vw, 22px);
@@ -147,6 +172,57 @@ body[data-screen='playing'][data-turbo-hint] .hand-demo { display: block; }
 
 @keyframes turbo-hint {
   50% { transform: translateY(-6px) scale(1.04); }
+}
+
+/* ---------- a little film by the meter: the other hand makes a fist and opens, and the car flies ---------- */
+.fly-film {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  bottom: calc(14px + 84px);
+  left: calc(50% + (var(--meter-size) + clamp(8px, 2vw, 24px) + clamp(46px, 6vw, 74px)) / 2 + 12px);
+  width: clamp(180px, 25vw, 330px);
+  padding: 6px 10px 10px;
+  background: linear-gradient(#cfeeff, #f4fbff);
+  border: 5px solid var(--sun);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+}
+
+body[data-screen='playing'][data-fly-film] .fly-film { display: block; }
+/* The other hand is on its own side of the picture, as in a mirror. The film is drawn for the left. */
+body[data-fly-film='right'] .fly-film svg { transform: scaleX(-1); }
+.fly-film svg { display: block; width: 100%; height: auto; }
+
+.fly-film-hand rect { fill: #ffc21a; stroke: var(--ink); stroke-width: 2.5; }
+.fly-film-finger { fill: none; stroke: #ffc21a; stroke-width: 7; stroke-linecap: round; transform-box: fill-box; transform-origin: bottom center; animation: fly-fist 3s ease-in-out infinite; }
+.fly-film-thumb { transform-origin: bottom left; }
+.fly-film-arrow, .fly-film-ground { fill: none; stroke: var(--ink-soft); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.fly-film-car rect { fill: #ff5a4f; stroke: var(--ink); stroke-width: 2.5; }
+.fly-film-car .fly-film-cab { fill: #ffd23f; }
+.fly-film-car circle { fill: var(--ink); }
+.fly-film-flame { fill: #ff9f45; }
+.fly-film-car { animation: fly-up 3s ease-in-out infinite; }
+
+.fly-film-words {
+  margin: 2px 0 0;
+  text-align: center;
+  font-weight: 700;
+  font-size: clamp(14px, 1.6vw, 20px);
+  line-height: 1.15;
+}
+
+/* Open, a fist, open again: then the car takes off, and comes down. */
+@keyframes fly-fist {
+  0%, 12% { transform: scaleY(1); }
+  26%, 44% { transform: scaleY(0.3); }
+  58%, 100% { transform: scaleY(1); }
+}
+
+@keyframes fly-up {
+  0%, 56% { transform: translateY(0); }
+  76% { transform: translateY(-22px); }
+  90%, 100% { transform: translateY(0); }
 }
 
 /* ---------- little words beside the action ---------- */
@@ -247,7 +323,11 @@ body[data-five-film='left'] .five-film svg { transform: scaleX(-1); }
 }
 
 @media (max-height: 560px) {
-  .race-order { --row: clamp(28px, 9vh, 38px); }
+  /* Smaller with more cars, so that the list stays above the film in the corner. Four cars are as before. */
+  .race-order { --row: min(clamp(28px, 9vh, 38px), calc(37vh / var(--cars, 4))); }
+  /* Smaller, so that it stays clear of the prompt. */
+  .fly-film { width: 160px; bottom: calc(14px + 62px); padding: 4px 8px 6px; }
+  .fly-film-words { font-size: 13px; }
 }
 
 /* On a narrow screen there's no room beside the camera's picture, so all of this goes under it. */
@@ -259,8 +339,15 @@ body[data-five-film='left'] .five-film svg { transform: scaleX(-1); }
     width: 170px;
   }
 
+  .fly-film {
+    left: auto;
+    right: 10px;
+    bottom: calc(var(--meter-size) + 54px + 76px);
+    width: 170px;
+  }
+
   .hud-top { top: calc(12px + var(--camera-small) / var(--camera-aspect) + 14px); }
-  .race-order { --row: 34px; }
+  .race-order { --row: min(34px, calc(180px / var(--cars, 4))); }
   body[data-screen='playing'] .prompt { top: calc(12px + var(--camera-small) / var(--camera-aspect) + 96px); }
 
   .toast {
@@ -273,6 +360,8 @@ body[data-five-film='left'] .five-film svg { transform: scaleX(-1); }
 
 @media (prefers-reduced-motion: reduce) {
   .order-row { transition: none; }
+  .turbo-finger { animation: none; transform: rotate(var(--spread)); }
+  .fly-film-finger, .fly-film-car { animation-duration: 4.5s; }
   .turbo.is-hint,
   .turbo[data-state='on'] .turbo-flame { animation: none; }
   .toast.is-showing { animation-name: toast-still; }
