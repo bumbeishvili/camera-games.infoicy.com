@@ -14,7 +14,7 @@ import { Particles, SpeedLines } from './effects.js';
 import { HAND_COLOURS, HighFiveGates, PALM_HEIGHT } from './gates.js';
 import { canvasTexture, clamp, damp, mod, softCircleTexture } from './kit.js';
 import { Ramps, StarField } from './pickups.js';
-import { CAR_LENGTH, CAR_WIDTH, FASTEST_SPEED, gateOutcome, REACH, ReachEasing, rivalSpeed, SLAP, TOP_SPEED, touching, TurboMeter, wantedSpeed } from './rules.js';
+import { CAR_LENGTH, CAR_WIDTH, FASTEST_SPEED, FistAndOpen, gateOutcome, REACH, ReachEasing, rivalSpeed, SLAP, TOP_SPEED, touching, TurboMeter, wantedSpeed } from './rules.js';
 import { LANE_LIMIT, START_BEHIND_LINE, Track } from './track.js';
 import { World } from './world.js';
 
@@ -33,6 +33,12 @@ const RIVAL_SLAP_REACH = 1.5;
 const RESTING_SPEED = 6;
 const CROWD_CHEER_SPACING_SECONDS = 25;
 const JUMP_GRAVITY = 21;
+// The flight from the other hand's turbo: a long, floaty hop rather than a ramp's quick one, about 6 m up
+// and 3 seconds in the air, or a low hop with reduced motion. It stays under everything over the road: the
+// lowest is the signs on the footbridges, at about 8.4 m, and the car's roof stays below 7.5 m. The view
+// hardly moves, and the car rises up the picture instead: the whole picture sliding up and back down
+// again would make lots of it change brightness at once, which is how a flash is counted.
+const FLIGHT = { liftSpeed: 8.5, gravity: 6, lowLiftSpeed: 5, overGatesAbove: 2.5, cameraFollows: 0.08, lookFollows: 0.12 };
 const jumpSpeed = (speed) => 3 + speed * 0.22;
 const FINISH_STOP = 3; // Rivals pull up this far before the line, so the child gets there first.
 const PASSED_BY = 1.5; // How far clear a car has to be to have passed, so two side by side don't keep swapping.
@@ -79,7 +85,7 @@ function skyReflection(renderer) {
 export class Race {
   /**
    * events: onStar(total), onPlace(place, previous), onOvertake(spec, byPlayer), onLap(lap), onFinish(),
-   * onFive(total, side, streak), onGate(gate, outcome), onBump(), onTurbo(on), onJump(), onLanded(), onCrowd().
+   * onFive(total, side, streak), onGate(gate, outcome), onBump(), onTurbo(on), onJump(), onFly(), onLanded(), onCrowd().
    * Modes: attract (title screen), grid (waiting on the line), race, finished.
    * driver is who's driving the child's car, rivals who's in the others, and reach how far to reach
    * for a big hand.
@@ -148,6 +154,7 @@ export class Race {
     this.particles.budget = this.reducedMotion ? 0.5 : 1;
     this.speedLines = new SpeedLines(this.scene);
     this.turbo = new TurboMeter();
+    this.otherHand = new FistAndOpen();
 
     this.camera = new THREE.PerspectiveCamera(60, 1, 0.5, 3200);
     this.cameraTarget = new THREE.Vector3();
@@ -211,6 +218,8 @@ export class Race {
     this.lift = 0;
     this.liftSpeed = 0;
     this.flying = false;
+    this.soaring = false;
+    this.otherHand.reset();
     this.nosePitch = 0;
     this.gateNext = null;
     this.gateAhead = Infinity;
@@ -282,6 +291,7 @@ export class Race {
       turbo: this.turbo.level,
       turboOn: this.turbo.active,
       boosting: this.boostLeft > 0,
+      flying: this.soaring,
     };
   }
 
@@ -313,10 +323,14 @@ export class Race {
     return this.stars.nextLane(mod(this.distance, this.track.length), this.lapIndex) ?? 0;
   }
 
-  updatePlayer(dt, { drive = 0, width = 0, steer = 0, steering = 'help' }) {
+  updatePlayer(dt, { drive = 0, width = 0, steer = 0, steering = 'help', other = null }) {
     this.drive = drive;
     const handOpen = drive > 0;
     const wasTurbo = this.turbo.active;
+    // A fist and then an open hand with the other hand, once turbo has run out, sets it off again and the
+    // car flies. The car still only goes while the hand in play is open.
+    const otherHandDidIt = this.otherHand.update(other);
+    if (otherHandDidIt && handOpen && this.turbo.burst()) this.takeOff();
     this.turbo.update(handOpen ? width : 0, dt);
     if (this.turbo.active !== wasTurbo) this.events.onTurbo?.(this.turbo.active);
     this.boostLeft = handOpen ? Math.max(0, this.boostLeft - dt) : 0;
@@ -414,6 +428,8 @@ export class Race {
     const from = mod(this.previousDistance, this.track.length);
     for (const gate of this.gates.gates) {
       if (mod(gate.along - from, this.track.length) > moved) continue;
+      // Flying high over a big hand is neither a high five nor a miss, so it costs nothing.
+      if (this.soaring && this.lift > FLIGHT.overGatesAbove) continue;
       const outcome = gateOutcome({ handOpen, lateral: this.lateral, side: gate.side, reach: this.reach.reachFor(gate.side) });
       this.gatesMet += 1;
       this.reach.record(gate.side, outcome, handOpen);
@@ -455,14 +471,25 @@ export class Race {
     this.events.onFive?.(this.fives, gate.side, this.streak);
   }
 
+  /** Up into the air, from the other hand's turbo. */
+  takeOff() {
+    this.flying = true;
+    this.soaring = true;
+    this.liftSpeed = Math.max(this.liftSpeed, this.reducedMotion ? FLIGHT.lowLiftSpeed : FLIGHT.liftSpeed);
+    this.lift = Math.max(this.lift, 0.2);
+    this.player.fighter.setExpression('happy', 2);
+    this.events.onFly?.();
+  }
+
   updateJump(dt) {
     const onRamp = this.ramps.liftAt(this.distance, this.lateral);
     if (this.flying) {
-      this.liftSpeed -= JUMP_GRAVITY * dt;
+      this.liftSpeed -= (this.soaring ? FLIGHT.gravity : JUMP_GRAVITY) * dt;
       this.lift += this.liftSpeed * dt;
       if (this.lift <= 0) {
         this.lift = 0;
         this.flying = false;
+        this.soaring = false;
         this.liftSpeed = 0;
         this.puffAtWheels(10);
         this.events.onLanded?.();
@@ -842,8 +869,9 @@ export class Race {
       this.pullBack = damp(this.pullBack ?? 0, rush, 2.6, dt);
       this.track.pointAt(this.distance - 12.5 + this.pullBack * 1.4, this.lateral * 0.72, this.tmpA);
       this.track.pointAt(this.distance + 8.8, this.lateral * 0.62, this.tmpB);
-      this.cameraTarget.set(this.tmpA.x, this.tmpA.y + 5.5 + this.lift * 0.35, this.tmpA.z);
-      this.cameraLook.set(this.tmpB.x, this.tmpB.y + 0.7 + this.lift * 0.5, this.tmpB.z);
+      const [follows, looks] = this.soaring ? [FLIGHT.cameraFollows, FLIGHT.lookFollows] : [0.35, 0.5];
+      this.cameraTarget.set(this.tmpA.x, this.tmpA.y + 5.5 + this.lift * follows, this.tmpA.z);
+      this.cameraLook.set(this.tmpB.x, this.tmpB.y + 0.7 + this.lift * looks, this.tmpB.z);
     }
 
     if (this.snapCamera) {

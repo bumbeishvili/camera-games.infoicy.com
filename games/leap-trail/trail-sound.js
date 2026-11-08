@@ -55,9 +55,13 @@ export class TrailSound extends Sound {
     this.play(`step${this.stepIndex + 1}`, { gain: 0.32, rate: near(0.14) });
   }
 
-  moved(kind) {
-    if (kind === 'jump') this.play('jump', { gain: 0.55, rate: near(0.08) });
-    else this.play('slide', { gain: 0.5, rate: near(0.1) });
+  moved() {
+    this.play('jump', { gain: 0.55, rate: near(0.08) });
+  }
+
+  /** A soft swish, moving across into another lane. */
+  across() {
+    this.play('slide', { gain: 0.32, rate: near(0.1) * 1.25 });
   }
 
   land() {

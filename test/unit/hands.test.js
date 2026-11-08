@@ -429,6 +429,44 @@ test('the resting hand can do anything, but still can\'t hold the other one open
   assert.equal(promptFor(touching).key, 'apart');
 });
 
+test('the other hand is watched on its own, and never changes the hand in play', () => {
+  const { monitor, clock } = setup(undefined, 'right');
+  const both = (left, right) => [handAt(left, 0.27, 0.5, { label: 'Left' }), handAt(right, 0.73, 0.5, { label: 'Right' })];
+
+  let snapshot = feed(monitor, clock, 500, both(OPEN, OPEN));
+  assert.equal(snapshot.other.side, 'left');
+  assert.equal(snapshot.other.status, 'open');
+  assert.equal(snapshot.left.status, 'missing', 'the left and right views still only show the hand in play');
+  assert.equal(snapshot.handOpen, true);
+
+  snapshot = feed(monitor, clock, 500, both(FIST, OPEN));
+  assert.equal(snapshot.other.status, 'closed');
+  assert.equal(snapshot.other.reason, 'closed');
+  assert.equal(snapshot.handOpen, true, 'a fist in the other hand doesn\'t stop the car');
+
+  snapshot = feed(monitor, clock, 500, both(OPEN, FIST));
+  assert.equal(snapshot.other.status, 'open');
+  assert.equal(snapshot.handOpen, false, 'an open other hand can\'t drive for the hand in play');
+});
+
+test('the other hand fails closed: alone, gone, touching or switched', () => {
+  const { monitor, clock } = setup(undefined, 'right');
+  assert.equal(feed(monitor, clock, 500, [rightHand(OPEN)]).other.status, 'missing', 'only the hand in play is there');
+  assert.equal(feed(monitor, clock, 500, [leftHand(OPEN)]).other.status, 'open', 'the other hand alone is still seen');
+  assert.equal(feed(monitor, clock, 1500, []).other.status, 'missing');
+
+  const touching = feed(monitor, clock, 500, [handAt(OPEN, 0.44, 0.5, { label: 'Left' }), handAt(OPEN, 0.56, 0.5, { label: 'Right' })]);
+  assert.equal(touching.other.status, 'closed');
+  assert.equal(touching.other.reason, 'overlap');
+
+  feed(monitor, clock, 500, [leftHand(OPEN), rightHand(OPEN)]);
+  monitor.setSide('left');
+  assert.equal(monitor.snapshot.other.side, 'right');
+  assert.equal(monitor.snapshot.other.status, 'missing', 'changing hands starts the other hand afresh');
+  monitor.forgetHands();
+  assert.equal(monitor.snapshot.other.status, 'missing');
+});
+
 test('the hand steers by moving side to side, from wherever it started', () => {
   assert.equal(steerFromReach(0.01), 0, 'small movements are ignored');
   assert.equal(steerFromReach(0.2), 1);

@@ -1,6 +1,6 @@
 // How Leap Trail fits a child: what the camera has to see, and raising a hand instead of jumping.
 import { expect, screenName, shot, test, waitForScreen } from '../helpers.js';
-import { footage, nextObstacleIs, openTrail, reachPractice, reachRun, runState, standInView, toChoosing } from './helpers.js';
+import { footage, nextObstacleIs, openTrail, reachPractice, reachRun, runState, standAcross, standInView, toChoosing } from './helpers.js';
 
 const prompt = (page) => page.locator('#prompt');
 
@@ -41,12 +41,17 @@ test('the practice shows each move, sees real ones, says so, and then the run st
   await shot(page, 't20-practice-seen');
   expect(await page.evaluate(() => window.__game.world.runner.hopLeft)).toBeGreaterThan(0);
 
-  await expect(page.locator('#coach-text')).toHaveText('Squat as low as you can!', { timeout: 8000 });
-  expect(await page.evaluate(() => window.__game.game.demo.playing.name)).toBe('squat');
+  // Then stepping to the side, which is the other thing the run needs.
+  await expect(page.locator('#coach-text')).toHaveText('Step to the side!', { timeout: 8000 });
+  expect(await page.evaluate(() => window.__game.game.demo.playing.name)).toBe('sideStep');
   await expect(page.locator('#practice-count')).toHaveText('2 / 2');
+  await page.waitForTimeout(1000);
+  await shot(page, 't20b-practice-side');
 
-  await footage(page, 'squat');
-  await expect(page.locator('.callout.is-seen').first()).toContainText('You squatted!', { timeout: 20_000 });
+  await standAcross(page, -0.09);
+  await expect(page.locator('.callout.is-seen').first()).toContainText('You moved across!', { timeout: 20_000 });
+  await expect.poll(() => page.evaluate(() => window.__game.world.runner.body.root.position.x), { timeout: 3000 }).toBeLessThan(-0.5);
+  await shot(page, 't20c-practice-side-seen');
   await standInView(page);
   await waitForScreen(page, 'countdown');
   await waitForScreen(page, 'run');
@@ -55,21 +60,23 @@ test('the practice shows each move, sees real ones, says so, and then the run st
   expect([stats.jumps, stats.cleared]).toEqual([0, 0]);
 });
 
-test('the meter and the bar under the coach follow a real body', async ({ page }) => {
+test('the meter and the bar under the coach follow a real body, and the meter only goes up', async ({ page }) => {
   test.setTimeout(120_000);
   await reachPractice(page);
   const dot = () => page.locator('#meter-dot').evaluate((node) => parseFloat(node.style.bottom));
-  await expect.poll(dot, { timeout: 8000 }).toBeGreaterThan(40);
-  expect(await dot()).toBeLessThan(62);
+  // Standing is the bottom of the meter.
+  await expect.poll(dot, { timeout: 8000 }).toBeLessThan(25);
+  expect(await dot()).toBeGreaterThanOrEqual(9);
 
   await page.evaluate(() => {
     window.__game.game.practice.succeed = () => {};
   });
+  // Going down isn't a move here, so the meter has nowhere lower to go, though the runner still copies it.
   await footage(page, 'squat');
-  await expect.poll(dot, { timeout: 15_000 }).toBeLessThan(25);
-  await shot(page, 't21-meter-squat');
-  // The clip goes on squatting, so it's a matter of catching it on the way down.
   await expect.poll(() => page.evaluate(() => window.__game.world.runner.live.hipDrop), { timeout: 15_000, intervals: [100] }).toBeGreaterThan(0.05);
+  expect(await dot()).toBeGreaterThanOrEqual(9);
+  await expect(page.locator('.meter-zone-down')).toHaveCount(0);
+  await shot(page, 't21-meter-squat');
 
   await footage(page, 'jumps');
   await expect.poll(dot, { timeout: 15_000 }).toBeGreaterThan(70);
@@ -103,26 +110,6 @@ test('a second run doesn\'t ask to practise again, unless a grown-up wants it to
   await page.locator('#recheck').click();
   await waitForScreen(page, 'bodycheck');
   expect(await page.evaluate(() => window.__game.game.practised)).toBe(false);
-});
-
-test('jumping when a squat is wanted is seen, and the child is asked again', async ({ page }) => {
-  await reachRun(page);
-  await nextObstacleIs(page, 'arch', 9);
-  await expect(page.locator('#coach-text')).toHaveText('Squat down!', { timeout: 10_000 });
-  await page.evaluate(() => {
-    window.__said = [];
-    const { sound } = window.__game;
-    const real = sound.say.bind(sound);
-    sound.say = (text, options) => {
-      window.__said.push(text);
-      return real(text, options);
-    };
-  });
-  await footage(page, 'jumps');
-  await expect(page.locator('.callout.is-seen').first()).toContainText('You jumped!', { timeout: 15_000 });
-  expect(await page.evaluate(() => window.__said)).toContain('Squat down!');
-  expect((await runState(page)).next.kind).toBe('arch');
-  await expect(page.locator('#coach-text')).toHaveText('Squat down!');
 });
 
 test('lifting a knee can be the way over, for a child who can stand but not jump', async ({ page }) => {
@@ -231,7 +218,7 @@ test('a hand that can\'t be read doesn\'t count either', async ({ page }) => {
   expect((await runState(page)).stats.jumps).toBe(0);
 });
 
-test('raising a hand only asks for the top half of the child, and has no squats', async ({ page }) => {
+test('raising a hand only asks for the top half of the child, and leaning moves across', async ({ page }) => {
   await openTrail(page, { jumpWith: 'reach' });
   // Feet out of the picture, as they would be sitting down.
   await footage(page, 'strikes', { from: 0.2, playing: false, height: 1.6, shiftY: 0.15 });
@@ -240,7 +227,9 @@ test('raising a hand only asks for the top half of the child, and has no squats'
   await waitForScreen(page, 'bodycheck');
   await waitForScreen(page, 'practice');
   await expect(page.locator('#coach-text')).toHaveText('Raise your open hand as high as you can!');
-  await expect(page.locator('#practice-count')).toHaveText('1 / 1');
+  await expect(page.locator('#practice-count')).toHaveText('1 / 2');
+  await page.evaluate(() => window.__game.game.practice.succeed());
+  await expect(page.locator('#coach-text')).toHaveText('Lean to the side!', { timeout: 8000 });
   await page.locator('#practice-skip').click();
   await waitForScreen(page, 'run');
   const needs = await page.evaluate(() => window.__game.run.course.map(({ needs: need }) => need));
@@ -261,7 +250,7 @@ test('the grown-ups\' panel pauses the run and remembers what it\'s told', async
   await page.locator('input[name="pace"][value="fast"]').check();
   await page.locator('input[name="obstacles"][value="40"]').check();
   await page.locator('input[name="onMissed"][value="stumble"]').check();
-  await page.locator('input[name="squatObstacles"][value="no"]').check();
+  await page.locator('input[name="trailLanes"][value="no"]').check();
   await page.locator('input[name="moveSize"][value="tiny"]').check();
   await page.locator('input[name="hands"][value="left"]').check();
   await page.locator('#close-panel').click();
@@ -270,7 +259,7 @@ test('the grown-ups\' panel pauses the run and remembers what it\'s told', async
   await page.reload();
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
   await page.locator('#open-panel').click();
-  for (const [name, value] of [['jumpWith', 'reach'], ['pace', 'fast'], ['obstacles', '40'], ['onMissed', 'stumble'], ['squatObstacles', 'no'], ['moveSize', 'tiny'], ['hands', 'left']]) {
+  for (const [name, value] of [['jumpWith', 'reach'], ['pace', 'fast'], ['obstacles', '40'], ['onMissed', 'stumble'], ['trailLanes', 'no'], ['moveSize', 'tiny'], ['hands', 'left']]) {
     await expect(page.locator(`input[name="${name}"][value="${value}"]`)).toBeChecked();
   }
 });

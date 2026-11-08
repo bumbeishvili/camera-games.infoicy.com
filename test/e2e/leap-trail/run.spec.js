@@ -1,6 +1,6 @@
 // Leap Trail, with real footage going through the real tracker.
 import { expect, screenName, shot, test, waitForScreen } from '../helpers.js';
-import { bodyDoes, footage, nextObstacleIs, openTrail, reachRun, runState, standInView, toChoosing } from './helpers.js';
+import { bodyDoes, footage, nextObstacleIs, openTrail, reachRun, runState, standAcross, standInView, toChoosing } from './helpers.js';
 
 const prompt = (page) => page.locator('#prompt');
 
@@ -23,14 +23,13 @@ test('a look at every obstacle, each one cleared', async ({ page }) => {
   await shot(page, 't4-running');
 
   let cleared = 0;
-  for (const kind of ['log', 'hay', 'rocks', 'stream', 'arch', 'bough']) {
-    const move = kind === 'arch' || kind === 'bough' ? 'squat' : 'jump';
+  for (const kind of ['log', 'hay', 'rocks', 'stream']) {
     await nextObstacleIs(page, kind, 14);
     await expect.poll(async () => (await runState(page)).next?.inReach, { timeout: 8000 }).toBe(true);
     await page.waitForTimeout(150);
     await shot(page, `t5-${kind}-ask`);
-    await bodyDoes(page, move);
-    await page.waitForTimeout(kind === 'arch' || kind === 'bough' ? 800 : 500);
+    await bodyDoes(page);
+    await page.waitForTimeout(500);
     await shot(page, `t6-${kind}-move`);
     cleared += 1;
     await expect.poll(async () => (await runState(page)).stats.cleared, { timeout: 8000 }).toBe(cleared);
@@ -43,10 +42,10 @@ test('there are no keyboard controls: only the body moves the runner', async ({ 
   await reachRun(page);
   await nextObstacleIs(page, 'log', 9);
   await expect.poll(async () => (await runState(page)).next?.inReach, { timeout: 10_000 }).toBe(true);
-  for (const key of ['Space', 'ArrowUp', 'ArrowDown', 'Enter', 'KeyW', 'KeyS']) await page.keyboard.press(key);
+  for (const key of ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'KeyW', 'KeyA', 'KeyS', 'KeyD']) await page.keyboard.press(key);
   await page.waitForTimeout(400);
-  const { stats } = await runState(page);
-  expect([stats.jumps, stats.squats, stats.cleared]).toEqual([0, 0, 0]);
+  const { stats, lane } = await runState(page);
+  expect([stats.jumps, stats.cleared, stats.laneMoves, lane]).toEqual([0, 0, 0, 0]);
 });
 
 test('a real jump in front of the camera clears what\'s coming', async ({ page }) => {
@@ -70,19 +69,76 @@ test('a real jump in front of the camera clears what\'s coming', async ({ page }
   await expect(page.locator('#coach')).toBeHidden();
 });
 
-test('a real squat in front of the camera slides under what\'s low', async ({ page }) => {
+test('there are no squats: going down is never asked for, never taken for a move, and never said', async ({ page }) => {
   await reachRun(page);
-  await nextObstacleIs(page, 'arch', 9);
+  await page.evaluate(() => {
+    window.__said = [];
+    const { sound } = window.__game;
+    const real = sound.say.bind(sound);
+    sound.say = (text, options) => {
+      window.__said.push(text);
+      return real(text, options);
+    };
+  });
+  const kinds = await page.evaluate(() => window.__game.run.course.map(({ needs }) => needs));
+  expect(new Set(kinds)).toEqual(new Set(['jump']));
+  await nextObstacleIs(page, 'log', 9);
   await expect.poll(async () => (await runState(page)).next?.inReach, { timeout: 10_000 }).toBe(true);
-  await expect(page.locator('#coach-text')).toHaveText('Squat down!');
+  await expect(page.locator('#coach-text')).toHaveText('Jump!');
 
+  // Real squats, over and over, in front of the camera.
   await footage(page, 'squat');
-  await expect.poll(async () => (await runState(page)).stats.squats, { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
-  await expect(page.locator('.callout.is-seen').first()).toContainText('You squatted!');
-  await page.waitForTimeout(200);
-  await shot(page, 't8-real-squat');
-  await expect.poll(async () => (await runState(page)).stats.cleared, { timeout: 8000 }).toBe(1);
-  expect(await page.evaluate(() => window.__game.world.runner.pose.up)).toBeLessThan(0.3);
+  await page.waitForTimeout(6000);
+  await shot(page, 't8-squats-ignored');
+  const said = await page.evaluate(() => window.__said);
+  expect(said.filter((text) => /squat/i.test(text))).toEqual([]);
+  expect(await page.locator('.callout').allTextContents()).not.toContain(expect.stringMatching(/squat/i));
+  await expect(page.locator('#coach-text')).not.toHaveText(/squat/i);
+  expect(await page.locator('body').textContent()).not.toMatch(/squat/i);
+});
+
+test('stepping to the side moves the runner into that lane, and catches the stars there', async ({ page }) => {
+  test.setTimeout(120_000);
+  await reachRun(page, { onMissed: 'stumble' });
+  await nextObstacleIs(page, 'log', 400);
+  const runnerX = () => page.evaluate(() => window.__game.world.runner.body.root.position.x);
+
+  // A step to the child's right is to the right of the mirror, and the runner goes right too.
+  await standAcross(page, 0.09);
+  await expect.poll(async () => (await runState(page)).lane, { timeout: 10_000 }).toBe(1);
+  await expect.poll(runnerX, { timeout: 3000 }).toBeGreaterThan(1.6);
+  await page.waitForTimeout(300);
+  await shot(page, 't8b-right-lane');
+
+  // The next line of stars is put in this lane, and running through it picks them up.
+  const before = (await runState(page)).stats.linedStars;
+  await page.evaluate(() => {
+    const { run } = window.__game;
+    const at = run.distance + 25;
+    for (let i = 0; i < 6; i += 1) run.starLines.splice(run.nextStar + i, 0, { at: at + i * 2.6, lane: 1, taken: false });
+  });
+  await expect.poll(async () => (await runState(page)).stats.linedStars, { timeout: 10_000 }).toBeGreaterThanOrEqual(before + 6);
+
+  await standAcross(page, -0.09);
+  await expect.poll(async () => (await runState(page)).lane, { timeout: 10_000 }).toBe(-1);
+  await expect.poll(runnerX, { timeout: 3000 }).toBeLessThan(-1.6);
+  await page.waitForTimeout(300);
+  await shot(page, 't8c-left-lane');
+
+  await standInView(page);
+  await expect.poll(async () => (await runState(page)).lane, { timeout: 10_000 }).toBe(0);
+  const { stats } = await runState(page);
+  expect(stats.laneMoves).toBeGreaterThanOrEqual(3);
+  expect(stats.bumps).toBe(0);
+});
+
+test('standing still in front of the camera stays in the middle lane', async ({ page }) => {
+  await reachRun(page);
+  await nextObstacleIs(page, 'log', 400);
+  await footage(page, 'strikes', { from: 1 });
+  await page.waitForTimeout(6000);
+  const { lane, stats } = await runState(page);
+  expect([lane, stats.laneMoves]).toEqual([0, 0]);
 });
 
 test('set to wait, the runner stops at an obstacle and waits, however long it takes', async ({ page }) => {
@@ -122,7 +178,8 @@ test('set to stumble, a missed obstacle is knocked aside and the run goes on', a
 
 test('a whole trail: finish, numbers, the camera going off, and running again', async ({ page }) => {
   test.setTimeout(240_000);
-  await reachRun(page, { obstacles: 10, pace: 'fast' });
+  // With the lanes off, every line of stars is in the middle, so the count is always the same.
+  await reachRun(page, { obstacles: 10, pace: 'fast', trailLanes: 'no' });
   await expect(page.locator('#obstacles-left')).toHaveText('10');
 
   // Doing whatever's asked, at the moment it counts.
@@ -131,8 +188,7 @@ test('a whole trail: finish, numbers, the camera going off, and running again', 
     window.__perfect = setInterval(() => {
       const next = run.next;
       if (run.state !== 'running' || !next || !run.inReach(next) || next.state !== 'ahead') return;
-      if (next.needs === 'jump') run.jump();
-      else run.squat();
+      run.jump();
     }, 50);
   });
   await waitForScreen(page, 'finishing');
@@ -144,7 +200,8 @@ test('a whole trail: finish, numbers, the camera going off, and running again', 
   // Three for each obstacle cleared, and the lines of stars on the path.
   await expect(page.locator('#finish-stars')).toHaveText('90');
   await expect(page.locator('#finish-line')).toContainText('cleared 10 of 10');
-  await expect(page.locator('.finish-tally .tally-card')).toHaveCount(3);
+  // Jumps and the longest streak. Steps across only count with the lanes on.
+  await expect(page.locator('.finish-tally .tally-card')).toHaveCount(2);
   await expect(page.locator('.tally-card[data-exercise="streak"] strong')).toHaveText('10');
   await page.waitForTimeout(800);
   await shot(page, 't12-finish');
@@ -177,7 +234,7 @@ test('another runner can be chosen after a run', async ({ page }) => {
   await shot(page, 't13-choose-again');
 });
 
-test('every character can run, jump and slide', async ({ page }) => {
+test('every character can run and jump, in every lane', async ({ page }) => {
   await reachRun(page);
   const ids = await page.evaluate(async () => {
     const { ROSTER } = await import('/core/body/roster.js');
@@ -190,8 +247,9 @@ test('every character can run, jump and slide', async ({ page }) => {
       const { world, run } = window.__game;
       world.setRunner(byId(which));
       const samples = [];
-      for (const kind of ['jump', 'squat']) {
-        run.startMove(kind);
+      for (const lane of [-1, 0, 1]) {
+        world.setLane(lane);
+        run.startMove('jump');
         for (let i = 0; i < 20; i += 1) world.update(0.03);
         samples.push(world.runner.body.root.position.x, world.runner.pose.up, world.runner.pose.hipDrop);
       }

@@ -294,6 +294,7 @@ export class HandMonitor {
     this.left = new HandSide('left', left);
     this.right = new HandSide('right', right);
     this.side = side;
+    this.other = this.watchOther();
     // Straight on is wherever the hand starts.
     this.neutralSteer = null;
     this.steerInput = null;
@@ -302,8 +303,19 @@ export class HandMonitor {
     this.snapshot = this.buildSnapshot(false);
   }
 
+  /**
+   * The hand not in play, judged on its own. It never affects the hand in play, and the left and
+   * right views still only ever show the hand in play. A game can use it for something extra, and the
+   * same rules apply: missing, cut off, too small or touching the other hand is never open.
+   */
+  watchOther() {
+    const side = this.side === 'left' ? 'right' : 'left';
+    return new HandSide(side, this[side].strictness);
+  }
+
   setSide(side) {
     this.side = side;
+    this.other = this.watchOther();
     this.neutralSteer = null;
     this.steerInput = null;
     this.steer = 0;
@@ -312,6 +324,7 @@ export class HandMonitor {
 
   setStrictness(side, value) {
     this[side].strictness = value;
+    if (this.other.side === side) this.other.strictness = value;
     this.snapshot = this.buildSnapshot(this.snapshot.overlap);
   }
 
@@ -319,6 +332,7 @@ export class HandMonitor {
   forgetHands() {
     this.left.forget();
     this.right.forget();
+    this.other.forget();
     this.steerInput = null;
     this.steer = 0;
     this.lastUpdate = null;
@@ -369,6 +383,9 @@ export class HandMonitor {
 
     this.left.update(this.side === 'left' ? hand : null, now, overlap);
     this.right.update(this.side === 'right' ? hand : null, now, overlap);
+    // Of two hands, the other is the one that isn't in play. A hand alone that isn't the one in play is it.
+    const otherHand = candidates.length === 2 ? candidates.find((candidate) => candidate !== hand) ?? null : hand ? null : candidates[0] ?? null;
+    this.other.update(otherHand, now, overlap);
     // Worth knowing: a hand is in view, but it isn't the one being played with.
     this.otherHandSeen = candidates.length > 0 && !hand;
 
@@ -398,6 +415,7 @@ export class HandMonitor {
       handOpen,
       handVisible: hand.status !== 'missing',
       otherHandSeen: this.otherHandSeen ?? false,
+      other: this.other.view(),
       steerInput: this.steerInput,
       steer: this.steer,
       drive: handOpen ? DRIVE_BASE + (1 - DRIVE_BASE) * hand.excess : 0,

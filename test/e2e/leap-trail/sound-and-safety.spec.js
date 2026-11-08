@@ -50,8 +50,7 @@ test('music plays during a run and stops at the end, footsteps fall, and nothing
     setInterval(() => {
       const next = run.next;
       if (run.state !== 'running' || !next || !run.inReach(next) || next.state !== 'ahead') return;
-      if (next.needs === 'jump') run.jump();
-      else run.squat();
+      run.jump();
     }, 60);
   });
   expect(await page.evaluate(() => Boolean(window.__game.sound.music))).toBe(true);
@@ -139,7 +138,7 @@ test('nothing flashes: the picture\'s brightness stays steady through jumps and 
   await reachRun(page);
   await nextObstacleIs(page, 'hay', 9);
   await expect.poll(async () => (await runState(page)).next?.inReach, { timeout: 8000 }).toBe(true);
-  await bodyDoes(page, 'jump');
+  await bodyDoes(page);
   const brightness = await page.evaluate(async () => {
     const { world } = window.__game;
     const reading = [];
@@ -163,12 +162,45 @@ test('nothing flashes: the picture\'s brightness stays steady through jumps and 
   expect(biggestStep).toBeLessThan(25);
 });
 
+test('nothing flashes moving across: the brightness stays steady as the runner changes lanes', async ({ page }) => {
+  await reachRun(page, { onMissed: 'stumble' });
+  await nextObstacleIs(page, 'log', 400);
+  const brightness = await page.evaluate(async () => {
+    const { world, game } = window.__game;
+    let lane = 0;
+    // Back and forth across all three lanes, as fast as a child could.
+    game.readLane = () => {
+      world.setLane(lane);
+      return lane;
+    };
+    const reading = [];
+    const small = document.createElement('canvas');
+    small.width = 32;
+    small.height = 18;
+    const context = small.getContext('2d', { willReadFrequently: true });
+    for (let i = 0; i < 120; i += 1) {
+      lane = [0, 1, 0, -1][Math.floor(i / 15) % 4];
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      world.render();
+      context.drawImage(world.renderer.domElement, 0, 0, 32, 18);
+      const { data } = context.getImageData(0, 0, 32, 18);
+      let total = 0;
+      for (let j = 0; j < data.length; j += 4) total += (data[j] + data[j + 1] + data[j + 2]) / 3;
+      reading.push(total / (32 * 18));
+    }
+    return reading;
+  });
+  const biggestStep = Math.max(...brightness.slice(1).map((value, index) => Math.abs(value - brightness[index])));
+  console.log('biggest brightness step moving across', biggestStep);
+  expect(biggestStep).toBeLessThan(25);
+});
+
 test('with reduced motion the run still works', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await reachRun(page);
   await nextObstacleIs(page, 'log', 9);
   await expect.poll(async () => (await runState(page)).next?.inReach, { timeout: 8000 }).toBe(true);
-  await bodyDoes(page, 'jump');
+  await bodyDoes(page);
   await expect.poll(async () => (await runState(page)).stats.cleared, { timeout: 8000 }).toBe(1);
 });
 

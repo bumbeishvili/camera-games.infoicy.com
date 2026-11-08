@@ -1,10 +1,13 @@
 // The rules of a run. No screen, camera or sound in this file: moves come in and what happened
 // comes out as events, so all of it runs in the unit tests.
 //
-// The trail is laid out ahead of time, and every obstacle asks for a jump or a squat. There's a
-// stretch of trail before each one where that move counts, and a move anywhere in that stretch
-// clears the obstacle, however early it is. The fighter just hangs in the air for longer.
-// Nobody loses here. Missing a move either stops the fighter to wait for it, or costs a stumble.
+// The trail is laid out ahead of time, and every obstacle asks for a jump: there are no squats, so
+// a child never has to wonder which move is wanted. There's a stretch of trail before each one where
+// a jump counts, and a jump anywhere in that stretch clears the obstacle, however early it is. The
+// fighter just hangs in the air for longer. Obstacles go right across the trail, so every one needs a
+// jump, but the trail has three lanes, and the lines of stars between obstacles are in one lane or
+// another, picked up by moving across to them. Nobody loses here. Missing a jump either stops the
+// fighter to wait for it, or costs a stumble, and a missed star costs nothing.
 
 export const PACES = {
   // speed is metres a second, every is seconds between obstacles, and early is how long before
@@ -22,16 +25,15 @@ export const OBSTACLES = {
   hay: { needs: 'jump', length: 1.2, height: 1.05 },
   rocks: { needs: 'jump', length: 1.4, height: 0.7 },
   stream: { needs: 'jump', length: 2.4, height: 0.1 },
-  bough: { needs: 'squat', length: 1.1, height: 1.15 },
-  arch: { needs: 'squat', length: 1.3, height: 1.2 },
 };
 
-const JUMP_KINDS = ['log', 'hay', 'rocks', 'stream'];
-const SQUAT_KINDS = ['bough', 'arch'];
+const KINDS = Object.keys(OBSTACLES);
+// The lanes, from the child's left to their right as seen in the mirror. 0 is the middle.
+export const LANES = [-1, 0, 1];
+const STAR_LANE_MOVES = 0.65; // How often a line of stars is in a different lane from the one before.
 
 const FIRST_OBSTACLE_SECONDS = 3;
 const AFTER_LAST_SECONDS = 1.5;
-const SQUAT_EVERY = 4; // About one obstacle in this many asks for a squat.
 const STOP_GAP = 1.5; // Metres short of an obstacle where the fighter stops to wait.
 const BRAKE_RATE = 1.1; // Slowing down, as a share of what's left to go, each tenth of a second.
 const SPEED_CHANGE = 2.2;
@@ -39,7 +41,6 @@ const SHORTEST_HOP = 0.62; // Seconds, for a move that isn't clearing anything.
 const LOWEST_JUMP = 1.4;
 const HIGHEST_JUMP = 3.2;
 const FLIGHT_PAST = 1.22; // A jump lands this much further on than the far edge of what it clears.
-const SLIDE_PAST = 1.25;
 const LONGEST_MOVE = 1.35; // Seconds. A move made early goes faster, to be over by then.
 const STUMBLE_SECONDS = 0.7;
 const STUMBLE_SPEED = 0.5;
@@ -62,44 +63,50 @@ function jumpHeight(obstacle, gap, travel) {
   return Math.min(HIGHEST_JUMP, Math.max(LOWEST_JUMP + travel * 0.06, needed));
 }
 
-/** A line of stars to run through at the start, and another after each obstacle. */
-function layStarLines(course, speed) {
+/**
+ * A line of stars to run through at the start, and another after each obstacle. The first is in the
+ * middle lane, where the runner starts. After that, each is often in a different lane from the one
+ * before, so there's a reason to move across, but never more than one lane's step away.
+ */
+function layStarLines(course, speed, lanes, random) {
   const lines = [];
+  let lane = 0;
   const lineFrom = (from) => {
-    for (let i = 0; i < STAR_LINE.count; i += 1) lines.push({ at: from + i * STAR_LINE.spacing, taken: false });
+    for (let i = 0; i < STAR_LINE.count; i += 1) lines.push({ at: from + i * STAR_LINE.spacing, lane, taken: false });
   };
   lineFrom(speed * STAR_LINE.firstAfter);
-  for (const { at, length } of course.slice(0, -1)) lineFrom(at + length + speed * STAR_LINE.afterObstacle);
+  for (const { at, length } of course.slice(0, -1)) {
+    if (lanes && random() < STAR_LANE_MOVES) {
+      const nextTo = LANES.filter((other) => Math.abs(other - lane) === 1);
+      lane = nextTo[Math.floor(random() * nextTo.length)];
+    }
+    lineFrom(at + length + speed * STAR_LINE.afterObstacle);
+  }
   return lines;
 }
 
 /** Lays out a trail. Exported so the tests can look at one. */
-export function layCourse({ obstacles, pace, squats = true, random = Math.random }) {
+export function layCourse({ obstacles, pace, lanes = true, random = Math.random }) {
   const { speed, every } = PACES[pace];
   const course = [];
   let at = speed * FIRST_OBSTACLE_SECONDS;
-  let sinceSquat = 0;
   for (let i = 0; i < obstacles; i += 1) {
-    sinceSquat += 1;
-    // Never in the first couple, and never twice running, so it isn't all squats by chance.
-    const squat = squats && i >= 2 && sinceSquat >= 2 && random() < 1 / (SQUAT_EVERY - 1);
-    if (squat) sinceSquat = 0;
-    const kinds = squat ? SQUAT_KINDS : JUMP_KINDS;
-    const kind = kinds[Math.floor(random() * kinds.length)];
+    const kind = KINDS[Math.floor(random() * KINDS.length)];
     const { needs, length, height } = OBSTACLES[kind];
     course.push({ index: i, kind, needs, length, height, at, state: 'ahead' });
     at += length + speed * between(random, every);
   }
-  return { course, starLines: layStarLines(course, speed), end: at - speed * between(random, every) + speed * AFTER_LAST_SECONDS };
+  const end = at - speed * between(random, every) + speed * AFTER_LAST_SECONDS;
+  return { course, starLines: layStarLines(course, speed, lanes, random), end };
 }
 
 const emptyStats = () => ({
   jumps: 0,
-  squats: 0,
   cleared: 0,
   bumps: 0,
   stars: 0,
   linedStars: 0,
+  laneMoves: 0,
   streak: 0,
   bestStreak: 0,
   seconds: 0,
@@ -109,13 +116,14 @@ const emptyStats = () => ({
 
 export class Run {
   /**
-   * obstacles is how many there are, pace is one of PACES. squats says whether any obstacles ask
-   * for one. whenMissed is 'wait' to stop and wait for the move, or 'stumble' to run into it.
+   * obstacles is how many there are, pace is one of PACES. lanes says whether the lines of stars
+   * move between lanes, or all stay in the middle. whenMissed is 'wait' to stop and wait for the
+   * move, or 'stumble' to run into it.
    */
   constructor({
     obstacles = 20,
     pace = 'slow',
-    squats = true,
+    lanes = true,
     whenMissed = 'wait',
     random = Math.random,
     onEvent = () => {},
@@ -123,10 +131,11 @@ export class Run {
     this.settings = PACES[pace];
     this.whenMissed = whenMissed;
     this.onEvent = onEvent;
-    const { course, starLines, end } = layCourse({ obstacles, pace, squats, random });
+    const { course, starLines, end } = layCourse({ obstacles, pace, lanes, random });
     this.course = course;
     this.starLines = starLines;
     this.nextStar = 0;
+    this.lane = 0; // Which of LANES the runner is in.
     this.end = end;
     this.distance = 0;
     this.speed = 0;
@@ -189,13 +198,15 @@ export class Run {
     return this.startMove('jump');
   }
 
-  /** The child squatted. */
-  squat() {
-    if (this.state !== 'running') return false;
+  /** The child moved across into a lane, which is one of LANES. That's always allowed, even mid-jump. */
+  setLane(lane) {
+    if (!LANES.includes(lane) || lane === this.lane) return;
+    const from = this.lane;
+    this.lane = lane;
+    if (this.state !== 'running') return;
     this.noteActivity();
-    if (this.move?.obstacle) return false;
-    this.stats.squats += 1;
-    return this.startMove('squat');
+    this.stats.laneMoves += 1;
+    this.emit('lane', { lane, from });
   }
 
   /**
@@ -211,7 +222,7 @@ export class Run {
     if (counts) {
       const gap = this.gapTo(obstacle);
       const reach = gap + obstacle.length;
-      move.travel = reach * (kind === 'jump' ? FLIGHT_PAST : SLIDE_PAST) + 0.3;
+      move.travel = reach * FLIGHT_PAST + 0.3;
       move.height = jumpHeight(obstacle, gap, move.travel);
       move.obstacle = obstacle;
       move.pace = Math.max(this.settings.speed, move.travel / LONGEST_MOVE);
@@ -262,11 +273,6 @@ export class Run {
     return { height: this.move.height * 4 * through * (1 - through), through };
   }
 
-  /** How far through a slide along the ground, or 0 if not sliding. */
-  get slide() {
-    return this.move?.kind === 'squat' ? this.through : 0;
-  }
-
   wantedSpeed(next) {
     const { speed } = this.settings;
     if (this.move?.obstacle) return this.move.pace;
@@ -282,13 +288,17 @@ export class Run {
     return speed;
   }
 
-  /** Running through a star picks it up, whatever the runner is doing. */
+  /** Running through a star in the same lane picks it up, whatever the runner is doing. */
   collectStars() {
     const { starLines, stats } = this;
     while (this.nextStar < starLines.length && this.distance >= starLines[this.nextStar].at) {
       const star = starLines[this.nextStar];
-      star.taken = true;
       this.nextStar += 1;
+      if (star.lane !== this.lane) {
+        star.missed = true;
+        continue;
+      }
+      star.taken = true;
       stats.linedStars += 1;
       this.emit('star-line', { star });
     }

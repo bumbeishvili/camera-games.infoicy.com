@@ -35,13 +35,13 @@ export async function reachRun(page, settings = {}) {
   await waitForScreen(page, 'run');
 }
 
-/** What a tracked body would do, for tests that are about what comes after. */
-export function bodyDoes(page, kind) {
-  return page.evaluate((which) => {
-    const { run } = window.__game;
-    return which === 'squat' ? run.squat() : run.jump();
-  }, kind);
+/** What a tracked body would do, for tests that are about what comes after. Jumping is all there is. */
+export function bodyDoes(page) {
+  return page.evaluate(() => window.__game.run.jump());
 }
+
+/** Moves the person in the footage across, as a share of the picture, towards the right of the mirror. */
+export const standAcross = (page, shiftX) => footage(page, 'strikes', { from: 0.2, playing: false, shiftX });
 
 export const runState = (page) => page.evaluate(() => {
   const { run } = window.__game;
@@ -53,6 +53,7 @@ export const runState = (page) => page.evaluate(() => {
     waiting: run.waiting,
     resting: run.resting,
     stats: run.stats,
+    lane: run.lane,
     next: next ? { kind: next.kind, needs: next.needs, gap: run.gapTo(next), inReach: run.inReach(next) } : null,
   };
 });

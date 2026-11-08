@@ -1,8 +1,11 @@
-// Leap Trail: an endless-feeling run down a country path, with obstacles to jump over and squat
-// under, using the child's real body. This file runs it from start to finish, on top of what the
-// body games share in core/body/game.js. The rules are in run.js and the world is in world.js.
+// Leap Trail: an endless-feeling run down a country path, with obstacles to jump over and three
+// lanes to move between, using the child's real body. Jumping is the only move asked for, so a
+// child never has to tell a squat from a jump. This file runs it from start to finish, on top of
+// what the body games share in core/body/game.js. The rules are in run.js, the lanes are read in
+// lanes.js, and the world is in world.js.
 import { BODY_SAY, BodyGame, byElementId } from '../../core/body/game.js';
 import { mountBodyShell } from '../../core/body/shell.js';
+import { bodyAcross, LaneReader } from './lanes.js';
 import { Practice } from './practice.js';
 import { Run } from './run.js';
 import { TrailSound } from './trail-sound.js';
@@ -16,6 +19,7 @@ const READY_SECONDS = 1.1;
 const REST_LOW = -0.9; // Where a resting hand hangs, in torso lengths above the shoulder.
 const STREAKS = { 5: 'Five in a row!', 10: 'Ten in a row!' };
 const NEARLY_THERE = 0.85;
+const METER_MOST = 1.12; // The meter's top, as a share of a jump that counts.
 
 const DEFAULTS = {
   moveSize: 'small',
@@ -23,18 +27,18 @@ const DEFAULTS = {
   pace: 'slow',
   obstacles: 20,
   onMissed: 'stumble',
-  squatObstacles: 'yes',
+  trailLanes: 'yes',
   fighter: 'joze',
 };
-const CHOICES = { jumpWith: String, pace: String, obstacles: Number, onMissed: String, squatObstacles: String };
+const CHOICES = { jumpWith: String, pace: String, obstacles: Number, onMissed: String, trailLanes: String };
 
 // Every one of these has a rendered voice file: see audio/voice/lines.json.
 const SAY = {
   choose: 'Who’s running today?',
   jump: 'Jump!',
-  squat: 'Squat down!',
   jumpReady: 'Jump when you’re ready!',
-  squatReady: 'Squat when you’re ready!',
+  side: 'Step to the side!',
+  lean: 'Lean to the side!',
   raiseReady: 'Raise your hand when you’re ready!',
   raiseLeft: 'Raise your open left hand!',
   raiseRight: 'Raise your open right hand!',
@@ -46,11 +50,9 @@ const SAY = {
   madeIt: 'You made it to the end of the trail!',
   practise: 'Let’s practise!',
   jumpHigh: 'Jump as high as you can!',
-  squatLow: 'Squat as low as you can!',
   kneeHigh: 'Lift your knee as high as you can!',
   raiseHigh: 'Raise your open hand as high as you can!',
   greatJump: 'Great jump!',
-  greatSquat: 'Great squat!',
   greatJob: 'Great job!',
   readyNow: 'That’s it! You’re ready!',
 };
@@ -58,7 +60,7 @@ const SAY = {
 // The moment a move is seen, the child is told what it was, as words on the screen.
 const SEEN_WORDS = {
   jump: ['You jumped!', 'შენ ახტი!'],
-  squat: ['You squatted!', 'შენ ჩაცუცქდი!'],
+  side: ['You moved across!', 'გადაინაცვლე!'],
   lift: ['You lifted your knee!', 'მუხლი ასწიე!'],
   raise: ['You raised your hand!', 'ხელი ასწიე!'],
 };
@@ -82,6 +84,7 @@ class LeapTrail extends BodyGame {
     this.lastNumbers = {};
     this.practice = null;
     this.practised = false;
+    this.lanes = null;
   }
 
   /** Whether this child jumps for real, or raises an open hand instead. */
@@ -146,14 +149,29 @@ class LeapTrail extends BodyGame {
     return { jump: 'jump', lift: 'lift', reach: 'raise' }[this.settings.jumpWith] ?? 'jump';
   }
 
-  /** Whether there are obstacles to squat under. Raising a hand can be done sitting down. */
-  get hasSquats() {
-    return this.settings.squatObstacles === 'yes' && !this.raisingHand;
+  /** Whether stars are in all three lanes, so stepping from side to side moves the runner across. */
+  get hasLanes() {
+    return this.settings.trailLanes !== 'no';
+  }
+
+  /** Reads which lane the child is in. Its middle is wherever they're standing when it starts. */
+  startLanes() {
+    this.lanes = new LaneReader({ size: this.reader.size ?? 1, upperBodyOnly: this.raisingHand });
+    this.lanes.centreOn(bodyAcross(this.latestBody, this.aspect, this.raisingHand));
+    this.world.setLane(0);
+  }
+
+  /** Where the child is across the trail now: -1, 0 or 1. */
+  readLane(dt) {
+    if (!this.lanes || !this.hasLanes) return 0;
+    const lane = this.lanes.update(bodyAcross(this.latestBody, this.aspect, this.raisingHand), this.reader.torsoSize, dt);
+    this.world.setLane(lane);
+    return lane;
   }
 
   settingChanged(change) {
-    if ('jumpWith' in change) {
-      this.applyJumpWith();
+    if ('jumpWith' in change || 'trailLanes' in change) {
+      if ('jumpWith' in change) this.applyJumpWith();
       this.practised = false;
     }
     if ('moveSize' in change) this.reader.personal = { jump: null, squat: null, leg: null, hand: null };
@@ -174,9 +192,8 @@ class LeapTrail extends BodyGame {
     if (this.screen !== 'run') return;
     for (const { move } of moves) {
       this.run.noteActivity();
-      if (move === 'stomp') {
-        if (this.hasSquats) this.run.squat();
-      } else if (this.overMove === 'jump' && (move === 'flying' || move === 'starBurst')) this.run.jump(); // A star jump leaves the ground too.
+      // Going down before a jump can read as a squat. Nothing asks for one, so it's just ignored.
+      if (this.overMove === 'jump' && (move === 'flying' || move === 'starBurst')) this.run.jump(); // A star jump leaves the ground too.
       else if (this.overMove === 'lift' && (move === 'kick' || move === 'knee')) this.run.jump();
     }
   }
@@ -206,7 +223,10 @@ class LeapTrail extends BodyGame {
 
   /* ---------- how the body is being seen ---------- */
 
-  /** Moves the marker on the meter, so the child can see their own movement being read. */
+  /**
+   * Moves the marker on the meter, so the child can see their own movement being read. It only goes
+   * up, from standing at the bottom to a jump that counts at the top, as going down isn't asked for.
+   */
   updateMeter() {
     const { reader } = this;
     let value;
@@ -214,21 +234,19 @@ class LeapTrail extends BodyGame {
       const height = reader.handHeight[this.settings.hands];
       value = (height - REST_LOW) / Math.max(0.1, reader.handNeeded - REST_LOW);
     } else if (this.overMove === 'lift') {
-      const down = (reader.sink ?? 0) / reader.squatNeeded;
-      const up = reader.footHeight / reader.legNeeded;
-      value = up > Math.max(down, 0.2) ? up : -Math.max(down, 0);
+      value = reader.footHeight / reader.legNeeded;
     } else {
-      value = reader.meter;
+      value = reader.jumpEffort / reader.jumpNeeded;
     }
-    const shown = Math.round(Math.min(1.2, Math.max(-1.2, value)) * 100);
+    const shown = Math.round(Math.min(METER_MOST, Math.max(0, value || 0)) * 100);
     if (this.lastNumbers.meter === shown) return;
     this.lastNumbers.meter = shown;
-    byElementId('meter-dot').style.bottom = `${50 + shown * 0.4}%`;
+    byElementId('meter-dot').style.bottom = `${9 + shown * 0.8}%`;
     const meter = byElementId('move-meter');
-    meter.dataset.zone = shown >= 100 ? 'up' : shown <= -100 ? 'down' : 'middle';
+    meter.dataset.zone = shown >= 100 ? 'up' : 'middle';
   }
 
-  /** The move was seen: squat, or this child's way over. */
+  /** The move was seen: this child's way over, or a step across. */
   sawMove(what) {
     const inPractice = this.screen === 'practice';
     this.showSeen(SEEN_WORDS[what], { x: inPractice ? 0.26 : 0.42, y: inPractice ? 0.45 : 0.62 });
@@ -247,7 +265,7 @@ class LeapTrail extends BodyGame {
     this.readyLeft = 0;
     this.setScreen('practice');
     this.sound.say(SAY.practise);
-    const steps = [this.overMove, ...(this.hasSquats ? ['squat'] : [])];
+    const steps = [this.overMove, ...(this.hasLanes ? ['side'] : [])];
     this.practice = new Practice({
       steps,
       reader: this.reader,
@@ -258,8 +276,9 @@ class LeapTrail extends BodyGame {
 
   onPracticeEvent({ type, step, index, total }) {
     if (type === 'step') {
-      const { demo } = this.askFor(step === 'squat' ? 'squat' : 'jump');
-      const text = { jump: SAY.jumpHigh, squat: SAY.squatLow, lift: SAY.kneeHigh, raise: SAY.raiseHigh }[step];
+      if (step === 'side') this.startLanes();
+      const { demo } = this.practiceAsk(step);
+      const text = { jump: SAY.jumpHigh, lift: SAY.kneeHigh, raise: SAY.raiseHigh, side: this.sideWords }[step];
       this.showCoach(demo, this.translate(text), { side: this.settings.hands });
       byElementId('practice-count').textContent = `${index + 1} / ${total}`;
       // After "Let's practise!" the first time.
@@ -270,7 +289,7 @@ class LeapTrail extends BodyGame {
       this.hideCoach();
       this.sawMove(step);
       this.world.hop();
-      this.sound.say(step === 'squat' ? SAY.greatSquat : step === 'jump' ? SAY.greatJump : SAY.greatJob);
+      this.sound.say(step === 'jump' ? SAY.greatJump : SAY.greatJob);
     } else if (type === 'finished') {
       this.sound.say(SAY.readyNow);
       this.readyLeft = READY_SECONDS;
@@ -291,13 +310,30 @@ class LeapTrail extends BodyGame {
       return;
     }
     this.world.setLive(this.reader.hasPose ? this.reader.pose : null);
-    this.setCoachEffort(this.reader.effortFor(this.askFor(practice.step === 'squat' ? 'squat' : 'jump').demo, this.settings.hands));
+    if (practice.step === 'side') {
+      // Moving across is seen as soon as the runner moves into another lane.
+      if (this.readLane(dt) !== 0) practice.succeed();
+      this.setCoachEffort(Math.min(1, Math.abs(this.lanes.offset) / this.lanes.enter));
+    } else {
+      this.setCoachEffort(this.reader.effortFor(this.practiceAsk(practice.step).demo, this.settings.hands));
+    }
     const handPrompt = practice.step === 'raise' ? this.readRaisedHand(now / 1000, () => practice.succeed()) : null;
     this.prompt.show(handPrompt, now);
     practice.update(dt);
   }
 
+  /** The film for a step of the practice. */
+  practiceAsk(step) {
+    return step === 'side' ? { demo: 'sideStep', text: this.sideWords } : this.askFor('jump');
+  }
+
+  /** Sitting down, it's leaning that moves the runner across, rather than stepping. */
+  get sideWords() {
+    return this.raisingHand ? SAY.lean : SAY.side;
+  }
+
   endPractice() {
+    this.world.setLane(0);
     this.practice = null;
     this.practised = true;
     this.hideCoach();
@@ -318,12 +354,14 @@ class LeapTrail extends BodyGame {
     this.run = new Run({
       obstacles: settings.obstacles,
       pace: settings.pace,
-      squats: this.hasSquats,
+      lanes: this.hasLanes,
       whenMissed: settings.onMissed,
       onEvent: (event) => this.onRunEvent(event),
     });
     world.won = false;
     world.setRun(this.run);
+    world.setLane(0);
+    this.lanes = null;
     world.runner.presenting = false;
     world.setLive(null);
     world.setView('run');
@@ -357,6 +395,8 @@ class LeapTrail extends BodyGame {
     this.sound.go();
     this.sound.startMusic();
     this.timer = GO_SHOWN_SECONDS;
+    // The middle lane is wherever the child is standing as the run starts.
+    if (this.hasLanes) this.startLanes();
     this.run.begin();
     this.setScreen('run');
   }
@@ -375,6 +415,7 @@ class LeapTrail extends BodyGame {
     }
 
     if (reader.moving) run.noteActivity(dt);
+    run.setLane(this.readLane(dt));
     this.world.setLive(reader.hasPose ? reader.pose : null);
     this.updateMeter();
     const asked = run.next && run.inReach(run.next) ? this.askFor(run.next.needs).demo : null;
@@ -412,7 +453,6 @@ class LeapTrail extends BodyGame {
   waitingPrompt() {
     const next = this.run.next;
     if (!next) return null;
-    if (next.needs === 'squat') return { key: 'squat-ready', text: SAY.squatReady, side: null };
     if (this.raisingHand) return { key: 'raise-ready', text: SAY.raiseReady, side: null };
     if (this.overMove === 'lift') return { key: 'lift-ready', text: SAY.liftReady, side: null };
     return { key: 'jump-ready', text: SAY.jumpReady, side: null };
@@ -450,6 +490,7 @@ class LeapTrail extends BodyGame {
     const handlers = {
       ask: () => this.onAsk(event),
       'star-line': () => this.onStarLine(),
+      lane: () => this.sound.across(),
       move: () => this.onMove(event),
       cleared: () => this.onCleared(event),
       bump: () => this.onBump(event),
@@ -460,9 +501,8 @@ class LeapTrail extends BodyGame {
     handlers[event.type]?.();
   }
 
-  /** The words and the move to show for what's being asked for: a squat, or this child's way over. */
-  askFor(needs) {
-    if (needs === 'squat') return { demo: 'squat', text: SAY.squat };
+  /** The words and the move to show for what's being asked for: this child's way over. */
+  askFor() {
     if (this.overMove === 'raise') {
       return { demo: 'raise', text: this.settings.hands === 'left' ? SAY.raiseLeft : SAY.raiseRight };
     }
@@ -478,7 +518,7 @@ class LeapTrail extends BodyGame {
     this.sound.say(text);
   }
 
-  /** The child did something, but something else is wanted. They're told both. */
+  /** The child did something, but something else is wanted. They're told what. */
   onWrongMove({ needs }) {
     this.sound.say(this.askFor(needs).text);
   }
@@ -486,7 +526,7 @@ class LeapTrail extends BodyGame {
   onMove({ kind, counts }) {
     this.world.moved(kind, counts);
     this.sound.moved(kind);
-    this.sawMove(kind === 'squat' ? 'squat' : this.overMove);
+    this.sawMove(this.overMove);
     if (!counts) return;
     this.hideCoach();
     this.world.moveCounted({ kind, obstacle: this.run.move.obstacle, move: this.run.move });
@@ -552,9 +592,9 @@ class LeapTrail extends BodyGame {
     }[this.overMove];
     const entries = [
       overCard,
-      { name: 'squats', icon: 'squat', label: 'Squats', value: stats.squats },
+      { name: 'across', icon: 'sideStep', label: raised ? 'Leans across' : 'Steps across', value: stats.laneMoves },
       { name: 'streak', icon: 'starJump', label: 'Most in a row', value: stats.bestStreak },
-    ].filter(({ name }) => !(raised && name === 'squats'));
+    ].filter(({ name }) => this.hasLanes || name !== 'across');
     this.fillTallyCards(byElementId('finish-tally'), entries);
     this.confetti.start();
     this.setScreen('finish');
@@ -591,16 +631,15 @@ class LeapTrail extends BodyGame {
 
 mountBodyShell({
   title: 'Leap Trail',
-  tagline: 'Run down the trail! Jump over what’s in the way, and squat under what’s too low.',
+  tagline: 'Run down the trail! Jump over what’s in the way, and step from side to side to catch stars.',
   startLabel: 'Choose your runner',
   chooseTitle: 'Who’s running today?',
   chooseSide: `
-      <p class="choose-tip">Jump for real, and your runner jumps too. Squat, and it slides under the low ones.</p>
+      <p class="choose-tip">Jump for real, and your runner jumps too. Step to the side, and it moves across.</p>
       <button id="run-start" class="big-button" type="button">Let’s run!</button>`,
   hud: `
   <div id="move-meter" class="move-meter" data-zone="middle" aria-hidden="true">
     <div class="meter-zone meter-zone-up"></div>
-    <div class="meter-zone meter-zone-down"></div>
     <div class="meter-middle"></div>
     <div id="meter-dot" class="meter-dot"></div>
   </div>
@@ -641,9 +680,9 @@ mountBodyShell({
       <label><input type="radio" name="jumpWith" value="reach"> Raising an open hand, which can be done sitting down</label>
     </fieldset>
     <fieldset class="choice">
-      <legend>Obstacles to squat under</legend>
-      <label><input type="radio" name="squatObstacles" value="yes"> Yes</label>
-      <label><input type="radio" name="squatObstacles" value="no"> No, only ones to jump</label>
+      <legend>Moving from side to side</legend>
+      <label><input type="radio" name="trailLanes" value="yes"> Yes: stepping to the side moves the runner into another lane, for stars</label>
+      <label><input type="radio" name="trailLanes" value="no"> No: the runner stays in the middle lane, and so do the stars</label>
     </fieldset>
     <fieldset class="choice">
       <legend>When a move is missed</legend>

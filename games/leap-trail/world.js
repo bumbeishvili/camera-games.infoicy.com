@@ -1,6 +1,7 @@
 // The trail: a 3D path through the countryside, what's on it, and the character running along it.
 //
-// The runner stays where it is and everything else moves past. Scenery is two long strips that
+// The runner stays where it is and everything else moves past, except that it moves across between
+// the trail's three lanes as the child steps from side to side. Scenery is two long strips that
 // take turns, so it never ends. Each obstacle has a painted stretch of path before it, showing
 // where a move will count. Nothing flashes or strobes, as seizures are more common in children
 // with hemiplegia: clearing something is a burst of small shapes, and the picture itself never
@@ -20,7 +21,13 @@ import {
 } from '../../core/body/characters.js';
 import { SHAPES, Sparks, spriteTexture } from '../../core/body/sparks.js';
 
-const PATH_WIDTH = 3.6;
+// Three lanes, side by side. The lane in the middle is where the runner starts.
+export const LANE_WIDTH = 1.75;
+const PATH_WIDTH = LANE_WIDTH * 3 + 0.3;
+const OUT = PATH_WIDTH / 2; // From the middle to the path's edge.
+export const laneX = (lane) => lane * LANE_WIDTH;
+const LANE_CHANGE_RATE = 9; // How quickly the runner gets across to a new lane.
+const CAMERA_FOLLOWS = 0.45; // How much of the runner's move across the camera follows.
 const STRIP_LENGTH = 90;
 const GRASS_BAND = 12;
 const PATH_REPEAT = 8;
@@ -29,7 +36,7 @@ const SEEN_BEHIND = 12;
 const STARS_SHOWN = 26;
 const STARS_SEEN_AHEAD = 75;
 const STREAKS = 46; // Lines rushing past, to show the speed.
-const STREAK_AREA = { near: 2.4, far: 8, high: 5, ahead: 46, behind: 7 };
+const STREAK_AREA = { near: 3.6, far: 8, high: 5, ahead: 46, behind: 7 };
 const DASH_FOV = 13; // How much wider the view gets in a dash.
 const INK = '#3d2a17';
 
@@ -65,21 +72,23 @@ const cylinderAcross = (radius, length) => new THREE.CylinderGeometry(radius, ra
 const OBSTACLE_BUILDERS = {
   log() {
     const parts = [
-      { geometry: cylinderAcross(0.38, 3.9), colour: '#8a5a2b', at: [0, 0.38, -0.45] },
-      { geometry: cylinderAcross(0.28, 3.94), colour: '#d9b277', at: [0, 0.38, -0.45] },
+      { geometry: cylinderAcross(0.38, PATH_WIDTH + 0.3), colour: '#8a5a2b', at: [0, 0.38, -0.45] },
+      { geometry: cylinderAcross(0.28, PATH_WIDTH + 0.34), colour: '#d9b277', at: [0, 0.38, -0.45] },
       { geometry: taper(0.1, 0.05, 0.34), colour: '#8a5a2b', at: [0.7, 0.68, -0.45], turn: [0, 0, -0.5] },
       { geometry: ball(0.17, 0.09, 0.14), colour: '#6fbf4f', at: [0.98, 1.05, -0.45] },
     ];
-    for (const x of [-1.3, -0.5, 0.2, 1.2]) parts.push({ geometry: ball(0.05, 0.3, 0.02), colour: '#6d4520', at: [x, 0.5, -0.1], turn: [0.5, 0, 1.57] });
+    for (const x of [-2.3, -1.3, -0.5, 0.2, 1.2, 2.2]) parts.push({ geometry: ball(0.05, 0.3, 0.02), colour: '#6d4520', at: [x, 0.5, -0.1], turn: [0.5, 0, 1.57] });
     return solid(parts);
   },
   hay() {
     const parts = [
-      { geometry: roundedBox(3.9, 1.05, 1.2, 0.16), colour: '#eec04f', at: [0, 0.53, -0.6] },
-      { geometry: roundedBox(0.09, 1.09, 1.24, 0.04), colour: '#b5482f', at: [-1.1, 0.53, -0.6] },
-      { geometry: roundedBox(0.09, 1.09, 1.24, 0.04), colour: '#b5482f', at: [1.1, 0.53, -0.6] },
+      { geometry: roundedBox(PATH_WIDTH + 0.3, 1.05, 1.2, 0.16), colour: '#eec04f', at: [0, 0.53, -0.6] },
     ];
-    for (let i = 0; i < 9; i += 1) parts.push({ geometry: ball(0.3, 0.012, 0.02), colour: '#d3a43a', at: [-1.6 + i * 0.4, 0.25 + (i % 3) * 0.28, 0.005] });
+    for (const x of [-1.75, 0, 1.75]) {
+      parts.push({ geometry: roundedBox(0.09, 1.09, 1.24, 0.04), colour: '#b5482f', at: [x - 0.55, 0.53, -0.6] });
+      parts.push({ geometry: roundedBox(0.09, 1.09, 1.24, 0.04), colour: '#b5482f', at: [x + 0.55, 0.53, -0.6] });
+    }
+    for (let i = 0; i < 13; i += 1) parts.push({ geometry: ball(0.3, 0.012, 0.02), colour: '#d3a43a', at: [-2.5 + i * 0.42, 0.25 + (i % 3) * 0.28, 0.005] });
     return solid(parts);
   },
   rocks() {
@@ -89,6 +98,8 @@ const OBSTACLE_BUILDERS = {
       { geometry: ball(0.7, 0.62, 0.66), colour: '#8d969e', at: [1.25, 0.28, -0.76] },
       { geometry: ball(0.46, 0.38, 0.4), colour: '#b8c0c6', at: [-1.7, 0.16, -0.45] },
       { geometry: ball(0.42, 0.33, 0.4), colour: '#a2abb2', at: [1.95, 0.14, -0.4] },
+      { geometry: ball(0.66, 0.6, 0.64), colour: '#9aa3ab', at: [-2.55, 0.27, -0.68] },
+      { geometry: ball(0.62, 0.56, 0.6), colour: '#8d969e', at: [2.6, 0.26, -0.7] },
       { geometry: ball(0.22, 0.05, 0.2), colour: '#7fbf63', at: [-0.8, 0.98, -0.65] },
     ], '#39424a');
   },
@@ -102,50 +113,21 @@ const OBSTACLE_BUILDERS = {
     }
     return solid(parts, '#1d5a84', 0.008);
   },
-  bough() {
-    const parts = [
-      { geometry: limb(0.44, 0.34, 3.2).rotateX(Math.PI), colour: '#7c5228', at: [-2.65, 0, -0.55] },
-      { geometry: limb(0.44, 0.34, 3.2).rotateX(Math.PI), colour: '#7c5228', at: [2.65, 0, -0.55] },
-      { geometry: cylinderAcross(0.25, 5.4), colour: '#8a5a2b', at: [0, 1.82, -0.55] },
-    ];
-    for (const [x, y, z, size] of [[-2.5, 3.5, -0.55, 1.3], [2.5, 3.5, -0.55, 1.3], [-1.4, 2.5, -0.5, 0.86], [0, 2.4, -0.55, 0.92], [1.4, 2.5, -0.6, 0.86], [-0.8, 3.1, -0.7, 0.8], [0.8, 3.15, -0.55, 0.8]]) {
-      parts.push({ geometry: ball(0.82 * size, 0.62 * size, 0.72 * size), colour: y > 3 ? '#4ea44f' : '#5eb85a', at: [x, y, z] });
-    }
-    for (const [x, length] of [[-1.25, 0.26], [-0.45, 0.2], [0.55, 0.24], [1.3, 0.2]]) {
-      parts.push({ geometry: limb(0.06, 0.03, length), colour: '#5eb85a', at: [x, 1.6, -0.5] });
-    }
-    return solid(parts);
-  },
-  arch() {
-    const flagColours = ['#ff5a4f', '#ffd23f', '#27c96b', '#3b82f6', '#a855f7', '#ff7eb6'];
-    const parts = [
-      { geometry: roundedBox(0.34, 2.5, 0.34, 0.06), colour: '#c8884a', at: [-2.5, 1.25, -0.65] },
-      { geometry: roundedBox(0.34, 2.5, 0.34, 0.06), colour: '#c8884a', at: [2.5, 1.25, -0.65] },
-      { geometry: roundedBox(5.6, 0.34, 0.5, 0.06), colour: '#d99a5a', at: [0, 2.05, -0.65] },
-      { geometry: ball(0.22), colour: '#ff5a4f', at: [-2.5, 2.62, -0.65] },
-      { geometry: ball(0.22), colour: '#ffd23f', at: [2.5, 2.62, -0.65] },
-    ];
-    const flag = new THREE.ConeGeometry(0.24, 0.42, 4).rotateX(Math.PI).scale(1, 1, 0.2);
-    for (let i = 0; i < 9; i += 1) {
-      parts.push({ geometry: flag, colour: flagColours[i % flagColours.length], at: [-2 + i * 0.5, 1.68, -0.65] });
-    }
-    return solid(parts);
-  },
 };
 
 function buildFinish() {
   const parts = [
-    { geometry: roundedBox(0.36, 4.2, 0.36, 0.08), colour: '#f7f2e6', at: [-3, 2.1, 0] },
-    { geometry: roundedBox(0.36, 4.2, 0.36, 0.08), colour: '#f7f2e6', at: [3, 2.1, 0] },
-    { geometry: ball(0.3), colour: '#ffd23f', at: [-3, 4.35, 0] },
-    { geometry: ball(0.3), colour: '#ffd23f', at: [3, 4.35, 0] },
+    { geometry: roundedBox(0.36, 4.2, 0.36, 0.08), colour: '#f7f2e6', at: [-3.9, 2.1, 0] },
+    { geometry: roundedBox(0.36, 4.2, 0.36, 0.08), colour: '#f7f2e6', at: [3.9, 2.1, 0] },
+    { geometry: ball(0.3), colour: '#ffd23f', at: [-3.9, 4.35, 0] },
+    { geometry: ball(0.3), colour: '#ffd23f', at: [3.9, 4.35, 0] },
   ];
-  for (let column = 0; column < 12; column += 1) {
+  for (let column = 0; column < 16; column += 1) {
     for (let row = 0; row < 2; row += 1) {
       parts.push({
         geometry: new THREE.BoxGeometry(0.5, 0.44, 0.1),
         colour: (column + row) % 2 ? '#12304d' : '#ffffff',
-        at: [-2.75 + column * 0.5, 3.45 + row * 0.44, 0],
+        at: [-3.75 + column * 0.5, 3.45 + row * 0.44, 0],
       });
     }
   }
@@ -178,7 +160,7 @@ function buildStrip() {
   }
   // Bushes and stones nearer in.
   for (let i = 0; i < 24; i += 1) {
-    const x = side() * between(3.6, 14);
+    const x = side() * between(OUT + 1.5, 14);
     const where = z();
     const size = between(0.5, 0.95);
     if (i % 3 === 2) parts.push({ geometry: ball(0.5 * size, 0.34 * size, 0.42 * size), colour: '#a9b1b8', at: [x, 0.14 * size, where] });
@@ -197,7 +179,7 @@ function buildStrip() {
   }
   // A rail fence on each side, the whole way along.
   for (const fenceSide of [-1, 1]) {
-    const x = fenceSide * 3.05;
+    const x = fenceSide * (OUT + 0.95);
     for (let post = 0; post < STRIP_LENGTH / 5; post += 1) {
       const where = -post * 5;
       parts.push({ geometry: new THREE.BoxGeometry(0.16, 1, 0.16), colour: '#c49a64', at: [x, 0.5, where] });
@@ -237,16 +219,16 @@ function buildStrip() {
   for (let i = 0; i < 2; i += 1) {
     const where = -STRIP_LENGTH * (0.25 + i * 0.5);
     for (const poleSide of [-1, 1]) {
-      parts.push({ geometry: new THREE.CylinderGeometry(0.08, 0.1, 5.8, 8), colour: '#9a7446', at: [poleSide * 3.7, 2.9, where] });
+      parts.push({ geometry: new THREE.CylinderGeometry(0.08, 0.1, 5.8, 8), colour: '#9a7446', at: [poleSide * (OUT + 1.6), 2.9, where] });
     }
-    for (let flag = 0; flag < 11; flag += 1) {
-      const across = (flag / 10 - 0.5) * 7.4;
-      const sag = 5.6 - (1 - ((flag / 10 - 0.5) * 2) ** 2) * 0.45;
+    for (let flag = 0; flag < 13; flag += 1) {
+      const across = (flag / 12 - 0.5) * (PATH_WIDTH + 3.2);
+      const sag = 5.6 - (1 - ((flag / 12 - 0.5) * 2) ** 2) * 0.45;
       parts.push({ geometry: new THREE.ConeGeometry(0.2, 0.46, 3).rotateX(Math.PI), colour: flags[flag % flags.length], at: [across, sag, where] });
     }
   }
   for (let i = 0; i < 9; i += 1) {
-    const x = (i % 2 ? 1 : -1) * 4.1;
+    const x = (i % 2 ? 1 : -1) * (OUT + 2);
     const where = -((i + 0.5) / 9) * STRIP_LENGTH;
     parts.push({ geometry: new THREE.CylinderGeometry(0.06, 0.08, 3.4, 6), colour: '#566b7d', at: [x, 1.7, where] });
     parts.push({ geometry: ball(0.2), colour: '#fff3c4', at: [x, 3.5, where] });
@@ -291,8 +273,11 @@ function pathTexture() {
       ctx.fill();
     }
     ctx.fillStyle = '#c99c61';
-    ctx.fillRect(0, 0, 12, size);
-    ctx.fillRect(size - 12, 0, 12, size);
+    ctx.fillRect(0, 0, 9, size);
+    ctx.fillRect(size - 9, 0, 9, size);
+    // Two soft lines between the lanes, unbroken, so nothing goes past in flickers.
+    ctx.fillStyle = '#f3dcb2';
+    for (const share of [1 / 3, 2 / 3]) ctx.fillRect(Math.round(size * share) - 3, 0, 6, size);
   });
 }
 
@@ -378,7 +363,7 @@ class Runner {
   }
 
   /** What the body should be doing, from what the run says. */
-  update(dt, { speed = 0, top = 5, height = 0, through = 0, jumping = false, sliding = false, won = false, waiting = false }, reducedMotion) {
+  update(dt, { speed = 0, top = 5, height = 0, through = 0, jumping = false, won = false, waiting = false }, reducedMotion) {
     this.time += dt;
     const { target, pose } = this;
     Object.assign(target, makePose());
@@ -388,7 +373,7 @@ class Runner {
     this.phase += dt * speed ** STRIDE_POWER * STRIDE_RATE * Math.PI * 0.5;
     const swing = Math.sin(this.phase);
     const lift = Math.cos(this.phase);
-    if (!jumping && !sliding && speed > 1 && Math.sign(before) !== Math.sign(swing)) this.onStep?.();
+    if (!jumping && speed > 1 && Math.sign(before) !== Math.sign(swing)) this.onStep?.();
 
     if (won) {
       const hop = reducedMotion ? 0 : Math.abs(Math.sin(this.time * 4.6));
@@ -427,24 +412,6 @@ class Runner {
         footRY: 0.2,
         footRZ: -0.3,
         footRPitch: 0.5,
-      });
-    } else if (sliding) {
-      Object.assign(target, {
-        hipDrop: 0.3,
-        pitch: 1.05,
-        squash: 0.12,
-        headPitch: -0.5,
-        handLX: 0.5,
-        handLY: -0.62,
-        handLZ: -0.45,
-        handRX: -0.5,
-        handRY: -0.62,
-        handRZ: -0.45,
-        footLX: 0.3,
-        footLZ: 0.5,
-        footLPitch: -0.5,
-        footRX: -0.3,
-        footRZ: -0.34,
       });
     } else if (stride > 0.04) {
       Object.assign(target, {
@@ -485,7 +452,7 @@ class Runner {
     // The runner copies the child, so they can see it's them: fully when standing, and in the
     // sinking and a share of the arms when running. It faces the child as a mirror would.
     const { live } = this;
-    if (live && !won && !jumping && !sliding) {
+    if (live && !won && !jumping) {
       const share = stride > 0.04 && !this.presenting ? 0.35 : 1;
       const mirrored = this.presenting;
       const copy = (key, value) => {
@@ -525,7 +492,7 @@ class Runner {
       target.handRY = 0.1;
     }
 
-    mixPose(pose, pose, target, 1 - Math.exp(-dt * (jumping || sliding ? 22 : 15)));
+    mixPose(pose, pose, target, 1 - Math.exp(-dt * (jumping ? 22 : 15)));
 
     // Height follows the arc exactly, so the fighter really is over what it jumps.
     pose.up = jumping ? height : pose.up;
@@ -573,10 +540,7 @@ export class World {
     this.buildPlace();
     this.sparks = new Sparks(this.scene);
     this.zoneMap = zoneTexture();
-    this.arrows = {
-      jump: arrowTexture(true, '#17a84f'),
-      squat: arrowTexture(false, '#1f8fe0'),
-    };
+    this.arrows = { jump: arrowTexture(true, '#17a84f') };
     this.cue = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.arrows.jump, transparent: true, depthTest: false }));
     this.cue.scale.setScalar(1.05);
     this.cue.visible = false;
@@ -594,6 +558,8 @@ export class World {
     this.cameraAt = new THREE.Vector3(...VIEWS.choose.at);
     this.cameraLook = new THREE.Vector3(...VIEWS.choose.look);
     this.view = 'choose';
+    this.lane = 0;
+    this.runnerX = 0;
     this.run = null;
     this.runner = null;
     this.time = 0;
@@ -711,6 +677,11 @@ export class World {
     this.scene.add(this.runner.body.root);
   }
 
+  /** The lane the runner should be in, from the child moving across: -1, 0 or 1. */
+  setLane(lane) {
+    this.lane = lane;
+  }
+
   /** The child's body for the runner to copy, or null when it isn't in the picture. */
   setLive(pose) {
     this.runner.live = pose;
@@ -720,7 +691,7 @@ export class World {
   hop() {
     this.runner.hopLeft = HOP_SECONDS;
     this.runner.body.setExpression('happy', 1.2);
-    this.burst(new THREE.Vector3(-0.1, 1.2, 0), { shapes: ['star', 'spark'], colours: ['#ffd23f', '#ffffff', '#7ee8ff'], count: 12, speed: 2.4, size: 0.26, life: 0.6, gravity: 2 });
+    this.burst(new THREE.Vector3(this.runnerX - 0.1, 1.2, 0), { shapes: ['star', 'spark'], colours: ['#ffd23f', '#ffffff', '#7ee8ff'], count: 12, speed: 2.4, size: 0.26, life: 0.6, gravity: 2 });
   }
 
   /** A new run. Whatever was on the trail goes, and the new one's obstacles arrive as they near. */
@@ -730,6 +701,7 @@ export class World {
     this.finishGate.visible = false;
     this.cue.visible = false;
     this.won = false;
+    this.lane = 0;
   }
 
   /* ---------- what's on the trail ---------- */
@@ -745,7 +717,7 @@ export class World {
     const reach = this.run.reachDistance;
     const zone = new THREE.Mesh(
       new THREE.PlaneGeometry(PATH_WIDTH - 0.3, reach).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: obstacle.needs === 'jump' ? '#2fd16f' : '#46b7ff', map: this.zoneMap.clone(), transparent: true, opacity: 0.62, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ color: '#2fd16f', map: this.zoneMap.clone(), transparent: true, opacity: 0.62, depthWrite: false }),
     );
     zone.material.map.repeat.set(1, Math.max(1, Math.round(reach / 1.6)));
     zone.material.map.needsUpdate = true;
@@ -756,7 +728,7 @@ export class World {
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.starMap, color: '#ffd23f', transparent: true }));
       sprite.scale.setScalar(0.62);
       this.scene.add(sprite);
-      return { sprite, index, taken: false, at: obstacle.at + obstacle.length * (index * 0.5), y: obstacle.needs === 'jump' ? obstacle.height + 0.85 + (index === 1 ? 0.28 : 0) : 0.72 };
+      return { sprite, index, taken: false, at: obstacle.at + obstacle.length * (index * 0.5), y: obstacle.height + 0.85 + (index === 1 ? 0.28 : 0) };
     });
 
     this.items.set(obstacle, { model, zone, stars, knocked: 0 });
@@ -787,19 +759,19 @@ export class World {
     item.stars.forEach((star) => {
       const through = 0.32 + star.index * 0.19;
       star.at = move.from + move.travel * through;
-      star.y = kind === 'jump' ? move.height * 4 * through * (1 - through) + 1 : 0.72;
+      star.y = move.height * 4 * through * (1 - through) + 1;
     });
     item.zone.visible = false;
   }
 
   moved(kind, counts) {
-    this.dust(new THREE.Vector3(0, 0.15, 0), kind === 'squat' ? 10 : counts ? 8 : 5);
+    this.dust(new THREE.Vector3(this.runnerX, 0.15, 0), counts ? 8 : 5);
     this.runner.body.setExpression('strike', 0.5);
   }
 
   landed() {
     this.runner.landing = 0.22;
-    this.dust(new THREE.Vector3(0, 0.15, 0), 7);
+    this.dust(new THREE.Vector3(this.runnerX, 0.15, 0), 7);
   }
 
   cleared(obstacle) {
@@ -819,14 +791,14 @@ export class World {
     this.cue.visible = false;
     this.runner.stumble = 1;
     this.runner.body.setExpression('hurt', 1);
-    const at = new THREE.Vector3(0, 0.8, -0.8);
+    const at = new THREE.Vector3(this.runnerX, 0.8, -0.8);
     this.sparks.emit({ shape: 'star', colour: '#ffffff', at, velocity: [0, 1, this.run.speed], life: 0.4, size: 0.4, spin: 3 });
     this.burst(at, { shapes: ['puff'], colours: ['#fff8e6', '#ffe9c4'], count: 9, speed: 1.8, size: 0.32, grow: 0.7, life: 0.5, opacity: 0.85 });
   }
 
   /** A star on the path has been run through. */
   tookStar() {
-    this.burst(new THREE.Vector3(0, 1.1, -0.2), { shapes: ['spark'], colours: ['#ffd23f', '#ffffff'], count: 3, speed: 1.6, size: 0.18, life: 0.3 });
+    this.burst(new THREE.Vector3(this.runnerX, 1.1, -0.2), { shapes: ['spark'], colours: ['#ffd23f', '#ffffff'], count: 3, speed: 1.6, size: 0.18, life: 0.3 });
   }
 
   celebrate() {
@@ -905,6 +877,13 @@ export class World {
       }
     }
 
+    // Across to the lane the child has moved into. Not on the screens where the runner faces them.
+    // In the practice it's a smaller step, as the runner is close up and on the edge of the picture.
+    const across = this.view === 'run' ? laneX(this.lane) : this.view === 'practice' ? laneX(this.lane) * 0.45 : 0;
+    this.runnerX = damp(this.runnerX, across, LANE_CHANGE_RATE, dt);
+    if (Math.abs(this.runnerX - across) < 0.002) this.runnerX = across;
+    if (this.runner) this.runner.body.root.position.x = this.runnerX;
+
     if (run) this.updateTrail(dt, distance);
     this.updateStarLines(distance);
     this.updateStreaks(dt);
@@ -917,7 +896,6 @@ export class World {
             height: run.air.height,
             through: run.air.through,
             jumping: run.move?.kind === 'jump',
-            sliding: run.move?.kind === 'squat',
             waiting: run.waiting,
             won: this.won,
           }
@@ -955,12 +933,12 @@ export class World {
       for (const star of item.stars) {
         if (star.taken) continue;
         const bob = this.reducedMotion ? 0 : Math.sin(this.time * 3 + star.index) * 0.08;
-        star.sprite.position.set(0, star.y + bob, -(star.at - distance));
+        star.sprite.position.set(this.runnerX, star.y + bob, -(star.at - distance));
         star.sprite.material.rotation = this.reducedMotion ? 0 : Math.sin(this.time * 2 + star.index) * 0.3;
         if (distance >= star.at && obstacle.state !== 'ahead') {
           star.taken = true;
           star.sprite.visible = false;
-          this.burst(new THREE.Vector3(0, star.y, 0), { shapes: ['spark', 'star'], colours: ['#ffd23f', '#ffffff'], count: 6, speed: 1.6, size: 0.2, life: 0.42 });
+          this.burst(new THREE.Vector3(this.runnerX, star.y, 0), { shapes: ['spark', 'star'], colours: ['#ffd23f', '#ffffff'], count: 6, speed: 1.6, size: 0.2, life: 0.42 });
           this.onStar?.();
         }
       }
@@ -973,7 +951,7 @@ export class World {
     if (asking) {
       this.cue.material.map = this.arrows[next.needs];
       const bob = this.reducedMotion ? 0 : Math.sin(this.time * 6) * 0.14;
-      this.cue.position.set(0, (next.needs === 'jump' ? next.height + 1.9 : 3.2) + bob, -(next.at - distance));
+      this.cue.position.set(this.runnerX, next.height + 1.9 + bob, -(next.at - distance));
     }
 
     const gateAhead = run.end - distance;
@@ -989,7 +967,7 @@ export class World {
         const ahead = run.starLines[i].at - distance;
         if (ahead > STARS_SEEN_AHEAD) break;
         const bob = this.reducedMotion ? 0 : Math.sin(this.time * 4 + i * 0.7) * 0.1;
-        lineSprites[used].position.set(0, 1.25 + bob, -ahead);
+        lineSprites[used].position.set(laneX(run.starLines[i].lane ?? 0), 1.25 + bob, -ahead);
         lineSprites[used].visible = true;
         used += 1;
       }
@@ -1027,10 +1005,12 @@ export class World {
   updateCamera(dt) {
     const view = VIEWS[this.view];
     const rate = this.view === 'run' ? 3.2 : 2.2;
-    this.cameraAt.x = damp(this.cameraAt.x, view.at[0], rate, dt);
+    // In a run, the camera goes some of the way across with the runner, so all three lanes stay in view.
+    const follow = this.view === 'run' ? this.runnerX * CAMERA_FOLLOWS : 0;
+    this.cameraAt.x = damp(this.cameraAt.x, view.at[0] + follow, rate, dt);
     this.cameraAt.y = damp(this.cameraAt.y, view.at[1] + (this.view === 'run' ? (this.run?.air.height ?? 0) * 0.14 : 0), rate, dt);
     this.cameraAt.z = damp(this.cameraAt.z, view.at[2], rate, dt);
-    this.cameraLook.x = damp(this.cameraLook.x, view.look[0], rate, dt);
+    this.cameraLook.x = damp(this.cameraLook.x, view.look[0] + follow, rate, dt);
     this.cameraLook.y = damp(this.cameraLook.y, view.look[1], rate, dt);
     this.cameraLook.z = damp(this.cameraLook.z, view.look[2], rate, dt);
     const fov = damp(this.camera.fov, this.wantedFov(view), rate, dt);

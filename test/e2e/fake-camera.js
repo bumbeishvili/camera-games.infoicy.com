@@ -55,7 +55,12 @@
       Object.assign(scene, DEFAULTS, change);
     },
     /** Shows a clip from test/fixtures/body, from a moment in it, playing or held still. */
-    async showFootage(name, { from = 0, playing = true, height = 1, shiftY = 0 } = {}) {
+    /** Moves the footage that's playing across, without starting it again. See shiftX below. */
+    shiftFootage(shiftX) {
+      scene.footageShiftX = shiftX;
+    },
+    /** shiftX moves the person across, as a share of the picture's width, towards the right of the mirror. */
+    async showFootage(name, { from = 0, playing = true, height = 1, shiftY = 0, shiftX = 0 } = {}) {
       const source = `/test/fixtures/body/${name}.webm`;
       if (footage.dataset.clip !== source) {
         // All of it, as the test server can't send part of a file, and a clip can't seek without that.
@@ -75,6 +80,7 @@
       scene.footage = true;
       scene.footageHeight = height;
       scene.footageShiftY = shiftY;
+      scene.footageShiftX = shiftX;
       if (playing) await footage.play();
     },
     /** An empty room. */
@@ -121,7 +127,10 @@
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         const height = HEIGHT * scene.footageHeight;
         const width = (height * footage.videoWidth) / footage.videoHeight;
-        ctx.drawImage(footage, (WIDTH - width) / 2, (HEIGHT - height) / 2 + scene.footageShiftY * HEIGHT, width, height);
+        // The picture isn't mirrored, so the right of the mirror is the left of this picture.
+        ctx.fillStyle = '#808080';
+        if (scene.footageShiftX) ctx.fillRect(0, 0, WIDTH, HEIGHT);
+        ctx.drawImage(footage, (WIDTH - width) / 2 - (scene.footageShiftX ?? 0) * WIDTH, (HEIGHT - height) / 2 + scene.footageShiftY * HEIGHT, width, height);
         return;
       }
       const middle = HEIGHT / 2;

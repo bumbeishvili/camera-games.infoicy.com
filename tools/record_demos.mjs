@@ -301,7 +301,7 @@ const FILMS = {
     report: (page) => page.evaluate(() => window.__game.fight.stats.exercises),
   },
   'leap-trail': {
-    settings: { squatObstacles: 'yes', pace: 'slow' },
+    settings: { pace: 'slow' },
     async ready(page) {
       await footage(page, 'demo-trail', { from: 0, playing: false });
       await page.locator('#start').click();
@@ -328,8 +328,17 @@ const FILMS = {
       await obstacle('log', 46);
       await footage(page, 'demo-trail', { from: 0, playing: true });
       await wait(page, 3700);
-      await obstacle('arch', 42);
-      await wait(page, 3600);
+      // A step to the side, into the lane where the next stars are, and back again.
+      await obstacle('rocks', 160);
+      await page.evaluate(() => {
+        const { run } = window.__game;
+        const at = run.distance + 30;
+        for (let i = 0; i < 6; i += 1) run.starLines.splice(run.nextStar + i, 0, { at: at + i * 2.6, lane: 1, taken: false });
+        window.__camera.shiftFootage(0.09);
+      });
+      await wait(page, 3000);
+      await page.evaluate(() => window.__camera.shiftFootage(0));
+      await wait(page, 600);
       await obstacle('hay', 40);
       await wait(page, 3700);
     },

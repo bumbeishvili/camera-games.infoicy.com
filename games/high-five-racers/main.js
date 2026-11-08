@@ -1,5 +1,6 @@
 // High Five Racers: the car only drives while the hand in play is open. Steering over to a big hand
-// at the roadside slaps it for a boost, and opening the hand as wide as it goes is turbo.
+// at the roadside slaps it for a boost, and opening the hand as wide as it goes is turbo. Once turbo has
+// run out, a fist and then an open hand with the other hand sets it off again, and the car flies.
 import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
 import { GameSession, SPOKEN as SPOKEN_EVERYWHERE } from '../../core/session.js';
@@ -33,12 +34,14 @@ const WORDS = {
     row: (count) => `${count} in a row!`,
     passed: (spec) => `You passed ${spec.name}!`,
     turbo: 'Turbo!',
+    fly: 'Fly!',
   },
   ka: {
     five: 'ყოჩაღ!',
     row: (count) => `${count} ზედიზედ!`,
     passed: (spec) => `გაასწარი: ${spec.nameKa}!`,
     turbo: 'ტურბო!',
+    fly: 'გაფრინდი!',
   },
 };
 
@@ -91,12 +94,18 @@ class RaceGame {
       onTurbo: (on) => {
         if (!on) return;
         sound.turboOn();
+        // Taking off says so itself.
+        if (this.race.soaring) return;
         if (session.playSeconds - this.lastTurboToast > TURBO_TOAST_SPACING_SECONDS) {
           this.lastTurboToast = session.playSeconds;
           this.toast(this.words.turbo);
         }
       },
       onJump: () => sound.jumped(),
+      onFly: () => {
+        sound.jumped();
+        this.toast(this.words.fly);
+      },
       onLanded: () => sound.landed(),
       onCrowd: () => sound.crowd(),
       onFinish: () => session.finish(),
@@ -239,6 +248,8 @@ class RaceGame {
       steering: session.settings.steering,
       left: snapshot.left,
       right: snapshot.right,
+      // The other hand: a fist and then open, once turbo has run out, sets it off again and the car flies.
+      other: snapshot.other,
     });
     const { speed, turboOn, boosting } = race.info;
     session.sound.engine(speed, snapshot.drive > 0, turboOn || boosting ? 1 : 0);

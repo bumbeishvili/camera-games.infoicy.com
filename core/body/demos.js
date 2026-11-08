@@ -72,6 +72,11 @@ const looksUp = pose({ headPitch: -0.3, handLX: 0.3, handLY: -0.6, handLZ: 0.3, 
 const looksUpHigher = pose({ up: 0.03, headPitch: -0.38, handLX: 0.34, handLY: -0.42, handLZ: 0.4, handRX: -0.34, handRY: -0.42, handRZ: 0.4 });
 const bites = pose({ headPitch: 0.3, pitch: 0.1, handLX: 0.34, handLY: -0.45, handLZ: 0.4, handRX: -0.34, handRY: -0.45, handRZ: 0.4 });
 
+// A step across to the character's left, which is the right of the screen, and back again.
+const reachOut = pose({ footLX: REST.footLX + 0.3, roll: -0.05, handLX: 0.56, handLY: -0.62, handRX: -0.36 });
+const steppedAcross = pose({ side: 0.38, roll: 0.02, handLX: 0.5, handLY: -0.7, handRX: -0.4 });
+const reachBack = pose({ side: 0.38, footRX: REST.footRX - 0.3, roll: 0.05, handRX: -0.56, handRY: -0.62, handLX: 0.36 });
+
 const stepA = pose({ up: 0.03, footLZ: 0.36, footRZ: -0.3, footRY: 0.1, handLX: 0.36, handLY: -0.72, handLZ: -0.28, handRX: -0.36, handRY: -0.72, handRZ: 0.28 });
 const stepB = mirrorPose(stepA);
 
@@ -157,6 +162,10 @@ export const DEMOS = {
   walk: {
     turn: 0.95,
     frames: [[0, stepA], [0.42, stepB], [0.84, stepA]],
+  },
+  sideStep: {
+    shift: -0.2,
+    frames: [[0, REST], [0.35, REST], [0.7, reachOut], [1, steppedAcross], [1.7, steppedAcross], [2.05, reachBack], [2.35, REST], [2.8, REST]],
   },
   lean: {
     frames: [[0, REST], [0.6, pose({ roll: 0.42, hipX: -0.05 })], [1, pose({ roll: 0.42, hipX: -0.05 })], [1.5, REST], [2.1, pose({ roll: -0.42, hipX: 0.05 })], [2.5, pose({ roll: -0.42, hipX: 0.05 })], [3, REST], [3.2, REST]],

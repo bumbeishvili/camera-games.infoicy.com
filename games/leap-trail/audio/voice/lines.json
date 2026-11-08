@@ -1,9 +1,9 @@
 [
   {"id": "choose", "text": "Who’s running today?", "ka": "დღეს ვინ გარბის?", "speak": "Who's running today?"},
   {"id": "jump", "text": "Jump!", "ka": "ახტი!"},
-  {"id": "squat", "text": "Squat down!", "ka": "ჩაცუცქდი!"},
+  {"id": "side", "text": "Step to the side!", "ka": "გვერდზე გადადგი ნაბიჯი!"},
+  {"id": "lean", "text": "Lean to the side!", "ka": "გვერდზე გადაიხარე!"},
   {"id": "jump-ready", "text": "Jump when you’re ready!", "ka": "როცა მზად იქნები, ახტი!", "speak": "Jump when you're ready!"},
-  {"id": "squat-ready", "text": "Squat when you’re ready!", "ka": "როცა მზად იქნები, ჩაცუცქდი!", "speak": "Squat when you're ready!"},
   {"id": "raise-ready", "text": "Raise your hand when you’re ready!", "ka": "როცა მზად იქნები, ხელი ასწიე!", "speak": "Raise your hand when you're ready!"},
   {"id": "raise-left", "text": "Raise your open left hand!", "ka": "ასწიე გაშლილი მარცხენა ხელი!"},
   {"id": "raise-right", "text": "Raise your open right hand!", "ka": "ასწიე გაშლილი მარჯვენა ხელი!"},
@@ -13,12 +13,10 @@
   {"id": "made-it", "text": "You made it to the end of the trail!", "ka": "ბილიკის ბოლომდე მიაღწიე!"},
   {"id": "practise", "text": "Let’s practise!", "ka": "ჯერ ვივარჯიშოთ!", "speak": "Let's practise!"},
   {"id": "jump-high", "text": "Jump as high as you can!", "ka": "ახტი, რაც შეგიძლია მაღლა!"},
-  {"id": "squat-low", "text": "Squat as low as you can!", "ka": "ჩაცუცქდი, რაც შეგიძლია დაბლა!"},
   {"id": "knee-high", "text": "Lift your knee as high as you can!", "ka": "ასწიე მუხლი, რაც შეგიძლია მაღლა!"},
   {"id": "raise-high", "text": "Raise your open hand as high as you can!", "ka": "ასწიე გაშლილი ხელი, რაც შეგიძლია მაღლა!"},
   {"id": "lift", "text": "Lift your knee!", "ka": "ასწიე მუხლი!"},
   {"id": "lift-ready", "text": "Lift your knee when you’re ready!", "ka": "როცა მზად იქნები, მუხლი ასწიე!", "speak": "Lift your knee when you're ready!"},
   {"id": "great-jump", "text": "Great jump!", "ka": "მაგარი ნახტომია!"},
-  {"id": "great-squat", "text": "Great squat!", "ka": "ყოჩაღ, კარგად ჩაცუცქდი!"},
   {"id": "ready-now", "text": "That’s it! You’re ready!", "ka": "ასეა! მზად ხარ!", "speak": "That's it! You're ready!"}
 ]

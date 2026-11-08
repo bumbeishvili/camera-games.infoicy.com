@@ -74,7 +74,7 @@ body[data-screen='practice'] .move-meter {
   text-shadow: 0 2px 0 rgba(18, 48, 77, 0.8);
 }
 
-/* ---------- where the body is, between a squat and a jump ---------- */
+/* ---------- how close the body is to a jump, from standing at the bottom ---------- */
 .move-meter {
   position: fixed;
   z-index: 3;
@@ -98,16 +98,12 @@ body[data-screen='practice'] .move-meter {
 }
 
 .meter-zone-up { top: 0; background: #2fd16f; }
-.meter-zone-down { bottom: 0; background: #46b7ff; }
-
-/* Raising a hand has no way down, and there's nothing to squat under. */
-body[data-jump-with='reach'] .meter-zone-down { display: none; }
 
 .meter-middle {
   position: absolute;
   left: 18%;
   right: 18%;
-  bottom: 50%;
+  bottom: 9%;
   height: 3px;
   background: rgba(255, 255, 255, 0.7);
 }
@@ -115,7 +111,7 @@ body[data-jump-with='reach'] .meter-zone-down { display: none; }
 .meter-dot {
   position: absolute;
   left: 50%;
-  bottom: 50%;
+  bottom: 9%;
   width: 76%;
   aspect-ratio: 1;
   transform: translate(-50%, 50%);
@@ -125,7 +121,6 @@ body[data-jump-with='reach'] .meter-zone-down { display: none; }
 }
 
 .move-meter[data-zone='up'] .meter-dot { background: #2fd16f; }
-.move-meter[data-zone='down'] .meter-dot { background: #46b7ff; }
 
 /* ---------- along the top ---------- */
 .trail-top {

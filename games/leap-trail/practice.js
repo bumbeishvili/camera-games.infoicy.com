@@ -6,11 +6,13 @@ import { Easing } from '../../core/body/easing.js';
 const AFTER_SUCCESS = 1; // Seconds to land and see that it worked, before the next thing.
 
 // Which moves from the body reader count for each step. Raising a hand is checked by the game,
-// because the hand has to be seen open as well.
-const COUNTS = { jump: ['flying', 'starBurst'], squat: ['stomp'], lift: ['kick', 'knee'], raise: [] };
+// because the hand has to be seen open as well, and so is stepping to the side, which goes by lanes.
+const COUNTS = { jump: ['flying', 'starBurst'], lift: ['kick', 'knee'], raise: [], side: [] };
+// What counts for these comes down for a child who's trying. Moving across has a fixed size.
+const EASED = new Set(['jump', 'lift', 'raise']);
 
 export class Practice {
-  /** steps is the moves to practise, in order: 'jump', 'squat', 'lift' or 'raise'. */
+  /** steps is the moves to practise, in order: 'jump', 'lift', 'raise' or 'side'. */
   constructor({ steps, reader, side = 'right', onEvent = () => {} }) {
     this.steps = steps;
     this.reader = reader;
@@ -29,10 +31,12 @@ export class Practice {
   startStep(index) {
     this.index = index;
     const step = this.steps[index];
-    this.easing = new Easing(this.reader, step, {
-      side: this.side,
-      onEased: (needed) => this.onEvent({ type: 'eased', step, needed }),
-    });
+    this.easing = EASED.has(step)
+      ? new Easing(this.reader, step, {
+          side: this.side,
+          onEased: (needed) => this.onEvent({ type: 'eased', step, needed }),
+        })
+      : null;
     this.onEvent({ type: 'step', step: this.step, index, total: this.steps.length });
   }
 
@@ -60,6 +64,6 @@ export class Practice {
       }
       return;
     }
-    this.easing.update(dt);
+    this.easing?.update(dt);
   }
 }

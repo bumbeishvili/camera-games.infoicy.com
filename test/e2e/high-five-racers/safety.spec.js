@@ -124,6 +124,24 @@ test('going through the tunnel doesn\'t change how bright the picture is', async
   expect(flashes).toBeLessThanOrEqual(1);
 });
 
+test('flying from the other hand\'s turbo doesn\'t change how bright the picture is', async ({ page }) => {
+  await raceWithOpenHand(page, { steering: 'help' });
+  await page.evaluate(() => {
+    window.__highest = 0;
+  });
+  const { whole, parts, seconds } = await watchPicture(page, 300, `
+    if (frame === 5) { race.turbo.burst(); race.takeOff(); }
+    window.__highest = Math.max(window.__highest, race.lift);
+  `);
+  const highest = await page.evaluate(() => window.__highest);
+  const step = biggestStep(whole);
+  const flashes = mostFlashesInASecond(parts, seconds);
+  console.log('flight: highest', highest.toFixed(1), 'biggest step', step.toFixed(2), 'most flashes in a second', flashes);
+  expect(highest).toBeGreaterThan(4);
+  expect(step).toBeLessThan(15);
+  expect(flashes).toBeLessThanOrEqual(1);
+});
+
 test('a whole lap at full speed never flashes more than once in a second', async ({ page }) => {
   test.setTimeout(180_000);
   await raceWithOpenHand(page, { steering: 'auto', laps: 2 });

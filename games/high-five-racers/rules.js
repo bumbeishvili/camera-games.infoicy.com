@@ -30,6 +30,13 @@ export const TURBO = {
   heldBonus: 0.1,
 };
 
+// Once turbo has run out, making a fist with the other hand and opening it again sets turbo off once
+// more, and the car takes off and flies for a moment. Turbo like this lasts a set time, shown running
+// down on the meter, rather than lasting while the hand is held wide.
+export const SECOND_HAND = {
+  turboSeconds: 3.5,
+};
+
 export const SLAP = {
   boostSeconds: 2.2,
   bonus: 0.3,
@@ -50,6 +57,17 @@ export class TurboMeter {
     this.active = false;
     this.heldFor = 0;
     this.everFull = false;
+    this.burstLeft = 0;
+  }
+
+  /** Turbo from the other hand. Only once turbo has run out, and it says whether it started. */
+  burst() {
+    if (this.active) return false;
+    this.burstLeft = SECOND_HAND.turboSeconds;
+    this.level = 1;
+    this.active = true;
+    this.heldFor = 0;
+    return true;
   }
 
   /** How far holding it has got, from 0 to 1, for the size of the flames. */
@@ -62,7 +80,18 @@ export class TurboMeter {
     if (!(width > 0)) {
       this.active = false;
       this.heldFor = 0;
+      this.burstLeft = 0;
       this.level = Math.max(0, this.level - dt / TURBO.closedDrainSeconds);
+      return;
+    }
+    if (this.burstLeft > 0) {
+      // The meter runs down like a timer, whatever the hand in play is doing, as long as it's open.
+      this.burstLeft = Math.max(0, this.burstLeft - dt);
+      this.level = this.burstLeft / SECOND_HAND.turboSeconds;
+      this.heldFor += dt;
+      if (this.burstLeft > 0) return;
+      this.active = false;
+      this.heldFor = 0;
       return;
     }
     const wide = width >= (this.active ? TURBO.keepsAt : TURBO.startsAt);
@@ -82,6 +111,38 @@ export class TurboMeter {
 
   get bonus() {
     return this.active ? TURBO.bonus + TURBO.heldBonus * this.grown : 0;
+  }
+}
+
+/**
+ * Watches the hand that isn't in play for a fist and then an open hand. To be sure the fist was meant,
+ * the hand has to be seen open first, then really closed (in view and readable, not just cut off or
+ * lost), and then open again. A hand that turns up already open, or as a fist, doesn't count until it
+ * has done the whole thing. update() is true once, at the moment the hand opens again.
+ */
+export class FistAndOpen {
+  constructor() {
+    this.reset();
+  }
+
+  reset() {
+    this.stage = 'waiting'; // Then 'open', then 'fist'.
+  }
+
+  update(hand) {
+    const status = hand?.status;
+    if (status === 'open') {
+      const done = this.stage === 'fist';
+      this.stage = 'open';
+      return done;
+    }
+    if (status === 'closed' && hand.reason === 'closed') {
+      if (this.stage === 'open') this.stage = 'fist';
+      return false;
+    }
+    // Missing, cut off, too small or touching the other hand: start again.
+    this.stage = 'waiting';
+    return false;
   }
 }
 
