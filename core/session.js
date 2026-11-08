@@ -145,6 +145,8 @@ export class GameSession {
     this.portraits = this.makePortraits?.() ?? null;
     this.game = await this.createGame(this);
     this.game.setHands?.(settings.hands);
+    // Now the game is here, the title card can say what this level brings.
+    this.levelUi.refresh();
 
     this.camera.onResult = ({ hands, aspect }) => {
       this.hud.updateHands(this.monitor.update(hands, performance.now(), aspect));
@@ -357,7 +359,7 @@ export class GameSession {
     this.hud.setCount('');
     const summary = this.game.summary();
     this.hud.showSummary(this.stats, this.monitor.side, summary);
-    this.levelUi.showResult(this.levels.complete(summary.won !== false));
+    this.levelUi.showResult(this.levels.complete(summary.won !== false, this.level));
     this.setScreen('finish');
   }
 

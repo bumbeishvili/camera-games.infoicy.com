@@ -39,6 +39,18 @@ test('winning moves on a level, losing stays, and level 10 is the last', () => {
   assert.equal(levels.current, 10);
 });
 
+test('a level a grown-up chose during a game is the next one, whatever happened', () => {
+  const levels = new Levels({}, 'lighthouse');
+  levels.choose(3);
+  levels.choose(7);
+  assert.deepEqual(levels.complete(true, 3), { played: 3, next: 7, won: true, allDone: false });
+  assert.equal(levels.current, 7);
+  levels.choose(2);
+  assert.deepEqual(levels.complete(false, 9), { played: 9, next: 2, won: false, allDone: false });
+  assert.equal(levels.current, 2);
+  assert.equal(levelWords({ played: 3, next: 7, won: true, allDone: false }), 'Level 3 done! Next: level 7');
+});
+
 test('the finish card says what was done and what comes next', () => {
   assert.equal(levelWords({ played: 3, next: 4, won: true, allDone: false }), 'Level 3 done! Next: level 4');
   assert.equal(levelWords({ played: 3, next: 3, won: false, allDone: false }), 'Let’s try level 3 again!');

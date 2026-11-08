@@ -174,7 +174,7 @@ export class BodyGame {
   /** A game calls this at its finish. A level that's won moves on to the next one. */
   finishLevel(won = true) {
     this.levelUnderway = false;
-    return this.levelUi.showResult(this.levels.complete(won));
+    return this.levelUi.showResult(this.levels.complete(won, this.level));
   }
 
   /* ---------- controls ---------- */

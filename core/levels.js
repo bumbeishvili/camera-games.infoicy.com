@@ -58,9 +58,16 @@ export class Levels {
     saveSettings(this.settings);
   }
 
-  /** At the end of a game. A level that's won moves on to the next one, up to the last. */
-  complete(won = true) {
-    const played = this.current;
+  /**
+   * At the end of a game. played is the level that was played. A level that's won moves on to the next
+   * one, up to the last. If a grown-up chose another level while it was being played, that's the next one.
+   */
+  complete(won = true, played = this.current) {
+    const chosen = this.current;
+    if (chosen !== played) {
+      this.last = { played, next: chosen, won, allDone: false };
+      return this.last;
+    }
     const next = won ? Math.min(LAST_LEVEL, played + 1) : played;
     if (next !== played) this.choose(next);
     this.last = { played, next, won, allDone: won && played === LAST_LEVEL };
