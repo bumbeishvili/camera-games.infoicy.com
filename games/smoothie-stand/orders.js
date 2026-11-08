@@ -1,7 +1,7 @@
 // The story and rules of Joze's Smoothie Stand. It's the day of the Harvest Fair, and everyone has
 // come to Joze's stand with an order. Whatever they asked for is what's worth slicing. There's no
 // screen in this file, so it runs in the unit tests.
-import { ramp, rampWhole, stepsAt } from '../../core/levels.js';
+import { clampLevel, ramp, rampWhole, stepsAt } from '../../core/levels.js';
 
 export const FRUITS = ['apple', 'orange', 'banana', 'pear', 'plum', 'peach'];
 
@@ -24,6 +24,48 @@ export const DAY = [
 
 const SHORT_DAY = ['truffle', 'kit', 'bramble'];
 const MOST_WITHOUT_WANTED = 2; // Never more than this in a row that isn't on the order, at any level.
+
+// Coins: what a golden fruit and a watermelon's wedge are worth, and the tip for a smoothie.
+export const GOLDEN_COINS = 3;
+// Power-ups, from the higher levels, and how many seconds each lasts. They only count down while the
+// hand is open in the picture, so resting never wastes them.
+export const POWER_SECONDS = { magnet: 8, honey: 6, glove: 8, turbo: 6 };
+const POWER_AFTER_SECONDS = 3; // Into a customer's order, a power-up bubble floats up, or the bee comes.
+const BONUS_AFTER = 3; // The golden fruit or watermelon comes instead of the third fruit not on the order.
+
+/**
+ * What each level brings that's new, with a picture and a name in each language. The level each
+ * comes in is in NEW_AT, and fairAt switches it on there.
+ */
+export const NEW_THINGS = {
+  tips: { mark: '🪙', name: 'Tip coins', nameKa: 'ჩაის ფული' },
+  golden: { mark: '🌟', name: 'Golden fruit', nameKa: 'ოქროს ხილი' },
+  across: { mark: '↔️', name: 'Thrown across', nameKa: 'გადმოსროლილი ხილი' },
+  magnet: { mark: '🧲', name: 'Magnet', nameKa: 'მაგნიტი' },
+  melon: { mark: '🍉', name: 'Watermelon', nameKa: 'საზამთრო' },
+  pairs: { mark: '🪰', name: 'Rotten neighbours', nameKa: 'დამპალი მეზობლები' },
+  bee: { mark: '🐝', name: 'Honeybee', nameKa: 'ფუტკარი' },
+  tough: { mark: '🥥', name: 'Tough fruit', nameKa: 'მაგარი ხილი' },
+  glove: { mark: '🧤', name: 'Big glove', nameKa: 'დიდი ხელთათმანი' },
+  turbo: { mark: '🌀', name: 'Turbo blender', nameKa: 'ტურბო ბლენდერი' },
+};
+
+export const NEW_AT = {
+  2: ['tips'],
+  3: ['golden'],
+  4: ['across'],
+  5: ['magnet'],
+  6: ['melon', 'pairs'],
+  7: ['bee'],
+  8: ['tough'],
+  9: ['glove'],
+  10: ['turbo'],
+};
+
+/** What's new at a level, as the title card and the countdown show it. Nothing at level 1. */
+export function newAt(level) {
+  return (NEW_AT[clampLevel(level)] ?? []).map((key) => ({ key, ...NEW_THINGS[key] }));
+}
 
 /**
  * What each level of the fair brings, from 1 to 10. Level 1 is the fair as it always was. The orders
@@ -51,7 +93,20 @@ export function fairAt(level) {
     // From level 6, a rotten one sometimes comes up right beside something on the order.
     pairs: stepsAt(level, { 1: 0, 6: 0.15, 9: 0.25 }),
     // From level 8, some fruit on the order is tough: the first swipe cracks it, and the second slices it.
-    tough: stepsAt(level, { 1: 0, 8: 0.15, 10: 0.2 }),
+    tough: stepsAt(level, { 1: 0, 8: 0.12, 10: 0.15 }),
+    // From level 2, each customer leaves coins as a tip, which float up for an open hand to touch.
+    tips: stepsAt(level, { 1: 0, 2: 2 }),
+    // Once with each customer, from level 3, something that isn't on the order comes up as a golden
+    // fruit instead, worth coins when sliced. From level 6 it takes turns with a watermelon, newest
+    // first, which a slice splits into wedges, each worth a coin.
+    bonus: stepsAt(level, { 1: [], 3: ['golden'], 6: ['melon', 'golden'] }),
+    // From level 5, a power-up bubble floats up with a customer's order, taking turns, the newest
+    // first: a magnet, which draws coins and what's on the order to the hand, from 9 a big glove, which
+    // slices from further away, and at 10 a turbo blender, which counts each fruit on the order twice.
+    powers: stepsAt(level, { 1: [], 5: ['magnet'], 9: ['glove', 'magnet'], 10: ['turbo', 'glove', 'magnet'] }),
+    // From level 7, every other customer brings a bee with a pot of honey instead. Touching the bee
+    // with an open hand gets the honey, and everything floats slowly for a while.
+    bee: level >= 7,
   };
 }
 
@@ -65,7 +120,10 @@ export class Stand {
     this.index = -1;
     this.left = {};
     this.sinceWanted = 0;
-    this.stats = { smoothies: 0, wanted: 0, extra: 0, rotten: 0 };
+    this.coins = 0;
+    this.active = { magnet: 0, honey: 0, glove: 0, turbo: 0 }; // Seconds left of each power-up.
+    this.specialIn = Infinity; // Seconds until this customer's power-up or bee.
+    this.stats = { smoothies: 0, wanted: 0, extra: 0, rotten: 0, coins: 0, golden: 0, melons: 0, wedges: 0, tips: 0, powers: 0, bees: 0 };
   }
 
   get customer() {
@@ -98,7 +156,63 @@ export class Stand {
       return;
     }
     this.left = { ...this.customer.order };
+    this.specialIn = this.special ? POWER_AFTER_SECONDS : Infinity;
+    this.others = 0;
+    this.bonusThrown = false;
     this.emit('customer', { customer: this.customer, index: this.index, total: this.customers.length });
+  }
+
+  /**
+   * What this customer brings besides the order, from the higher levels: a power-up's name, 'bee', or
+   * null. With the bee, it's every other customer, and a power-up for the rest.
+   */
+  get special() {
+    const { powers, bee } = this.level;
+    if (bee && this.index % 2 === 1) return 'bee';
+    if (!powers.length) return null;
+    const turn = bee ? Math.floor(this.index / 2) : this.index;
+    return powers[turn % powers.length];
+  }
+
+  /** This customer's golden fruit or watermelon, from the higher levels, or null. */
+  get bonus() {
+    const { bonus } = this.level;
+    return bonus.length ? bonus[this.index % bonus.length] : null;
+  }
+
+  /**
+   * Every frame while fruit is flying. seen says the hand is open in the picture: power-ups only
+   * count down then, so resting never uses them up.
+   */
+  tick(dt, { seen = true } = {}) {
+    if (seen) for (const key of Object.keys(this.active)) this.active[key] = Math.max(0, this.active[key] - dt);
+    if (this.specialIn === Infinity || !this.customer) return;
+    this.specialIn -= dt;
+    if (this.specialIn > 0) return;
+    this.specialIn = Infinity;
+    const special = this.special;
+    if (special === 'bee') this.emit('bee');
+    else this.emit('power-out', { kind: special });
+  }
+
+  /** A power-up picked up: a bubble popped, or the bee's honey. */
+  power(kind) {
+    this.active[kind] = POWER_SECONDS[kind];
+    this.stats.powers += 1;
+    if (kind === 'honey') this.stats.bees += 1;
+    this.emit('power', { kind });
+  }
+
+  isOn(kind) {
+    return this.active[kind] > 0;
+  }
+
+  /** Coins picked up, or got for slicing something. */
+  addCoins(count, why) {
+    this.coins += count;
+    this.stats.coins += count;
+    if (why === 'tip') this.stats.tips += count;
+    this.emit('coins', { count, why, coins: this.coins });
   }
 
   /** What to throw up next. There's always something on the order coming before long. */
@@ -123,8 +237,17 @@ export class Stand {
    * this is only ever nextFruit().
    */
   nextThrow() {
-    const kind = this.nextFruit();
+    let kind = this.nextFruit();
     const { random, level } = this;
+    // Once with each customer, instead of something that isn't on the order, a golden fruit or a
+    // watermelon.
+    if (this.bonus && !this.bonusThrown && kind !== 'rotten' && !(this.left[kind] > 0)) {
+      this.others += 1;
+      if (this.others >= BONUS_AFTER) {
+        kind = this.bonus;
+        this.bonusThrown = true;
+      }
+    }
     const throwing = { kind, across: false, tough: false, withRotten: false };
     const wanted = this.left[kind] > 0;
     if (level.across) throwing.across = random() < level.across;
@@ -133,8 +256,26 @@ export class Stand {
     return throwing;
   }
 
-  /** A fruit has been sliced. Returns 'wanted', 'extra' or 'rotten'. */
+  /**
+   * A fruit has been sliced. Returns 'wanted', 'extra' or 'rotten', or for the extras from the higher
+   * levels, 'golden', 'melon' or 'wedge'. With the turbo blender, what's on the order counts twice.
+   */
   slice(kind) {
+    if (kind === 'golden') {
+      this.stats.golden += 1;
+      this.addCoins(GOLDEN_COINS, 'golden');
+      return 'golden';
+    }
+    if (kind === 'melon') {
+      this.stats.melons += 1;
+      this.emit('melon');
+      return 'melon';
+    }
+    if (kind === 'wedge') {
+      this.stats.wedges += 1;
+      this.addCoins(1, 'wedge');
+      return 'wedge';
+    }
     if (kind === 'rotten') {
       this.stats.rotten += 1;
       this.emit('rotten');
@@ -145,9 +286,10 @@ export class Stand {
       this.emit('extra', { kind });
       return 'extra';
     }
-    this.left[kind] -= 1;
-    this.stats.wanted += 1;
-    this.emit('wanted', { kind, left: this.left[kind] });
+    const counts = this.isOn('turbo') ? Math.min(2, this.left[kind]) : 1;
+    this.left[kind] -= counts;
+    this.stats.wanted += counts;
+    this.emit('wanted', { kind, left: this.left[kind], counts });
     if (!this.wantedKinds.length) {
       this.stats.smoothies += 1;
       this.emit('order-done', { customer: this.customer });

@@ -1,7 +1,7 @@
 // The story of The Lighthouse Keeper. A storm has covered the lighthouse windows with mud, and ships
 // out at sea can't see the light. Each window the child wipes clean with an open hand brings one of
 // them home. There's no screen in this file, so it runs in the unit tests.
-import { ramp, stepsAt } from '../../core/levels.js';
+import { clampLevel, ramp, stepsAt } from '../../core/levels.js';
 
 export const SHIPS = [
   { who: 'frost', boat: 'ice', ask: 'Frost here! I can’t see! Wipe the mud off the window!', thanks: 'Safe! Thank you!' },
@@ -14,15 +14,69 @@ export const CLEAN_ENOUGH = 0.88; // The last bits fall away by themselves after
 
 // Where on the window the storm throws things, as shares of its width and height. Never the corners,
 // which may be out of reach.
-const MIDDLE = { left: 0.14, right: 0.86, top: 0.18, bottom: 0.82 };
+export const MIDDLE = { left: 0.14, right: 0.86, top: 0.18, bottom: 0.82 };
 const SPLAT = { rx: 0.1, ry: 0.15 }; // A splat's size at level 2, as a share of the window.
 const LUMP = { rx: 0.075, ry: 0.11 };
 const LAST_SPLAT_AT = 0.8; // Every splat has landed by the time this much is clean.
+
+// Treasure: shells hidden in the mud, and pearls and coins from what the storm throws on. Each is
+// picked up by the open hand coming near it, and drifts towards a hand that's close.
+const PRIZE = { rx: 0.05, ry: 0.07 }; // How big a prize is, as a share of the window, for picking up.
+export const PRIZE_READY_SECONDS = 0.4; // A prize pops out for this long before it can be picked up.
+const PULL = 2.6; // A prize drifts towards an open hand within this many times its reach.
+const PULL_SPEED = 0.45; // In window widths a second.
+const CHEST_COINS = 5;
+// What each thing the storm put on the glass leaves behind when it comes off.
+const LEAVES = { weed: ['shell'], star: ['pearl'], clam: ['pearl'], chest: Array(CHEST_COINS).fill('coin') };
+const CRAB = { rx: 0.07, ry: 0.09 };
+
+// Power-ups stuck to the glass, which an open hand picks up. Each lasts this many seconds of wiping:
+// they only count down while an open hand is on the glass, so resting never wastes them.
+export const POWER_SECONDS = { lantern: 6, bubble: 10 };
+export const LANTERN_SCALE = 1.6; // How much bigger a wipe is, with the lantern.
+const POWER = { rx: 0.07, ry: 0.1 };
+export const POWER_READY_SECONDS = 0.8; // A power-up pops out for this long before it can be picked up.
+
+/**
+ * What each level brings that's new, with a picture and a name in each language. The level each
+ * comes in is in NEW_AT, and stormAt switches it on there.
+ */
+export const NEW_THINGS = {
+  splats: { mark: '💦', name: 'Mud splats', nameKa: 'ტალახის შხეფები' },
+  shells: { mark: '🐚', name: 'Shells', nameKa: 'ნიჟარები' },
+  crab: { mark: '🦀', name: 'Crab', nameKa: 'კიბორჩხალა' },
+  weed: { mark: '🌿', name: 'Seaweed', nameKa: 'წყალმცენარე' },
+  lantern: { mark: '🏮', name: 'Big lantern', nameKa: 'დიდი ფარანი' },
+  star: { mark: '⭐', name: 'Starfish', nameKa: 'ზღვის ვარსკვლავი' },
+  bubble: { mark: '🫧', name: 'Bubble shield', nameKa: 'ბუშტის ფარი' },
+  night: { mark: '🌙', name: 'Night sea', nameKa: 'ღამის ზღვა' },
+  clam: { mark: '🦪', name: 'Oyster', nameKa: 'ხამანწკა' },
+  gull: { mark: '🐦', name: 'Gull helper', nameKa: 'თოლია მეგობარი' },
+  chest: { mark: '🪙', name: 'Treasure chest', nameKa: 'განძის ზანდუკი' },
+};
+
+export const NEW_AT = {
+  2: ['splats', 'shells'],
+  3: ['crab'],
+  4: ['weed'],
+  5: ['lantern'],
+  6: ['star'],
+  7: ['bubble', 'night'],
+  8: ['clam'],
+  9: ['gull'],
+  10: ['chest'],
+};
+
+/** What's new at a level, as the title card and the countdown show it. Nothing at level 1. */
+export function newAt(level) {
+  return (NEW_AT[clampLevel(level)] ?? []).map((key) => ({ key, ...NEW_THINGS[key] }));
+}
 
 /**
  * What each level of the storm brings, from 1 to 10. Level 1 is the storm as it always was. Nothing
  * here has a time limit: nothing goes away by itself or can be missed, and it all comes from wiping,
  * so resting brings nothing new. The number of ships and the size of the window are the grown-ups'.
+ * Each level brings something new to see and do: see NEW_AT.
  */
 export function stormAt(level) {
   return {
@@ -32,14 +86,33 @@ export function stormAt(level) {
     splatFrom: ramp(level, 0.6, 0.35),
     // How big a splat is: a little bigger each level.
     splatSize: ramp(level, 1, 1.3),
-    // From level 4, seaweed slapped onto the glass, which takes a rub to come off. From level 7, every
-    // other window has a starfish instead, which creeps about on the glass.
-    lump: stepsAt(level, { 1: null, 4: 'weed', 7: 'mixed' }),
+    // From level 2, shells hidden in each window's mud, which pop out as it's wiped.
+    shells: stepsAt(level, { 1: 0, 2: 2, 6: 3 }),
+    // From level 3, a crab walks back and forth on the glass with a pearl. Touching it with an open
+    // hand makes it let go of the pearl. Two from level 9. It never leaves, so it can't be missed.
+    crabs: stepsAt(level, { 1: 0, 3: 1, 9: 2 }),
+    // How quickly a crab walks, in window widths a second. Slower than any hand.
+    crabSpeed: ramp(level, 0.05, 0.08),
+    // What the storm sticks onto each window, taking turns window by window, the newest first:
+    // seaweed from level 4, starfish from 6, which creep about, and from 8 oysters, which open for a
+    // hand held open on them. A window isn't clean until they're off, and each leaves treasure.
+    lumps: stepsAt(level, { 1: [], 4: ['weed'], 6: ['star', 'weed'], 8: ['clam', 'weed', 'star'] }),
     // How much rubbing each needs, in lengths of a wipe: the hand moving over it, open.
     weedRub: ramp(level, 3, 3.5),
     starRub: ramp(level, 4, 5),
     // How quickly a starfish creeps, in window widths a second. Slower than any hand.
     creep: ramp(level, 0.02, 0.04),
+    // Seconds an open hand has to be on an oyster or a chest to open it. They add up, however
+    // the hand comes and goes, so they're never lost.
+    hold: ramp(level, 1, 1.4),
+    // A power-up stuck to each window, taking turns, the newest first: a big lantern from level 5,
+    // which makes each wipe bigger, a bubble shield from 7, which mud splats bounce off, and from 9 a
+    // gull, which flies across and wipes a wide stripe.
+    powers: stepsAt(level, { 1: [], 5: ['lantern'], 7: ['bubble', 'lantern'], 9: ['gull', 'bubble', 'lantern'] }),
+    // From level 7, it's night: a moon and stars over the sea. Just to look at.
+    night: level >= 7,
+    // At level 10, the last window has a treasure chest washed onto it, full of coins.
+    chest: level >= 10,
     // A wilder sea outside, just to look at.
     swell: ramp(level, 1, 1.3),
   };
@@ -102,10 +175,37 @@ export class Mud {
     return spots;
   }
 
+  /** Whether the place at x, y, as shares of the window, has been wiped. */
+  isClean(x, y) {
+    const column = Math.min(this.columns - 1, Math.max(0, Math.floor(x * this.columns)));
+    const row = Math.min(this.rows - 1, Math.max(0, Math.floor(y * this.rows)));
+    return Boolean(this.cells[row * this.columns + column]);
+  }
+
+  /** The middle of the row with the most mud left on it, between top and bottom, as a share. */
+  muddiestRow(top = 0, bottom = 1) {
+    let best = { y: 0.5, mud: -1 };
+    for (let row = 0; row < this.rows; row += 1) {
+      const y = (row + 0.5) / this.rows;
+      if (y < top || y > bottom) continue;
+      let mud = 0;
+      for (let column = 0; column < this.columns; column += 1) mud += this.cells[row * this.columns + column] ? 0 : 1;
+      if (mud > best.mud) best = { y, mud };
+    }
+    return best.y;
+  }
+
   get share() {
     return this.wiped / this.cells.length;
   }
 }
+
+/** Whether a point is within reach of a hand of a size, both given as shares of the window. */
+const within = (thing, hand, rx, ry, times = 1) => {
+  const dx = (thing.x - hand.x) / ((hand.sizeX + rx) * times);
+  const dy = (thing.y - hand.y) / ((hand.sizeY + ry) * times);
+  return dx * dx + dy * dy <= 1;
+};
 
 export class Storm {
   /** ships says how many come in, and level is from 1 to 10. */
@@ -120,9 +220,14 @@ export class Storm {
     this.home = 0;
     this.clean = false;
     this.coming = []; // What this window has still to come, as { at, what }, by how clean it is.
-    this.lumps = []; // Seaweed and starfish on the glass now.
+    this.lumps = []; // Seaweed, starfish, oysters and chests on the glass now.
+    this.prizes = []; // Shells, pearls and coins, hidden in the mud or out on the glass.
+    this.crabs = []; // Crabs walking on the glass, each with a pearl.
+    this.powers = []; // Power-ups stuck to the glass, waiting for a hand.
+    this.active = { lantern: 0, bubble: 0 }; // Seconds of wiping left with each power-up.
+    this.treasure = 0; // How many prizes have been picked up.
     this.lastWipe = null;
-    this.stats = { splats: 0, lumps: 0 };
+    this.stats = { splats: 0, lumps: 0, bounced: 0, crabs: 0, powers: 0, prizes: 0, shells: 0, pearls: 0, coins: 0 };
   }
 
   get ship() {
@@ -138,6 +243,11 @@ export class Storm {
     return this.home / this.ships.length;
   }
 
+  /** How much bigger a wipe is now: bigger with the lantern. */
+  get wipeScale() {
+    return this.active.lantern > 0 ? LANTERN_SCALE : 1;
+  }
+
   emit(type, details = {}) {
     this.onEvent({ type, ...details });
   }
@@ -151,23 +261,44 @@ export class Storm {
     this.mud = new Mud();
     this.clean = false;
     this.lumps = [];
+    this.crabs = [];
+    this.powers = [];
+    this.prizes = this.hideShells();
     this.lastWipe = null;
     this.coming = this.plan(this.index);
     this.emit('ship', { ship: this.ship, index: this.index, total: this.ships.length });
   }
 
+  /** Shells hidden in the new mud, in the middle of the window and apart from each other. */
+  hideShells() {
+    const shells = [];
+    for (let tries = 0; shells.length < this.level.shells && tries < 200; tries += 1) {
+      const x = MIDDLE.left + 0.04 + this.random() * (MIDDLE.right - MIDDLE.left - 0.08);
+      const y = MIDDLE.top + 0.04 + this.random() * (MIDDLE.bottom - MIDDLE.top - 0.08);
+      if (shells.every((other) => Math.hypot(other.x - x, other.y - y) >= 0.25)) shells.push(this.makePrize('shell', x, y, { hidden: true }));
+    }
+    return shells;
+  }
+
+  makePrize(kind, x, y, { hidden = false } = {}) {
+    return { kind, x, y, hidden, age: 0 };
+  }
+
   /** What the storm throws at this window, and when, by how much of it is clean. */
   plan(index) {
-    const { splats, splatFrom, lump } = this.level;
+    const { splats, splatFrom, lumps, crabs, powers, chest } = this.level;
     const coming = [];
     for (let i = 0; i < splats; i += 1) {
       coming.push({ at: splats === 1 ? splatFrom : splatFrom + ((LAST_SPLAT_AT - splatFrom) * i) / (splats - 1), what: 'splat' });
     }
-    if (lump) {
-      const kind = lump === 'mixed' && index % 2 === 1 ? 'star' : 'weed';
+    if (lumps.length) {
       // Halfway between the splats, or about halfway through if there's only the one.
-      coming.push({ at: splats > 1 ? (coming[0].at + coming[1].at) / 2 : (splatFrom + LAST_SPLAT_AT) / 2 - 0.05, what: kind });
+      const at = splats > 1 ? (coming[0].at + coming[1].at) / 2 : (splatFrom + LAST_SPLAT_AT) / 2 - 0.05;
+      coming.push({ at, what: lumps[index % lumps.length] });
     }
+    for (let i = 0; i < crabs; i += 1) coming.push({ at: 0.1 + i * 0.3, what: 'crab' });
+    if (powers.length) coming.push({ at: 0.25, what: powers[index % powers.length] });
+    if (chest && index === this.ships.length - 1) coming.push({ at: 0.5, what: 'chest' });
     return coming.sort((a, b) => a.at - b.at);
   }
 
@@ -181,9 +312,18 @@ export class Storm {
     const added = this.mud.wipe(x, y, sizeX, sizeY);
     this.lastWipe = { x, y };
     if (moved > 0) this.rub(x, y, sizeX, sizeY, moved);
+    for (const prize of this.prizes) {
+      if (prize.hidden && this.mud.isClean(prize.x, prize.y)) {
+        prize.hidden = false;
+        prize.age = 0;
+        this.emit('prize-out', { prize });
+      }
+    }
     while (this.coming.length && this.mud.share >= this.coming[0].at && this.mud.share < CLEAN_ENOUGH) {
       const { what } = this.coming.shift();
       if (what === 'splat') this.splat();
+      else if (what === 'crab') this.addCrab();
+      else if (what in POWER_SECONDS || what === 'gull') this.addPower(what);
       else this.addLump(what);
     }
     this.checkClean();
@@ -192,31 +332,55 @@ export class Storm {
 
   rub(x, y, sizeX, sizeY, moved) {
     for (const lump of this.lumps) {
+      if (lump.kind === 'clam' || lump.kind === 'chest') continue; // These open for a hand held on them.
       const dx = (lump.x - x) / (sizeX + lump.rx);
       const dy = (lump.y - y) / (sizeY + lump.ry);
       if (dx * dx + dy * dy > 1) continue;
       lump.rubbed += moved;
-      if (lump.rubbed >= lump.needs) {
-        this.lumps = this.lumps.filter((other) => other !== lump);
-        this.stats.lumps += 1;
-        this.emit('lump-off', { lump });
-      }
+      if (lump.rubbed >= lump.needs) this.lumpOff(lump);
     }
+  }
+
+  /** Seaweed, a starfish, an oyster or a chest coming off the glass, leaving its treasure there. */
+  lumpOff(lump) {
+    this.lumps = this.lumps.filter((other) => other !== lump);
+    this.stats.lumps += 1;
+    this.emit('lump-off', { lump });
+    const kinds = LEAVES[lump.kind] ?? [];
+    kinds.forEach((kind, i) => {
+      const angle = (i / kinds.length) * Math.PI * 2;
+      const spread = kinds.length > 1 ? 0.07 : 0;
+      const prize = this.makePrize(kind, lump.x + Math.cos(angle) * spread, lump.y + Math.sin(angle) * spread * 1.4);
+      this.prizes.push(prize);
+      this.emit('prize-out', { prize });
+    });
   }
 
   checkClean() {
     if (this.clean || !this.mud || this.mud.share < CLEAN_ENOUGH || this.lumps.length) return;
     this.clean = true;
     this.coming = [];
+    // Nothing on a window is ever missed: the treasure out on the glass, the shells still under the last
+    // bits of mud and the pearls the crabs are carrying are all kept for the child as it comes clean.
+    for (const crab of this.crabs) this.prizes.push(this.makePrize('pearl', crab.x, crab.y));
+    this.crabs = [];
+    for (const prize of [...this.prizes]) {
+      prize.hidden = false;
+      this.collect(prize, { found: true });
+    }
     this.emit('window-clean', { ship: this.ship });
   }
 
   /** Somewhere clean in the middle of the window, away from where the hand is wiping if it can be. */
-  spotForSomething() {
+  spotForSomething({ near = false } = {}) {
     const inMiddle = this.mud.cleanSpots().filter(({ x, y }) => x >= MIDDLE.left && x <= MIDDLE.right && y >= MIDDLE.top && y <= MIDDLE.bottom);
     const from = this.lastWipe ?? { x: 0.5, y: 0.5 };
-    const away = inMiddle.filter(({ x, y }) => Math.hypot(x - from.x, y - from.y) >= 0.3);
-    const choices = away.length ? away : inMiddle;
+    // A power-up comes near the hand, so it's easy to pick up, and anything else away from it.
+    const choices0 = inMiddle.filter(({ x, y }) => {
+      const distance = Math.hypot(x - from.x, y - from.y);
+      return near ? distance >= 0.25 && distance <= 0.42 : distance >= 0.3;
+    });
+    const choices = choices0.length ? choices0 : inMiddle;
     if (!choices.length) return { x: 0.5, y: 0.5 };
     return choices[Math.floor(this.random() * choices.length)];
   }
@@ -225,21 +389,29 @@ export class Storm {
     const { x, y } = this.spotForSomething();
     const rx = SPLAT.rx * this.level.splatSize;
     const ry = SPLAT.ry * this.level.splatSize;
-    const covered = this.mud.unwipe(x, y, rx, ry);
     this.stats.splats += 1;
+    if (this.active.bubble > 0) {
+      // The bubble shield: it bounces off, and the glass stays clean.
+      this.stats.bounced += 1;
+      this.emit('splat-bounced', { x, y, rx, ry });
+      return;
+    }
+    const covered = this.mud.unwipe(x, y, rx, ry);
     this.emit('splat', { x, y, rx, ry, covered });
   }
 
   addLump(kind) {
-    const { x, y } = this.spotForSomething();
+    const { x, y } = kind === 'chest' ? { x: 0.5, y: 0.6 } : this.spotForSomething();
     const star = kind === 'star';
+    const held = kind === 'clam' || kind === 'chest';
+    const big = kind === 'chest' ? 1.35 : 1;
     const lump = {
       kind,
       x,
       y,
-      rx: LUMP.rx,
-      ry: LUMP.ry,
-      needs: star ? this.level.starRub : this.level.weedRub,
+      rx: LUMP.rx * big,
+      ry: LUMP.ry * big,
+      needs: held ? this.level.hold : star ? this.level.starRub : this.level.weedRub,
       rubbed: 0,
       heading: this.random() * Math.PI * 2,
       speed: star ? this.level.creep : 0,
@@ -248,9 +420,92 @@ export class Storm {
     this.emit('lump', { lump });
   }
 
-  /** Starfish creep about in the middle of the window. still is for anyone who prefers less motion. */
-  update(dt, { still = false } = {}) {
-    if (still) return;
+  /** A crab, from one side of the middle, carrying a pearl. */
+  addCrab() {
+    const fromLeft = this.crabs.length % 2 === 0 ? this.random() < 0.5 : !this.crabs[0].fromLeft;
+    const y = MIDDLE.top + 0.1 + this.random() * (MIDDLE.bottom - MIDDLE.top - 0.2);
+    const crab = { x: fromLeft ? MIDDLE.left : MIDDLE.right, y, fromLeft, heading: fromLeft ? 1 : -1, speed: this.level.crabSpeed, rx: CRAB.rx, ry: CRAB.ry };
+    this.crabs.push(crab);
+    this.emit('crab', { crab });
+  }
+
+  addPower(kind) {
+    const { x, y } = this.spotForSomething({ near: true });
+    const power = { kind, x, y, rx: POWER.rx, ry: POWER.ry, age: 0 };
+    this.powers.push(power);
+    this.emit('power-out', { power });
+  }
+
+  /** A prize into the treasure. found says it was collected for the child as a window came clean. */
+  collect(prize, { found = false } = {}) {
+    this.prizes = this.prizes.filter((other) => other !== prize);
+    this.treasure += 1;
+    this.stats.prizes += 1;
+    this.stats[`${prize.kind}s`] += 1;
+    this.emit('prize', { prize, found, treasure: this.treasure });
+  }
+
+  /**
+   * Every frame. Starfish creep about in the middle of the window, and crabs walk. hand is where the
+   * open hand is on the glass, as { x, y, sizeX, sizeY } in shares of the window, or null if there's
+   * no open hand on it: it picks up treasure and power-ups, takes the pearl from a crab and opens
+   * oysters and chests. still is for anyone who prefers less motion.
+   */
+  update(dt, { still = false, hand = null } = {}) {
+    for (const prize of this.prizes) if (!prize.hidden) prize.age += dt;
+    for (const power of this.powers) power.age += dt;
+    if (!still) this.creep(dt);
+    for (const crab of this.crabs) {
+      crab.x += crab.heading * crab.speed * dt * (still ? 0.5 : 1);
+      // Back and forth, never off the glass, so a resting child can't miss it.
+      if (crab.x < MIDDLE.left || crab.x > MIDDLE.right) crab.heading = crab.x < MIDDLE.left ? 1 : -1;
+      crab.x = Math.min(MIDDLE.right, Math.max(MIDDLE.left, crab.x));
+    }
+    if (!hand || !this.mud || this.clean) return;
+    for (const key of Object.keys(this.active)) this.active[key] = Math.max(0, this.active[key] - dt);
+    for (const crab of [...this.crabs]) {
+      if (!within(crab, hand, crab.rx, crab.ry)) continue;
+      this.crabs = this.crabs.filter((other) => other !== crab);
+      this.stats.crabs += 1;
+      this.emit('crab-caught', { crab });
+      const prize = this.makePrize('pearl', crab.x, crab.y);
+      this.prizes.push(prize);
+      this.emit('prize-out', { prize });
+    }
+    for (const power of [...this.powers]) {
+      if (power.age < POWER_READY_SECONDS || !within(power, hand, power.rx, power.ry)) continue;
+      this.powers = this.powers.filter((other) => other !== power);
+      this.stats.powers += 1;
+      if (power.kind === 'gull') {
+        this.emit('gull', { y: this.mud.muddiestRow(MIDDLE.top, MIDDLE.bottom), power });
+      } else {
+        this.active[power.kind] = POWER_SECONDS[power.kind];
+        this.emit('power', { kind: power.kind, power });
+      }
+    }
+    for (const lump of [...this.lumps]) {
+      if ((lump.kind !== 'clam' && lump.kind !== 'chest') || !within(lump, hand, lump.rx, lump.ry)) continue;
+      lump.rubbed = Math.min(lump.needs, lump.rubbed + dt);
+      if (lump.rubbed >= lump.needs) this.lumpOff(lump);
+    }
+    for (const prize of [...this.prizes]) {
+      if (prize.hidden || prize.age < PRIZE_READY_SECONDS) continue;
+      if (within(prize, hand, PRIZE.rx, PRIZE.ry)) {
+        this.collect(prize);
+      } else if (within(prize, hand, PRIZE.rx, PRIZE.ry, PULL)) {
+        // Drifting towards the hand that's near it.
+        const dx = hand.x - prize.x;
+        const dy = hand.y - prize.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        const step = Math.min(distance, PULL_SPEED * dt);
+        prize.x += (dx / distance) * step;
+        prize.y += (dy / distance) * step;
+      }
+    }
+    this.checkClean();
+  }
+
+  creep(dt) {
     for (const lump of this.lumps) {
       if (!lump.speed) continue;
       lump.heading += Math.sin(lump.x * 9 + lump.y * 7) * dt * 0.8;

@@ -5,7 +5,10 @@
 // Nothing flashes, as seizures are more common in children with hemiplegia. The beam comes on slowly
 // and stays steady, there's no lightning, and the picture brightens gradually as the storm clears.
 // Splats, seaweed and starfish from the higher levels are small, and arrive and leave over a moment.
+// Treasure, crabs, power-ups and the gull move slowly and are small too, and the first time each one
+// comes in a game, a little label with its name fades in beside it and out again.
 import { Glove, INK, mixColours } from '../../core/glove.js';
+import { NEW_THINGS, POWER_SECONDS, PRIZE_READY_SECONDS } from './storm.js';
 
 const PALM_SHARE = 0.105;
 const WIPE_SIZE = 0.15; // The size of a wipe, as a share of the screen's height.
@@ -14,8 +17,21 @@ const TOP = 0.13;
 const BOTTOM = 0.88;
 const SAIL_SECONDS = 2.4;
 const BEAM_SECONDS = 0.8;
+// At night the beam and the clear glass stand out more against the dark, so they come more slowly.
+const NIGHT_BEAM_SECONDS = 1.4;
+const MUD_FADE = 1.2; // How quickly the last of the mud slides away, as a share a second.
+const NIGHT_MUD_FADE = 0.7;
 const BOAT_COLOURS = { ice: '#d7f2ff', fishing: '#ff9a5c', tin: '#a9b6c4', honey: '#ffcf4a' };
 const FALL_SECONDS = 1; // Seaweed and starfish sliding down and off the glass.
+const FLY_SECONDS = 0.7; // Treasure flying up to the count of it.
+const LABEL_SECONDS = 2.4; // A new thing's name, beside it the first time it comes.
+const LABEL_WAIT = 3; // How long an older thing's name waits its turn before it's let go.
+const GULL_SECONDS = 2.6; // The gull flying across the window.
+const GULL_WIPE = 0.2; // How wide the gull's wipe is, as a share of the screen's height.
+const BOUNCE_SECONDS = 0.9; // A splat bouncing off the bubble shield.
+const PRIZE_SHARE = 0.042; // A prize's size, as a share of the screen's height.
+// The stars in the night sky, as shares of the window, always in the same places.
+const STARS = Array.from({ length: 26 }, (_, i) => ({ x: ((i * 0.618) % 1) * 0.94 + 0.03, y: ((i * 0.377) % 1) * 0.5 + 0.03, r: 0.8 + (i % 3) * 0.5 }));
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 
@@ -44,6 +60,19 @@ export class LampRoom {
     this.swell = 1; // How wild the sea is: more at higher levels.
     this.lumps = []; // Seaweed and starfish on the glass, from the rules.
     this.falling = []; // Seaweed and starfish on their way down.
+    this.storm = null; // The rules, for the treasure, crabs and power-ups on the glass.
+    this.night = false;
+    this.language = 'en';
+    this.labels = []; // Names of new things, beside them the first time.
+    this.introduced = new Set();
+    this.fresh = new Set(); // What's new at this level, whose names always get their turn.
+    this.flying = []; // Treasure on its way up to the count.
+    this.leaving = []; // Crabs going off, having let go of their pearls.
+    this.bounces = []; // Mud bouncing off the bubble shield.
+    this.sparkles = [];
+    this.gull = null;
+    this.tallyAt = { x: 80, y: 40 }; // Where the treasure count is on the screen.
+    this.sprites = { shell: paintPrize('shell'), pearl: paintPrize('pearl'), coin: paintPrize('coin') };
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
@@ -94,6 +123,82 @@ export class LampRoom {
     this.mudLeft = 1;
     this.last = null;
     this.falling = [];
+    this.leaving = [];
+    this.bounces = [];
+  }
+
+  /** A new game: nothing has been shown yet. */
+  restart() {
+    this.labels = [];
+    this.introduced = new Set();
+    this.flying = [];
+    this.sparkles = [];
+    this.gull = null;
+  }
+
+  /**
+   * The first time something new comes in a game, its name fades in beside it for a moment. at says
+   * where it is now, on the screen.
+   */
+  introduce(key, at) {
+    if (this.introduced.has(key) || !NEW_THINGS[key]) return;
+    this.introduced.add(key);
+    const { mark, name, nameKa } = NEW_THINGS[key];
+    this.labels.push({ key, mark, text: this.language === 'ka' ? nameKa : name, at, t: 0 });
+  }
+
+  /** Where a place on the glass, given in shares of the window, is on the screen. */
+  onScreen({ x, y }) {
+    const { window: glass } = this;
+    return { x: glass.x + x * glass.width, y: glass.y + y * glass.height };
+  }
+
+  /** The open hand on the glass, in shares of the window, for the rules, or null if there isn't one. */
+  handOnGlass() {
+    const glove = this.gloves[this.side];
+    if (!glove.visible || glove.status !== 'open') return null;
+    const { window: glass, height } = this;
+    const x = glove.x - glass.x;
+    const y = glove.y - glass.y;
+    if (x < -height * 0.1 || x > glass.width + height * 0.1 || y < -height * 0.1 || y > glass.height + height * 0.1) return null;
+    const size = this.wipeSize;
+    return { x: x / glass.width, y: y / glass.height, sizeX: size / glass.width, sizeY: size / glass.height };
+  }
+
+  /** How big a wipe is, on the screen: bigger with the lantern. */
+  get wipeSize() {
+    return WIPE_SIZE * this.height * (this.storm?.wipeScale ?? 1);
+  }
+
+  /** Treasure picked up, flying up to the count. */
+  prizeFlies(prize) {
+    const from = this.onScreen(prize);
+    this.flying.push({ kind: prize.kind, fromX: from.x, fromY: from.y, t: 0 });
+  }
+
+  /** A crab that has let go of its pearl, waving and sliding off the glass. */
+  crabLeaves(crab) {
+    this.leaving.push({ ...crab, fall: 0 });
+  }
+
+  /** Mud that would have landed, bouncing off the bubble shield. */
+  bounce({ x, y }) {
+    this.bounces.push({ x, y, t: 0 });
+  }
+
+  /** A few little sparkles where a power-up was picked up. Not for anyone who prefers less motion. */
+  sparkle(at, colour = '#fff3b0') {
+    if (this.reducedMotion) return;
+    const { x, y } = this.onScreen(at);
+    for (let i = 0; i < 6; i += 1) {
+      const angle = (i / 6) * Math.PI * 2;
+      this.sparkles.push({ x, y, vx: Math.cos(angle) * this.height * 0.1, vy: Math.sin(angle) * this.height * 0.1, life: 0.6, colour });
+    }
+  }
+
+  /** The gull flies across the window at a height, as a share of it, wiping a wide stripe. */
+  sendGull(y) {
+    this.gull = { y, t: 0, last: null };
   }
 
   /**
@@ -185,9 +290,23 @@ export class LampRoom {
     for (const lump of this.falling) lump.fall += dt / FALL_SECONDS;
     this.falling = this.falling.filter(({ fall }) => fall < 1);
     this.drops = this.drops.filter(({ life }) => life > 0);
+    for (const crab of this.leaving) crab.fall += dt / FALL_SECONDS;
+    this.leaving = this.leaving.filter(({ fall }) => fall < 1);
+    for (const flier of this.flying) flier.t += dt / FLY_SECONDS;
+    this.flying = this.flying.filter(({ t }) => t < 1);
+    this.labels = stepLabels(this.labels, dt, this.fresh);
+    for (const bounce of this.bounces) bounce.t += dt / BOUNCE_SECONDS;
+    this.bounces = this.bounces.filter(({ t }) => t < 1);
+    for (const sparkle of this.sparkles) {
+      sparkle.life -= dt;
+      sparkle.x += sparkle.vx * dt;
+      sparkle.y += sparkle.vy * dt;
+    }
+    this.sparkles = this.sparkles.filter(({ life }) => life > 0);
+    if (this.gull) this.flyGull(dt, wipe);
 
     if (this.mudFading) {
-      this.mudLeft = Math.max(0, this.mudLeft - dt * 1.2);
+      this.mudLeft = Math.max(0, this.mudLeft - dt * (this.night ? NIGHT_MUD_FADE : MUD_FADE));
       if (this.mudLeft === 0) {
         this.mudFading = false;
         this.mud = null;
@@ -195,7 +314,7 @@ export class LampRoom {
     }
     if (this.sailing > 0) {
       this.sailing = Math.max(0, this.sailing - dt);
-      this.beam = Math.min(1, this.beam + dt / BEAM_SECONDS);
+      this.beam = Math.min(1, this.beam + dt / (this.night ? NIGHT_BEAM_SECONDS : BEAM_SECONDS));
       if (this.boat) this.boat.share = 1 - this.sailing / SAIL_SECONDS;
       if (this.sailing === 0) this.events.onSailed?.();
     } else if (this.beam > 0 && !this.boat) {
@@ -213,14 +332,22 @@ export class LampRoom {
       this.last = null;
       return 0;
     }
-    const size = WIPE_SIZE * height;
+    const added = this.wipeLine(this.last ?? { x, y }, { x, y }, this.wipeSize, wipe);
+    this.last = { x, y };
+    if (added) this.addDrips(glove);
+    return added;
+  }
+
+  /** Takes the mud off from one place on the glass to another, in pixels from its corner. */
+  wipeLine(from, { x, y }, size, wipe) {
+    const { window: glass, ratio } = this;
+    if (!this.mud) return 0;
     const ctx = this.mud.getContext('2d');
     ctx.save();
     ctx.globalCompositeOperation = 'destination-out';
     ctx.lineCap = 'round';
     ctx.lineWidth = size * 2 * ratio;
     ctx.beginPath();
-    const from = this.last ?? { x, y };
     ctx.moveTo(from.x * ratio, from.y * ratio);
     ctx.lineTo(x * ratio + 0.01, y * ratio);
     ctx.stroke();
@@ -236,9 +363,20 @@ export class LampRoom {
       const py = from.y + ((y - from.y) * i) / steps;
       added += wipe(px / glass.width, py / glass.height, size / glass.width, size / glass.height, distance / size / steps);
     }
-    this.last = { x, y };
-    if (added) this.addDrips(glove);
     return added;
+  }
+
+  /** The gull, across the window from the far side, wiping as it goes. It doesn't rub anything off. */
+  flyGull(dt, wipe) {
+    const { gull, window: glass, side } = this;
+    gull.t = Math.min(1, gull.t + dt / GULL_SECONDS);
+    const share = side === 'right' ? 1.05 - gull.t * 1.1 : -0.05 + gull.t * 1.1;
+    const at = { x: share * glass.width, y: gull.y * glass.height + Math.sin(gull.t * Math.PI * 2) * glass.height * 0.03 };
+    if (this.mud && !this.mudFading) this.wipeLine(gull.last ?? at, at, GULL_WIPE * this.height, (x, y, sizeX, sizeY) => wipe(x, y, sizeX, sizeY, 0));
+    gull.last = at;
+    gull.x = at.x;
+    gull.yNow = at.y;
+    if (gull.t >= 1) this.gull = null;
   }
 
   addDrips(glove) {
@@ -254,10 +392,13 @@ export class LampRoom {
     ctx.roundRect(glass.x, glass.y, glass.width, glass.height, 22);
     ctx.clip();
     const sky = ctx.createLinearGradient(0, glass.y, 0, glass.y + glass.height);
-    sky.addColorStop(0, mixColours('#27384f', '#8fd2fa', calm));
-    sky.addColorStop(0.62, mixColours('#3c536b', '#ffe1b0', calm));
+    // At night, the storm clears to a moonlit sky rather than a sunny one.
+    const night = this.night;
+    sky.addColorStop(0, night ? mixColours('#1b2a4e', '#35589a', calm) : mixColours('#27384f', '#8fd2fa', calm));
+    sky.addColorStop(0.62, night ? mixColours('#34466d', '#8193c4', calm) : mixColours('#3c536b', '#ffe1b0', calm));
     ctx.fillStyle = sky;
     ctx.fillRect(glass.x, glass.y, glass.width, glass.height);
+    if (night) this.drawMoon(ctx);
 
     const seaTop = glass.y + glass.height * 0.62;
     const wave = (colour, base, size, rate, length) => {
@@ -273,11 +414,50 @@ export class LampRoom {
       ctx.closePath();
       ctx.fill();
     };
-    wave(mixColours('#23435f', '#3d9ad9', calm), seaTop, height * 0.016, 0.9, 110);
+    const sea = this.night ? [['#1a3550', '#2f6596'], ['#142c45', '#265887'], ['#0f2238', '#1f4c78']] : [['#23435f', '#3d9ad9'], ['#1b3650', '#2b86c7'], ['#142a40', '#2373ad']];
+    wave(mixColours(...sea[0], calm), seaTop, height * 0.016, 0.9, 110);
     this.drawBoat(ctx, seaTop);
-    wave(mixColours('#1b3650', '#2b86c7', calm), seaTop + height * 0.08, height * 0.02, 1.2, 80);
-    wave(mixColours('#142a40', '#2373ad', calm), seaTop + height * 0.17, height * 0.024, 1.5, 60);
+    wave(mixColours(...sea[1], calm), seaTop + height * 0.08, height * 0.02, 1.2, 80);
+    wave(mixColours(...sea[2], calm), seaTop + height * 0.17, height * 0.024, 1.5, 60);
     ctx.restore();
+  }
+
+  /** The moon and stars, from the night levels. They stay still and steady. */
+  drawMoon(ctx) {
+    const { window: glass, height, side } = this;
+    ctx.fillStyle = 'rgb(255 250 225 / 0.75)';
+    for (const star of STARS) {
+      ctx.beginPath();
+      ctx.arc(glass.x + star.x * glass.width, glass.y + star.y * glass.height * 0.9, star.r * Math.max(1, height * 0.0018), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const x = glass.x + glass.width * (side === 'right' ? 0.84 : 0.16);
+    const y = glass.y + glass.height * 0.16;
+    const r = height * 0.055;
+    const glow = ctx.createRadialGradient(x, y, r * 0.8, x, y, r * 2.4);
+    glow.addColorStop(0, 'rgb(255 244 200 / 0.25)');
+    glow.addColorStop(1, 'rgb(255 244 200 / 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 2.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff3c4';
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    // A friendly face, as the moon is watching the ships come home.
+    ctx.fillStyle = 'rgb(18 48 77 / 0.55)';
+    for (const way of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(x + way * r * 0.32, y - r * 0.12, r * 0.09, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = 'rgb(18 48 77 / 0.55)';
+    ctx.lineWidth = Math.max(1.5, r * 0.08);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(x, y + r * 0.08, r * 0.32, 0.4, Math.PI - 0.4);
+    ctx.stroke();
   }
 
   drawBoat(ctx, seaTop) {
@@ -351,7 +531,13 @@ export class LampRoom {
     ctx.globalAlpha = (1 - fall) * (1 - loose * 0.35);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    if (lump.kind === 'star') {
+    if (lump.kind === 'clam' || lump.kind === 'chest') {
+      // These open slowly as the hand stays on them, rather than wobbling loose.
+      ctx.globalAlpha = 1 - fall;
+      if (lump.kind === 'clam') drawOyster(ctx, size, loose, height);
+      else drawChest(ctx, size * 1.35, loose, height);
+      if (fall === 0) drawProgress(ctx, size * (lump.kind === 'chest' ? 1.7 : 1.3), loose, height);
+    } else if (lump.kind === 'star') {
       ctx.rotate(Math.sin(lump.heading) * 0.25 + wobble + fall * 2);
       ctx.beginPath();
       for (let i = 0; i < 10; i += 1) {
@@ -458,6 +644,7 @@ export class LampRoom {
       ctx.globalAlpha = 1;
     }
     this.drawLumps(ctx);
+    this.drawOnGlass(ctx);
 
     ctx.strokeStyle = '#e7dcc4';
     ctx.lineWidth = height * 0.018;
@@ -482,7 +669,518 @@ export class LampRoom {
     }
     ctx.globalAlpha = 1;
 
+    this.drawShield(ctx);
+    this.drawGull(ctx);
+    this.drawLanternGlow(ctx);
     this.gloves.left.draw(ctx, this.palmSize);
     this.gloves.right.draw(ctx, this.palmSize);
+    this.drawFlying(ctx);
+    this.drawLabels(ctx);
   }
+
+  /** Treasure, crabs and power-ups on the glass, over the mud. They go with the last of it. */
+  drawOnGlass(ctx) {
+    const { storm } = this;
+    if (!storm || !this.mud) return;
+    const { window: glass, height, time } = this;
+    const bob = this.reducedMotion ? 0 : 1;
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(glass.x, glass.y, glass.width, glass.height, 22);
+    ctx.clip();
+    ctx.globalAlpha = this.mudLeft;
+    for (const power of storm.powers) {
+      const { x, y } = this.onScreen(power);
+      const grow = Math.min(1, power.age / 0.5);
+      drawPower(ctx, power.kind, x, y + Math.sin(time * 1.6 + power.x * 9) * height * 0.006 * bob, height * 0.05 * grow, height);
+    }
+    for (const prize of storm.prizes) {
+      if (prize.hidden) continue;
+      const { x, y } = this.onScreen(prize);
+      const grow = Math.min(1, prize.age / PRIZE_READY_SECONDS);
+      const size = height * PRIZE_SHARE * (0.4 + 0.6 * grow * (2 - grow));
+      const sprite = this.sprites[prize.kind];
+      ctx.drawImage(sprite, x - size, y - size + Math.sin(time * 2 + prize.x * 7) * height * 0.004 * bob, size * 2, size * 2);
+    }
+    for (const crab of storm.crabs) this.drawCrab(ctx, crab, 0, true);
+    ctx.globalAlpha = 1;
+    for (const crab of this.leaving) this.drawCrab(ctx, crab, crab.fall, false);
+    ctx.restore();
+  }
+
+  /** A little round crab, walking sideways, with a pearl held up in its claws. */
+  drawCrab(ctx, crab, fall, withPearl) {
+    const { height, time } = this;
+    const { x, y } = this.onScreen(crab);
+    const size = height * 0.045;
+    // Its legs patter about one and a half times a second, and more slowly for less motion.
+    const step = Math.sin(time * Math.PI * 2 * (this.reducedMotion ? 0.6 : 1.4) + crab.y * 10);
+    ctx.save();
+    ctx.translate(x, y + fall * fall * height * 0.45);
+    ctx.globalAlpha *= 1 - fall;
+    ctx.strokeStyle = INK;
+    ctx.lineCap = 'round';
+    ctx.lineWidth = Math.max(2, size * 0.14);
+    for (const way of [-1, 1]) {
+      for (let leg = 0; leg < 3; leg += 1) {
+        const lift = (leg % 2 ? step : -step) * size * 0.12;
+        ctx.beginPath();
+        ctx.moveTo(way * size * 0.7, size * (0.05 + leg * 0.18));
+        ctx.lineTo(way * size * 1.25, size * (0.3 + leg * 0.22) + lift);
+        ctx.stroke();
+      }
+    }
+    // Claws up, holding the pearl, or waving goodbye.
+    const wave = fall > 0 ? Math.sin(time * 6) * 0.3 : 0;
+    for (const way of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(way * size * 0.55, -size * 0.3);
+      ctx.lineTo(way * size * 0.75, -size * (0.85 + wave * way));
+      ctx.stroke();
+      ctx.fillStyle = '#ff6f4f';
+      ctx.beginPath();
+      ctx.arc(way * size * 0.75, -size * (0.95 + wave * way), size * 0.24, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#ff6f4f';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, size * 0.85, size * 0.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffb199';
+    ctx.beginPath();
+    ctx.ellipse(-size * 0.25, -size * 0.2, size * 0.22, size * 0.12, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    // Eyes on stalks, and a smile.
+    for (const way of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(way * size * 0.22, -size * 0.45);
+      ctx.lineTo(way * size * 0.26, -size * 0.75);
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(way * size * 0.26, -size * 0.8, size * 0.15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = INK;
+      ctx.beginPath();
+      ctx.arc(way * size * 0.26 + crab.heading * size * 0.04, -size * 0.8, size * 0.07, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(0, -size * 0.05, size * 0.22, 0.3, Math.PI - 0.3);
+    ctx.stroke();
+    if (withPearl) ctx.drawImage(this.sprites.pearl, -size * 0.55, -size * 1.65, size * 1.1, size * 1.1);
+    ctx.restore();
+  }
+
+  /** The bubble shield, round the window, while it lasts, and mud bouncing off it. */
+  drawShield(ctx) {
+    const { storm, window: glass, height } = this;
+    const left = storm?.active.bubble ?? 0;
+    if (left > 0 && this.mud) {
+      const fade = Math.min(1, left / 1.5);
+      ctx.save();
+      ctx.globalAlpha = fade * this.mudLeft;
+      ctx.strokeStyle = 'rgb(160 225 255 / 0.55)';
+      ctx.lineWidth = height * 0.012;
+      ctx.beginPath();
+      ctx.roundRect(glass.x + height * 0.02, glass.y + height * 0.02, glass.width - height * 0.04, glass.height - height * 0.04, 30);
+      ctx.stroke();
+      // Its badge at the bottom of the window, clear of the camera's picture at the top.
+      const badgeY = glass.y + glass.height - height * 0.06;
+      const badgeX = glass.x + glass.width / 2 + height * 0.06;
+      drawPower(ctx, 'bubble', badgeX, badgeY, height * 0.032, height);
+      drawProgress(ctx, height * 0.042, left / POWER_SECONDS.bubble, height, badgeX, badgeY);
+      ctx.restore();
+    }
+    for (const bounce of this.bounces) {
+      const { x, y } = this.onScreen(bounce);
+      // In towards the glass, then off it again, shrinking away.
+      const going = bounce.t < 0.4 ? bounce.t / 0.4 : 1 - (bounce.t - 0.4) / 0.6;
+      const size = height * 0.05 * (bounce.t < 0.4 ? 1 : 1 - (bounce.t - 0.4) * 1.2);
+      ctx.globalAlpha = Math.min(1, (1 - bounce.t) * 2);
+      ctx.fillStyle = '#6b4a2b';
+      ctx.beginPath();
+      ctx.arc(x + (1 - going) * height * 0.12, y - (1 - going) * height * 0.12, Math.max(1, size), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  /** The warm glow round the hand, showing its bigger wipe, while the lantern lasts. */
+  drawLanternGlow(ctx) {
+    const left = this.storm?.active.lantern ?? 0;
+    const glove = this.gloves[this.side];
+    if (left <= 0 || !glove.visible || !this.mud) return;
+    const r = this.wipeSize;
+    ctx.save();
+    // A thin ring and only a faint fill, as it goes wherever the hand goes, however quickly.
+    ctx.globalAlpha = Math.min(1, left / 1.2);
+    ctx.fillStyle = 'rgb(255 214 110 / 0.08)';
+    ctx.strokeStyle = 'rgb(255 205 90 / 0.6)';
+    ctx.lineWidth = this.height * 0.005;
+    ctx.beginPath();
+    ctx.arc(glove.x, glove.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    // Its badge stays still at the bottom of the window, beside the bubble shield's, if that's on.
+    const { window: glass, height } = this;
+    const badgeX = glass.x + glass.width / 2 - height * 0.06;
+    const badgeY = glass.y + glass.height - height * 0.06;
+    drawPower(ctx, 'lantern', badgeX, badgeY, height * 0.03, height);
+    drawProgress(ctx, height * 0.04, left / POWER_SECONDS.lantern, height, badgeX, badgeY);
+    ctx.restore();
+  }
+
+  drawGull(ctx) {
+    const { gull, window: glass, height } = this;
+    if (!gull || gull.x === undefined) return;
+    const flap = Math.sin(this.time * Math.PI * 2 * (this.reducedMotion ? 0.7 : 1.5));
+    const way = this.side === 'right' ? -1 : 1;
+    drawGullShape(ctx, glass.x + gull.x, glass.y + gull.yNow, height * 0.08, flap, way, height);
+  }
+
+  /** Treasure on its way up to the count, getting smaller. */
+  drawFlying(ctx) {
+    const { height } = this;
+    for (const flier of this.flying) {
+      const ease = flier.t * flier.t * (3 - 2 * flier.t);
+      const x = flier.fromX + (this.tallyAt.x - flier.fromX) * ease;
+      const y = flier.fromY + (this.tallyAt.y - flier.fromY) * ease - Math.sin(flier.t * Math.PI) * height * 0.08;
+      const size = height * PRIZE_SHARE * (1.1 - ease * 0.5);
+      ctx.drawImage(this.sprites[flier.kind], x - size, y - size, size * 2, size * 2);
+    }
+    ctx.fillStyle = '#fff3b0';
+    for (const sparkle of this.sparkles) {
+      ctx.globalAlpha = Math.min(1, sparkle.life / 0.3);
+      ctx.fillStyle = sparkle.colour;
+      ctx.beginPath();
+      ctx.arc(sparkle.x, sparkle.y, height * 0.006, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** The name of a new thing, fading in above it, with a soft ring round it. */
+  drawLabels(ctx) {
+    const [label] = this.labels;
+    if (label) drawLabel(ctx, label, label.at(), this.width, this.height, LABEL_SECONDS);
+  }
+}
+
+/** Shells, pearls and coins, drawn once each. */
+function paintPrize(kind) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 96;
+  canvas.height = 96;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(48, 48);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 4;
+  ctx.lineJoin = 'round';
+  if (kind === 'shell') {
+    // A scallop: a fan with ribs, pink and cream.
+    ctx.fillStyle = '#ffb3c7';
+    ctx.beginPath();
+    ctx.moveTo(0, 30);
+    ctx.lineTo(-36, -4);
+    ctx.quadraticCurveTo(-30, -36, 0, -38);
+    ctx.quadraticCurveTo(30, -36, 36, -4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = '#ffe3ea';
+    ctx.lineWidth = 3;
+    for (const angle of [-0.9, -0.45, 0, 0.45, 0.9]) {
+      ctx.beginPath();
+      ctx.moveTo(0, 26);
+      ctx.lineTo(Math.sin(angle) * 32, 26 - Math.cos(angle) * 58);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#ff8fab';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.roundRect(-11, 26, 22, 12, 4);
+    ctx.fill();
+    ctx.stroke();
+  } else if (kind === 'pearl') {
+    const shade = ctx.createRadialGradient(-10, -12, 4, 0, 0, 34);
+    shade.addColorStop(0, '#ffffff');
+    shade.addColorStop(0.6, '#efe9ff');
+    shade.addColorStop(1, '#c9bdf0');
+    ctx.fillStyle = shade;
+    ctx.beginPath();
+    ctx.arc(0, 0, 32, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = '#ffd23f';
+    ctx.beginPath();
+    ctx.arc(0, 0, 34, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = '#e09a1a';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(0, 0, 24, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#f2a516';
+    ctx.beginPath();
+    for (let i = 0; i < 10; i += 1) {
+      const angle = (i / 10) * Math.PI * 2 - Math.PI / 2;
+      const reach = i % 2 ? 7 : 16;
+      ctx.lineTo(Math.cos(angle) * reach, Math.sin(angle) * reach);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+  return canvas;
+}
+
+/** A power-up: a little picture on a soft round badge, with a gentle glow round it. */
+function drawPower(ctx, kind, x, y, r, height) {
+  if (r <= 0) return;
+  ctx.save();
+  ctx.translate(x, y);
+  const glow = ctx.createRadialGradient(0, 0, r * 0.9, 0, 0, r * 1.7);
+  glow.addColorStop(0, 'rgb(255 245 190 / 0.45)');
+  glow.addColorStop(1, 'rgb(255 245 190 / 0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 1.7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fffaf0';
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = Math.max(2, height * 0.004);
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.lineWidth = Math.max(1.5, height * 0.003);
+  if (kind === 'lantern') {
+    ctx.beginPath();
+    ctx.arc(0, -r * 0.42, r * 0.22, Math.PI, 0);
+    ctx.stroke();
+    ctx.fillStyle = '#ff9a3c';
+    ctx.beginPath();
+    ctx.roundRect(-r * 0.36, -r * 0.42, r * 0.72, r * 0.86, r * 0.18);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#fff1a8';
+    ctx.beginPath();
+    ctx.roundRect(-r * 0.2, -r * 0.26, r * 0.4, r * 0.54, r * 0.1);
+    ctx.fill();
+  } else if (kind === 'bubble') {
+    ctx.fillStyle = 'rgb(150 215 255 / 0.55)';
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.62, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(-r * 0.2, -r * 0.22, r * 0.14, r * 0.09, -0.6, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    drawGullShape(ctx, 0, r * 0.05, r * 0.62, 0.4, 1, height);
+  }
+  ctx.restore();
+}
+
+/** A friendly white gull, wings up or down by flap, from -1 to 1, facing way. */
+function drawGullShape(ctx, x, y, size, flap, way, height) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(way, 1);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = Math.max(1.5, height * 0.0035);
+  ctx.lineJoin = 'round';
+  ctx.fillStyle = '#d6dde6';
+  for (const back of [1, -1]) {
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.1, -size * 0.05);
+    ctx.quadraticCurveTo(-size * 0.3, -size * (0.2 + flap * 0.5) * back - size * 0.2, -size * 0.8, -size * flap * 0.6 * back - size * 0.1);
+    ctx.quadraticCurveTo(-size * 0.4, size * 0.05, -size * 0.1, size * 0.1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, size * 0.6, size * 0.3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(size * 0.48, -size * 0.18, size * 0.24, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#ffa53c';
+  ctx.beginPath();
+  ctx.moveTo(size * 0.68, -size * 0.2);
+  ctx.lineTo(size * 0.95, -size * 0.12);
+  ctx.lineTo(size * 0.68, -size * 0.06);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = INK;
+  ctx.beginPath();
+  ctx.arc(size * 0.54, -size * 0.24, size * 0.05, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** An oyster, opening as open goes from 0 to 1, with its pearl inside. */
+function drawOyster(ctx, size, open, height) {
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = Math.max(2, height * 0.004);
+  ctx.fillStyle = '#b9a6d9';
+  ctx.beginPath();
+  ctx.ellipse(0, size * 0.15, size * 0.85, size * 0.45, 0, 0, Math.PI);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  if (open > 0.15) {
+    const r = size * 0.28;
+    const shade = ctx.createRadialGradient(-r * 0.3, size * 0.05 - r * 0.3, 1, 0, size * 0.05, r);
+    shade.addColorStop(0, '#ffffff');
+    shade.addColorStop(1, '#d9cff5');
+    ctx.fillStyle = shade;
+    ctx.beginPath();
+    ctx.arc(0, size * 0.05, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.save();
+  ctx.translate(-size * 0.85, size * 0.15);
+  ctx.rotate(-open * 0.9);
+  ctx.fillStyle = '#9d86c9';
+  ctx.beginPath();
+  ctx.ellipse(size * 0.85, 0, size * 0.85, size * 0.5, 0, Math.PI, Math.PI * 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = '#c8b8e8';
+  for (const dx of [0.45, 0.85, 1.25]) {
+    ctx.beginPath();
+    ctx.moveTo(size * dx, -size * 0.05);
+    ctx.lineTo(size * (0.85 + (dx - 0.85) * 1.3), -size * 0.42);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** A treasure chest, its lid lifting as open goes from 0 to 1, with coins inside. */
+function drawChest(ctx, size, open, height) {
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = Math.max(2, height * 0.004);
+  ctx.fillStyle = '#b8743a';
+  ctx.beginPath();
+  ctx.roundRect(-size * 0.75, -size * 0.1, size * 1.5, size * 0.75, size * 0.1);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#ffd23f';
+  for (const dx of [-0.5, 0.5]) {
+    ctx.beginPath();
+    ctx.rect(size * dx - size * 0.07, -size * 0.1, size * 0.14, size * 0.75);
+    ctx.fill();
+    ctx.stroke();
+  }
+  if (open > 0.15) {
+    ctx.fillStyle = '#ffd23f';
+    for (const dx of [-0.4, -0.1, 0.2, 0.45]) {
+      ctx.beginPath();
+      ctx.arc(size * dx, -size * 0.12, size * 0.14, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+  ctx.save();
+  ctx.translate(-size * 0.75, -size * 0.1);
+  ctx.rotate(-open * 1.1);
+  ctx.fillStyle = '#c9843f';
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(0, -size * 0.25);
+  ctx.quadraticCurveTo(size * 0.75, -size * 0.6, size * 1.5, -size * 0.25);
+  ctx.lineTo(size * 1.5, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#ffd23f';
+  ctx.beginPath();
+  ctx.roundRect(size * 0.65, -size * 0.12, size * 0.2, size * 0.22, size * 0.04);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** A ring filling slowly round something, as a hand held open on it opens it. */
+function drawProgress(ctx, r, share, height, x = 0, y = 0) {
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(3, height * 0.007);
+  ctx.strokeStyle = 'rgb(255 255 255 / 0.45)';
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+  if (share > 0) {
+    ctx.strokeStyle = '#ffd23f';
+    ctx.beginPath();
+    ctx.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, share));
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/**
+ * One name at a time, so they never pile up. The names of what's new at this level always get their
+ * turn, but an older one that's waited a while is let go, and so is one whose thing has gone.
+ */
+function stepLabels(labels, dt, fresh) {
+  labels.forEach((label, index) => {
+    if (index === 0) label.t += dt;
+    else label.wait = (label.wait ?? 0) + dt;
+  });
+  return labels.filter((label, index) => label.t < LABEL_SECONDS && (index === 0 || ((fresh.has(label.key) || label.wait < LABEL_WAIT) && label.at() !== null)));
+}
+
+/** A new thing's name in a little rounded box above it, fading in and out, with a soft ring. */
+function drawLabel(ctx, label, now, width, height, lasts) {
+  // Where its thing is, or was last, if it's just gone. The ring follows it, and the name stays
+  // where it first came, so nothing bright moves quickly.
+  const at = now ?? label.last;
+  if (!at) return;
+  label.last = { x: at.x, y: at.y };
+  label.home ??= { x: at.x, y: at.y };
+  const fade = Math.min(1, label.t / 0.4, (lasts - label.t) / 0.6);
+  if (fade <= 0) return;
+  const font = Math.round(height * 0.03);
+  ctx.save();
+  ctx.globalAlpha = fade;
+  ctx.strokeStyle = 'rgb(255 236 150 / 0.9)';
+  ctx.lineWidth = Math.max(3, height * 0.006);
+  ctx.beginPath();
+  ctx.arc(at.x, at.y, height * (0.075 + 0.01 * Math.min(1, label.t)), 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.font = `600 ${font}px Fredoka, system-ui, sans-serif`;
+  const text = `${label.mark} ${label.text}`;
+  const wide = ctx.measureText(text).width + font * 1.2;
+  const x = Math.min(width - wide / 2 - 8, Math.max(wide / 2 + 8, label.home.x));
+  // Above its thing, or below it near the top, where the camera's picture is.
+  const above = label.home.y - height * 0.12 - Math.min(1, label.t) * height * 0.01;
+  const y = above < height * 0.24 ? label.home.y + height * 0.12 : above;
+  ctx.fillStyle = '#fffaf0';
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = Math.max(2, height * 0.004);
+  ctx.beginPath();
+  ctx.roundRect(x - wide / 2, y - font * 0.85, wide, font * 1.7, font * 0.85);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = INK;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y + font * 0.05);
+  ctx.restore();
 }

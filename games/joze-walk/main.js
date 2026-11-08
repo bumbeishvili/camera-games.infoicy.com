@@ -7,7 +7,7 @@ import { ROSTER, byId as characterById } from '../../core/body/roster.js';
 import { GameSession } from '../../core/session.js';
 import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
-import { Journey, STOPS } from './journey.js';
+import { Journey, STOPS, newAt } from './journey.js';
 import { Walk } from './walk.js';
 
 const CLOSE_ON_IT = 'Close your hand on the fruit!';
@@ -39,9 +39,30 @@ class WalkGame {
         this.idleFor = 0;
         session.sound.play('tick', { gain: 0.5 });
       },
-      onFed: () => this.onFed(),
+      onFed: (side, eaten) => this.onFed(eaten),
       onDropped: () => this.journey?.dropped(),
       onWalked: () => this.journey.nextStop(),
+      // From the higher levels: see walkAt in journey.js.
+      canTakeTwo: () => this.journey.wanted >= 2,
+      onBasket: () => session.sound.handsOpen(),
+      onBridge: () => {
+        session.sound.handsOpen();
+        this.journey.fixBridge();
+      },
+      onThawed: () => session.sound.handsOpen(),
+      onGift: (kind) => {
+        session.sound.star();
+        this.journey.gift(kind);
+      },
+      onGiftOut: (gift) => {
+        if (gift.kind === 'flower') this.walk.introduce('butterflies', () => (this.walk.gifts.includes(gift) ? gift : null));
+      },
+      onMonkeyComes: (monkey) => this.walk.introduce('monkey', () => (this.walk.monkey === monkey ? monkey : null)),
+      onButterflyComes: (flier) => this.walk.introduce('butterflies', () => (this.walk.butterfly === flier ? { x: flier.fruit.x, y: flier.fruit.y - flier.fruit.r } : null)),
+      onParrot: (parrot) => {
+        session.sound.handsOpen();
+        this.walk.introduce('parrot', () => (this.walk.parrot === parrot ? parrot : null));
+      },
     });
     this.joze = new MoveDemo(byId('joze-stage'));
     this.joze.setCharacter(characterById('joze'));
@@ -77,20 +98,53 @@ class WalkGame {
     this.joze.show(name, this.session.settings.hands);
   }
 
+  /** What's new at a level, for the title card and the countdown: see NEW_AT in journey.js. */
+  newAt(level) {
+    return newAt(level);
+  }
+
   /** A new walk home, at this level: see walkAt in journey.js for what each level brings. */
   prepare(level) {
     this.applySettings();
     this.story.hide();
+    this.walk.language = this.session.settings.language;
     this.walk.fruit = [];
     this.walk.fed = { left: 0, right: 0 };
     this.walk.arriveAt(STOPS[0].place);
     this.walk.setLevel(level);
     this.journey = new Journey({ level, onEvent: (event) => this.onJourney(event) });
+    // Gifts only come from level 2, so level 1 looks as it always did.
+    const gifts = this.journey.level.golden > 0;
+    byId('chip-gifts-box').hidden = !gifts;
+    byId('sum-left-gifts').closest('tr').hidden = !gifts;
     this.jozeDoes('jozeWaits');
     this.showProgress();
   }
 
+
+  /**
+   * Where collected things fly to: the count at the top. It's looked up as they fly, as the count is still
+   * hidden when play begins and can move if the screen changes, keeping the last place it was seen.
+   */
+  keepTallyMeasured(chip, target) {
+    let seen = target.tallyAt ?? { x: 80, y: 40 };
+    const look = () => {
+      const box = chip.getBoundingClientRect();
+      if (box.width > 0) seen = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+      return seen;
+    };
+    target.tallyAt = {
+      get x() {
+        return look().x;
+      },
+      get y() {
+        return look().y;
+      },
+    };
+  }
+
   begin() {
+    this.keepTallyMeasured(byId('chip-gifts'), this.walk);
     this.journey.nextStop();
   }
 
@@ -103,28 +157,53 @@ class WalkGame {
     const handlers = {
       stop: () => this.onStop(event),
       fed: () => this.showProgress(),
+      gift: () => this.showProgress(),
       'stop-done': () => this.onStopDone(event),
       home: () => this.session.finish(),
     };
     handlers[event.type]?.();
   }
 
-  onStop({ stop }) {
-    this.walk.arriveAt(stop.place);
+  onStop({ stop, features }) {
+    const { walk } = this;
+    walk.arriveAt(stop.place);
     this.jozeDoes('jozeWaits');
     this.story.say(stop.who, stop.hello);
     this.idleFor = 0;
-    this.walk.hangFruit(stop.fruit, stop.count);
+    walk.hangFruit(stop.fruit, stop.count, features);
+    this.introduceStop();
     this.showProgress();
   }
 
-  onFed() {
+  /** Names for what's new on this tree, the first time each comes. */
+  introduceStop() {
+    const { walk } = this;
+    const fruit = (test) => walk.fruit.find(test);
+    // Each name is beside its thing while it's still on the tree.
+    const onTree = (thing, still = () => true) => () => (thing.state === 'hanging' && still() ? thing : null);
+    const golden = fruit(({ golden: shiny }) => shiny);
+    if (golden) walk.introduce('golden', onTree(golden));
+    if (walk.level.sway > 0) {
+      const swaying = fruit(({ ripe, golden: shiny }) => ripe && !shiny) ?? walk.fruit[0];
+      walk.introduce('wind', onTree(swaying));
+    }
+    const green = fruit(({ ripe }) => !ripe);
+    if (green) walk.introduce('green', onTree(green, () => !green.ripe));
+    const frosty = fruit(({ frost }) => frost);
+    if (frosty) walk.introduce('frost', onTree(frosty, () => frosty.frost));
+    for (const item of walk.items) walk.introduce({ basket: 'basket', plank: 'bridge', feather: 'parrot' }[item.kind], onTree(item));
+    const [fly] = walk.flies;
+    if (fly) walk.introduce('fireflies', () => (fly.caught ? null : fly));
+  }
+
+  /** Fruit eaten: one, or two from the basket, or one the parrot brought. */
+  onFed({ count = 1, golden = 0 } = {}) {
     const { sound } = this.session;
     sound.play('crunch', { gain: 0.8, rate: 0.95 + Math.random() * 0.12 });
     this.idleFor = 0;
     this.eatingUntil = performance.now() + MOUTH_HOLD_MS;
     this.jozeDoes('munch');
-    this.journey.feed();
+    this.journey.feed(count, { golden });
   }
 
   /** Off to the next tree straight away, except at the very end, where there's a thank-you. */
@@ -132,6 +211,8 @@ class WalkGame {
     this.walk.fruit = [];
     const next = this.journey.stops[this.journey.index + 1];
     if (!next) {
+      // He's home: gifts still waiting, like a coconut the monkey has just thrown down, are kept.
+      this.walk.keepWaitingGifts();
       this.story.say(stop.who, stop.done);
       this.later(LAST_WORDS_SECONDS, () => this.journey.nextStop());
       return;
@@ -147,6 +228,7 @@ class WalkGame {
     byId('chip-stops').textContent = `${Math.max(1, Math.min(length, journey.index + 1))} of ${length}`;
     byId('race-progress-fill').style.width = `${Math.round(share * 100)}%`;
     byId('map-joze').style.left = `${Math.round(share * 1000) / 10}%`;
+    byId('chip-gifts').textContent = `🎁 ${journey.gifts}`;
   }
 
   update(dt, snapshot) {
@@ -208,10 +290,13 @@ class WalkGame {
   finished() {
     this.story.hide();
     this.joze.hide();
+    this.walk.labels = [];
   }
 
   summary() {
-    return { hero: this.journey.stats.fed, noun: 'walk', rows: { fed: this.walk.fed } };
+    const { gifts } = this.journey;
+    const { hands } = this.session.settings;
+    return { hero: this.journey.stats.fed, noun: 'walk', rows: { fed: this.walk.fed, gifts: { left: hands === 'left' ? gifts : 0, right: hands === 'right' ? gifts : 0 } } };
   }
 }
 
@@ -223,11 +308,12 @@ new GameSession({
     finishTitle: HOME,
     heroMark: '🍎',
     heroNoun: 'fruit fed to Joze',
-    extraRows: [{ id: 'fed', label: 'Fruit fed' }],
+    extraRows: [{ id: 'fed', label: 'Fruit fed' }, { id: 'gifts', label: 'Gifts for home' }],
     hudTop: `
       <div class="hud-top">
         <div class="chips">
           <div class="chip"><span class="chip-label">Stop</span><span id="chip-stops" class="chip-value">1 of 5</span></div>
+          <div id="chip-gifts-box" class="chip" hidden><span class="chip-label">Gifts</span><span id="chip-gifts" class="chip-value">🎁 0</span></div>
         </div>
       </div>
       <div class="map" aria-hidden="true">

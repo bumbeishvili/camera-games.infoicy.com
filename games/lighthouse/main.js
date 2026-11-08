@@ -7,7 +7,7 @@ import { GameSession } from '../../core/session.js';
 import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { LampRoom } from './lamp-room.js';
-import { Storm } from './storm.js';
+import { Storm, newAt } from './storm.js';
 
 const OPEN_TO_WIPE = 'Open your hand to wipe!';
 const FINISH = 'You saved every ship!';
@@ -60,10 +60,17 @@ class LighthouseGame {
     this.after = what;
   }
 
+  /** What's new at a level, for the title card and the countdown: see NEW_AT in storm.js. */
+  newAt(level) {
+    return newAt(level);
+  }
+
   /** A new storm, at this level: see stormAt in storm.js for what each level brings. */
   prepare(level) {
     this.applySettings();
     this.story.hide();
+    this.room.restart();
+    this.room.language = this.session.settings.language;
     this.room.mud = null;
     this.room.setBoat(null);
     this.room.boat = null;
@@ -76,7 +83,36 @@ class LighthouseGame {
     });
     this.room.swell = this.storm.level.swell;
     this.room.lumps = this.storm.lumps;
+    this.room.storm = this.storm;
+    this.room.night = this.storm.level.night;
+    this.room.fresh = new Set(newAt(level).map(({ key }) => key));
+    // Treasure only comes from level 2, so level 1 looks as it always did.
+    const treasure = this.storm.level.shells > 0;
+    byId('chip-treasure-box').hidden = !treasure;
+    byId('sum-left-treasure').closest('tr').hidden = !treasure;
     this.showProgress();
+  }
+
+
+  /**
+   * Where collected things fly to: the count at the top. It's looked up as they fly, as the count is still
+   * hidden when play begins and can move if the screen changes, keeping the last place it was seen.
+   */
+  keepTallyMeasured(chip, target) {
+    let seen = target.tallyAt ?? { x: 80, y: 40 };
+    const look = () => {
+      const box = chip.getBoundingClientRect();
+      if (box.width > 0) seen = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+      return seen;
+    };
+    target.tallyAt = {
+      get x() {
+        return look().x;
+      },
+      get y() {
+        return look().y;
+      },
+    };
   }
 
   begin() {
@@ -84,21 +120,54 @@ class LighthouseGame {
     sound.startLoop('waves', WAVES_LEVEL);
     sound.startLoop('wipe', 0);
     this.room.muddy();
+    this.keepTallyMeasured(byId('chip-treasure'), this.room);
     this.storm.nextShip();
   }
 
   onStorm(event) {
+    const { room, session, storm } = this;
+    // Where something on the glass is, for its name the first time it comes, while it's there.
+    const on = (list, thing) => () => (list().includes(thing) ? room.onScreen(thing) : null);
+    const born = room.time;
     const handlers = {
       ship: () => this.onShip(event),
       'window-clean': () => this.onWindowClean(),
-      splat: () => this.room.splat(event),
+      splat: () => {
+        room.splat(event);
+        room.introduce('splats', () => (room.time - born < 2 ? room.onScreen(event) : null));
+      },
+      'splat-bounced': () => room.bounce(event),
       lump: () => {
-        this.room.lumps = this.storm.lumps;
+        room.lumps = this.storm.lumps;
+        room.introduce(event.lump.kind, on(() => storm.lumps, event.lump));
       },
       'lump-off': () => {
-        this.room.lumps = this.storm.lumps;
-        this.room.dropLump(event.lump);
-        this.session.sound.handsOpen();
+        room.lumps = this.storm.lumps;
+        room.dropLump(event.lump);
+        session.sound.handsOpen();
+      },
+      'prize-out': () => {
+        if (event.prize.kind === 'shell') room.introduce('shells', on(() => storm.prizes, event.prize));
+      },
+      prize: () => {
+        room.prizeFlies(event.prize);
+        session.sound.star();
+        this.showProgress();
+      },
+      crab: () => room.introduce('crab', on(() => storm.crabs, event.crab)),
+      'crab-caught': () => {
+        room.crabLeaves(event.crab);
+        session.sound.handsOpen();
+      },
+      'power-out': () => room.introduce(event.power.kind, on(() => storm.powers, event.power)),
+      power: () => {
+        room.sparkle(event.power);
+        session.sound.handsOpen();
+      },
+      gull: () => {
+        room.sparkle(event.power, '#ffffff');
+        room.sendGull(event.y);
+        session.sound.handsOpen();
       },
       'ship-home': () => this.onShipHome(),
       'all-home': () => this.onAllHome(),
@@ -116,7 +185,10 @@ class LighthouseGame {
 
   onWindowClean() {
     const { sound } = this.session;
-    this.room.clearMud();
+    const { room } = this;
+    room.clearMud();
+    // The night sky, with its moon, is only all there to see once the first window is clean.
+    if (this.storm.level.night) room.introduce('night', () => ({ x: room.window.x + room.window.width * (room.side === 'right' ? 0.84 : 0.16), y: room.window.y + room.window.height * 0.16 }));
     sound.play('horn', { gain: 0.5 });
     sound.handsOpen();
     this.story.say(this.storm.ship.who, this.storm.ship.thanks);
@@ -142,6 +214,7 @@ class LighthouseGame {
   showProgress() {
     const { storm } = this;
     byId('chip-ships').textContent = `${storm.home} of ${storm.ships.length}`;
+    byId('chip-treasure').textContent = `🐚 ${storm.treasure}`;
     const windowShare = storm.mud && storm.index >= 0 && storm.index < storm.ships.length ? storm.mud.share : 0;
     byId('race-progress-fill').style.width = `${Math.round(((storm.home + Math.min(1, windowShare) * 0.999) / storm.ships.length) * 100)}%`;
   }
@@ -158,9 +231,9 @@ class LighthouseGame {
       }
     }
     const { room, storm } = this;
-    storm.update(dt, { still: room.reducedMotion });
     // Only with a ship waiting, so that the story is heard first.
     const wiping = Boolean(storm.ship) && Boolean(room.mud) && !room.mudFading && room.sailing === 0;
+    storm.update(dt, { still: room.reducedMotion, hand: wiping ? room.handOnGlass() : null });
     room.update(dt, snapshot, { aspect: this.session.camera.aspect, wiping, showHands: true, wipe: this.wipe });
     this.session.sound.setLoopLevel('wipe', wiping ? room.wipeSpeed * WIPE_LEVEL : 0);
     this.showProgress();
@@ -199,12 +272,14 @@ class LighthouseGame {
     sound.stopLoop('waves');
     sound.stopLoop('wipe');
     this.story.hide();
+    this.room.labels = [];
   }
 
   summary() {
-    const { home } = this.storm;
+    const { home, treasure } = this.storm;
     const { hands } = this.session.settings;
-    return { hero: home, noun: 'storm', rows: { ships: { left: hands === 'left' ? home : 0, right: hands === 'right' ? home : 0 } } };
+    const byHand = (count) => ({ left: hands === 'left' ? count : 0, right: hands === 'right' ? count : 0 });
+    return { hero: home, noun: 'storm', rows: { ships: byHand(home), treasure: byHand(treasure) } };
   }
 }
 
@@ -216,11 +291,12 @@ new GameSession({
     finishTitle: FINISH,
     heroMark: '⛵',
     heroNoun: 'ships home',
-    extraRows: [{ id: 'ships', label: 'Ships brought home' }],
+    extraRows: [{ id: 'ships', label: 'Ships brought home' }, { id: 'treasure', label: 'Treasure found' }],
     hudTop: `
       <div class="hud-top">
         <div class="chips">
           <div class="chip"><span class="chip-label">Ships home</span><span id="chip-ships" class="chip-value">0 of 4</span></div>
+          <div id="chip-treasure-box" class="chip" hidden><span class="chip-label">Treasure</span><span id="chip-treasure" class="chip-value">🐚 0</span></div>
         </div>
         <div class="race-progress" aria-hidden="true"><div id="race-progress-fill" class="race-progress-fill"></div></div>
       </div>

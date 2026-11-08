@@ -6,7 +6,7 @@ import { ROSTER } from '../../core/body/roster.js';
 import { GameSession } from '../../core/session.js';
 import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
-import { Stand } from './orders.js';
+import { Stand, newAt } from './orders.js';
 import { SmoothieField } from './field.js';
 
 const HOW = 'Swipe through the fruit!';
@@ -45,6 +45,23 @@ class SmoothieGame {
         this.idleFor = 0;
         session.sound.play('chop', { gain: 0.5, rate: 1.25 });
       },
+      // From the higher levels: see fairAt in orders.js.
+      onCoin: (kind) => {
+        this.idleFor = 0;
+        session.sound.star();
+        if (kind === 'wedge') this.stand.slice('wedge');
+        else this.stand.addCoins(1, 'tip');
+      },
+      onPower: (kind) => {
+        this.idleFor = 0;
+        session.sound.handsOpen();
+        this.stand.power(kind);
+      },
+      onBee: () => {
+        this.idleFor = 0;
+        session.sound.handsOpen();
+        this.stand.power('honey');
+      },
     });
     this.field.joze = Object.assign(new Image(), { src: session.portraits.joze });
     this.applySettings();
@@ -70,11 +87,18 @@ class SmoothieGame {
     this.applySettings();
   }
 
+  /** What's new at a level, for the title card and the countdown: see NEW_AT in orders.js. */
+  newAt(level) {
+    return newAt(level);
+  }
+
   /** A new fair, at this level: see fairAt in orders.js for what each level brings. */
   prepare(level) {
     this.applySettings();
     this.field.setLevel(level);
     this.field.reset();
+    this.field.language = this.session.settings.language;
+    this.field.fresh = new Set(newAt(level).map(({ key }) => key));
     this.story.hide();
     byId('order').replaceChildren();
     this.bump = null;
@@ -87,11 +111,41 @@ class SmoothieGame {
     });
     this.field.nextFruit = () => this.stand.nextFruit();
     this.field.nextThrow = () => this.stand.nextThrow();
+    this.field.powerOn = (kind) => this.stand.isOn(kind);
+    this.field.powerLeft = (kind) => this.stand.active[kind];
+    this.field.isWanted = (kind) => this.stand.left[kind] > 0;
+    // Coins only come from level 2, so level 1 looks as it always did.
+    const coins = this.stand.level.tips > 0;
+    byId('chip-coins-box').hidden = !coins;
+    byId('sum-left-coins').closest('tr').hidden = !coins;
     this.showProgress();
+  }
+
+
+  /**
+   * Where collected things fly to: the count at the top. It's looked up as they fly, as the count is still
+   * hidden when play begins and can move if the screen changes, keeping the last place it was seen.
+   */
+  keepTallyMeasured(chip, target) {
+    let seen = target.tallyAt ?? { x: 80, y: 40 };
+    const look = () => {
+      const box = chip.getBoundingClientRect();
+      if (box.width > 0) seen = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+      return seen;
+    };
+    target.tallyAt = {
+      get x() {
+        return look().x;
+      },
+      get y() {
+        return look().y;
+      },
+    };
   }
 
   /** Straight into it: the first order comes along with the first fruit. */
   begin() {
+    this.keepTallyMeasured(byId('chip-coins'), this.field);
     this.field.throwing = true;
     this.field.throwIn = 0;
     this.stand.nextCustomer();
@@ -111,6 +165,9 @@ class SmoothieGame {
       wanted: () => this.showOrder(),
       'order-done': () => this.onOrderDone(event),
       'day-over': () => this.session.finish(),
+      coins: () => this.showProgress(),
+      'power-out': () => this.field.throwBubble(event.kind),
+      bee: () => this.field.startBee(),
     };
     handlers[event.type]?.();
   }
@@ -155,7 +212,7 @@ class SmoothieGame {
     sound.play('chop', { gain: 0.8, rate: 0.92 + Math.random() * 0.18 });
     this.idleFor = 0;
     const verdict = this.stand.slice(kind);
-    if (verdict === 'wanted') sound.star();
+    if (verdict === 'wanted' || verdict === 'golden') sound.star();
     if (verdict === 'rotten' && !this.saidSticky) {
       this.saidSticky = true;
       sound.say(STICKY);
@@ -168,6 +225,8 @@ class SmoothieGame {
     const { stand, field, session } = this;
     field.blenderSpin = 1.6;
     session.sound.play('mixer', { gain: 0.5 });
+    // From level 2, a tip: coins floating up, near the hand.
+    if (stand.level.tips) field.tossTips(stand.level.tips);
     this.showProgress();
     if (stand.index < stand.customers.length - 1) {
       this.later(NEXT_CUSTOMER_SECONDS, () => stand.nextCustomer());
@@ -181,6 +240,7 @@ class SmoothieGame {
   showProgress() {
     const { stats, customers } = this.stand;
     byId('chip-smoothies').textContent = `${stats.smoothies} of ${customers.length}`;
+    byId('chip-coins').textContent = `🪙 ${this.stand.coins}`;
     byId('race-progress-fill').style.width = `${Math.round((stats.smoothies / customers.length) * 100)}%`;
   }
 
@@ -196,6 +256,9 @@ class SmoothieGame {
       }
     }
     this.idleFor += dt;
+    // Power-ups only count down while the hand is open in the picture, so resting never uses them up.
+    const glove = this.field.gloves[this.field.side];
+    if (this.field.throwing) this.stand.tick(dt, { seen: glove.visible && glove.status === 'open' });
     this.field.update(dt, snapshot, { aspect: this.session.camera.aspect, slicing: true, showHands: true });
     const filming = this.session.playSeconds < FILM_SECONDS && this.stand.stats.wanted === 0;
     if (filming !== this.filming) {
@@ -233,6 +296,7 @@ class SmoothieGame {
   finished() {
     this.story.hide();
     this.field.throwing = false;
+    this.field.labels = [];
   }
 
   summary() {
@@ -241,7 +305,11 @@ class SmoothieGame {
     return {
       hero: smoothies,
       noun: 'fair',
-      rows: { sliced: this.field.sliced, rotten: { left: hands === 'left' ? rotten : 0, right: hands === 'right' ? rotten : 0 } },
+      rows: {
+        sliced: this.field.sliced,
+        rotten: { left: hands === 'left' ? rotten : 0, right: hands === 'right' ? rotten : 0 },
+        coins: { left: hands === 'left' ? this.stand.coins : 0, right: hands === 'right' ? this.stand.coins : 0 },
+      },
     };
   }
 }
@@ -254,11 +322,12 @@ new GameSession({
     finishTitle: WON,
     heroMark: '🥤',
     heroNoun: 'smoothies',
-    extraRows: [{ id: 'sliced', label: 'Fruit sliced' }, { id: 'rotten', label: 'Rotten fruit' }],
+    extraRows: [{ id: 'sliced', label: 'Fruit sliced' }, { id: 'rotten', label: 'Rotten fruit' }, { id: 'coins', label: 'Coins' }],
     hudTop: `
       <div class="hud-top">
         <div class="chips">
           <div class="chip"><span class="chip-label">Smoothies</span><span id="chip-smoothies" class="chip-value">0 of 6</span></div>
+          <div id="chip-coins-box" class="chip" hidden><span class="chip-label">Coins</span><span id="chip-coins" class="chip-value">🪙 0</span></div>
         </div>
         <div class="race-progress" aria-hidden="true"><div id="race-progress-fill" class="race-progress-fill"></div></div>
       </div>

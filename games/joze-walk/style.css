@@ -86,3 +86,6 @@ body[data-screen='playing'] .map { display: block; }
 @media (prefers-reduced-motion: reduce) {
   .film-fruit, .film-finger, .film-hand { animation-duration: 6s; }
 }
+
+/* The gifts for Joze's family, from level 2. */
+.chip[hidden] { display: none; }

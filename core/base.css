@@ -1077,3 +1077,6 @@ body[data-screen='countdown'] .level-now { display: block; }
 .level-new-now .level-new-lead { color: var(--surface); -webkit-text-stroke: 1px var(--ink); paint-order: stroke fill; }
 
 body:not([data-screen='countdown']) .level-new-now { display: none; }
+
+/* A chip a game hides, such as a prize count before its level, stays hidden whatever .chip says. */
+.chip[hidden] { display: none; }

@@ -42,3 +42,6 @@ body[data-hands='left'] .hands-bar { justify-content: flex-start; }
 @media (prefers-reduced-motion: reduce) {
   .film-mud, .film-wiper { animation-duration: 7.5s; }
 }
+
+/* The treasure count, from level 2. */
+.chip[hidden] { display: none; }

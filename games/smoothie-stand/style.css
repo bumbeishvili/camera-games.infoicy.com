@@ -92,3 +92,6 @@ body[data-screen='playing'] .order { display: flex; }
 @media (prefers-reduced-motion: reduce) {
   .film-apple, .film-half-a, .film-half-b, .film-swipe, .film-hand { animation-duration: 4.5s; }
 }
+
+/* The coins, from level 2. */
+.chip[hidden] { display: none; }

@@ -2,10 +2,12 @@
 // the blender on the counter. An open hand moving through a fruit slices it. A closed one bumps it.
 //
 // Nothing flashes: seizures are more common in children with hemiplegia. A slice is a few drops
-// of juice where it happened, and the picture itself never changes brightness.
+// of juice where it happened, and the picture itself never changes brightness. Coins, power-up
+// bubbles and the bee from the higher levels float slowly, and the first time each new thing comes
+// in a game, a little label with its name fades in beside it and out again.
 import { LOOKS, paintFruit } from '../../core/fruit.js';
 import { Glove, INK } from '../../core/glove.js';
-import { fairAt, nearestOnPath } from './orders.js';
+import { GOLDEN_COINS, NEW_THINGS, POWER_SECONDS, fairAt, nearestOnPath } from './orders.js';
 
 // gravity is in screen heights a second squared, every is the seconds between throws, volley is how
 // few and how many go up in a throw, and most is how many can be up at once. There's always plenty to
@@ -33,6 +35,23 @@ const PAIR_GAP = 2.8; // A rotten one beside another, this many fruit sizes apar
 const CRACK_KICK = 0.12; // The first swipe on a tough fruit knocks it up this far, in screen heights.
 const CRACK_REST_SECONDS = 0.35; // The same swipe can't slice it straight after cracking it.
 const SKIN = '#8a5a2b';
+// Coins, wedges and power-up bubbles float up slowly, and only need touching with an open hand.
+const COIN_GRAVITY = 0.3; // In screen heights a second squared.
+const COIN_PEAK = 0.42; // How high they go, as a share of the screen's height from the top.
+const BUBBLE_GRAVITY = 0.2;
+const BUBBLE_PEAK = 0.36;
+const TOUCH_REACH = 0.75; // How near an open hand has to come, in palm lengths beyond the thing.
+const MAGNET_REACH = 0.5; // How far the magnet pulls from, in screen heights.
+const MAGNET_SPEED = 0.55; // In screen heights a second.
+const BIG_GLOVE = 1.8; // How much further the big glove slices from.
+const HONEY_SLOW = 0.5; // How fast everything goes with the honey.
+const BEE_SECONDS = 9; // The bee crossing the reach, if nobody touches it.
+const FLY_SECONDS = 0.7; // A coin flying up to the count of them.
+const LABEL_SECONDS = 2.4; // A new thing's name, beside it the first time it comes.
+const LABEL_WAIT = 3; // How long an older thing's name waits its turn before it's let go.
+const LABEL_DOWN = 0.42; // Where a name waits, under it, as a share of the screen's height.
+const FLESH = { golden: '#fff3a6', melon: '#ff6b7f', wedge: '#ff6b7f' };
+const fleshOf = (kind) => FLESH[kind] ?? LOOKS[kind].flesh;
 
 const between = (low, high) => low + Math.random() * (high - low);
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
@@ -45,6 +64,23 @@ export class SmoothieField {
     this.events = events;
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.sprites = Object.fromEntries(Object.keys(LOOKS).map((kind) => [kind, paintFruit(kind)]));
+    this.sprites.golden = paintGolden(this.sprites.apple);
+    this.sprites.melon = paintMelon();
+    this.sprites.wedge = paintWedge();
+    this.sprites.coin = paintCoin();
+    this.coins = []; // Tip coins and watermelon wedges, floating up to be touched.
+    this.bubbles = []; // Power-up bubbles.
+    this.bee = null;
+    this.flying = []; // Coins on their way up to the count.
+    this.labels = [];
+    this.introduced = new Set();
+    this.fresh = new Set(); // What's new at this level, whose names always get their turn.
+    this.language = 'en';
+    this.tallyAt = { x: 200, y: 40 };
+    // From the rules: whether a power-up is on now, how long it has left, and whether a kind is wanted.
+    this.powerOn = () => false;
+    this.powerLeft = () => 0;
+    this.isWanted = () => false;
     this.gloves = { left: new Glove('left'), right: new Glove('right') };
     for (const glove of Object.values(this.gloves)) {
       glove.stainColour = STICKY_COLOUR;
@@ -109,7 +145,71 @@ export class SmoothieField {
     this.throwIn = 0;
     this.blenderLevel = 0;
     this.sliced = { left: 0, right: 0 };
+    this.coins = [];
+    this.bubbles = [];
+    this.bee = null;
+    this.flying = [];
+    this.labels = [];
+    this.introduced = new Set();
     for (const glove of Object.values(this.gloves)) glove.sticky = 0;
+  }
+
+  /**
+   * The first time something new comes in a game, its name fades in beside it for a moment. at says
+   * where it is now, on the screen.
+   */
+  introduce(key, at, x = at()?.x) {
+    if (this.introduced.has(key) || !NEW_THINGS[key]) return;
+    this.introduced.add(key);
+    const { mark, name, nameKa } = NEW_THINGS[key];
+    // Things fly up here, so the name waits in the sky above where it's going, and the ring follows it.
+    const home = x === undefined ? undefined : { x, y: this.height * LABEL_DOWN };
+    this.labels.push({ key, mark, text: this.language === 'ka' ? nameKa : name, at, t: 0, home });
+  }
+
+  /** Something floating up slowly from below, within reach, to a height, as for coins. */
+  floatUp(thing, gravity, peak, x) {
+    const { width, height } = this;
+    const [low, high] = REACH[this.side];
+    const startY = height + this.fruitSize;
+    return {
+      x: x ?? between(low + 0.06, high - 0.06) * width,
+      y: startY,
+      vx: between(-0.02, 0.02) * width,
+      vy: -Math.sqrt(2 * gravity * height * (startY - peak * height)),
+      gravity: gravity * height,
+      age: 0,
+      ...thing,
+    };
+  }
+
+  /** A customer's tip: coins floating up, near where the hand is, to touch. */
+  tossTips(count) {
+    const glove = this.gloves[this.side];
+    const [low, high] = REACH[this.side];
+    for (let i = 0; i < count; i += 1) {
+      const near = glove.visible ? clamp(glove.x / this.width + (i - (count - 1) / 2) * 0.08, low + 0.06, high - 0.06) : undefined;
+      const coin = this.floatUp({ kind: 'coin', r: this.fruitSize * 0.55, why: 'tip' }, COIN_GRAVITY, COIN_PEAK + i * 0.04, near === undefined ? undefined : near * this.width);
+      this.coins.push(coin);
+      this.introduce('tips', () => (this.coins.includes(coin) && coin.y < this.height ? coin : null), coin.x);
+    }
+  }
+
+  /** A power-up bubble, floating up slowly. */
+  throwBubble(power) {
+    const bubble = this.floatUp({ power, r: this.fruitSize * 1.05 }, BUBBLE_GRAVITY, BUBBLE_PEAK);
+    this.bubbles.push(bubble);
+    this.introduce(power, () => (this.bubbles.includes(bubble) && bubble.y < this.height ? bubble : null), bubble.x);
+    return bubble;
+  }
+
+  /** The bee with its pot of honey, buzzing slowly across the reach. */
+  startBee() {
+    const [low, high] = REACH[this.side];
+    const leftFirst = Math.random() < 0.5;
+    this.bee = { from: (leftFirst ? low : high) * this.width, to: (leftFirst ? high : low) * this.width, t: 0, x: 0, y: 0, leaving: false, honey: true, way: leftFirst ? 1 : -1 };
+    this.moveBee(0);
+    this.introduce('bee', () => this.bee);
   }
 
   /**
@@ -144,7 +244,7 @@ export class SmoothieField {
       still: y !== undefined,
       turn: Math.random() * 6,
       spin: this.reducedMotion ? 0.3 : between(-1.6, 1.6),
-      r: this.fruitSize,
+      r: this.fruitSize * (what === 'melon' ? 1.35 : 1),
       phase: Math.random() * 6,
       across,
       tough,
@@ -153,6 +253,8 @@ export class SmoothieField {
     });
     const fruit = make(kind, startX);
     this.fruit.push(fruit);
+    // Its name, the first time, once it's up in sight.
+    fruit.news = kind === 'golden' || kind === 'melon' ? kind : tough ? 'tough' : across ? 'across' : withRotten ? 'pairs' : null;
     if (withRotten) {
       // On whichever side there's room for it, within reach.
       const gap = this.fruitSize * PAIR_GAP;
@@ -246,8 +348,11 @@ export class SmoothieField {
     }
 
     const { pace } = this;
+    // With the honey, everything floats slowly for a while.
+    const slow = this.powerOn('honey') ? HONEY_SLOW : 1;
+    const fruitDt = dt * slow;
     if (this.throwing) {
-      this.throwIn -= dt;
+      this.throwIn -= fruitDt;
       if (this.throwIn <= 0) {
         const [few, many] = pace.volley;
         const count = Math.round(between(few, many));
@@ -264,14 +369,20 @@ export class SmoothieField {
     this.fruit = this.fruit.filter((fruit) => {
       fruit.rest = Math.max(0, (fruit.rest ?? 0) - dt);
       if (!fruit.still) {
-        fruit.vy += gravity * dt;
-        fruit.x += fruit.vx * dt;
-        fruit.y += fruit.vy * dt;
-        fruit.turn += fruit.spin * dt;
+        fruit.vy += gravity * fruitDt;
+        fruit.x += fruit.vx * fruitDt;
+        fruit.y += fruit.vy * fruitDt;
+        fruit.turn += fruit.spin * fruitDt;
       }
+      if (fruit.news && fruit.y < this.height * 0.8) {
+        this.introduce(fruit.news, () => (this.fruit.includes(fruit) ? fruit : null));
+        fruit.news = null;
+      }
+      if (slicing && this.powerOn('magnet') && this.isWanted(fruit.kind)) this.pull(fruit, dt);
       if (slicing && this.touchGloves(fruit)) return false;
       return fruit.still || fruit.y < this.height + fruit.r * 2;
     });
+    this.updateExtras(dt, slicing);
 
     const glove = this.gloves[this.side];
     if (slicing && glove.visible && glove.status === 'open' && glove.speed >= SWIPE_SPEED * 0.7) {
@@ -302,7 +413,7 @@ export class SmoothieField {
   touchGloves(fruit) {
     for (const glove of Object.values(this.gloves)) {
       if (!glove.visible) continue;
-      const reach = fruit.r + this.palmSize * 0.5;
+      const reach = fruit.r + this.palmSize * 0.5 * (this.powerOn('glove') ? BIG_GLOVE : 1);
       const near = glove.lastX === null
         ? Math.hypot(fruit.x - glove.x, fruit.y - glove.y)
         : nearestOnPath(glove.lastX, glove.lastY, glove.x, glove.y, fruit.x, fruit.y);
@@ -333,7 +444,7 @@ export class SmoothieField {
     fruit.cracked = true;
     fruit.rest = CRACK_REST_SECONDS;
     if (!fruit.still) fruit.vy = Math.min(fruit.vy, -Math.sqrt(2 * (this.gravityNow ?? this.height) * CRACK_KICK * this.height));
-    const { flesh } = LOOKS[fruit.kind];
+    const flesh = fleshOf(fruit.kind);
     for (let i = 0; i < (this.reducedMotion ? 2 : 5); i += 1) {
       const angle = (i / 5) * Math.PI * 2 + Math.random();
       const speed = between(0.15, 0.35) * this.height;
@@ -362,7 +473,7 @@ export class SmoothieField {
         life: 1,
       });
     }
-    const { flesh } = LOOKS[fruit.kind];
+    const flesh = fleshOf(fruit.kind);
     const count = this.reducedMotion ? 4 : 9;
     for (let i = 0; i < count; i += 1) {
       const angle = (i / count) * Math.PI * 2 + Math.random();
@@ -373,6 +484,111 @@ export class SmoothieField {
     if (verdict === 'rotten') glove.sticky = STICKY_SECONDS;
     if (verdict === 'wanted') {
       this.tokens.push({ kind: fruit.kind, x: fruit.x, y: fruit.y, share: 0, fromX: fruit.x, fromY: fruit.y });
+    }
+    // A golden fruit is worth coins, which fly straight up to the count.
+    if (verdict === 'golden') for (let i = 0; i < GOLDEN_COINS; i += 1) this.flying.push({ fromX: fruit.x + (i - 1) * fruit.r * 0.6, fromY: fruit.y, t: -i * 0.12 });
+    // A watermelon splits into wedges, floating up, each worth a coin when touched.
+    if (verdict === 'melon') {
+      for (let i = 0; i < 3; i += 1) {
+        this.coins.push({
+          kind: 'wedge',
+          x: fruit.x,
+          y: fruit.y,
+          vx: (i - 1) * this.height * 0.18,
+          vy: -this.height * 0.45,
+          gravity: COIN_GRAVITY * this.height,
+          r: this.fruitSize * 0.7,
+          age: 0,
+          turn: (i - 1) * 0.6,
+        });
+      }
+    }
+  }
+
+  /** The magnet draws something towards an open hand nearby. */
+  pull(thing, dt) {
+    const glove = this.gloves[this.side];
+    if (!glove.visible || glove.status !== 'open') return;
+    const dx = glove.x - thing.x;
+    const dy = glove.y - thing.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance === 0 || distance > this.height * MAGNET_REACH) return;
+    const step = Math.min(distance, MAGNET_SPEED * this.height * dt);
+    thing.x += (dx / distance) * step;
+    thing.y += (dy / distance) * step;
+  }
+
+  /** Whether an open hand is touching something round, of radius r. Speed doesn't matter. */
+  touched(thing) {
+    const glove = this.gloves[this.side];
+    if (!glove.visible || glove.status !== 'open') return false;
+    const reach = thing.r + this.palmSize * TOUCH_REACH * (this.powerOn('glove') ? BIG_GLOVE : 1);
+    const near = glove.lastX === null ? Math.hypot(thing.x - glove.x, thing.y - glove.y) : nearestOnPath(glove.lastX, glove.lastY, glove.x, glove.y, thing.x, thing.y);
+    return near <= reach;
+  }
+
+  /** Coins, wedges, power-up bubbles and the bee, from the higher levels. */
+  updateExtras(dt, slicing) {
+    const keep = (thing) => {
+      thing.age += dt;
+      thing.vy += thing.gravity * dt;
+      thing.x += thing.vx * dt;
+      thing.y += thing.vy * dt;
+      return thing.y < this.height + thing.r * 2;
+    };
+    this.coins = this.coins.filter((coin) => {
+      if (slicing && this.powerOn('magnet')) this.pull(coin, dt);
+      if (slicing && coin.age > 0.25 && this.touched(coin)) {
+        this.flying.push({ fromX: coin.x, fromY: coin.y, t: 0, kind: coin.kind });
+        this.events.onCoin?.(coin.kind);
+        return false;
+      }
+      return keep(coin);
+    });
+    this.bubbles = this.bubbles.filter((bubble) => {
+      if (slicing && bubble.age > 0.25 && this.touched(bubble)) {
+        this.popBubble(bubble);
+        return false;
+      }
+      return keep(bubble);
+    });
+    if (this.bee) this.moveBee(dt, slicing);
+    for (const flier of this.flying) flier.t += dt / FLY_SECONDS;
+    this.flying = this.flying.filter(({ t }) => t < 1);
+    this.labels = stepLabels(this.labels, dt, this.fresh);
+  }
+
+  popBubble(bubble) {
+    const count = this.reducedMotion ? 3 : 8;
+    for (let i = 0; i < count; i += 1) {
+      const angle = (i / count) * Math.PI * 2;
+      this.drops.push({ x: bubble.x + Math.cos(angle) * bubble.r, y: bubble.y + Math.sin(angle) * bubble.r, vx: Math.cos(angle) * this.height * 0.15, vy: Math.sin(angle) * this.height * 0.15, size: bubble.r * 0.08, life: 0.4, colour: '#bfe8ff' });
+    }
+    this.events.onPower?.(bubble.power);
+  }
+
+  /** The bee buzzing across in a gentle wave, until a hand touches it and it gives its honey. */
+  moveBee(dt, slicing = false) {
+    const bee = this.bee;
+    bee.t += dt;
+    if (bee.leaving) {
+      bee.y -= this.height * 0.3 * dt;
+      bee.x += bee.way * this.height * 0.1 * dt;
+      if (bee.y < -this.fruitSize * 2) this.bee = null;
+      return;
+    }
+    const share = bee.t / BEE_SECONDS;
+    bee.x = bee.from + (bee.to - bee.from) * share;
+    // Below where prompts show, in the middle of where fruit flies.
+    bee.y = this.height * (0.5 + 0.06 * Math.sin(bee.t * 1.4));
+    bee.r = this.fruitSize * 0.9;
+    if (slicing && bee.t > 0.4 && this.touched(bee)) {
+      bee.leaving = true;
+      bee.honey = false;
+      this.flying.push({ fromX: bee.x, fromY: bee.y + bee.r * 0.6, t: 0, kind: 'honey', to: 'glove' });
+      this.events.onBee?.();
+    } else if (share >= 1) {
+      bee.leaving = true;
     }
   }
 
@@ -433,7 +649,7 @@ export class SmoothieField {
       ctx.strokeStyle = INK;
       ctx.lineWidth = r * 0.2;
       crack();
-      ctx.strokeStyle = LOOKS[kind].flesh;
+      ctx.strokeStyle = fleshOf(kind);
       ctx.lineWidth = r * 0.1;
       crack();
     }
@@ -449,6 +665,18 @@ export class SmoothieField {
       ctx.arc(fruit.x + Math.cos(angle) * size, fruit.y + Math.sin(angle * 1.3) * size, Math.max(2, fruit.r * 0.05), 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+
+  /** The turbo blender: a soft swirl over the blender while it lasts, turning slowly. */
+  drawTurbo(ctx) {
+    const { height, width } = this;
+    const size = height * 0.2;
+    const x = width * (this.side === 'right' ? 0.17 : 0.83) + size * 0.3;
+    const y = height * 0.985 - size * 1.25;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, this.powerLeft('turbo') / 1.2);
+    drawBubble(ctx, 'turbo', x, y, size * 0.28, size * 0.28, height);
+    ctx.restore();
   }
 
   /** The blender on the counter, filling up as an order comes together. */
@@ -504,6 +732,7 @@ export class SmoothieField {
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.drawImage(this.backdrop, 0, 0, width, height);
     this.drawBlender(ctx);
+    if (this.powerOn('turbo')) this.drawTurbo(ctx);
 
     for (const fruit of this.fruit) {
       this.drawFruit(ctx, fruit);
@@ -518,7 +747,7 @@ export class SmoothieField {
       ctx.rect(-half.r * 1.4, half.way > 0 ? 0 : -half.r * 1.4, half.r * 2.8, half.r * 1.4);
       ctx.clip();
       ctx.drawImage(this.sprites[half.kind], -half.r * 1.2, -half.r * 1.2, half.r * 2.4, half.r * 2.4);
-      ctx.fillStyle = LOOKS[half.kind].flesh;
+      ctx.fillStyle = fleshOf(half.kind);
       ctx.beginPath();
       ctx.ellipse(0, 0, half.r * 0.9, half.r * 0.2, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -551,12 +780,417 @@ export class SmoothieField {
       }
     }
 
+    this.drawExtras(ctx);
+    this.drawBigGlove(ctx);
     this.gloves.left.draw(ctx, this.palmSize);
     this.gloves.right.draw(ctx, this.palmSize);
+    this.drawPowers(ctx);
+    this.drawFlying(ctx);
+    const [label] = this.labels;
+    if (label) drawLabel(ctx, label, label.at(), width, height, LABEL_SECONDS);
+  }
+
+  /** Coins and wedges floating up, power-up bubbles, and the bee. */
+  drawExtras(ctx) {
+    const { height } = this;
+    for (const coin of this.coins) {
+      const size = coin.r * 1.2;
+      ctx.save();
+      ctx.translate(coin.x, coin.y);
+      if (coin.kind === 'wedge') ctx.rotate(coin.turn + coin.age * (this.reducedMotion ? 0.2 : 1));
+      ctx.drawImage(this.sprites[coin.kind], -size, -size, size * 2, size * 2);
+      ctx.restore();
+    }
+    for (const bubble of this.bubbles) {
+      const wobble = this.reducedMotion ? 0 : Math.sin(bubble.age * 3) * 0.04;
+      drawBubble(ctx, bubble.power, bubble.x, bubble.y, bubble.r * (1 + wobble), bubble.r * (1 - wobble), height);
+    }
+    if (this.bee) drawBee(ctx, this.bee, this.time, this.reducedMotion, height);
+  }
+
+  /** The soft glow round the hand that shows the big glove's reach, while it lasts. */
+  drawBigGlove(ctx) {
+    const glove = this.gloves[this.side];
+    if (!this.powerOn('glove') || !glove.visible) return;
+    const left = this.powerLeft('glove');
+    ctx.save();
+    // A thin ring and only a faint fill, as it goes wherever the hand goes, however quickly.
+    ctx.globalAlpha = Math.min(1, left / 1.2);
+    ctx.fillStyle = 'rgb(255 240 170 / 0.08)';
+    ctx.strokeStyle = 'rgb(255 205 90 / 0.6)';
+    ctx.lineWidth = this.height * 0.005;
+    ctx.beginPath();
+    ctx.arc(glove.x, glove.y, this.palmSize * 0.5 * BIG_GLOVE + this.fruitSize * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * A little badge for each power-up that's on, with a ring for the time it has left. They stay still
+   * beside the count of coins, rather than going about with the hand.
+   */
+  drawPowers(ctx) {
+    const on = Object.keys(POWER_SECONDS).filter((kind) => this.powerOn(kind));
+    if (!on.length) return;
+    const { height } = this;
+    on.forEach((kind, i) => {
+      const x = this.tallyAt.x + height * (0.15 + i * 0.085);
+      const y = this.tallyAt.y;
+      const r = height * 0.03;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, this.powerLeft(kind) / 1.2);
+      drawBubble(ctx, kind, x, y, r, r, height);
+      ctx.lineCap = 'round';
+      ctx.lineWidth = Math.max(3, height * 0.006);
+      ctx.strokeStyle = '#ffd23f';
+      ctx.beginPath();
+      ctx.arc(x, y, r * 1.3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (this.powerLeft(kind) / POWER_SECONDS[kind]));
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+
+  /** Coins on their way up to the count, and honey on its way to the hand. */
+  drawFlying(ctx) {
+    const glove = this.gloves[this.side];
+    for (const flier of this.flying) {
+      if (flier.t < 0) continue;
+      const ease = flier.t * flier.t * (3 - 2 * flier.t);
+      const to = flier.to === 'glove' && glove.visible ? glove : this.tallyAt;
+      const x = flier.fromX + (to.x - flier.fromX) * ease;
+      const y = flier.fromY + (to.y - flier.fromY) * ease - Math.sin(flier.t * Math.PI) * this.height * 0.06;
+      const size = this.fruitSize * 0.6 * (1.1 - ease * 0.5);
+      if (flier.kind === 'honey') drawHoneyPot(ctx, x, y, size, this.height);
+      else ctx.drawImage(this.sprites.coin, x - size, y - size, size * 2, size * 2);
+    }
   }
 
   /** A picture of a fruit, for the order ticket. */
   pictureOf(kind) {
     return this.sprites[kind].toDataURL('image/png');
   }
+}
+
+/** A golden apple: the apple's shape in bright gold, inside a dark outline, with a sparkle. */
+function paintGolden(apple) {
+  const { width: wide, height: high } = apple;
+  const shape = (fill) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = wide;
+    canvas.height = high;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(apple, 0, 0);
+    ctx.globalCompositeOperation = 'source-in';
+    ctx.fillStyle = fill(ctx);
+    ctx.fillRect(0, 0, wide, high);
+    return canvas;
+  };
+  const gold = document.createElement('canvas');
+  gold.width = wide;
+  gold.height = high;
+  const ctx = gold.getContext('2d');
+  ctx.drawImage(shape(() => INK), 0, 0);
+  ctx.drawImage(shape((context) => {
+    const shine = context.createRadialGradient(wide * 0.4, high * 0.38, 10, wide / 2, high / 2, wide * 0.5);
+    shine.addColorStop(0, '#fff3a6');
+    shine.addColorStop(0.55, '#ffd23f');
+    shine.addColorStop(1, '#f0a81c');
+    return shine;
+  }), wide * 0.035, high * 0.035, wide * 0.93, high * 0.93);
+  ctx.fillStyle = 'rgb(255 255 255 / 0.6)';
+  ctx.beginPath();
+  ctx.ellipse(wide * 0.34, high * 0.36, wide * 0.06, high * 0.1, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fffbe0';
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  for (let i = 0; i < 8; i += 1) {
+    const angle = (i / 8) * Math.PI * 2;
+    const reach = i % 2 ? 9 : 26;
+    ctx.lineTo(wide * 0.74 + Math.cos(angle) * reach, high * 0.3 + Math.sin(angle) * reach);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  return gold;
+}
+
+/** A round watermelon, striped. */
+function paintMelon() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 240;
+  canvas.height = 240;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(120, 120);
+  ctx.lineWidth = 7;
+  ctx.strokeStyle = INK;
+  ctx.fillStyle = '#3fae4a';
+  ctx.beginPath();
+  ctx.ellipse(0, 4, 98, 90, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  ctx.strokeStyle = '#23793a';
+  ctx.lineWidth = 12;
+  for (const dx of [-60, -20, 20, 60]) {
+    ctx.beginPath();
+    ctx.moveTo(dx, -96);
+    ctx.quadraticCurveTo(dx * 1.4, 4, dx, 100);
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 7;
+  ctx.beginPath();
+  ctx.ellipse(0, 4, 98, 90, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = 'rgb(255 255 255 / 0.4)';
+  ctx.beginPath();
+  ctx.ellipse(-44, -36, 16, 26, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+  return canvas;
+}
+
+/** A wedge of watermelon, red with seeds and a green rind. */
+function paintWedge() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 240;
+  canvas.height = 240;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(120, 130);
+  ctx.lineWidth = 7;
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = INK;
+  ctx.fillStyle = '#3fae4a';
+  ctx.beginPath();
+  ctx.arc(0, -40, 110, Math.PI * 0.2, Math.PI * 0.8);
+  ctx.lineTo(0, -40);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#ff6b7f';
+  ctx.beginPath();
+  ctx.arc(0, -40, 90, Math.PI * 0.22, Math.PI * 0.78);
+  ctx.lineTo(0, -40);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = INK;
+  for (const [x, y] of [[-24, 10], [0, 22], [24, 10], [-10, -8], [12, -8]]) {
+    ctx.beginPath();
+    ctx.ellipse(x, y, 4, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  return canvas;
+}
+
+/** A gold coin with a star on it. */
+function paintCoin() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 96;
+  canvas.height = 96;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(48, 48);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 4;
+  ctx.fillStyle = '#ffd23f';
+  ctx.beginPath();
+  ctx.arc(0, 0, 40, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = '#e09a1a';
+  ctx.beginPath();
+  ctx.arc(0, 0, 29, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = '#f2a516';
+  ctx.beginPath();
+  for (let i = 0; i < 10; i += 1) {
+    const angle = (i / 10) * Math.PI * 2 - Math.PI / 2;
+    const reach = i % 2 ? 8 : 19;
+    ctx.lineTo(Math.cos(angle) * reach, Math.sin(angle) * reach);
+  }
+  ctx.closePath();
+  ctx.fill();
+  return canvas;
+}
+
+/** A power-up in a soft bubble: a magnet, honey, a big glove or a turbo swirl. */
+function drawBubble(ctx, kind, x, y, rx, ry, height) {
+  ctx.save();
+  ctx.translate(x, y);
+  const glow = ctx.createRadialGradient(0, 0, rx * 0.2, 0, 0, rx);
+  glow.addColorStop(0, 'rgb(255 255 255 / 0.85)');
+  glow.addColorStop(1, 'rgb(190 232 255 / 0.75)');
+  ctx.fillStyle = glow;
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = Math.max(2, height * 0.004);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  const r = Math.min(rx, ry) * 0.55;
+  ctx.lineWidth = Math.max(2, height * 0.0035);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  if (kind === 'magnet') {
+    ctx.strokeStyle = '#e8433f';
+    ctx.lineWidth = r * 0.45;
+    ctx.beginPath();
+    ctx.arc(0, -r * 0.05, r * 0.6, Math.PI, 0);
+    ctx.lineTo(r * 0.6, r * 0.6);
+    ctx.moveTo(-r * 0.6, -r * 0.05);
+    ctx.lineTo(-r * 0.6, r * 0.6);
+    ctx.stroke();
+    ctx.strokeStyle = '#d6dde6';
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.6, r * 0.45);
+    ctx.lineTo(-r * 0.6, r * 0.75);
+    ctx.moveTo(r * 0.6, r * 0.45);
+    ctx.lineTo(r * 0.6, r * 0.75);
+    ctx.stroke();
+  } else if (kind === 'honey') {
+    drawHoneyPot(ctx, 0, 0, r, height);
+  } else if (kind === 'glove') {
+    ctx.fillStyle = '#3ddc84';
+    ctx.strokeStyle = INK;
+    ctx.beginPath();
+    ctx.roundRect(-r * 0.55, -r * 0.1, r * 1.1, r * 0.85, r * 0.3);
+    ctx.fill();
+    ctx.stroke();
+    for (const dx of [-0.42, -0.14, 0.14, 0.42]) {
+      ctx.beginPath();
+      ctx.roundRect(r * dx - r * 0.12, -r * 0.8, r * 0.24, r * 0.8, r * 0.12);
+      ctx.fill();
+      ctx.stroke();
+    }
+  } else if (kind === 'turbo') {
+    ctx.strokeStyle = '#ff6fae';
+    ctx.lineWidth = r * 0.3;
+    ctx.beginPath();
+    for (let i = 0; i <= 40; i += 1) {
+      const angle = (i / 40) * Math.PI * 3.2;
+      const reach = r * (0.15 + (i / 40) * 0.75);
+      ctx.lineTo(Math.cos(angle) * reach, Math.sin(angle) * reach);
+    }
+    ctx.stroke();
+  }
+  ctx.fillStyle = 'rgb(255 255 255 / 0.8)';
+  ctx.beginPath();
+  ctx.ellipse(-rx * 0.45, -ry * 0.45, rx * 0.14, ry * 0.08, -0.7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawHoneyPot(ctx, x, y, r, height) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = Math.max(2, height * 0.0035);
+  ctx.fillStyle = '#f4a52a';
+  ctx.beginPath();
+  ctx.ellipse(0, r * 0.15, r * 0.75, r * 0.7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#c9843f';
+  ctx.beginPath();
+  ctx.roundRect(-r * 0.55, -r * 0.65, r * 1.1, r * 0.3, r * 0.1);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#ffd23f';
+  ctx.beginPath();
+  ctx.ellipse(-r * 0.15, -r * 0.3, r * 0.3, r * 0.14, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** A round, smiling bee, wings beating about twice a second, with its honey until it gives it. */
+function drawBee(ctx, bee, time, reduced, height) {
+  const r = bee.r ?? 30;
+  ctx.save();
+  ctx.translate(bee.x, bee.y);
+  ctx.scale(bee.way, 1);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = Math.max(2, height * 0.004);
+  const flap = 0.6 + 0.4 * Math.abs(Math.sin(time * Math.PI * 2 * (reduced ? 1 : 2)));
+  ctx.fillStyle = 'rgb(255 255 255 / 0.85)';
+  for (const dx of [-0.2, 0.25]) {
+    ctx.beginPath();
+    ctx.ellipse(r * dx, -r * 0.6, r * 0.32, r * 0.5 * flap, dx * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#ffd23f';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r * 0.7, r * 0.52, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = '#3a2a1a';
+  for (const dx of [-0.3, 0.05]) ctx.fillRect(r * dx, -r, r * 0.16, r * 2);
+  ctx.restore();
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r * 0.7, r * 0.52, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  // A smiling face at the front.
+  ctx.fillStyle = INK;
+  ctx.beginPath();
+  ctx.arc(r * 0.42, -r * 0.1, r * 0.07, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(r * 0.38, r * 0.08, r * 0.14, 0.2, Math.PI - 0.6);
+  ctx.stroke();
+  ctx.restore();
+  if (bee.honey) drawHoneyPot(ctx, bee.x, bee.y + r * 0.95, r * 0.45, height);
+}
+
+/**
+ * One name at a time, so they never pile up. The names of what's new at this level always get their
+ * turn, but an older one that's waited a while is let go, and so is one whose thing has gone.
+ */
+function stepLabels(labels, dt, fresh) {
+  labels.forEach((label, index) => {
+    if (index === 0) label.t += dt;
+    else label.wait = (label.wait ?? 0) + dt;
+  });
+  return labels.filter((label, index) => label.t < LABEL_SECONDS && (index === 0 || ((fresh.has(label.key) || label.wait < LABEL_WAIT) && label.at() !== null)));
+}
+
+/** A new thing's name in a little rounded box above it, fading in and out, with a soft ring. */
+function drawLabel(ctx, label, now, width, height, lasts) {
+  // Where its thing is, or was last, if it's just gone. The ring follows it, and the name stays
+  // where it first came, so nothing bright moves quickly.
+  const at = now ?? label.last;
+  if (!at) return;
+  label.last = { x: at.x, y: at.y };
+  label.home ??= { x: at.x, y: at.y };
+  const fade = Math.min(1, label.t / 0.4, (lasts - label.t) / 0.6);
+  if (fade <= 0) return;
+  const font = Math.round(height * 0.03);
+  ctx.save();
+  ctx.globalAlpha = fade;
+  ctx.strokeStyle = 'rgb(255 236 150 / 0.9)';
+  ctx.lineWidth = Math.max(3, height * 0.006);
+  ctx.beginPath();
+  ctx.arc(at.x, at.y, height * (0.075 + 0.01 * Math.min(1, label.t)), 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.font = `600 ${font}px Fredoka, system-ui, sans-serif`;
+  const text = `${label.mark} ${label.text}`;
+  const wide = ctx.measureText(text).width + font * 1.2;
+  const x = Math.min(width - wide / 2 - 8, Math.max(wide / 2 + 8, label.home.x));
+  // Above its thing, or below it near the top, where the camera's picture is.
+  const above = label.home.y - height * 0.12 - Math.min(1, label.t) * height * 0.01;
+  const y = above < height * 0.24 ? label.home.y + height * 0.12 : above;
+  ctx.fillStyle = '#fffaf0';
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = Math.max(2, height * 0.004);
+  ctx.beginPath();
+  ctx.roundRect(x - wide / 2, y - font * 0.85, wide, font * 1.7, font * 0.85);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = INK;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y + font * 0.05);
+  ctx.restore();
 }
