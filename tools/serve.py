@@ -1,4 +1,4 @@
-"""Serves the games at http://localhost:8642, to this computer only.
+"""Serves the games at http://localhost:8642, to this computer only, or another port with PORT=.
 
 Python's built-in `http.server` can't be used here. Its queue for waiting connections is so
 short that it drops some when a game asks for its dozens of voice files at once, which
@@ -8,7 +8,7 @@ import os
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-PORT = 8642
+PORT = int(os.environ.get("PORT", 8642))
 ROOT = Path(__file__).resolve().parent.parent
 
 

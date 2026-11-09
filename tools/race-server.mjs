@@ -1,5 +1,6 @@
 // The server for racing friends, on this computer, for the tests and for trying it out: the same rules as
-// the one on Cloudflare (server/race-room.js), at ws://localhost:8643/room/<CODE>. Nothing to install: it
+// the one on Cloudflare (server/race-room.js), at ws://localhost:8643/room/<CODE>, or the port after the games'
+// when they're on another, with RACE_PORT=. Nothing to install: it
 // speaks just enough of the WebSocket protocol for short text messages.
 //   node tools/race-server.mjs
 import { createHash, randomBytes } from 'node:crypto';
@@ -7,7 +8,8 @@ import { createServer } from 'node:http';
 import { idFor, RaceRoom, takeOver, validCode } from '../server/race-room.js';
 
 const PORT = Number(process.env.RACE_PORT ?? 8643);
-const ALLOWED_ORIGINS = ['http://localhost:8642', 'http://127.0.0.1:8642'];
+// The games' pages on this computer, on whichever port they're served from.
+const allowed = (origin) => /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin ?? '');
 const GAMES = ['sky-wings', 'balloon-pop']; // As on Cloudflare: High Five Racers' rooms are just the code.
 const MAGIC = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
@@ -70,7 +72,7 @@ server.on('upgrade', (request, socket) => {
   const game = rest.length === 2 ? rest[0] : '';
   const key = request.headers['sec-websocket-key'];
   const known = kind === 'room' && rest.length <= 2 && validCode(code) && (!game || GAMES.includes(game));
-  if (!known || !key || !ALLOWED_ORIGINS.includes(request.headers.origin)) {
+  if (!known || !key || !allowed(request.headers.origin)) {
     socket.end('HTTP/1.1 403 Forbidden\r\n\r\n');
     return;
   }

@@ -17,7 +17,7 @@ const raceOf = (page) => page.evaluate(() => {
 
 /** A second player, in a browser of their own, with the same checks for errors as the first. */
 async function secondPlayer(browser) {
-  const context = await browser.newContext({ baseURL: 'http://localhost:8642' });
+  const context = await browser.newContext({ baseURL: test.info().project.use.baseURL });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (error) => errors.push(`uncaught: ${error.message}`));
@@ -134,7 +134,7 @@ test('two friends race each other from their own computers, on the host\'s cours
   expect((await raceOf(page)).ownLevel).toBe(3);
   expect((await raceOf(friend.page)).ownLevel).toBe(1);
   // The only connection off the page was to the race server.
-  expect(sockets).toEqual([`ws://localhost:8643/room/${code}`]);
+  expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/${code}`]);
 
   // Racing again waits for both again.
   await page.locator('#play-again').click();
@@ -326,7 +326,7 @@ test('a race holds four, can be joined by its code or the copied link, comes bac
   const code = await makeRace(page, 'Ana');
   await page.locator('#friends-copy').click();
   await expect(page.locator('#friends-status')).toHaveText('Link copied. Send it to a friend.');
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`http://localhost:8642/games/high-five-racers/index.html#race=${code}`);
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${test.info().project.use.baseURL}/games/high-five-racers/index.html#race=${code}`);
 
   // One types the code, in small letters.
   const ben = await secondPlayer(browser);

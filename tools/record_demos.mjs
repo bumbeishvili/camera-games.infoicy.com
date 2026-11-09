@@ -13,7 +13,7 @@ import { join } from 'node:path';
 const ROOT = new URL('..', import.meta.url).pathname;
 const FFMPEG = readFileSync(join(homedir(), '.cache/explainer-video/ffmpeg-path'), 'utf8').trim();
 const OUT = join(ROOT, 'demos');
-const SITE = 'http://localhost:8642';
+const SITE = `http://localhost:${process.env.PORT ?? 8642}`;
 mkdirSync(OUT, { recursive: true });
 
 // Makes what the child is doing easy to see in a small picture, and tidies away what isn't needed.

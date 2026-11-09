@@ -20,7 +20,7 @@ const skyOf = (page) => page.evaluate(() => {
 
 /** Another player, in a browser of their own, with the same checks for errors. */
 async function secondPlayer(browser) {
-  const context = await browser.newContext({ baseURL: 'http://localhost:8642' });
+  const context = await browser.newContext({ baseURL: test.info().project.use.baseURL });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (error) => errors.push(`uncaught: ${error.message}`));
@@ -115,7 +115,7 @@ test('two friends fly together from their own computers, on the host\'s level, a
   // Flying with friends doesn't move anyone's own level on, and the only connection was to the race server.
   expect((await skyOf(page)).ownLevel).toBe(4);
   expect((await skyOf(ben.page)).ownLevel).toBe(1);
-  expect(sockets).toEqual([`ws://localhost:8643/room/sky-wings/${code}`]);
+  expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/sky-wings/${code}`]);
 
   // Flying again waits for both again.
   await page.locator('#fly-again').click();

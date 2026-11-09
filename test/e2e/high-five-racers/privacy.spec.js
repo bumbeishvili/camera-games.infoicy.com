@@ -43,6 +43,6 @@ test('the game makes no requests off this computer, and the page refuses to', as
   // cleared here rather than failing it.
   // The only other place it may connect to is the race server for racing friends, which it only does when
   // a grown-up makes or joins a race.
-  await expect.poll(() => pageErrors.join('\n')).toContain("violates the following Content Security Policy directive: \"connect-src 'self' wss://hemi-race.infoicy.com ws://localhost:8643\"");
+  await expect.poll(() => pageErrors.join('\n')).toContain("violates the following Content Security Policy directive: \"connect-src 'self' wss://hemi-race.infoicy.com ws://localhost:*\"");
   pageErrors.length = 0;
 });

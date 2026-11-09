@@ -28,7 +28,7 @@ const balloonsOf = (page) => page.evaluate(() => {
 
 /** Another player, in a browser of their own, with the same checks for errors. */
 async function secondPlayer(browser) {
-  const context = await browser.newContext({ baseURL: 'http://localhost:8642' });
+  const context = await browser.newContext({ baseURL: test.info().project.use.baseURL });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (error) => errors.push(`uncaught: ${error.message}`));
@@ -153,7 +153,7 @@ test('two friends play with the same balloons, and whoever\'s hand gets to one f
   // Nobody's own level moves on, nobody's settings change, and the only connection was to the race server.
   expect((await popOf(page)).ownLevel).toBe(2);
   expect(await ben.page.evaluate(() => window.__game.session.settings.maths)).toBe('times');
-  expect(sockets).toEqual([`ws://localhost:8643/room/balloon-pop/${code}`]);
+  expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/balloon-pop/${code}`]);
   expect(ben.errors).toEqual([]);
   await ben.context.close();
 });

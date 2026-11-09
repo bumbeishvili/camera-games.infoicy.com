@@ -5,9 +5,10 @@
 // joins one. How it looks is in friends-ui.js.
 import { makeCode, validCode } from '../server/race-room.js';
 
-// The server: the one on Cloudflare, or tools/race-server.mjs when the games are on this computer.
+// The server: the one on Cloudflare, or tools/race-server.mjs when the games are on this computer, on the port
+// after theirs: 8643 for the usual 8642.
 const LOCAL = ['localhost', '127.0.0.1'].includes(globalThis.location?.hostname);
-export const RACE_SERVER = LOCAL ? 'ws://localhost:8643' : 'wss://hemi-race.infoicy.com';
+export const RACE_SERVER = LOCAL ? `ws://localhost:${Number(globalThis.location.port || 8642) + 1}` : 'wss://hemi-race.infoicy.com';
 const SEND_EVERY_MS = 100; // Where the car or plane is, 10 times a second.
 // A connection can die without closing, as when the wifi drops, and then nothing more comes. Asking every so
 // often, and hearing nothing back for a while, is how that's noticed: quickly in a race, slowly otherwise.
