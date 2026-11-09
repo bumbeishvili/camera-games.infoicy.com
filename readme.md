@@ -1,6 +1,6 @@
 # Camera Games
 
-Games for children with hemiplegia, played by moving in front of a webcam. Most practise opening the hand.
+Movement-based games for children, played in front of a webcam.
 
 | | |
 |---|---|
