@@ -1,6 +1,6 @@
 // Every game gets harder level by level, from level 1 up to level 10. Winning a level moves on to the
 // next one. A game that's lost stays on the same level: Sky Wings and Mighty Moves can be lost, and so
-// can Robot Rescue, Tank Patrol and Cannon Bay on Medium or Tough, but never on Gentle. A
+// can Robot Rescue, Tank Patrol, Cannon Bay and Bounce Back on Medium or Tough, but never on Gentle. A
 // grown-up can choose any level under the gear icon. Which level each game is on is kept in the browser
 // with the grown-ups' settings, and nothing else about play is.
 //
