@@ -18,19 +18,24 @@
 //   hand   { ms, x, y, v, o, p }           where their glove is in Balloon Pop, from 0 to 1 across and down
 //                                      the screen, whether it can be seen and is open, and p, its 21
 //                                      points from the middle of the palm, as x, y, x, y..., in palms
+//   world  { ms, b, q, qa }                the host's balloons in Balloon Pop, which everyone plays with:
+//                                      each [id, x, y, r, colour, number, flags], and the sum being asked
+//   claim  { k }                           this player's hand got to balloon k: the first to says so has it
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
 // The room sends:
 //   room   { you, members: [{ id, name, driver, ready, racing, host }] }   whenever that changes
 //   go     { level, length, laps, mode, racers }   the countdown starts now, on the host's course (laps is length)
-//   car, plane, score { from, ... } and done { from, ms, n, w }   passed on from the others
+//   car, plane, score, hand, world { from, ... } and done { from, ms, n, w }   passed on from the others
+//   claimed { k, by }                      balloon k went to player by, sent to everyone, them too
 //   full   {}                              there are already MAX_RACERS in the room
 
 export const MAX_RACERS = 4;
 export const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // No 0, O, 1, I or L, which look alike.
 export const CODE_LENGTH = 6;
-export const MOST_BYTES = 600; // A message bigger than this is ignored.
+export const MOST_BYTES = 1800; // A message bigger than this is ignored. The host's balloons are the biggest.
+const MOST_BALLOONS = 24;
 const MOST_A_SECOND = 40; // Messages a player can send in a second; more are dropped.
 const COMES_BACK_WITHIN_MS = 15_000; // A player who goes and comes back as soon as this carries on as before.
 
@@ -113,6 +118,22 @@ export function cleanHand(message) {
   };
 }
 
+/** Only what the host's balloons should hold, rounded: each is [id, x, y, r, colour, number, flags]. */
+export function cleanWorld(message) {
+  const balloons = Array.isArray(message.b) ? message.b.slice(0, MOST_BALLOONS) : [];
+  const b = balloons.filter((each) => Array.isArray(each) && each.length === 7).map(([id, x, y, r, colour, shown, flags]) => [
+    number(id, 0, 1_000_000, 0),
+    number(x, -0.5, 1.5, 3),
+    number(y, -1, 2, 3),
+    number(r, 0, 0.5, 3),
+    number(colour, 0, 20, 0),
+    number(shown, -1, 1000, 0),
+    number(flags, 0, 7, 0),
+  ]);
+  const q = typeof message.q === 'string' ? message.q.replace(/[^0-9+\-−×÷=? ]/g, '').slice(0, 24) : '';
+  return { ms: number(message.ms, 0, 3_600_000, 0), b, q, qa: message.qa ? 1 : 0 };
+}
+
 /** Only what a car message should hold, rounded, so nothing else can be passed on. */
 export function cleanCar(message) {
   return {
@@ -144,6 +165,7 @@ export class RaceRoom {
     this.now = now;
     this.counts = new Map(); // id: { second, count }, to drop a flood of messages. Fine to lose.
     this.recent = new Map(); // id: { meta, at }, for those who have just gone: see cameBack. Fine to lose too.
+    this.claims = new Map(); // Balloon Pop: which balloon went to whom, this game. Cleared as each one starts.
   }
 
   /** What was kept about a player who went a moment ago and is back with their id, or null. */
@@ -212,6 +234,19 @@ export class RaceRoom {
       case 'score':
         for (const other of others) other.send({ t: 'score', from: meta.id, ms: number(message.ms, 0, 3_600_000, 0), n: number(message.n, 0, 1000, 0) });
         break;
+      case 'world':
+        // Only the host's balloons are everyone's.
+        if (hostOf(players) !== player) return;
+        for (const other of others) other.send({ t: 'world', from: meta.id, ...cleanWorld(message) });
+        break;
+      case 'claim': {
+        // The first hand to get there has it, and everyone is told who that was.
+        const k = number(message.k, 0, 1_000_000, 0);
+        if (!meta.racing || this.claims.has(k)) return;
+        this.claims.set(k, meta.id);
+        for (const each of players) each.send({ t: 'claimed', k, by: meta.id });
+        break;
+      }
       case 'car':
       case 'plane':
       case 'hand': {
@@ -257,6 +292,7 @@ export class RaceRoom {
     const racers = players.filter((each) => each.meta.ready).sort(byJoining);
     if (!host || !racers.length) return;
     for (const racer of racers) racer.setMeta({ ...racer.meta, ready: false, racing: true });
+    this.claims.clear();
     const { level, length, mode } = host.meta;
     const go = { t: 'go', level, length, laps: length, mode, racers: racers.map((each) => each.meta.id) };
     for (const player of players) player.send(go);

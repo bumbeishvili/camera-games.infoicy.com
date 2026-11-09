@@ -345,6 +345,10 @@ export class BalloonField {
     this.numbered = false; // Whether balloons wait with answers on them, rather than floating by.
     this.rightNumber = null;
     this.wrong = { left: 0, right: 0 };
+    // Playing with friends, everyone plays with the same balloons: see setShared.
+    this.shared = null;
+    this.nextId = 1;
+    this.gone = new Set();
     this.aspect = 16 / 9;
     this.time = 0;
     this.spawnTimer = 0;
@@ -429,6 +433,73 @@ export class BalloonField {
     this.spawnTimer = 0;
     this.numbered = false;
     this.rightNumber = null;
+    this.nextId = 1;
+    this.gone = new Set();
+  }
+
+  /**
+   * Playing with friends, everyone plays with the same balloons, and the same sums. The host's game runs
+   * them, and sends where they are to the others' games, which show them. Anyone can pop any of them, and
+   * whoever's hand gets there first has it: a balloon touched here goes at once, and shared.claim(balloon,
+   * side, right) asks the server whose it is. shared is { host, claim, world() }, where world() is where the
+   * host's balloons are now, for a game that isn't the host's, or null to play alone again.
+   */
+  setShared(shared) {
+    this.shared = shared;
+    this.gone = new Set();
+    if (!shared) return;
+    // Plain balloons, and the sums, for everyone: what the levels add would be one child's and not another's.
+    this.plan = { ...this.plan, pairs: 0, big: 0, rainbow: 0, stars: 0, presents: 0, powers: [], powerEvery: 0, baskets: 0, prizes: [] };
+  }
+
+  /** A balloon that went to someone, here or on a friend's computer, pops here too, if it's still here. */
+  removeShared(id, { burst = true } = {}) {
+    this.gone.add(id);
+    const balloon = this.balloons.find((each) => each.id === id);
+    if (!balloon) return null;
+    this.balloons = this.balloons.filter((each) => each !== balloon);
+    if (burst) this.burst(balloon);
+    return balloon;
+  }
+
+  /** A balloon that went to the child counts. */
+  score(side) {
+    this.popped[side] += 1;
+    this.events.onPop?.(this.total);
+  }
+
+  /** On a friend's game, the host's balloons where they are now, and the sum, if one is being asked. */
+  syncWorld() {
+    const world = this.shared.world();
+    if (!world) return;
+    const known = new Map(this.balloons.map((balloon) => [balloon.id, balloon]));
+    let right = null;
+    let numbered = false;
+    this.balloons = world.b.filter(([id]) => !this.gone.has(id)).map(([id, x, y, r, colour, shown, flags]) => {
+      const balloon = known.get(id) ?? this.sharedBalloon(id);
+      balloon.x = x * this.width;
+      balloon.homeX = balloon.x;
+      balloon.y = y * this.height;
+      balloon.r = r * this.height;
+      balloon.sprite = colour % this.sprites.length;
+      balloon.leaving = Boolean(flags & 2);
+      if (shown >= 0) {
+        numbered = true;
+        balloon.number = shown;
+        balloon.arrived = Boolean(flags & 1);
+        if (flags & 4) right = shown;
+      } else {
+        delete balloon.number;
+      }
+      return balloon;
+    });
+    this.numbered = numbered;
+    this.rightNumber = right;
+  }
+
+  /** One of the host's balloons, as this game keeps it: where it is comes from the host each frame. */
+  sharedBalloon(id) {
+    return { id, homeX: 0, x: 0, y: 0, still: true, r: this.balloonSize, sprite: 0, pace: 0, phase: 0, swayRate: 0, sway: 0, drift: 0, push: 0, pushSpeed: 0, bumpedAt: -Infinity, star: false, choosing: 0, tie: null, kind: null, power: null, born: this.time, ready: false, arrived: false };
   }
 
   get prizeTotal() {
@@ -437,9 +508,10 @@ export class BalloonField {
 
   /** Where balloons with answers wait, within reach of the hand, staggered so they don't touch. */
   numberSpots(count) {
-    const [low, high] = { left: [0.1, 0.66], right: [0.34, 0.9] }[this.side];
+    // With friends, right across, as each may be playing with a different hand.
+    const [low, high] = this.shared ? [0.12, 0.88] : { left: [0.1, 0.66], right: [0.34, 0.9] }[this.side];
     // For a child whose reach is limited, they're closer together.
-    const tighten = { none: 0, little: 0.02, lots: 0.05 }[this.reachName];
+    const tighten = this.shared ? 0 : { none: 0, little: 0.02, lots: 0.05 }[this.reachName];
     const from = low + tighten;
     const to = high - tighten;
     return Array.from({ length: count }, (_, index) => ({
@@ -712,6 +784,7 @@ export class BalloonField {
   addBalloon({ x, y, still = false, star = false, kind = null, power = null }) {
     const wanderer = !kind && Math.random() < this.plan.wanderers;
     const balloon = {
+      id: this.nextId++,
       homeX: x,
       x,
       y,
@@ -750,7 +823,8 @@ export class BalloonField {
   /** Balloons come up across the hand's own side and a little past the middle. */
   spawn() {
     const { width, height } = this;
-    const range = { left: [0.1, 0.66], right: [0.34, 0.9] }[this.side];
+    // With friends, right across, as each may be playing with a different hand.
+    const range = this.shared ? [0.1, 0.9] : { left: [0.1, 0.66], right: [0.34, 0.9] }[this.side];
     // A few tries for a clear patch of sky, so balloons don't start on top of each other.
     let x = 0;
     for (let tries = 0; tries < 5; tries += 1) {
@@ -858,7 +932,10 @@ export class BalloonField {
     }
 
     const { pace, plan } = this;
-    if (spawning && !this.numbered) {
+    // On a friend's game the balloons are the host's, where the host's game says they are.
+    const following = Boolean(this.shared && !this.shared.host);
+    if (following) this.syncWorld();
+    if (spawning && !this.numbered && !following) {
       // Power-ups and friends in baskets come along every so often, from their levels.
       if (popping && plan.powerEvery && !this.power && !this.owed.power && !this.balloons.some(({ kind }) => kind === 'power')) {
         this.powerTimer -= dt;
@@ -904,7 +981,7 @@ export class BalloonField {
         continue;
       }
       balloon.popNow = null;
-      this.moveBalloon(balloon, dt, pace);
+      if (!following) this.moveBalloon(balloon, dt, pace);
       if (popping && balloon.intro && balloon.y < this.height - balloon.r * 1.5) {
         if (this.introduce(balloon.intro, balloon) || this.introduced.has(balloon.intro)) balloon.intro = null;
       }
@@ -1221,7 +1298,8 @@ export class BalloonField {
   pullTowardsHand(balloon, dt) {
     const { height } = this;
     const pull = { x: 0, y: 0 };
-    if (balloon.still) return pull;
+    // With friends, no balloon drifts towards one child's hand, as that would be theirs before anyone's.
+    if (balloon.still || this.shared) return pull;
     const towards = (glove, speed, nearest, furthest) => {
       const dx = glove.x - balloon.x;
       const dy = glove.y - balloon.y;
@@ -1263,8 +1341,16 @@ export class BalloonField {
     }
     balloon.choosing += dt;
     if (balloon.choosing < CHOOSE_SECONDS) return false;
-    if (balloon.number === this.rightNumber) this.pop(balloon, glove.side);
-    else this.burn(balloon, glove);
+    if (balloon.number === this.rightNumber) {
+      this.pop(balloon, glove.side);
+    } else {
+      this.burn(balloon, glove);
+      // With friends, it's gone for everyone, though only this glove is burnt.
+      if (this.shared) {
+        this.gone.add(balloon.id);
+        this.shared.claim(balloon, glove.side, false);
+      }
+    }
     return true;
   }
 
@@ -1288,6 +1374,8 @@ export class BalloonField {
     let held = false;
     // The bubble round the glove reaches a little further.
     const extra = this.power?.kind === 'bubble' ? this.palmSize * BUBBLE_REACH : 0;
+    // A balloon this game has already let go of, while the host's still has it, can't be popped again.
+    if (this.shared && this.gone.has(balloon.id)) return true;
     for (const glove of Object.values(this.gloves)) {
       if (!glove.visible || glove.reachTo(balloon.x, balloon.y, this.palmSize) > balloon.r + extra) continue;
       if (glove.status === 'open' && balloon.kind === 'power') {
@@ -1324,6 +1412,13 @@ export class BalloonField {
   }
 
   pop(balloon, side) {
+    // With friends, it goes at once, and the server says whose it is: see score().
+    if (this.shared) {
+      this.gone.add(balloon.id);
+      this.burst(balloon);
+      this.shared.claim(balloon, side, true);
+      return;
+    }
     this.popped[side] += 1;
     // Its partner floats on by itself. Popping both drops a gem.
     if (balloon.tie) {
@@ -1344,6 +1439,12 @@ export class BalloonField {
     }
     if (balloon.kind === 'rainbow') this.spreadPop(balloon, side);
     if (balloon.kind === 'big') this.split(balloon);
+    this.burst(balloon);
+    this.events.onPop?.(this.total);
+  }
+
+  /** A balloon's pop: bits of it flying off, and a ring. */
+  burst(balloon) {
     const colour = balloon.kind === 'rainbow' ? RAINBOW[Math.floor(Math.random() * RAINBOW.length)] : COLOURS[balloon.sprite];
     const count = this.reducedMotion ? 7 : 15;
     for (let i = 0; i < count; i += 1) {
@@ -1362,7 +1463,6 @@ export class BalloonField {
       });
     }
     this.rings.push({ x: balloon.x, y: balloon.y, r: balloon.r * 0.7, life: 0.32, colour });
-    this.events.onPop?.(this.total);
   }
 
   /** A rainbow balloon's pop spreads to the balloons round it, one after another, nearest first. */

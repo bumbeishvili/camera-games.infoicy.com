@@ -10,6 +10,7 @@ import { Sound } from '../../core/sound.js';
 import { BalloonField } from './balloons.js';
 import { MathsDeck } from './maths.js';
 import { balloonNewAt, MOST_ANSWERS } from './rules.js';
+import { WorldTrack } from './world-track.js';
 
 const POP_HINT_SECONDS = 6;
 const DEMO_MATHS_SECONDS = 14;
@@ -47,7 +48,7 @@ const POP_WORDS = {
   codeName: 'Game code',
   how: 'Send the link to a friend. Then you both press <b>Let’s pop!</b>',
   leave: 'Leave this game',
-  privacy: 'Only your name, who you play as and how many you pop go to your friends. The camera picture stays on this computer.',
+  privacy: 'Only your name, who you play as, where your glove is and what it pops go to your friends. The camera picture stays on this computer.',
   alone: 'Play on your own',
   full: 'That game already has 4 players.',
   lost: 'Can’t reach the game. Check the internet, then try again.',
@@ -61,6 +62,7 @@ const POP_WORDS = {
 const HAND_TRACK = { lerp: ['x', 'y'], lists: ['p'], steps: ['v', 'o'] };
 const GLOVE_FADE_RATE = 8; // How quickly a friend's glove fades in and out, as their hand comes and goes.
 const round2 = (value) => Math.round(value * 100) / 100;
+const round3 = (value) => Math.round(value * 1000) / 1000;
 const clock = (seconds) => {
   const whole = Math.max(0, Math.ceil(seconds));
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
@@ -85,13 +87,19 @@ class BalloonGame {
     this.friendsGloves = []; // Each friend's glove, as { id, glove, track, name, fade }: see showFriendsGloves.
     this.sentScore = null;
     this.goAt = 0;
+    // Playing with friends, everyone plays with the host's balloons: see prepare() and claimed().
+    this.shared = null;
+    this.worldTrack = null; // The host's balloons, on a friend's game.
+    this.myClaims = new Map(); // Balloons this child's hand got to, by id, waiting to hear whose they are.
+    this.mathsOn = false;
     const { settings, sound } = session;
     this.field = new BalloonField(byId('game'), {
       onPop: (total) => {
         // Never quite the same twice, as real balloons aren't.
         sound.play('pop', { gain: 0.55, rate: 0.88 + Math.random() * 0.32 });
-        // Only an answer to a question that's showing counts as one.
-        if (this.deck && this.question) this.rightAnswer(total);
+        // Only an answer to a question that's showing counts as one. With friends, the sum moves on once
+        // anyone has the right answer: see claimed().
+        if (this.deck && this.question && !this.shared) this.rightAnswer(total);
         else if (total % PRAISE_EVERY === 0 && total < this.field.goal) {
           sound.say(PRAISE[this.praiseIndex++ % PRAISE.length], { ifQuiet: true });
         }
@@ -134,9 +142,14 @@ class BalloonGame {
       portraits: () => session.portraits,
       onMove: (id, message) => {
         if (message.t === 'hand') this.friendsGloves.find((each) => each.id === id)?.track.push(message, performance.now());
+        else if (message.t === 'world') this.worldTrack?.push(message, performance.now());
+        else if (message.t === 'claimed') this.claimed(message);
         else this.friendScore(id, message);
       },
       onGone: (friend) => {
+        // Without the host there are no more balloons, so the game is over for everyone else.
+        const { current } = this.friends;
+        if (current && friend.id === current.host && !current.hosting && this.session.screen === 'playing') this.session.finish();
         this.scores.delete(friend.id);
         this.friendsGloves = this.friendsGloves.filter((each) => each.id !== friend.id);
         this.field.friendsGloves = this.friendsGloves;
@@ -144,7 +157,7 @@ class BalloonGame {
       },
       // Whoever has the most, and equal scores share a place.
       rank: (a, b) => b.dropped - a.dropped,
-      resultText: ({ dropped }) => `${dropped} ${this.deck ? 'right' : 'popped'}`,
+      resultText: ({ dropped }) => `${dropped} ${this.mathsOn ? 'right' : 'popped'}`,
       titles: { first: 'You popped the most!', other: 'Great popping!' },
       startAfter: byId('start'),
       waitingBefore: byId('screen-finish'),
@@ -176,8 +189,11 @@ class BalloonGame {
     const { balloons } = this.session.settings;
     const maths = this.friendsMaths ?? this.session.settings.maths;
     const on = maths !== 'off';
-    // Higher levels have more answers to choose from: see rules.js.
-    this.deck = on ? new MathsDeck(maths, Math.random, { extra: this.field.plan.answers, most: MOST_ANSWERS }) : null;
+    this.mathsOn = on;
+    // Higher levels have more answers to choose from: see rules.js. With friends, only the host asks the sums,
+    // and everyone sees them.
+    const asking = on && !(this.shared && !this.shared.host);
+    this.deck = asking ? new MathsDeck(maths, Math.random, { extra: this.field.plan.answers, most: MOST_ANSWERS }) : null;
     this.question = null;
     this.field.configure({ goal: this.timed ? Infinity : on ? Math.round(balloons * MATHS_GOAL_SHARE) : balloons });
     this.field.numbered = on;
@@ -211,6 +227,7 @@ class BalloonGame {
     const shown = byId('maths-question');
     shown.textContent = `${question.shown} = ${question.answer} ✓`;
     shown.classList.add('is-right');
+    this.answered = `${question.shown} = ${question.answer}`;
     this.question = null;
     field.clearNumbers();
     if (total >= field.goal) return;
@@ -237,7 +254,7 @@ class BalloonGame {
   /** The little film of what to do, which shows until it's clear the child has it. */
   showDemo() {
     const { session, field } = this;
-    const wanted = field.total === 0 && session.playSeconds < (this.deck ? DEMO_MATHS_SECONDS : POP_HINT_SECONDS);
+    const wanted = field.total === 0 && session.playSeconds < (this.mathsOn ? DEMO_MATHS_SECONDS : POP_HINT_SECONDS);
     if (wanted !== this.demoShown) {
       this.demoShown = wanted;
       document.body.dataset.popDemo = wanted ? 'on' : 'off';
@@ -352,6 +369,11 @@ class BalloonGame {
     const seconds = friendly ? FRIENDS_SECONDS[friendly.length] ?? FRIENDS_SECONDS[20] : 0;
     this.timed = friendly ? { seconds, left: seconds } : null;
     this.friendsMaths = friendly ? (MATHS_KINDS.includes(friendly.mode) ? friendly.mode : 'off') : null;
+    // Everyone plays with the host's balloons. The host's game runs them, and the others' follow it.
+    this.shared = friendly ? { host: friendly.hosting } : null;
+    this.worldTrack = friendly && !friendly.hosting ? new WorldTrack() : null;
+    this.myClaims = new Map();
+    this.answered = '';
     this.scores = new Map();
     this.sentScore = null;
     // Each friend's glove, in grey, where their hand is on their own screen.
@@ -360,11 +382,16 @@ class BalloonGame {
     byId('chip-time-box').hidden = !friendly;
     this.field.setLevel(friendly?.level ?? level);
     this.field.reset({ goal: friendly ? Infinity : balloons, pace, reach, side: hands });
+    this.field.setShared(friendly ? {
+      host: friendly.hosting,
+      claim: (balloon, side, right) => this.claimBalloon(balloon, side, right),
+      world: () => this.worldTrack?.at(performance.now()) ?? null,
+    } : null);
     this.bump = null;
     this.saidHint = false;
     this.burns = 0;
     this.setUpMaths();
-    this.friends.titles = this.deck ? { first: 'You got the most right!', other: 'Great sums!' } : { first: 'You popped the most!', other: 'Great popping!' };
+    this.friends.titles = this.mathsOn ? { first: 'You got the most right!', other: 'Great sums!' } : { first: 'You popped the most!', other: 'Great popping!' };
     this.showProgress();
     // Prizes only come from level 2, so there's no tally before then.
     document.body.dataset.prizes = this.field.plan.prizes.length ? 'on' : 'off';
@@ -393,10 +420,57 @@ class BalloonGame {
       this.friends.sendScore(field.total, this.sinceGo);
     }
     this.friends.sendMove('hand', this.handState(), this.sinceGo);
+    if (this.shared?.host) this.friends.sendMove('world', this.worldState(), this.sinceGo);
+    else this.showHostsSum();
     this.showFriendsGloves(dt);
     timed.left = Math.max(0, timed.left - dt);
     this.showProgress();
     if (timed.left === 0) this.session.finish();
+  }
+
+  /**
+   * The child's hand got to a balloon, and it's gone here at once. The server says whose it is: the first
+   * hand to get there, here or on a friend's computer. right is whether it was the right answer, or a balloon
+   * with no sum on it.
+   */
+  claimBalloon(balloon, side, right) {
+    this.myClaims.set(balloon.id, { side, right, number: balloon.number });
+    this.friends.claim(balloon.id);
+  }
+
+  /** A balloon went to someone. It pops here too, it counts if it was this child's, and a right answer moves the sum on. */
+  claimed({ k, by }) {
+    if (!this.shared) return;
+    const mine = by === this.friends.room.you ? this.myClaims.get(k) : null;
+    const balloon = this.field.removeShared(k, { burst: !mine });
+    if (mine?.right) this.field.score(mine.side);
+    const number = this.myClaims.get(k)?.number ?? balloon?.number;
+    if (this.shared.host && this.deck && this.question && number === this.question.answer) this.rightAnswer(this.field.total);
+  }
+
+  /** The host's balloons, for friends' games: each [id, x, y, r, colour, number, flags], and the sum. */
+  worldState() {
+    const { field, question } = this;
+    const { width, height } = field;
+    const b = field.balloons
+      .filter((balloon) => !field.gone.has(balloon.id) && balloon.y > -balloon.r * 3 && !balloon.basket)
+      .slice(0, 24)
+      .map((balloon) => {
+        const right = balloon.number !== undefined && balloon.number === field.rightNumber;
+        const flags = (balloon.arrived ? 1 : 0) | (balloon.leaving ? 2 : 0) | (right ? 4 : 0);
+        return [balloon.id, round3(balloon.x / width), round3(balloon.y / height), round3(balloon.r / height), balloon.sprite, balloon.number ?? -1, flags];
+      });
+    return { b, q: question ? `${question.shown} = ?` : this.answered, qa: question ? 0 : 1 };
+  }
+
+  /** On a friend's game, the host's sum, as the host's game asks it. */
+  showHostsSum() {
+    const latest = this.worldTrack?.latest;
+    if (!this.mathsOn || !latest) return;
+    const shown = byId('maths-question');
+    const text = latest.q ? `${latest.q}${latest.qa ? ' ✓' : ''}` : '';
+    if (shown.textContent !== text) shown.textContent = text;
+    shown.classList.toggle('is-right', Boolean(latest.qa && latest.q));
   }
 
   /** Where the child's glove is, for friends' games: across and down the screen, and its points in palms. */
@@ -460,8 +534,11 @@ class BalloonGame {
   finished() {
     this.field.endPlay();
     if (this.timed) this.friends.finished(this.sinceGo, { n: this.field.total, w: 1 });
-    // Friends' gloves go with the end of the game, rather than staying where they last were.
+    // Friends' gloves go with the end of the game, rather than staying where they last were, and the
+    // balloons behind the finish card are this game's own again.
     for (const each of this.friendsGloves) each.glove.visible = false;
+    this.shared = null;
+    this.field.setShared(null);
   }
 
   prompt(snapshot, dt) {
@@ -479,7 +556,7 @@ class BalloonGame {
       const { side } = this.bump;
       return { key: `bump-${side}`, text: OPEN_TO_POP[side], side };
     }
-    if (!this.deck && session.playSeconds < POP_HINT_SECONDS) {
+    if (!this.mathsOn && session.playSeconds < POP_HINT_SECONDS) {
       return { key: 'pop-hint', text: POP_HINT, side: null };
     }
     return null;

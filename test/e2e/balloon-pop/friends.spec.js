@@ -1,6 +1,7 @@
-// Playing Balloon Pop with friends: two children, each on their own computer with their own camera, play for
-// the same time, and whoever pops the most, or gets the most sums right, comes first. Here they're two
-// separate browsers, talking through the race server on this computer (tools/race-server.mjs).
+// Playing Balloon Pop with friends: two children, each on their own computer with their own camera, play one
+// game together. The host's game runs the balloons and the sums, and everyone sees the same ones: whoever's
+// hand gets to a balloon first has it, and it's gone for everyone. Here they're two separate browsers,
+// talking through the race server on this computer (tools/race-server.mjs).
 import { expect, openGame, show, test, waitForScreen } from '../helpers.js';
 
 const GAME = 'balloon-pop';
@@ -9,12 +10,20 @@ const popOf = (page) => page.evaluate(() => {
   const { game, balloons, deck } = window.__game;
   return {
     timed: game.timed ? { ...game.timed } : null,
-    level: balloons.level ?? null,
     total: balloons.total,
-    maths: deck ? deck.kind ?? 'on' : 'off',
+    asking: Boolean(deck),
+    mathsOn: game.mathsOn,
+    host: game.shared?.host ?? null,
+    ids: balloons.balloons.map(({ id }) => id),
     ownLevel: window.__game.session.levels.current,
-    scores: [...document.querySelectorAll('#pop-scores li')].map((row) => row.textContent.replace(/\s+/g, ' ').trim()),
+    question: document.querySelector('#maths-question').textContent,
   };
+});
+
+/** Where each balloon is, by id, across and down the screen. */
+const balloonsOf = (page) => page.evaluate(() => {
+  const { balloons } = window.__game;
+  return Object.fromEntries(balloons.balloons.map(({ id, x, y, number }) => [id, { x: x / balloons.width, y: y / balloons.height, number }]));
 });
 
 /** Another player, in a browser of their own, with the same checks for errors. */
@@ -29,25 +38,6 @@ async function secondPlayer(browser) {
   return { context, page, errors };
 }
 
-/**
- * Puts a balloon that doesn't move right where the hand's glove is, and waits for it to pop. The hand is out
- * of view the rest of the time, so that balloons drifting into it don't pop too, and each score is exact.
- */
-async function popOne(page) {
-  const before = (await popOf(page)).total;
-  await show(page, null, 'open');
-  await expect.poll(() => page.evaluate(() => window.__game.balloons.gloves.right.visible)).toBe(true);
-  await page.evaluate(() => {
-    const { balloons } = window.__game;
-    const glove = balloons.gloves.right;
-    balloons.spawnAt(glove.x, glove.y, { still: true });
-  });
-  // Reach help draws balloons near an open hand to it, so more than one can pop.
-  await expect.poll(async () => (await popOf(page)).total, { timeout: 15_000 }).toBeGreaterThan(before);
-  await show(page, null, null);
-  await expect.poll(() => page.evaluate(() => window.__game.balloons.gloves.right.visible)).toBe(false);
-}
-
 /** A grown-up makes a game, and gets its code. */
 async function makeGame(page, name) {
   await page.locator('#friends-toggle').click();
@@ -57,7 +47,7 @@ async function makeGame(page, name) {
   return page.locator('#friends-code-shown').textContent();
 }
 
-/** Both get through the hand check and wait for each other, and then both play. */
+/** Both get through the hand check and wait for each other, and then both play, hands out of view. */
 async function bothPlaying(page, other) {
   for (const each of [page, other]) {
     await show(each, null, 'open');
@@ -65,17 +55,23 @@ async function bothPlaying(page, other) {
   }
   await waitForScreen(page, 'playing');
   await waitForScreen(other, 'playing');
-  // Hands out of view, and anything a balloon drifting into a hand popped before then not counted.
   for (const each of [page, other]) {
     await show(each, null, null);
     await expect.poll(() => each.evaluate(() => window.__game.balloons.gloves.right.visible)).toBe(false);
-    await each.evaluate(() => {
-      const { popped } = window.__game.balloons;
-      popped.left = 0;
-      popped.right = 0;
-    });
   }
 }
+
+const gloveAt = (page) => page.evaluate(() => {
+  const { balloons } = window.__game;
+  const glove = balloons.gloves.right;
+  return glove.visible ? { x: glove.x / balloons.width, y: glove.y / balloons.height } : null;
+});
+
+/** On the host's game, a balloon that stays still, there, across and down the screen. Returns its id. */
+const balloonOnHost = (host, { x, y }) => host.evaluate(([across, down]) => {
+  const { balloons } = window.__game;
+  return balloons.spawnAt(across * balloons.width, down * balloons.height, { still: true }).id;
+}, [x, y]);
 
 /** The time runs out, for both. */
 async function timeUp(page, other) {
@@ -88,14 +84,13 @@ async function timeUp(page, other) {
   await waitForScreen(other, 'finish');
 }
 
-test('two friends pop balloons for the same time, see each other\'s scores, and whoever pops the most comes first', async ({ page, browser }) => {
+test('two friends play with the same balloons, and whoever\'s hand gets to one first has it, and it\'s gone for both', async ({ page, browser }) => {
   test.setTimeout(300_000);
   const sockets = [];
   page.on('websocket', (socket) => sockets.push(socket.url()));
   await openGame(page, { balloons: 20, maths: 'off', levels: { 'balloon-pop': 2 } }, GAME);
   const code = await makeGame(page, 'Ana');
   expect(page.url()).toContain(`#pop=${code}`);
-  await expect(page.locator('#friends-toggle')).toHaveText('Play with a friend');
 
   // The friend has 60 balloons and times tables of their own, but plays the host's game.
   const ben = await secondPlayer(browser);
@@ -103,72 +98,56 @@ test('two friends pop balloons for the same time, see each other\'s scores, and 
   // Typed straight away, as the link is opened, even before the connection is up.
   await ben.page.locator('#friends-name').fill('Ben');
   await ben.page.locator('#friends-name').dispatchEvent('change');
-  for (const each of [page, ben.page]) await expect(each.locator('#friends-here li')).toHaveCount(2);
   await expect(page.locator('#friends-here')).toContainText('Ben');
 
   await bothPlaying(page, ben.page);
   const ana = await popOf(page);
   const his = await popOf(ben.page);
+  expect([ana.host, his.host]).toEqual([true, false]);
   expect([ana.timed.seconds, his.timed.seconds]).toEqual([60, 60]);
-  expect([ana.maths, his.maths]).toEqual(['off', 'off']);
-  await expect(page.locator('#chip-time-box')).toBeVisible();
-  await expect(page.locator('#chip-popped')).toHaveText('0');
+  expect([ana.mathsOn, his.mathsOn]).toEqual([false, false]);
 
-  // Ben sees Ana's glove, in grey, where her hand is on her screen.
-  await show(page, null, 'open');
-  await expect.poll(() => ben.page.evaluate(() => window.__game.game.friendsGloves[0]?.glove.visible ?? false), { timeout: 15_000 }).toBe(true);
-  await page.waitForTimeout(1000);
-  const [hers, seen] = await Promise.all([
-    page.evaluate(() => {
-      const { balloons } = window.__game;
-      const glove = balloons.gloves.right;
-      return { x: glove.x / balloons.width, y: glove.y / balloons.height, status: glove.status };
-    }),
-    ben.page.evaluate(() => {
-      const { balloons, game } = window.__game;
-      const { glove, name, fade } = game.friendsGloves[0];
-      return { x: glove.x / balloons.width, y: glove.y / balloons.height, status: glove.status, name, fade };
-    }),
-  ]);
-  expect(seen.name).toBe('Ana');
-  expect(seen.status).toBe(hers.status);
-  expect(Math.hypot(seen.x - hers.x, seen.y - hers.y)).toBeLessThan(0.05);
-  expect(seen.fade).toBeGreaterThan(0.9);
-  await ben.page.screenshot({ path: 'test-results/screens/pop-friends-glove.png' });
-  await show(page, null, null);
-  await expect.poll(() => ben.page.evaluate(() => window.__game.game.friendsGloves[0].glove.visible), { timeout: 10_000 }).toBe(false);
-  await page.evaluate(() => {
-    const { popped } = window.__game.balloons;
-    popped.left = 0;
-    popped.right = 0;
-  });
+  // Ben sees the very balloons Ana's game has, where they are on hers.
+  await expect.poll(async () => (await popOf(ben.page)).ids.length, { timeout: 15_000 }).toBeGreaterThan(1);
+  await page.waitForTimeout(500);
+  const [hers, seen] = await Promise.all([balloonsOf(page), balloonsOf(ben.page)]);
+  const shared = Object.keys(seen).filter((id) => hers[id]);
+  expect(shared.length).toBeGreaterThan(1);
+  expect(shared.length).toBe(Object.keys(seen).length);
+  for (const id of shared) expect(Math.abs(hers[id].y - seen[id].y)).toBeLessThan(0.08);
+  await ben.page.screenshot({ path: 'test-results/screens/pop-friends-same-balloons.png' });
 
-  // Each pops some for real, and the other sees it straight away.
-  await popOne(page);
-  await popOne(ben.page);
-  const anaReal = (await popOf(page)).total;
-  const benReal = (await popOf(ben.page)).total;
-  await expect(ben.page.locator('#pop-scores')).toContainText(new RegExp(`Ana\\s*${anaReal}`));
-  await expect(page.locator('#pop-scores')).toContainText(new RegExp(`Ben\\s*${benReal}`));
-  // Then exactly 5 for Ana and 2 for Ben, as drifting balloons can make real pops uneven.
-  for (const [each, right] of [[page, 5], [ben.page, 2]]) {
-    await each.evaluate((count) => {
-      const { popped } = window.__game.balloons;
-      popped.left = 0;
-      popped.right = count;
-    }, right);
-  }
-  const [anaPopped, benPopped] = [5, 2];
-  await expect(ben.page.locator('#pop-scores li').nth(0)).toHaveText(new RegExp(`Ana\\s*${anaPopped}$`));
-  await expect(ben.page.locator('#pop-scores li').nth(1)).toHaveText(new RegExp(`You\\s*${benPopped}$`));
-  await expect(page.locator('#pop-scores li').nth(1)).toHaveText(new RegExp(`Ben\\s*${benPopped}$`));
-  await page.screenshot({ path: 'test-results/screens/pop-friends-playing.png' });
+  // A still balloon on Ben's hand, on Ana's game: Ben pops it on his, it counts for him, and it's gone from hers.
+  await show(ben.page, null, 'open');
+  await expect.poll(() => gloveAt(ben.page)).not.toBe(null);
+  const forBen = await balloonOnHost(page, await gloveAt(ben.page));
+  await expect.poll(async () => (await popOf(ben.page)).total, { timeout: 15_000 }).toBe(1);
+  await expect.poll(async () => (await popOf(page)).ids.includes(forBen), { timeout: 5000 }).toBe(false);
+  expect((await popOf(page)).total).toBe(0);
+  await show(ben.page, null, null);
 
+  // Both hands on the same balloon: only one of them gets it.
+  for (const each of [page, ben.page]) await show(each, null, 'open');
+  await expect.poll(() => gloveAt(page)).not.toBe(null);
+  await expect.poll(() => gloveAt(ben.page)).not.toBe(null);
+  const before = (await popOf(page)).total + (await popOf(ben.page)).total;
+  const both = await balloonOnHost(page, await gloveAt(page));
+  await expect.poll(async () => (await popOf(page)).ids.includes(both) || (await popOf(ben.page)).ids.includes(both), { timeout: 15_000 }).toBe(false);
+  await page.waitForTimeout(1500);
+  for (const each of [page, ben.page]) await show(each, null, null);
+  // Anything else a hand touched in that moment counts too, so it's this balloon that's checked: one point.
+  const claims = await Promise.all([page, ben.page].map((each) => each.evaluate((id) => window.__game.game.myClaims.has(id), both)));
+  expect(claims.some(Boolean)).toBe(true);
+  const after = (await popOf(page)).total + (await popOf(ben.page)).total;
+  expect(after).toBeGreaterThan(before);
+
+  // Scores on both screens, and the finish card ranks by them.
+  const [anaScore, benScore] = [(await popOf(page)).total, (await popOf(ben.page)).total];
+  await expect(page.locator('#pop-scores')).toContainText(new RegExp(`Ben\\s*${benScore}`));
+  await expect(ben.page.locator('#pop-scores')).toContainText(new RegExp(`Ana\\s*${anaScore}`));
   await timeUp(page, ben.page);
-  await expect(page.locator('#screen-finish h2')).toHaveText('You popped the most!');
-  await expect(page.locator('.friends-results li').nth(0)).toContainText(`1st You ${anaPopped} popped`);
-  await expect(page.locator('.friends-results li').nth(1)).toContainText(`2nd Ben ${benPopped} popped`);
-  await expect(ben.page.locator('#screen-finish h2')).toHaveText('Great popping!');
+  const top = anaScore >= benScore ? 'You' : 'Ben';
+  await expect(page.locator('.friends-results li').nth(0)).toContainText(top);
   await page.screenshot({ path: 'test-results/screens/pop-friends-finish.png' });
 
   // Nobody's own level moves on, nobody's settings change, and the only connection was to the race server.
@@ -179,7 +158,7 @@ test('two friends pop balloons for the same time, see each other\'s scores, and 
   await ben.context.close();
 });
 
-test('with the host\'s maths challenge on, everyone does the same kind of sums, and the same score shares a place', async ({ page, browser }) => {
+test('everyone answers the same sum, the first right answer counts for whoever got it, and then everyone gets the next', async ({ page, browser }) => {
   test.setTimeout(300_000);
   await openGame(page, { balloons: 40, maths: 'add' }, GAME);
   const code = await makeGame(page, 'Ana');
@@ -188,21 +167,36 @@ test('with the host\'s maths challenge on, everyone does the same kind of sums, 
   await bothPlaying(page, ben.page);
   const [ana, his] = [await popOf(page), await popOf(ben.page)];
   expect([ana.timed.seconds, his.timed.seconds]).toEqual([120, 120]);
-  expect(his.maths).not.toBe('off');
+  // Only the host asks the sums, and Ben, with maths off himself, does them too.
+  expect([ana.asking, his.asking]).toEqual([true, false]);
   await expect(ben.page.locator('#chip-popped-label')).toHaveText('Right answers');
 
-  // Two right each.
-  for (const each of [page, ben.page]) {
-    await each.evaluate(() => {
-      window.__game.balloons.popped.right = 2;
-    });
-  }
-  await expect(page.locator('#pop-scores li')).toHaveCount(2);
+  // The same sum on both screens, and the same answers on the balloons.
+  await expect.poll(async () => (await popOf(page)).question, { timeout: 15_000 }).toMatch(/= \?$/);
+  const sum = (await popOf(page)).question;
+  await expect.poll(async () => (await popOf(ben.page)).question, { timeout: 10_000 }).toBe(sum);
+  const answers = async (each) => Object.values(await balloonsOf(each)).filter(({ number }) => number !== undefined).map(({ number }) => number).sort((a, b) => a - b);
+  await expect.poll(async () => (await answers(ben.page)).join(','), { timeout: 10_000 }).toBe((await answers(page)).join(','));
+  await ben.page.screenshot({ path: 'test-results/screens/pop-friends-same-sum.png' });
+
+  // Ben gets the right one: it counts for him, not Ana, and both move on to the next sum.
+  await ben.page.evaluate(() => {
+    const { balloons, game } = window.__game;
+    const right = balloons.balloons.find(({ number }) => number === balloons.rightNumber);
+    balloons.removeShared(right.id);
+    game.claimBalloon(right, 'right', true);
+  });
+  await expect.poll(async () => (await popOf(ben.page)).total, { timeout: 10_000 }).toBe(1);
+  expect((await popOf(page)).total).toBe(0);
+  await expect.poll(async () => (await popOf(page)).question, { timeout: 15_000 }).not.toBe(sum);
+  await expect.poll(async () => (await popOf(page)).question, { timeout: 15_000 }).toMatch(/= \?$/);
+  const next = (await popOf(page)).question;
+  await expect.poll(async () => (await popOf(ben.page)).question, { timeout: 10_000 }).toBe(next);
+
   await timeUp(page, ben.page);
-  await expect(page.locator('#screen-finish h2')).toHaveText('You got the most right!');
-  await expect(page.locator('.friends-results li').nth(0)).toContainText('1st');
-  await expect(page.locator('.friends-results li').nth(1)).toContainText('1st');
-  await expect(page.locator('.friends-results')).toContainText('2 right');
+  await expect(ben.page.locator('#screen-finish h2')).toHaveText('You got the most right!');
+  await expect(ben.page.locator('.friends-results li').nth(0)).toContainText('1st You 1 right');
+  await expect(page.locator('.friends-results li').nth(0)).toContainText('1 right');
   expect(ben.errors).toEqual([]);
   await ben.context.close();
 });

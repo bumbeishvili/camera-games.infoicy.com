@@ -151,17 +151,18 @@ Prizes fall slowly, taking about ten seconds to come down the screen, drift towa
 
 ### Playing Balloon Pop with friends
 
-Up to 4 children can play against each other, each on their own computer with their own camera, to see who pops the most, or with the maths challenge, who gets the most right.
+Up to 4 children can play one game together, each on their own computer with their own camera, with the same balloons and the same sums, to see who pops the most, or with the maths challenge, who gets the most right.
 
 - **Making and joining:** under **Play with a friend** on the title card, a grown-up presses **Make a game** and sends the link or the code. A friend opens it, and can type their name there too.
 - **Starting:** everyone presses **Let’s pop!**. After the hand check, each waits until everyone is ready, and then all count down together. Whoever made the game can press **Start now**, and anyone can play on their own.
 - **The time:** everyone plays for the same time instead of to a goal: a minute for the host's 20 balloons, two for 40 and three for 60. A clock shows what's left.
-- **What's the same for everyone:** the host's level and the host's maths challenge, so everyone does the same kind of sums. Each child keeps their own balloon speed and reach help, as a grown-up set them.
+- **One game for everyone:** the host's game runs the balloons and the sums, and everyone sees the same ones, where they are on the host's screen. Whoever's hand gets to a balloon first has it, and it's gone for everyone: the server decides, as each touch reaches it. Each sum is the same for everyone, and once anyone has the right answer, everyone gets the next. A wrong answer burns only that child's glove, and goes for everyone.
+- **Fair for everyone:** with friends, the balloons are plain ones, without the presents, stars and power-ups the levels add, at the host's speed. They come up right across the screen, as each child may play with a different hand, and none drift towards a hand, as reach help would make a balloon one child's before anyone else could get to it.
 - **Scores:** everyone's score shows as they play, the most first. The finish card says who came where, and equal scores share a place.
 - **Friends' hands:** each friend's glove shows in light grey, with their name over it, where their hand is on their own screen, copying it finger by finger. It's only there to see, and pops nothing.
 - **Levels and settings:** a game with friends doesn't move anyone's own level on, and nobody's settings change.
 
-Only the name typed, the character from the other games, the score and where the glove is go to friends, never anything from the camera.
+Only the name typed, the character from the other games, the score, where the glove is and which balloons it got to go to friends, and from the host's game, where the balloons are and the sum. Never anything from the camera.
 
 ## High Five Racers
 

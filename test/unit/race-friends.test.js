@@ -205,7 +205,7 @@ test('names are cleaned, and a flood of messages is cut off', () => {
   const heard = two.heard.filter(({ t }) => t === 'car').length;
   assert.ok(heard <= 40 && heard > 0, `heard ${heard}`);
   tick(1000);
-  one.say({ t: 'car', ms: 1, d: 1, x: 0, s: 0, l: 0, f: 0, b: 0, extra: 'x'.repeat(700) });
+  one.say({ t: 'car', ms: 1, d: 1, x: 0, s: 0, l: 0, f: 0, b: 0, extra: 'x'.repeat(2000) });
   assert.equal(two.heard.filter(({ t }) => t === 'car').length, heard, 'too big is ignored');
 });
 
@@ -313,4 +313,31 @@ test('a list of points moves smoothly from one message to the next', () => {
   // A hand that's gone has no points, and that's a step rather than a blend.
   track.push({ ms: 200, x: 1, p: [], v: 0 }, 1200);
   assert.deepEqual(track.at(1000 + 175 + 120).p, []);
+});
+
+test('in Balloon Pop, only the host\'s balloons go to everyone, and each balloon goes to the first hand that claims it', () => {
+  const { join } = makeRoom();
+  const host = join('aaaaaaaa');
+  const friend = join('bbbbbbbb');
+  host.say({ t: 'ready' });
+  friend.say({ t: 'ready' });
+  host.say({ t: 'world', ms: 500, b: [[3, 0.51234, 0.8, 0.078, 2, -1, 0], [4, 0.2, 0.5, 0.1, 1, 7, 5], 'junk'], q: '3 + 4 = ?<b>', qa: 0 });
+  assert.deepEqual(friend.last('world'), { t: 'world', from: 'aaaaaaaa', ms: 500, b: [[3, 0.512, 0.8, 0.078, 2, -1, 0], [4, 0.2, 0.5, 0.1, 1, 7, 5]], q: '3 + 4 = ?', qa: 0 });
+  friend.say({ t: 'world', ms: 600, b: [[9, 0, 0, 0, 0, -1, 0]], q: '', qa: 0 });
+  assert.equal(host.last('world'), undefined, 'a friend\'s balloons go nowhere');
+  // Both claim balloon 3: the first has it, and everyone hears so, once.
+  friend.say({ t: 'claim', k: 3 });
+  host.say({ t: 'claim', k: 3 });
+  for (const player of [host, friend]) {
+    assert.deepEqual(player.heard.filter(({ t }) => t === 'claimed'), [{ t: 'claimed', k: 3, by: 'bbbbbbbb' }]);
+  }
+  host.say({ t: 'claim', k: 4 });
+  assert.deepEqual(friend.last('claimed'), { t: 'claimed', k: 4, by: 'aaaaaaaa' });
+  // A new game starts with every balloon unclaimed.
+  host.say({ t: 'done', ms: 1 });
+  friend.say({ t: 'done', ms: 1 });
+  host.say({ t: 'ready' });
+  friend.say({ t: 'ready' });
+  friend.say({ t: 'claim', k: 3 });
+  assert.deepEqual(host.last('claimed'), { t: 'claimed', k: 3, by: 'bbbbbbbb' });
 });

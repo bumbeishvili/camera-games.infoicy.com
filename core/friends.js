@@ -105,7 +105,7 @@ export class FriendsRoom {
     this.you = null;
     this.hello = null;
     this.socket = null;
-    this.sentAt = -Infinity;
+    this.sentAt = {}; // When each kind of thing was last sent, as each is sent at most 10 times a second.
     this.racing = false; // In a race, which a connection lost for a moment and back again carries on with.
   }
 
@@ -223,7 +223,7 @@ export class FriendsRoom {
       this.events.onChange?.();
     } else if (message.t === 'go') {
       this.events.onGo?.(message);
-    } else if (['car', 'plane', 'score', 'hand'].includes(message.t)) {
+    } else if (['car', 'plane', 'score', 'hand', 'world', 'claimed'].includes(message.t)) {
       this.events.onMove?.(message.from, message);
     } else if (message.t === 'done') {
       this.events.onDone?.(message.from, message);
@@ -256,9 +256,14 @@ export class FriendsRoom {
 
   /** Where the car or plane is, as kind car or plane, sent no more than 10 times a second. ms is how long since "GO!". */
   sendMove(kind, state, ms, now = performance.now()) {
-    if (now - this.sentAt < SEND_EVERY_MS) return;
-    this.sentAt = now;
+    if (now - (this.sentAt[kind] ?? -Infinity) < SEND_EVERY_MS) return;
+    this.sentAt[kind] = now;
     this.say({ t: kind, ms: Math.round(ms), ...state });
+  }
+
+  /** Balloon Pop: this player's hand got to balloon k. Whoever's claim reaches the server first has it. */
+  claim(k) {
+    this.say({ t: 'claim', k });
   }
 
   /** How many popped, or got right, so far, this long after "GO!". Only sent when it changes. */

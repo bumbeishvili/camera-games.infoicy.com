@@ -214,7 +214,9 @@ export class FriendsPanel {
       return { id, key: spec.key, spec, slot: racers.indexOf(id) };
     });
     const size = length ?? laps;
-    this.current = { level, length: size, laps: size, mode, friends, mySlot: racers.indexOf(this.room.you), racers, tracks: new Map() };
+    // Who hosts as it starts, as Balloon Pop's host runs the balloons everyone plays with.
+    const host = this.room.members.find((member) => member.host)?.id ?? racers[0];
+    this.current = { level, length: size, laps: size, mode, friends, mySlot: racers.indexOf(this.room.you), racers, host, hosting: host === this.room.you, tracks: new Map() };
     this.results = new Map();
     this.room.racing = true;
     const { go } = this;
@@ -230,6 +232,11 @@ export class FriendsPanel {
   /** Where the child's car or plane is, as kind car or plane. */
   sendMove(kind, state, ms) {
     if (this.current && this.room.inRoom) this.room.sendMove(kind, state, ms);
+  }
+
+  /** Balloon Pop: the child's hand got to balloon k first, as far as this computer can tell. */
+  claim(k) {
+    if (this.current && this.room.inRoom) this.room.claim(k);
   }
 
   /** The child's score so far, popped or right, for friends' scoreboards. */

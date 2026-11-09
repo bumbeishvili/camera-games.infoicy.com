@@ -126,12 +126,15 @@ body[data-maths='on'] .demo-number { display: inline; }
 }
 
 /* ---------- playing with friends: the rest is in core/base.css ---------- */
-/* Everyone's score while playing, the most first, under the chips. */
+/* Everyone's score while playing, the most first, at the top on the right under the gear, clear of the sum. */
 .pop-scores {
+  position: fixed;
+  z-index: 3;
+  right: 16px;
+  top: 76px;
   list-style: none;
   display: grid;
   gap: 4px;
-  margin-top: 8px;
   width: max-content;
 }
 
