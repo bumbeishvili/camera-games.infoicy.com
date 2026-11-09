@@ -63,61 +63,58 @@ for (const { folder } of GAMES.slice(0, 2)) {
   });
 }
 
-const filmTime = (page) => page.evaluate(() => document.getElementById('game-demo-film').currentTime);
+/** A card's film: how far it's got, whether it's paused, and how fast it plays. */
+const filmOf = (card) => card.locator('.game-film').evaluate((film) => ({ time: film.currentTime, paused: film.paused, rate: film.playbackRate }));
 
-test('resting the pointer on a game plays a film of it, and says what moves it takes', async ({ page }) => {
+test('every game\'s card plays a film of it while it\'s on the screen, and pointing at it says what moves it takes', async ({ page }) => {
   test.setTimeout(150_000);
   await page.goto('/');
-  const panel = page.locator('#game-demo');
-  await expect(panel).toBeHidden();
   for (const { name, folder } of GAMES) {
     await test.step(name, async () => {
       const card = page.locator('.game-card', { hasText: name });
       await card.scrollIntoViewIfNeeded();
-      await card.hover();
-      await expect(panel).toBeVisible();
-      await expect(panel).toHaveAttribute('data-game', folder);
-      await expect(page.locator('#game-demo-moves')).toHaveText(await card.getAttribute('data-moves'));
-      await expect.poll(() => filmTime(page), { timeout: 10_000 }).toBeGreaterThan(0.3);
-      const box = await panel.boundingBox();
-      const { width, height } = page.viewportSize();
-      expect(box.x).toBeGreaterThanOrEqual(0);
-      expect(box.y).toBeGreaterThanOrEqual(0);
-      expect(box.x + box.width).toBeLessThanOrEqual(width);
-      expect(box.y + box.height).toBeLessThanOrEqual(height);
-      await shot(page, `h6-film-${folder}`);
+      // Without being pointed at.
       await page.mouse.move(2, 2);
-      await expect(panel).toBeHidden();
-      expect(await page.evaluate(() => document.getElementById('game-demo-film').paused)).toBe(true);
+      await expect.poll(async () => (await filmOf(card)).time, { timeout: 10_000 }).toBeGreaterThan(0.3);
+      await expect(card).toHaveClass(/is-playing/);
+      expect(await card.locator('.game-film').getAttribute('src')).toBe(`demos/${folder}.webm`);
+      const moves = card.locator('.game-moves');
+      await expect(moves).toHaveText(await card.getAttribute('data-moves'));
+      await expect(moves).toHaveCSS('opacity', '0');
+      await card.hover();
+      await expect(moves).toHaveCSS('opacity', '1');
+      await shot(page, `h6-film-${folder}`);
     });
   }
 });
 
-test('a game\'s film goes round again when it gets to the end', async ({ page }) => {
+test('a film off the screen is paused, and one that gets to its end goes round again', async ({ page }) => {
   await page.goto('/');
-  await page.locator('.game-card', { hasText: 'Balloon Pop' }).hover();
-  await expect.poll(() => filmTime(page), { timeout: 10_000 }).toBeGreaterThan(0.3);
-  await page.evaluate(() => new Promise((done) => {
-    document.getElementById('game-demo-film').addEventListener('ended', done, { once: true });
-  }));
-  await expect.poll(() => filmTime(page), { timeout: 5000 }).toBeLessThan(3);
-  await expect.poll(() => filmTime(page), { timeout: 5000 }).toBeGreaterThan(0.2);
-  expect(await page.evaluate(() => document.getElementById('game-demo-film').paused)).toBe(false);
+  const first = page.locator('.game-card').first();
+  const last = page.locator('.game-card').last();
+  await expect.poll(async () => (await filmOf(first)).time, { timeout: 10_000 }).toBeGreaterThan(0.3);
+  await last.scrollIntoViewIfNeeded();
+  await expect.poll(async () => (await filmOf(first)).paused, { timeout: 5000 }).toBe(true);
+  await expect.poll(async () => (await filmOf(last)).time, { timeout: 10_000 }).toBeGreaterThan(0.3);
+  await last.locator('.game-film').evaluate((film) => new Promise((done) => film.addEventListener('ended', done, { once: true })));
+  await expect.poll(async () => (await filmOf(last)).time, { timeout: 5000 }).toBeLessThan(3);
+  await expect.poll(async () => (await filmOf(last)).time, { timeout: 5000 }).toBeGreaterThan(0.2);
+  expect((await filmOf(last)).paused).toBe(false);
 });
 
-test('a pointer passing over the games doesn\'t set off their films, and the keyboard can show them too', async ({ page }) => {
+test('with reduced motion, a film only plays, a little slower, while its card is pointed at or chosen', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
-  const panel = page.locator('#game-demo');
-  await page.locator('.game-card').first().hover();
-  await page.locator('.game-card').nth(1).hover();
+  const card = page.locator('.game-card').first();
+  await page.waitForTimeout(1500);
+  expect((await filmOf(card)).time).toBe(0);
+  await card.hover();
+  await expect.poll(async () => (await filmOf(card)).time, { timeout: 10_000 }).toBeGreaterThan(0.2);
+  expect((await filmOf(card)).rate).toBe(0.7);
   await page.mouse.move(2, 2);
-  await page.waitForTimeout(350);
-  await expect(panel).toBeHidden();
-
-  await page.locator('.game-card').first().focus();
-  await expect(panel).toBeVisible();
-  await page.locator('.game-card').first().blur();
-  await expect(panel).toBeHidden();
+  await expect.poll(async () => (await filmOf(card)).paused, { timeout: 5000 }).toBe(true);
+  await page.locator('.game-card').nth(1).focus();
+  await expect.poll(async () => (await filmOf(page.locator('.game-card').nth(1))).time, { timeout: 10_000 }).toBeGreaterThan(0.2);
 });
 
 test('the hub fits a phone', async ({ page }) => {

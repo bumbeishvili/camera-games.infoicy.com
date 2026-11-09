@@ -1,64 +1,60 @@
-// While the pointer rests on a game, or the keyboard is on it, a film shows it being played and says
-// what moves it takes. demos/ holds the films, which tools/record_demos.mjs makes.
-const WAIT_MS = 200; // A pointer on its way across the page shouldn't set off every film it passes.
-const EDGE = 12;
-const SLOWER = 0.7; // For anyone who prefers reduced motion. The film is still the instruction.
+// Each game's card plays a film of the game being played, over its picture, while the card is on the screen,
+// so how each game works can be seen at a glance. Resting the pointer on a card, or the keyboard, also says
+// what moves it takes. For anyone who prefers reduced motion, a film only plays, a little slower, while its
+// card is pointed at or chosen. demos/ holds the films, which tools/record_demos.mjs makes.
+const SLOWER = 0.7;
+const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const rate = () => (still ? SLOWER : 1);
 
-const panel = document.getElementById('game-demo');
-const film = document.getElementById('game-demo-film');
-const moves = document.getElementById('game-demo-moves');
-let waiting = null;
-let shownCard = null;
-
-const rate = () => (matchMedia('(prefers-reduced-motion: reduce)').matches ? SLOWER : 1);
-const clamp = (value, low, high) => Math.min(Math.max(low, high), Math.max(low, value));
-
-/** Over its card, a little above it where there's room, and always all of it on the screen. */
-function place(card) {
-  const box = card.getBoundingClientRect();
-  const { offsetWidth: width, offsetHeight: height } = panel;
-  panel.style.left = `${clamp(box.left + box.width / 2 - width / 2, EDGE, innerWidth - width - EDGE)}px`;
-  panel.style.top = `${clamp(box.top + box.height / 2 - height / 2, EDGE, innerHeight - height - EDGE)}px`;
-}
-
-function show(card) {
-  shownCard = card;
-  film.src = `demos/${card.dataset.game}.webm`;
-  film.playbackRate = rate();
+function filmFor(card) {
+  const art = card.querySelector('.game-art');
+  const film = document.createElement('video');
+  film.className = 'game-film';
+  film.muted = true;
+  film.playsInline = true;
+  film.preload = 'none';
+  film.setAttribute('aria-hidden', 'true');
+  art.append(film);
+  const moves = document.createElement('p');
+  moves.className = 'game-moves';
   moves.textContent = card.dataset.moves;
-  panel.classList.add('is-showing');
-  panel.dataset.game = card.dataset.game;
-  place(card);
-  // A browser can refuse to play for now, and that only means no film.
-  film.play().catch(() => {});
-}
+  art.append(moves);
 
-function hide(card) {
-  clearTimeout(waiting);
-  if (shownCard !== card) return;
-  shownCard = null;
-  panel.classList.remove('is-showing');
-  film.pause();
-}
-
-for (const card of document.querySelectorAll('.game-card')) {
-  const showSoon = () => {
-    clearTimeout(waiting);
-    waiting = setTimeout(() => show(card), WAIT_MS);
+  const play = () => {
+    // Only fetched once its card is first on the screen.
+    if (!film.src) film.src = `demos/${card.dataset.game}.webm`;
+    film.playbackRate = rate();
+    // A browser can refuse to play for now, and that only means the picture stays.
+    film.play().catch(() => {});
   };
-  const hideNow = () => hide(card);
-  card.addEventListener('pointerenter', showSoon);
-  card.addEventListener('pointerleave', hideNow);
-  card.addEventListener('focus', showSoon);
-  card.addEventListener('blur', hideNow);
+  // The picture shows until the film has something to show, and then the film fades in over it.
+  film.addEventListener('playing', () => card.classList.add('is-playing'));
+  // The local server can't jump to a place in a file, so a film goes round by starting again.
+  film.addEventListener('ended', () => {
+    film.load();
+    play();
+  });
+  return { film, play, pause: () => film.pause() };
 }
 
-// The server can't jump to a place in a file, so a film goes round by starting again.
-film.addEventListener('ended', () => {
-  film.load();
-  film.playbackRate = rate();
-  film.play().catch(() => {});
-});
+const cards = [...document.querySelectorAll('.game-card')].map((card) => ({ card, ...filmFor(card) }));
 
-// The card has moved away from under it.
-addEventListener('scroll', () => shownCard && hide(shownCard), { passive: true });
+if (still) {
+  for (const { card, play, pause } of cards) {
+    card.addEventListener('pointerenter', play);
+    card.addEventListener('pointerleave', pause);
+    card.addEventListener('focus', play);
+    card.addEventListener('blur', pause);
+  }
+} else {
+  // Playing only while on the screen keeps the page light, with a dozen films on it.
+  const byCard = new Map(cards.map((each) => [each.card, each]));
+  const watcher = new IntersectionObserver((entries) => {
+    for (const { target, isIntersecting } of entries) {
+      const each = byCard.get(target);
+      if (isIntersecting) each.play();
+      else each.pause();
+    }
+  }, { threshold: 0.25 });
+  for (const { card } of cards) watcher.observe(card);
+}

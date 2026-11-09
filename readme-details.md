@@ -17,7 +17,7 @@ They're played at <https://hemi.infoicy.com> in Google Chrome, on a computer wit
 - **Giraffe's Smoothie Stand:** at the Harvest Fair, each customer orders a smoothie, and the child slices what they ordered with a swipe of the open hand. Bad fruit makes the glove sticky until it has been held open.
 - **The Lighthouse Keeper:** mud from a storm has covered the windows and ships are lost at sea. Wiping a window clean with an open hand lets the light out, and brings a ship home.
 
-Every game's grown-ups' panel, under the gear icon, has a way back to all the games. On the page for choosing a game, resting the pointer on one plays a film of it, and says which moves it takes.
+Every game's grown-ups' panel, under the gear icon, has a way back to all the games. On the page for choosing a game, each game's card plays a film of it being played, and pointing at a card says which moves it takes. With reduced motion turned on in the computer's settings, a film only plays while its card is pointed at.
 
 ## Run it
 
