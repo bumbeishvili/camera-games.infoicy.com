@@ -26,7 +26,8 @@ const RUN_SPEED = 1.5; // How fast a character runs after its glove, in court un
 const STRIDE = 0.075; // How far a character runs for each picture of its run.
 const BEHIND = 0.3; // How far behind its glove a character stands, towards its own end, so the glove is out in front.
 const MOODS = { hit: 0.35, cheer: 1.4, oops: 1.0 };
-const RING_RATE = 5; // How quickly a racket's strings come and go as a hand opens and closes, every second.
+const RING_RATE = 3; // How quickly a racket's strings come and go as a hand opens and closes, every second.
+const STAY_WITHIN = 0.14; // A character stays put while its glove moves less than this, in court units.
 const CARRY_RATE = 9; // How quickly a ball that has been put somewhere else glides there.
 const TRAIL_EVERY = 0.045;
 const LABEL_SECONDS = 2.2;
@@ -358,8 +359,12 @@ export class Court {
     // Never so far back that it's off the edge of the screen, as it could be on a narrow one.
     const edge = clamp((this.width / 2 - this.scale * 0.15) / this.scale, 0.6, 1.18);
     const target = glove.visible ? s * clamp(Math.abs(racket.u) + BEHIND, 0.32, edge) : s * Math.min(0.8, edge);
+    // A little movement of the hand doesn't need a step: only once it has gone further does the character
+    // run, all the way, as anyone would.
     const gap = target - player.u;
-    const step = clamp(gap, -RUN_SPEED * dt, RUN_SPEED * dt) * (Math.abs(gap) < 0.02 ? 0.5 : 1);
+    if (Math.abs(gap) > STAY_WITHIN) player.running = true;
+    else if (Math.abs(gap) < 0.01) player.running = false;
+    const step = player.running ? clamp(gap, -RUN_SPEED * dt, RUN_SPEED * dt) : 0;
     player.u += step;
     player.moving += ((dt > 0 ? Math.abs(step) / dt : 0) - player.moving) * (1 - Math.exp(-dt * 10));
     player.stride += Math.abs(step);
@@ -929,8 +934,16 @@ export class Court {
     ctx.lineWidth = thick + Math.max(3, thick * 0.3);
     ctx.stroke();
     path();
-    ctx.strokeStyle = colours.sleeve;
+    ctx.strokeStyle = colours.skin;
     ctx.lineWidth = thick;
+    ctx.stroke();
+    // The forearm, from the elbow, in its own colour, as on the characters themselves.
+    if (colours.sleeve === colours.skin) return;
+    const elbow = { x: (from.x + 2 * control.x + to.x) / 4, y: (from.y + 2 * control.y + to.y) / 4 };
+    ctx.beginPath();
+    ctx.moveTo(elbow.x, elbow.y);
+    ctx.quadraticCurveTo((control.x + to.x) / 2, (control.y + to.y) / 2, to.x, to.y);
+    ctx.strokeStyle = colours.sleeve;
     ctx.stroke();
   }
 

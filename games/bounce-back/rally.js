@@ -22,6 +22,9 @@ const SEEN_BEFORE_SERVE = 0.5; // The computer serves once the child's hand has 
 const HOME = { u: 0.62, h: 0.44 }; // Where a player waits, on their own side, as shares of a half.
 const WAIT_EASE = 2.4; // How quickly a waiting ball floats to where it waits.
 const WAIT_BOB = 0.025;
+const WAIT_AWAY = 0.36; // A waiting ball is this far from the hand, just out of reach.
+const WAIT_SETTLE = 1; // Seconds before a waiting ball starts drifting to an open hand.
+const WAIT_READY = 0.5; // And before it can be hit at all.
 const WAIT_DRIFT = 0.12; // How fast a waiting ball comes to an open hand near it, in court units a second,
 const WAIT_DRIFT_HELP = 0.35; // and how much faster with reach help.
 const GRACE = 0.6; // A friend's hit on its way still counts this long after the ball bounced twice.
@@ -81,7 +84,9 @@ export class Rally {
   }
 
   /** The first serve, which is always the child's: a ball that waits in front of them. */
-  begin() {
+  begin(inputs = {}) {
+    // Where the hands are already, so the first serve waits near the child's.
+    for (const side of SIDES) this.readRacket(side, inputs[side], 0);
     this.startPoint();
   }
 
@@ -152,13 +157,18 @@ export class Rally {
     return racket.visible && racket.seenFor >= SEEN_BEFORE_SERVE;
   }
 
-  /** Where a ball waits for a child: just in front of their hand, or in the middle of their half. */
+  /**
+   * Where a ball waits for a child: just out of reach of their hand, towards the net if there's room, so a
+   * little reach gets to it, or in the middle of their half when the hand can't be seen.
+   */
   waitSpot(side) {
     const s = signOf(side);
     const { racket, kind } = this.players[side];
     if (kind === 'computer') return { u: racket.u - s * 0.04, h: racket.h + 0.16 };
-    if (racket.visible) return { u: s * clamp(Math.abs(racket.u) - 0.22, 0.3, 0.9), h: clamp(racket.h, 0.36, 0.72) };
-    return { u: s * 0.58, h: 0.52 };
+    if (!racket.visible) return { u: s * 0.58, h: 0.52 };
+    const along = Math.abs(racket.u);
+    const nearer = along - WAIT_AWAY >= 0.3 ? along - WAIT_AWAY : along + WAIT_AWAY;
+    return { u: s * clamp(nearer, 0.3, 1), h: clamp(racket.h, 0.36, 0.72) };
   }
 
   /* ---------- the ball ---------- */
@@ -188,13 +198,16 @@ export class Rally {
     if (this.computer.serveIn <= 0) this.strike(side);
   }
 
-  /** A ball waiting for a child floats where they can reach it, and drifts to an open hand nearby. */
+  /**
+   * A ball waiting for a child floats where they can reach it. After a moment it drifts to an open hand near
+   * it, which is all the lining up a child needs.
+   */
   waitBall(dt) {
     const { ball } = this;
     const side = ball.side;
     const { racket, kind } = this.players[side];
     const anchor = ball.waitAt;
-    if (racket.open) {
+    if (racket.open && ball.since > WAIT_SETTLE) {
       const du = racket.u - anchor.u;
       const dh = racket.h - anchor.h;
       const gap = Math.hypot(du, dh);
@@ -212,7 +225,8 @@ export class Rally {
     ball.h += (anchor.h + WAIT_BOB * Math.sin(ball.since * 2.2) - ball.h) * blend;
     ball.vu = 0;
     ball.vh = 0;
-    if (kind === 'child' && touches(ball, racket)) this.strike(side);
+    // A moment to see it first, even if the hand is already there.
+    if (kind === 'child' && ball.since > WAIT_READY && touches(ball, racket)) this.strike(side);
   }
 
   flyBall(dt) {

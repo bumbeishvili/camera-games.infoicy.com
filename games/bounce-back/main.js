@@ -263,7 +263,8 @@ class BounceGame {
 
   begin() {
     this.goAt = performance.now();
-    this.rally?.begin();
+    // The glove has been out since the countdown, so the first serve can wait near it.
+    this.rally?.begin({ A: this.myRacket(this.session.monitor.snapshot), B: this.mode === 'host' ? this.friendRacket() : undefined });
     this.session.sound.startLoop('waves', 0.16);
     // The court's own new things have their labels at the start.
     const { court, rally } = this;

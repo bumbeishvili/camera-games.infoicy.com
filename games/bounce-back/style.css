@@ -167,8 +167,9 @@ body:not([data-prizes='on']) tr:has(#sum-left-prizes) { display: none; }
   box-shadow: var(--shadow);
 }
 
-/* Over the other player's half, away from the child's own glove. */
+/* Over the other player's half, away from the child's own glove, and turned round for the left hand. */
 body[data-side='left'] .bounce-film { left: auto; right: 16px; }
+body[data-side='left'] .bounce-film svg { transform: scaleX(-1); }
 body[data-film='on'][data-screen='playing'] .bounce-film { display: block; }
 .bounce-film svg { display: block; width: 100%; height: auto; }
 
