@@ -45,6 +45,42 @@ test('the coach shows what to do with the child\'s own character, and a real cla
   await expect(page.locator('#coach-text')).toHaveText('Squat down!', { timeout: 10_000 });
 });
 
+/** The child's fighter's pose, and the child's own as the camera reads it. */
+const bodies = (page) => page.evaluate(() => {
+  const { arena, reader } = window.__game;
+  const pick = ({ handLY, handRY, hipDrop }) => ({ handLY, handRY, hipDrop });
+  return { fighter: pick(arena.player.final), child: pick(reader.pose), copying: arena.player.copying };
+});
+
+test('the child\'s fighter copies them, whatever they do: arms up, arms down, or down in a squat', async ({ page }) => {
+  test.setTimeout(120_000);
+  await reachFight(page);
+  // Nothing from the computer meanwhile, and each still picture is given time for any move it made to finish.
+  await page.evaluate(() => {
+    window.__game.coach.computerIn = 1e9;
+  });
+  // Each still picture, until the fighter is doing the same: the tracker can take a moment to catch up.
+  const holdStill = async (clip, from, same) => {
+    await footage(page, clip, { from, playing: false });
+    await expect.poll(async () => same(await bodies(page)), { timeout: 15_000 }).toBe(true);
+    return bodies(page);
+  };
+
+  const up = await holdStill('star-jumps', 2.5, ({ copying, fighter }) => copying && Math.min(fighter.handLY, fighter.handRY) > 0.15);
+  expect(up.copying).toBe(true);
+  await shot(page, 'm-copy-arms-up');
+
+  await holdStill('claps', 0, ({ fighter }) => Math.max(fighter.handLY, fighter.handRY) < -0.6);
+
+  const squat = await holdStill('squat', 0, ({ child, fighter }) => child.hipDrop > 0.25 && fighter.hipDrop > 0.25);
+  expect(squat.fighter.hipDrop).toBeGreaterThan(0.25);
+  await shot(page, 'm-copy-squat');
+
+  // Out of the picture, the fighter stands ready again.
+  await page.evaluate(() => window.__camera.showNobody());
+  await expect.poll(() => page.evaluate(() => window.__game.arena.player.copying), { timeout: 10_000 }).toBe(false);
+});
+
 test('real squats, jumps, star jumps and hand circles each make their own big move, when asked', async ({ page }) => {
   test.setTimeout(180_000);
   await reachFight(page, { level: 'gentle' });

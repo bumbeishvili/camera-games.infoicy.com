@@ -1,7 +1,21 @@
 // How each move looks: short sequences of poses that the fighter's limbs blend through. Every
 // strike is written for the right side and mirrored for the left. Hands stay open throughout,
 // except for the one move that's made with a closed hand, because that's what a fist becomes.
+//
+// A child's own fighter copies them, and a move starts from wherever they are when the camera sees it: a
+// squat from the bottom of the squat, a clap with the hands together. So the first pose of a move is only
+// how the computer's fighter, which copies nobody, gets ready for it, and each move after that carries on the
+// way the child's own movement went.
 import { makePose, mirrorPose } from '../../core/body/characters.js';
+
+/**
+ * What a fighter copies of a child: their arms and hands, how they lean and turn, how far they sink, their legs
+ * and their jumps. A friend's computer sends these, in this order.
+ */
+export const BODY_KEYS = [
+  'handLX', 'handLY', 'handLZ', 'handRX', 'handRY', 'handRZ', 'wristL', 'wristR', 'openL', 'openR',
+  'hipDrop', 'up', 'pitch', 'roll', 'twist', 'footLX', 'footLY', 'footLZ', 'footRX', 'footRY', 'footRZ',
+];
 
 const REST = makePose();
 
@@ -97,13 +111,14 @@ const CLIP_SOURCES = {
       [0.45, STANCE],
     ],
   },
+  // A squat, deeper, and both palms slam the floor: the ground wave goes out from there.
   stomp: {
     frames: [
-      [0.0, stance({ hipDrop: 0.2, squash: 0.08, handLX: 0.52, handLY: -0.5, handLZ: 0.2, handRX: -0.52, handRY: -0.5, handRZ: 0.2, wristL: 0, wristR: 0 })],
-      [0.17, stance({ up: 0.62, squash: -0.1, hipDrop: 0.08, footLX: 0.26, footLY: 0.12, footRX: -0.26, footRY: 0.12, footLZ: 0, footRZ: 0, handLX: 0.5, handLY: 0.72, handLZ: 0.12, handRX: -0.5, handRY: 0.72, handRZ: 0.12, wristL: 0, wristR: 0 })],
-      [0.31, stance({ up: 0, squash: 0.22, hipDrop: 0.3, pitch: 0.34, footLX: 0.32, footRX: -0.32, footLZ: 0, footRZ: 0, handLX: 0.34, handLY: -0.92, handLZ: 0.2, handRX: -0.34, handRY: -0.92, handRZ: 0.2, wristL: 0, wristR: 0 })],
-      [0.48, stance({ up: 0, squash: 0.1, hipDrop: 0.26, pitch: 0.28, footLX: 0.32, footRX: -0.32, footLZ: 0, footRZ: 0, handLX: 0.34, handLY: -0.9, handLZ: 0.2, handRX: -0.34, handRY: -0.9, handRZ: 0.2, wristL: 0, wristR: 0 })],
-      [0.75, STANCE],
+      [0.0, stance({ hipDrop: 0.14, squash: 0.04, pitch: 0.12, handLX: 0.3, handLY: 0.1, handLZ: 0.5, handRX: -0.3, handRY: 0.1, handRZ: 0.5, wristL: 0, wristR: 0 })],
+      [0.16, stance({ hipDrop: 0.26, squash: 0.1, pitch: 0.24, footLX: 0.3, footRX: -0.3, footLZ: 0, footRZ: 0, handLX: 0.28, handLY: 0.42, handLZ: 0.45, handRX: -0.28, handRY: 0.42, handRZ: 0.45, wristL: 0, wristR: 0 })],
+      [0.32, stance({ hipDrop: 0.34, squash: 0.2, pitch: 0.42, footLX: 0.32, footRX: -0.32, footLZ: 0, footRZ: 0, handLX: 0.3, handLY: -0.95, handLZ: 0.36, handRX: -0.3, handRY: -0.95, handRZ: 0.36, wristL: 0, wristR: 0 })],
+      [0.5, stance({ hipDrop: 0.3, squash: 0.12, pitch: 0.36, footLX: 0.32, footRX: -0.32, footLZ: 0, footRZ: 0, handLX: 0.3, handLY: -0.92, handLZ: 0.36, handRX: -0.3, handRY: -0.92, handRZ: 0.36, wristL: 0, wristR: 0 })],
+      [0.8, STANCE],
     ],
   },
   flying: {
@@ -137,13 +152,15 @@ const CLIP_SOURCES = {
       [0.85, STANCE],
     ],
   },
+  // Folded over with the hands at the toes, as a toe touch is, and then both hands sweep along the floor at
+  // the other fighter's feet.
   sweep: {
     lunge: true,
     frames: [
-      [0.0, stance({ hipDrop: 0.26, pitch: 0.7, handLX: 0.1, handLY: -0.95, handLZ: 0.4, handRX: -0.1, handRY: -0.95, handRZ: 0.4, wristL: 0, wristR: 0 })],
-      [0.16, stance({ forward: 0.5, hipDrop: 0.32, twist: -0.5, pitch: 0.42, footLX: 0.3, footLZ: 0.05, footRX: -0.55, footRY: 0.04, footRZ: 0.3, handLX: 0.5, handLY: -0.8, handLZ: 0.2, handRX: -0.5, handRY: -0.6, handRZ: -0.3, wristL: 0, wristR: 0 })],
-      [0.3, stance({ forward: 1, hipDrop: 0.34, twist: 0.5, pitch: 0.4, footLX: 0.3, footLZ: 0.05, footRX: 0.3, footRY: 0.05, footRZ: 0.8, handLX: 0.6, handLY: -0.6, handLZ: -0.2, handRX: -0.5, handRY: -0.7, handRZ: 0.1, wristL: 0, wristR: 0 })],
-      [0.46, stance({ forward: 1, hipDrop: 0.32, twist: 0.42, pitch: 0.38, footLX: 0.3, footRX: 0.2, footRY: 0.05, footRZ: 0.76 })],
+      [0.0, stance({ hipDrop: 0.06, pitch: 0.95, footLX: 0.2, footRX: -0.2, footLZ: 0, footRZ: 0, handLX: 0.1, handLY: -0.98, handLZ: 0.32, handRX: -0.1, handRY: -0.98, handRZ: 0.32, wristL: 0, wristR: 0 })],
+      [0.16, stance({ forward: 0.4, hipDrop: 0.16, twist: -0.42, pitch: 0.85, footLX: 0.26, footRX: -0.26, footLZ: 0, footRZ: 0, handLX: -0.05, handLY: -0.96, handLZ: 0.2, handRX: -0.55, handRY: -0.96, handRZ: 0.1, wristL: 0, wristR: 0 })],
+      [0.3, stance({ forward: 1, hipDrop: 0.2, twist: 0.42, pitch: 0.72, footLX: 0.28, footRX: -0.28, footLZ: 0.08, footRZ: -0.08, handLX: 0.45, handLY: -0.9, handLZ: 0.75, handRX: 0.1, handRY: -0.9, handRZ: 0.9, wristL: -0.6, wristR: -0.6 })],
+      [0.46, stance({ forward: 1, hipDrop: 0.18, twist: 0.38, pitch: 0.66, footLX: 0.28, footRX: -0.28, footLZ: 0.08, footRZ: -0.08, handLX: 0.45, handLY: -0.88, handLZ: 0.75, handRX: 0.1, handRY: -0.88, handRZ: 0.9, wristL: -0.6, wristR: -0.6 })],
       [0.8, STANCE],
     ],
   },

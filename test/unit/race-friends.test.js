@@ -2,7 +2,8 @@
 // is moved smoothly from what their game sends.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanCar, cleanHand, cleanName, idFor, makeCode, MAX_RACERS, mostIn, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
+import { cleanCar, cleanHand, cleanName, idFor, makeCode, MAX_RACERS, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
+import { BODY_KEYS } from '../../games/mighty-moves/clips.js';
 import { Track } from '../../core/friends.js';
 import { CarTrack, codeInLink } from '../../games/high-five-racers/friends.js';
 
@@ -369,4 +370,20 @@ test('in Mighty Moves, a fight holds two, and each fighter\'s moves go to the ot
   }
   ana.say({ t: 'claim', k: 2 });
   assert.deepEqual(ben.last('claimed'), { t: 'claimed', k: 2, by: 'aaaaaaaa' });
+});
+
+test('in Mighty Moves, each fighter\'s body goes to the other, as only its numbers, rounded, or none at all', () => {
+  assert.equal(BODY_KEYS.length, POSE_NUMBERS, 'the game sends what the server passes on');
+  const { join } = makeRoom(mostIn('mighty-moves'));
+  const ana = join('aaaaaaaa');
+  const ben = join('bbbbbbbb');
+  ana.say({ t: 'ready' });
+  ben.say({ t: 'ready' });
+  const body = BODY_KEYS.map((key, index) => (index === 3 ? 99 : 0.123456));
+  ana.say({ t: 'pose', ms: 2000.6, p: body, picture: 'not this' });
+  assert.deepEqual(ben.last('pose'), { t: 'pose', from: 'aaaaaaaa', ms: 2001, p: BODY_KEYS.map((key, index) => (index === 3 ? 3 : 0.12)) });
+  ana.say({ t: 'pose', ms: 2100, p: [1, 2, 3] });
+  assert.deepEqual(ben.last('pose').p, [], 'a body that isn\'t one is passed on as none');
+  ana.say({ t: 'pose', ms: 2200, p: [] });
+  assert.deepEqual(ben.last('pose').p, [], 'and none, when the camera can\'t see them, is none');
 });

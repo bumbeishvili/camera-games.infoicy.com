@@ -2,8 +2,8 @@
 // they pass to each other.
 // The same rules run on Cloudflare (server/worker.js) and on this computer for the tests
 // (tools/race-server.mjs). Each game has rooms of its own. Nothing here is kept once everyone has gone, and no
-// camera picture ever comes here: only where each car or plane is, the moves a fighter makes, the name a player
-// typed, and which character drives, flies or fights.
+// camera picture ever comes here: only where each car or plane is, the moves a fighter makes and how it stands,
+// the name a player typed, and which character drives, flies or fights.
 //
 // A player sends JSON messages, each { t, ... }:
 //   hi     { name, driver, level, length, mode, racing }   first, after connecting, and again if any of it
@@ -25,13 +25,16 @@
 //   hit    { r, m, d, tot, sm, sg, sd }    Mighty Moves: their fighter makes move m in round r, doing d, and
 //                                      tot in all this round. sm is 1 for a small hit and sg for their
 //                                      fighter's own finishing move, and sd the side, l or r, if it has one
+//   pose   { ms, p }                       Mighty Moves: their body, for their fighter to copy, as POSE_NUMBERS
+//                                      numbers about where their hands and feet are and how they lean (see
+//                                      BODY_KEYS in games/mighty-moves/clips.js), or none when it can't be seen
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
 // The room sends:
 //   room   { you, members: [{ id, name, driver, ready, racing, host }] }   whenever that changes
 //   go     { level, length, laps, mode, racers }   the countdown starts now, on the host's course (laps is length)
-//   car, plane, score, hand, world, hit { from, ... } and done { from, ms, n, w }   passed on from the others
+//   car, plane, score, hand, world, hit, pose { from, ... } and done { from, ms, n, w }   passed on from the others
 //   claimed { k, by }                      balloon k, or round k, went to player by, sent to everyone, them too
 //   full   {}                              the room already has as many as it holds: see mostIn
 
@@ -140,6 +143,14 @@ export function cleanWorld(message) {
   ]);
   const q = typeof message.q === 'string' ? message.q.replace(/[^0-9+\-−×÷=? ]/g, '').slice(0, 24) : '';
   return { ms: number(message.ms, 0, 3_600_000, 0), b, q, qa: message.qa ? 1 : 0 };
+}
+
+export const POSE_NUMBERS = 21;
+
+/** Only what a fighter's body should hold, in Mighty Moves: POSE_NUMBERS numbers, rounded, or none. */
+export function cleanPose(message) {
+  const p = Array.isArray(message.p) && message.p.length === POSE_NUMBERS ? message.p.map((value) => number(value, -3, 3, 2)) : [];
+  return { ms: number(message.ms, 0, 3_600_000, 0), p };
 }
 
 /** Only what a fighter's move should hold, in Mighty Moves. A move that isn't one is passed on as none. */
@@ -275,8 +286,9 @@ export class RaceRoom {
         break;
       case 'car':
       case 'plane':
-      case 'hand': {
-        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand }[message.t](message);
+      case 'hand':
+      case 'pose': {
+        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand, pose: cleanPose }[message.t](message);
         for (const other of others) other.send({ t: message.t, from: meta.id, ...moved });
         break;
       }

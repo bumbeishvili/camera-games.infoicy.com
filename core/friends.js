@@ -224,7 +224,7 @@ export class FriendsRoom {
       this.events.onChange?.();
     } else if (message.t === 'go') {
       this.events.onGo?.(message);
-    } else if (['car', 'plane', 'score', 'hand', 'world', 'claimed', 'hit'].includes(message.t)) {
+    } else if (['car', 'plane', 'score', 'hand', 'world', 'claimed', 'hit', 'pose'].includes(message.t)) {
       this.events.onMove?.(message.from, message);
     } else if (message.t === 'done') {
       this.events.onDone?.(message.from, message);

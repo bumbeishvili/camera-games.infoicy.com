@@ -10,8 +10,10 @@ import { ICONS } from '../../core/body/icons.js';
 import { viewProblem } from '../../core/body/reader.js';
 import { ROSTER } from '../../core/body/roster.js';
 import { mountBodyShell } from '../../core/body/shell.js';
+import { Track } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
 import { Arena } from './arena.js';
+import { BODY_KEYS } from './clips.js';
 import { Coach } from './coach.js';
 import { FightSound } from './fight-sound.js';
 import { Fight } from './fight.js';
@@ -42,7 +44,7 @@ const FIGHT_WORDS = {
   codeName: 'Fight code',
   how: 'Send the link to a friend. Then you both choose a fighter and press <b>Fight!</b>',
   leave: 'Leave this fight',
-  privacy: 'Only your name, who you fight as and the moves your fighter makes go to your friend. The camera picture stays on this computer.',
+  privacy: 'Only your name, who you fight as, and how your fighter moves go to your friend. The camera picture stays on this computer.',
   alone: 'Fight the computer',
   full: 'That fight already has 2 fighters.',
   lost: 'Can’t reach the fight. Check the internet, then try again.',
@@ -56,6 +58,11 @@ const FIGHT_WORDS = {
 const FRIEND_LEVEL = { name: 'Friend', every: Infinity, warning: 3, damage: 1, mercy: 0, defences: ['block'], moves: ['palm'] };
 // A knockout waits this long for the server to say whose round it is, and then it's as this computer saw.
 const KNOCKOUT_WAIT_MS = 3000;
+// Fighting a friend, each child's body goes to the other's computer, for their fighter there to copy them.
+const SEND_BODY_SCREENS = new Set(['intro', 'countdown', 'fight', 'roundend', 'break']);
+const FRIEND_BODY = { lists: ['p'] };
+const bodyList = (pose) => BODY_KEYS.map((key) => Math.round(pose[key] * 100) / 100);
+const bodyFrom = (list) => Object.fromEntries(BODY_KEYS.map((key, index) => [key, list[index]]));
 
 // Every one of these has a rendered voice file: see audio/voice/lines.json.
 const SAY = {
@@ -301,6 +308,8 @@ class MightyMoves extends BodyGame {
     });
     this.goAt = performance.now();
     this.friendWentAway = false;
+    // The friend's body, from their computer, a moment behind, so that it moves smoothly.
+    this.friendBody = friendly ? new Track(FRIEND_BODY) : null;
     // Rounds the server has said are someone's before this computer has got to them.
     this.settledEarly = new Map();
     clearTimeout(this.knockoutWait);
@@ -749,10 +758,14 @@ class MightyMoves extends BodyGame {
     this.callout(shown, { kind: 'is-friend', x: top.x, y: Math.max(0.12, top.y - 0.06) });
   }
 
-  /** Something from the friend's computer: one of their fighter's moves, or whose a round is. */
+  /** Something from the friend's computer: one of their fighter's moves, their body, or whose a round is. */
   fromFriend(id, message) {
     const { fight } = this;
     if (!fight?.friend) return;
+    if (message.t === 'pose') {
+      if (id === this.rival?.id) this.friendBody?.push(message, performance.now());
+      return;
+    }
     if (message.t === 'claimed') {
       this.roundSettled(message.k, message.by === this.friends.room.you ? 'player' : 'npc');
       return;
@@ -951,7 +964,25 @@ class MightyMoves extends BodyGame {
 
   /* ---------- every frame ---------- */
 
+  /**
+   * The child's own fighter copies them whenever the camera can see them. Fighting a friend, their body goes to
+   * the friend's computer, and the friend's fighter here copies the friend's, from what theirs sends.
+   */
+  copyBodies(now) {
+    const seen = this.camera.running && this.reader.hasPose && !this.bodyLost();
+    this.arena.setLive('player', seen ? this.reader.pose : null);
+    if (!this.fight?.friend) {
+      this.arena.setLive('npc', null);
+      return;
+    }
+    const theirs = this.friendBody?.at(now);
+    this.arena.setLive('npc', theirs?.p?.length === BODY_KEYS.length ? bodyFrom(theirs.p) : null);
+    // An empty list says the camera can't see this child, so the friend's computer stops copying them.
+    if (SEND_BODY_SCREENS.has(this.screen)) this.friends.sendMove('pose', { p: seen ? bodyList(this.reader.pose) : [] }, now - this.goAt);
+  }
+
   frame(dt, now) {
+    this.copyBodies(now);
     switch (this.screen) {
       case 'intro':
         this.timer -= dt;

@@ -3,7 +3,7 @@
 // both screens. Here they're two separate browsers, talking through the race server on this computer
 // (tools/race-server.mjs).
 import { expect, openGame, test, waitForScreen } from '../helpers.js';
-import { doWhatIsAsked, standInView, stopDoingIt } from './helpers.js';
+import { doWhatIsAsked, footage, standInView, stopDoingIt } from './helpers.js';
 
 const GAME = 'mighty-moves';
 
@@ -118,6 +118,15 @@ test('two friends fight from their own computers, each one\'s moves landing on t
   await expect.poll(async () => (await fightOf(ben.page)).npc.hp, { timeout: 5000 }).toBeLessThan(100);
   const back = (await fightOf(ben.page)).npc.hp;
   await expect.poll(async () => (await fightOf(page)).player.hp, { timeout: 5000 }).toBe(back);
+
+  // Each one's fighter copies them on the other's screen too: Ben's arms go up, and Ana squats.
+  await footage(ben.page, 'star-jumps', { from: 2.5, playing: false });
+  await expect.poll(() => page.evaluate(() => Math.min(window.__game.arena.npc.final.handLY, window.__game.arena.npc.final.handRY)), { timeout: 10_000 }).toBeGreaterThan(0.15);
+  await page.screenshot({ path: 'test-results/screens/fight-friends-copy.png' });
+  await footage(page, 'squat', { from: 0, playing: false });
+  await expect.poll(() => ben.page.evaluate(() => window.__game.arena.npc.final.hipDrop), { timeout: 10_000 }).toBeGreaterThan(0.2);
+  await standInView(page);
+  await standInView(ben.page);
 
   // Ana keeps going until Ben's fighter is out: the round, and the fight, are hers on both screens.
   await doWhatIsAsked(page);

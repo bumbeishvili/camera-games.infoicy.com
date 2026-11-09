@@ -215,7 +215,11 @@ Coins are counted at the top from level 2, and on the finish card with any gems,
 
 ## Mighty Moves
 
-The coach calls one concrete move at a time, and the child's own character shows it in a looping film beside the fight, as a word or a still picture is hard to copy. Doing that move makes a big fighting move, and those are what win a round. Before a fight, the game checks it can see all of the child, from about 2 to 3 metres away, and says what to do if it can't. If they step out of the picture, everything waits.
+The coach calls one concrete move at a time, and the child's own character shows it in a looping film beside the fight, as a word or a still picture is hard to copy. Doing that move makes a big fighting move, and those are what win a round.
+
+**The fighter is the child.** Whenever the camera can see them, the child's fighter copies them: their arms and hands, open or closed, how they lean and turn, how far they sink, their legs and their jumps. Raising the hands raises the fighter's, whatever the coach has asked for. Each big move then starts from just where the child is when the camera sees it, and carries on the way their own movement went: a squat sinks deeper and slams both palms on the floor, a jump keeps going up and over, a clap pushes out with the hands still together, and a toe touch sweeps both hands along the floor at the other fighter's feet. The child's lean and turn are copied at a little over half, as the camera is least sure of those.
+
+Before a fight, the game checks it can see all of the child, from about 2 to 3 metres away, and says what to do if it can't. If they step out of the picture, everything waits.
 
 **What the coach asks for, in this order** ([games/mighty-moves/moves.js](games/mighty-moves/moves.js)):
 
@@ -266,7 +270,7 @@ Saying the moves in this order makes two combos come up by themselves, a squat t
 - **A friend who goes** in the middle leaves the fight to the one still there.
 - **Levels and settings:** a fight with a friend doesn't move anyone's own level on, and nobody's settings change.
 
-**What's sent.** Only the name typed, which fighter, the host's level and number of rounds, and each of the fighter's moves: which one, how much it does, and whether it's a small hit or the finishing move. Nothing from the camera is ever sent. It goes through the same server as racing friends ([server/](server/)), whose fight rooms hold two. The rules in [fight.js](games/mighty-moves/fight.js) have no screen or camera in them: against a friend, the other corner is driven by the friend's moves as they come in, through the same `perform()` the coach uses for the computer.
+**What's sent.** Only the name typed, which fighter, the host's level and number of rounds, each of the fighter's moves (which one, how much it does, and whether it's a small hit or the finishing move), and, 10 times a second, the 21 numbers the fighter copies: where the hands and feet are, how far the hips sink, how the body leans, and whether each hand is open. That's how the friend's fighter copies the friend on the other screen. Nothing from the camera is ever sent. It goes through the same server as racing friends ([server/](server/)), whose fight rooms hold two. The rules in [fight.js](games/mighty-moves/fight.js) have no screen or camera in them: against a friend, the other corner is driven by the friend's moves as they come in, through the same `perform()` the coach uses for the computer.
 
 **Levels.** Levels go from 1 to 10, one fight each, and winning a fight moves on a level, while losing one stays. The computer's strength stays the grown-ups' choice: a level never makes it hit harder, and on Gentle it still can't knock a child out. Higher levels bring its turns a little more often, with a warning down to 80% as long, and a shorter pause between moves, and from levels 4 and 7 it has more moves. Every level from 2 also brings something new, which stays for the levels after it:
 

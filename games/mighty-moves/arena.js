@@ -5,7 +5,7 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { Fighter3D, makePose, mixPose, sampleClip } from '../../core/body/characters.js';
 import { SHAPES, Sparks, spriteTexture } from '../../core/body/sparks.js';
-import { CLIPS, HELD, STANCE } from './clips.js';
+import { BODY_KEYS, CLIPS, HELD, STANCE } from './clips.js';
 
 const STAGE_RADIUS = 5.6;
 const START_GAP = 2.7;
@@ -16,6 +16,21 @@ const SLOW_CHECK_FRAMES = 90;
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const damp = (value, target, rate, dt) => value + (target - value) * (1 - Math.exp(-rate * dt));
+const NARROWEST_FEET = 0.17; // A fighter copying a child never has its feet closer together than its hips.
+// The fighter takes this much of how a child leans and turns, which the camera reads least surely of all.
+const LEAN_SHARE = 0.6;
+
+/**
+ * A fighter copying a child: their arms and hands, how they lean and turn, how far they sink, their legs and their
+ * jumps. pose is what the fighter would otherwise be doing, and gets the child's body over it.
+ */
+function copyBody(pose, live) {
+  for (const key of BODY_KEYS) pose[key] = live[key];
+  for (const key of ['pitch', 'roll', 'twist']) pose[key] = live[key] * LEAN_SHARE;
+  pose.footLX = Math.max(live.footLX, NARROWEST_FEET);
+  pose.footRX = Math.min(live.footRX, -NARROWEST_FEET);
+  return pose;
+}
 const between = (low, high) => low + Math.random() * (high - low);
 
 // The camera sits behind the child's fighter, off to its right. The child's right hand is then
@@ -57,16 +72,30 @@ class Stander {
     this.duckMix = 0;
     this.z = 0;
     this.time = Math.random() * 10;
+    // A child's body, for their own fighter to copy, or a friend's, from their computer. null when there's none.
+    this.live = null;
+    this.liveMix = 0;
 
     this.base = makePose();
     this.clipPose = makePose();
     this.final = makePose();
     this.working = makePose();
+    this.copied = makePose();
   }
 
-  /** Starts a move. gap is how far it has to travel to reach the other fighter. */
+  /** Copying a child, rather than standing ready on its own. */
+  get copying() {
+    return this.liveMix > 0.5 && !this.presenting;
+  }
+
+  /**
+   * Starts a move. gap is how far it has to travel to reach the other fighter. A fighter copying a child starts
+   * it from just where the child is, so the move carries on from what they did, rather than from the start.
+   */
   play(name, { side = 'right', gap = 0 } = {}) {
-    this.action = { clip: CLIPS[name][side], t: 0, gap, name };
+    let clip = CLIPS[name][side];
+    if (this.copying) clip = { ...clip, frames: [{ t: 0, pose: { ...this.final } }, ...clip.frames.slice(1)] };
+    this.action = { clip, t: 0, gap, name };
     this.body.setExpression('strike', 0.6);
   }
 
@@ -103,6 +132,11 @@ class Stander {
       base.handRY -= bob * 0.018;
       base.pitch += Math.sin(this.time * 2.1) * 0.012;
     }
+
+    // Copying a child, whatever they do, the fighter does, easing in and out as the camera finds or loses them.
+    if (this.live) copyBody(Object.assign(this.copied, base), this.live);
+    this.liveMix = damp(this.liveMix, this.live && !this.presenting ? 1 : 0, 10, dt);
+    if (this.liveMix > 0.001) mixPose(base, base, this.copied, this.liveMix);
 
     this.warningMix = damp(this.warningMix, this.warning > 0 ? 1 : 0, 9, dt);
     if (this.warningMix > 0.01) mixPose(base, { ...base }, HELD[this.warningPose], this.warningMix);
@@ -738,6 +772,11 @@ export class Arena {
   }
 
   /** Puts a fighter on the stage in place of whoever was there. which is 'player' or 'npc'. */
+  /** The body a fighter copies: the child's, for their own, or a friend's, for theirs. null when there's none. */
+  setLive(which, pose) {
+    if (this[which]) this[which].live = pose;
+  }
+
   setFighter(which, spec) {
     const old = this[which];
     if (old) {

@@ -1324,3 +1324,14 @@ test('the coach never gives a friend\'s fighter a turn of its own', () => {
   assert.notEqual(coach.phase, 'defending');
   assert.equal(coach.defences, 0);
 });
+
+test('a squat stays on the floor, sinking deeper to slam it, and a toe touch starts folded over with the hands at the toes', () => {
+  const stomp = CLIPS.stomp.right.frames;
+  assert.ok(stomp.every(({ pose }) => pose.up <= 0.01), 'no jump in a squat');
+  const slam = stomp.find(({ t }) => Math.abs(t - MOVES.stomp.hitAt) < 0.02).pose;
+  assert.ok(slam.hipDrop >= 0.3 && slam.handLY <= -0.9 && slam.handRY <= -0.9, 'both palms on the floor, down low, as it lands');
+  const [touch] = CLIPS.sweep.right.frames;
+  assert.ok(touch.pose.pitch >= 0.9 && touch.pose.handLY <= -0.95 && touch.pose.handRY <= -0.95);
+  const sweep = CLIPS.sweep.right.frames.find(({ t }) => Math.abs(t - MOVES.sweep.hitAt) < 0.02).pose;
+  assert.ok(sweep.handLZ > 0.5 && sweep.handRZ > 0.5 && sweep.handLY < -0.8, 'the hands sweep low along the floor, at the other fighter');
+});
