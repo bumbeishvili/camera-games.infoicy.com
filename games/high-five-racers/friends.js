@@ -87,6 +87,7 @@ export class FriendsRoom {
     this.hello = null;
     this.socket = null;
     this.sentAt = -Infinity;
+    this.racing = false; // In a race, which a connection lost for a moment and back again carries on with.
   }
 
   get inRoom() {
@@ -115,7 +116,9 @@ export class FriendsRoom {
     this.events.onChange?.();
     let socket;
     try {
-      socket = new WebSocket(`${RACE_SERVER}/room/${this.code}`);
+      // Coming back after losing the connection, with the same id, so friends still see the same car.
+      const was = this.you ? `?was=${encodeURIComponent(this.you)}` : '';
+      socket = new WebSocket(`${RACE_SERVER}/room/${this.code}${was}`);
     } catch {
       this.lost();
       return;
@@ -123,7 +126,7 @@ export class FriendsRoom {
     this.socket = socket;
     socket.addEventListener('open', () => {
       this.tries = 0;
-      this.say({ t: 'hi', ...this.hello });
+      this.say({ t: 'hi', ...this.hello, racing: this.racing });
       clearInterval(this.pinger);
       this.pinger = setInterval(() => this.send('ping'), PING_EVERY_MS);
     });
@@ -145,6 +148,7 @@ export class FriendsRoom {
   lost() {
     this.socket = null;
     this.status = 'lost';
+    this.racing = false;
     this.members = [];
     this.events.onChange?.();
   }
@@ -187,10 +191,11 @@ export class FriendsRoom {
   /** The name, driver or course has changed. */
   tell(hello) {
     this.hello = { ...this.hello, ...hello };
-    this.say({ t: 'hi', ...this.hello });
+    this.say({ t: 'hi', ...this.hello, racing: this.racing });
   }
 
   ready() {
+    this.racing = false;
     this.say({ t: 'ready' });
   }
 
@@ -207,6 +212,7 @@ export class FriendsRoom {
   }
 
   done(ms) {
+    this.racing = false;
     this.say({ t: 'done', ms: Math.round(ms) });
   }
 
@@ -224,6 +230,7 @@ export class FriendsRoom {
       }
     }
     this.status = 'off';
+    this.racing = false;
     this.members = [];
     this.you = null;
     this.code = null;

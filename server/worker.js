@@ -3,11 +3,11 @@
 // code, and each player keeps one WebSocket open to it. The sockets hibernate while nothing's being said,
 // and the runtime answers the players' keep-alive pings itself, so a quiet room costs nothing.
 //
-//   wss://<this server>/room/<CODE>
+//   wss://<this server>/room/<CODE>, with ?was=<id> for a player coming back after losing the connection
 //
 // Deploy with: npx wrangler deploy --config server/wrangler.jsonc
 import { DurableObject } from 'cloudflare:workers';
-import { RaceRoom, validCode } from './race-room.js';
+import { idFor, RaceRoom, validCode } from './race-room.js';
 
 // Only the games' own pages may use it.
 const ALLOWED_ORIGINS = ['https://hemi.infoicy.com', 'http://localhost:8642', 'http://127.0.0.1:8642'];
@@ -65,10 +65,11 @@ export class Room extends DurableObject {
     return player;
   }
 
-  async fetch() {
+  async fetch(request) {
+    const id = idFor(this.players(), new URL(request.url).searchParams.get('was'), newId);
     const [client, server] = Object.values(new WebSocketPair());
     this.ctx.acceptWebSocket(server);
-    if (!this.rules.arrive(this.player(server), newId())) server.close(1000, 'full');
+    if (!this.rules.arrive(this.player(server), id)) server.close(1000, 'full');
     return new Response(null, { status: 101, webSocket: client });
   }
 

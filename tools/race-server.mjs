@@ -4,7 +4,7 @@
 //   node tools/race-server.mjs
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
-import { RaceRoom, validCode } from '../server/race-room.js';
+import { idFor, RaceRoom, validCode } from '../server/race-room.js';
 
 const PORT = Number(process.env.RACE_PORT ?? 8643);
 const ALLOWED_ORIGINS = ['http://localhost:8642', 'http://127.0.0.1:8642'];
@@ -63,7 +63,8 @@ const server = createServer((request, response) => {
 });
 
 server.on('upgrade', (request, socket) => {
-  const [, kind, code] = new URL(request.url, 'http://localhost').pathname.split('/');
+  const address = new URL(request.url, 'http://localhost');
+  const [, kind, code] = address.pathname.split('/');
   const key = request.headers['sec-websocket-key'];
   if (kind !== 'room' || !validCode(code) || !key || !ALLOWED_ORIGINS.includes(request.headers.origin)) {
     socket.end('HTTP/1.1 403 Forbidden\r\n\r\n');
@@ -87,6 +88,7 @@ server.on('upgrade', (request, socket) => {
       if (open) socket.write(frame(1, Buffer.from(JSON.stringify(message))));
     },
   };
+  const id = idFor([...room.players], address.searchParams.get('was'), () => randomBytes(9).toString('base64url'));
   room.players.add(player);
   const gone = () => {
     if (!open) return;
@@ -95,7 +97,7 @@ server.on('upgrade', (request, socket) => {
     room.rules.leave(player);
     if (!room.players.size) rooms.delete(code);
   };
-  if (!room.rules.arrive(player, randomBytes(9).toString('base64url'))) {
+  if (!room.rules.arrive(player, id)) {
     socket.end(frame(8));
     gone();
     return;

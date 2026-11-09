@@ -4,7 +4,8 @@
 // is on the road, the name a player typed, and which character drives.
 //
 // A player sends JSON messages, each { t, ... }:
-//   hi     { name, driver, level, laps }   first, after connecting, and again if any of it changes
+//   hi     { name, driver, level, laps, racing }   first, after connecting, and again if any of it changes.
+//                                      racing says they're in a race, for one who's come back mid-race
 //   ready  {}                              the hand check is done, and they're waiting on the grid
 //   go     {}                              the host starts the race with whoever is ready
 //   car    { ms, d, x, s, l, f, b }        where their car is, about 10 times a second
@@ -22,6 +23,14 @@ export const CODE_LENGTH = 6;
 export const MOST_BYTES = 600; // A message bigger than this is ignored.
 const MOST_A_SECOND = 40; // Messages a player can send in a second; more are dropped.
 const LAPS = [1, 2, 4];
+
+/** A player's id, which a player who lost the connection for a moment brings back to keep their place. */
+export const validId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{8,24}$/.test(id);
+
+/** The id for a player arriving: the one they had, if they're coming back and nobody has it, or a new one. */
+export function idFor(players, was, fresh) {
+  return validId(was) && !players.some((player) => player.meta?.id === was) ? was : fresh();
+}
 
 export const validCode = (code) => typeof code === 'string' && code.length === CODE_LENGTH && [...code].every((letter) => CODE_LETTERS.includes(letter));
 
@@ -111,7 +120,9 @@ export class RaceRoom {
     switch (message.t) {
       case 'hi': {
         const laps = LAPS.includes(Number(message.laps)) ? Number(message.laps) : meta.laps;
-        player.setMeta({ ...meta, name: cleanName(message.name), driver: cleanDriver(message.driver), level: number(message.level, 1, 10, 0) || 1, laps });
+        // Coming back mid-race, after losing the connection for a moment, they're still racing.
+        const racing = meta.racing || (Boolean(message.racing) && !meta.ready);
+        player.setMeta({ ...meta, name: cleanName(message.name), driver: cleanDriver(message.driver), level: number(message.level, 1, 10, 0) || 1, laps, racing });
         this.tellEveryone();
         break;
       }

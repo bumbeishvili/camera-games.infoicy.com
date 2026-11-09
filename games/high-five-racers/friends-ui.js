@@ -5,6 +5,9 @@ import { validCode } from '../../server/race-room.js';
 import { codeInLink, FriendsRoom, linkFor, newCode } from './friends.js';
 
 const NAME_KEY = 'camera-games-race-name';
+// A friend who has gone from the race for this long has really gone, and their car goes too. Someone who lost
+// the connection for a moment is back well before.
+const GONE_AFTER_MS = 4000;
 const byId = (id) => document.getElementById(id);
 const ordinal = (place) => ['1st', '2nd', '3rd', '4th'][place - 1] ?? `${place}th`;
 const time = (ms) => {
@@ -149,6 +152,7 @@ export class FriendsRace {
 
   leave() {
     this.room.leave();
+    clearTimeout(this.goneTimer);
     this.current = null;
     this.go = null;
     history.replaceState(null, '', location.pathname + location.search);
@@ -197,6 +201,7 @@ export class FriendsRace {
     });
     this.current = { level, laps, friends, mySlot: racers.indexOf(this.room.you), racers, cars: new Map() };
     this.results = new Map();
+    this.room.racing = true;
     const { go } = this;
     this.go = null;
     go();
@@ -240,7 +245,9 @@ export class FriendsRace {
     };
     const finished = [...this.results.entries()].sort((a, b) => a[1] - b[1]);
     const rows = finished.map(([id, ms], index) => `<li class="${id === this.room.you ? 'is-you' : ''}"><span class="friends-place">${ordinal(index + 1)}</span> <span class="friends-who"></span> <span class="friends-time">${time(ms)}</span></li>`);
-    const still = current.racers.filter((id) => !this.results.has(id));
+    // Anyone who has gone before getting there is left off.
+    const gone = (id) => current.friends.some((friend) => friend.id === id && friend.gone);
+    const still = current.racers.filter((id) => !this.results.has(id) && !gone(id));
     for (const id of still) rows.push('<li class="is-racing"><span class="friends-place">…</span> <span class="friends-who"></span> <span class="friends-time">still racing</span></li>');
     this.resultsList.innerHTML = rows.join('');
     // Names go in as text, never as markup.
@@ -272,14 +279,38 @@ export class FriendsRace {
     else words = room.hosting ? 'It starts when everyone is ready, or press Start now.' : 'It starts when everyone is ready.';
     byId('friends-wait-status').textContent = waiting ? words : '';
 
-    // A friend who has gone mid-race takes their car with them.
-    if (this.current) {
-      for (const friend of this.current.friends) {
-        if (!room.members.some((member) => member.id === friend.id) && this.game.race.friendCars.has(friend.key)) {
-          this.game.friendGone(friend.key);
-        }
-      }
+    if (this.current) this.watchForGone();
+  }
+
+  /**
+   * A friend who has gone mid-race takes their car with them, unless they're back within a few seconds, as
+   * they are after losing the connection for a moment.
+   */
+  watchForGone() {
+    const now = performance.now();
+    for (const friend of this.current.friends) {
+      if (friend.gone) continue;
+      if (this.room.members.some((member) => member.id === friend.id)) friend.missingSince = null;
+      else friend.missingSince ??= now;
     }
+    clearTimeout(this.goneTimer);
+    if (this.current.friends.some((friend) => !friend.gone && friend.missingSince != null)) {
+      this.goneTimer = setTimeout(() => this.dropGone(), GONE_AFTER_MS);
+    }
+  }
+
+  dropGone() {
+    if (!this.current) return;
+    const now = performance.now();
+    let dropped = false;
+    for (const friend of this.current.friends) {
+      if (friend.gone || friend.missingSince == null || now - friend.missingSince < GONE_AFTER_MS - 50) continue;
+      friend.gone = true;
+      this.game.friendGone(friend.key);
+      dropped = true;
+    }
+    if (dropped && this.session.screen === 'finish') this.showResults();
+    this.watchForGone();
   }
 
   fillList(list, withReady) {

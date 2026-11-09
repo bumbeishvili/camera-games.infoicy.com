@@ -2,7 +2,7 @@
 // is moved smoothly from what their game sends.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanCar, cleanName, makeCode, MAX_RACERS, RaceRoom, validCode } from '../../server/race-room.js';
+import { cleanCar, cleanName, idFor, makeCode, MAX_RACERS, RaceRoom, validCode } from '../../server/race-room.js';
 import { CarTrack, codeInLink } from '../../games/high-five-racers/friends.js';
 
 /** A room with players who keep what they're sent, as the server's sockets would pass it on. */
@@ -118,6 +118,32 @@ test('a room holds 4 cars, a host who leaves hands over, and leaving can start t
   assert.equal(players[1].last('go'), undefined);
   leave(players[3]);
   assert.deepEqual(players[1].last('go').racers, ['bbbbbbbb', 'cccccccc'], 'everyone left was ready');
+});
+
+test('someone who loses the connection mid-race comes back as themselves, still racing', () => {
+  const fresh = () => 'newnewnew';
+  const others = [{ meta: { id: 'aaaaaaaa' } }, { meta: null }];
+  assert.equal(idFor(others, 'bbbbbbbb', fresh), 'bbbbbbbb', 'their old id, which nobody has now');
+  assert.equal(idFor(others, 'aaaaaaaa', fresh), 'newnewnew', 'never someone else\'s');
+  assert.equal(idFor(others, 'bad id!', fresh), 'newnewnew');
+  assert.equal(idFor(others, null, fresh), 'newnewnew');
+
+  const { join, leave } = makeRoom();
+  const host = join('aaaaaaaa');
+  let friend = join('bbbbbbbb');
+  host.say({ t: 'ready' });
+  friend.say({ t: 'ready' });
+  leave(friend);
+  friend = join('bbbbbbbb');
+  friend.say({ t: 'hi', name: 'Nino', racing: true });
+  const back = host.last('room').members.find(({ id }) => id === 'bbbbbbbb');
+  assert.equal(back.racing, true);
+  friend.say({ t: 'done', ms: 65000 });
+  assert.deepEqual(host.last('done'), { t: 'done', from: 'bbbbbbbb', ms: 65000 }, 'and their finish counts');
+  // Saying so on the grid, waiting for a race, doesn't make anyone a racer.
+  friend.say({ t: 'ready' });
+  friend.say({ t: 'hi', name: 'Nino', racing: true });
+  assert.equal(host.last('room').members.find(({ id }) => id === 'bbbbbbbb').racing, false);
 });
 
 test('names are cleaned, and a flood of messages is cut off', () => {
