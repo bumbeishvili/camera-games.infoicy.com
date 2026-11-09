@@ -28,9 +28,13 @@ async function openFight(page, settings = {}, hash = '') {
 /** A grown-up makes a fight, and gets its code. */
 async function makeFight(page, name) {
   await page.locator('#friends-toggle').click();
-  await page.locator('#friends-name').fill(name);
   await page.locator('#friends-make').click();
-  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{6}$/);
+  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{3}$/);
+  // A name, if they'd like one, once they're in.
+  if (name) {
+    await page.locator('#friends-name').fill(name);
+    await page.locator('#friends-name').dispatchEvent('change');
+  }
   return page.locator('#friends-code-shown').textContent();
 }
 
@@ -147,7 +151,7 @@ test('two friends fight from their own computers, each one\'s moves landing on t
   expect(won.ownLevel).toBe(3);
   expect(lost.ownLevel).toBe(1);
   expect(await ben.page.evaluate(() => window.__game.game.settings.rounds)).toBe(3);
-  expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/mighty-moves/${code}`]);
+  expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/mighty-moves/${code}?make=1`]);
   expect(ben.errors).toEqual([]);
   await ben.context.close();
 });

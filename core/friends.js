@@ -14,6 +14,7 @@ const SEND_EVERY_MS = 100; // Where the car or plane is, 10 times a second.
 // often, and hearing nothing back for a while, is how that's noticed: quickly in a race, slowly otherwise.
 const HEARTBEAT = { racing: { every: 2000, silent: 6000 }, waiting: { every: 25_000, silent: 60_000 } };
 const RETRIES = 6; // Coming back within about 12 seconds.
+const NEW_CODE_TRIES = 8; // Making a game, codes in use are passed over for another, this many times at most.
 const SHOW_BEHIND_MS = 120; // Friends are shown this far in the past, so there's always a next place to go to.
 const GUESS_AHEAD_MS = 500; // With nothing new for a while, they carry on this far the way they were going.
 const KEEP_SAMPLES = 30;
@@ -122,11 +123,16 @@ export class FriendsRoom {
     return Boolean(this.me?.host);
   }
 
-  /** Makes a new race, or joins the one with this code. hello is { name, driver, level, laps }. */
-  join(code, hello) {
+  /**
+   * Joins the race with this code, or makes a new one with it, which the server says if it's already in use, and
+   * then another code is tried. hello is { name, driver, level, laps }.
+   */
+  join(code, hello, { making = false, tried = 0 } = {}) {
     this.leave();
     this.code = code;
     this.hello = hello;
+    this.making = making;
+    this.codesTried = tried;
     this.tries = 0;
     this.connect();
   }
@@ -137,8 +143,8 @@ export class FriendsRoom {
     let socket;
     try {
       // Coming back after losing the connection, with the same id, so friends still see the same car.
-      const was = this.you ? `?was=${encodeURIComponent(this.you)}` : '';
-      socket = new WebSocket(`${RACE_SERVER}/room/${this.game ? `${this.game}/` : ''}${this.code}${was}`);
+      const asking = this.you ? `?was=${encodeURIComponent(this.you)}` : this.making ? '?make=1' : '';
+      socket = new WebSocket(`${RACE_SERVER}/room/${this.game ? `${this.game}/` : ''}${this.code}${asking}`);
     } catch {
       this.reconnect();
       return;
@@ -212,7 +218,15 @@ export class FriendsRoom {
     } catch {
       return;
     }
-    if (message.t === 'room') {
+    if (message.t === 'taken') {
+      // Someone's using that code: another, then, unless that's happened again and again.
+      if (this.codesTried + 1 >= NEW_CODE_TRIES) {
+        this.lost();
+        return;
+      }
+      this.join(newCode(), this.hello, { making: true, tried: this.codesTried + 1 });
+    } else if (message.t === 'room') {
+      this.making = false;
       this.status = 'in';
       this.you = message.you;
       this.members = message.members;

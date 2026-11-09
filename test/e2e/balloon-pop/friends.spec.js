@@ -41,9 +41,13 @@ async function secondPlayer(browser) {
 /** A grown-up makes a game, and gets its code. */
 async function makeGame(page, name) {
   await page.locator('#friends-toggle').click();
-  await page.locator('#friends-name').fill(name);
   await page.locator('#friends-make').click();
-  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{6}$/);
+  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{3}$/);
+  // A name, if they'd like one, once they're in.
+  if (name) {
+    await page.locator('#friends-name').fill(name);
+    await page.locator('#friends-name').dispatchEvent('change');
+  }
   return page.locator('#friends-code-shown').textContent();
 }
 
@@ -153,7 +157,7 @@ test('two friends play with the same balloons, and whoever\'s hand gets to one f
   // Nobody's own level moves on, nobody's settings change, and the only connection was to the race server.
   expect((await popOf(page)).ownLevel).toBe(2);
   expect(await ben.page.evaluate(() => window.__game.session.settings.maths)).toBe('times');
-  expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/balloon-pop/${code}`]);
+  expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/balloon-pop/${code}?make=1`]);
   expect(ben.errors).toEqual([]);
   await ben.context.close();
 });

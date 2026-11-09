@@ -155,7 +155,7 @@ Prizes fall slowly, taking about ten seconds to come down the screen, drift towa
 
 Up to 4 children can play one game together, each on their own computer with their own camera, with the same balloons and the same sums, to see who pops the most, or with the maths challenge, who gets the most right.
 
-- **Making and joining:** under **Play with a friend** on the title card, a grown-up presses **Make a game** and sends the link or the code. A friend opens it, and can type their name there too.
+- **Making and joining:** under **Play with a friend** on the title card, a grown-up presses **Make a game** and tells their friend the 3-letter code, or sends the link. The friend types the code, or opens the link, and is in.
 - **Starting:** everyone presses **Let’s pop!**. After the hand check, each waits until everyone is ready, and then all count down together. Whoever made the game can press **Start now**, and anyone can play on their own.
 - **The time:** everyone plays for the same time instead of to a goal: a minute for the host's 20 balloons, two for 40 and three for 60. A clock shows what's left.
 - **One game for everyone:** the host's game runs the balloons and the sums, and everyone sees the same ones, where they are on the host's screen. Whoever's hand gets to a balloon first has it, and it's gone for everyone: the server decides, as each touch reaches it. Each sum is the same for everyone, and once anyone has the right answer, everyone gets the next. A wrong answer burns only that child's glove, and goes for everyone.
@@ -204,8 +204,8 @@ Coins are counted at the top from level 2, and on the finish card with any gems,
 
 **Racing friends.** Up to 4 children can race each other, each on their own computer with their own camera.
 
-- **Making a race:** a grown-up presses **Race a friend** on the title card, types a name, presses **Make a race** and sends the link it makes, or its 6-letter code. While making or joining a race, the title card shows only that, over the game dimmed and blurred, and **Let’s race!** comes under who's here. **Back** goes back to the usual title card. It's the same in Sky Wings, Balloon Pop and Mighty Moves.
-- **Joining:** the friend opens the link, or types the code and presses **Join**.
+- **Making a race:** a grown-up presses **Race a friend** on the title card, then **Make a race**, and tells their friend its code, 3 letters and numbers, or sends the link. A new race never gets a code that's in use: the server says so, and the game picks another. While making or joining a race, the title card shows only that, over the game dimmed and blurred, and **Let’s race!** comes under who's here. A name can be typed there too, if they'd like one, and it's remembered. **Back** goes back to the usual title card. It's the same in Sky Wings, Balloon Pop, Mighty Moves and Bounce Back.
+- **Joining:** the friend opens the link, or presses **Race a friend** and types the code, which joins as soon as it's typed. Links with the 6-letter codes from before still work.
 - **Starting:** everyone presses **Let’s race!**. After the hand check, each waits on the grid until everyone is ready, and then all count down together. Whoever made the race can press **Start now** instead, and anyone can choose to race on their own.
 - **The course** is the host's: their level and race length. Friends' cars take the place of the other cars, with each friend's name over theirs. A friend's car close to the child's is shown a little to one side, as the other cars keep out of the way, so it never sits in front of the camera.
 - **The finish card** says who came where, and fills in as the others get there.
@@ -265,7 +265,7 @@ Saying the moves in this order makes two combos come up by themselves, a squat t
 
 **Fighting a friend.** Two children can fight each other, each on their own computer with their own camera.
 
-- **Making a fight:** a grown-up presses **Fight a friend** on the title card, types a name, presses **Make a fight** and sends the link or the code. The friend opens it, or types the code and presses **Join**. A fight holds two.
+- **Making a fight:** a grown-up presses **Fight a friend** on the title card, then **Make a fight**, and tells their friend the 3-letter code, or sends the link. The friend types the code, or opens the link, and is in. A fight holds two.
 - **Starting:** each chooses their own fighter, and sees the other's as their opponent, then presses **Fight!**. After the body check, each waits until the other is ready, and then both start together, on the host's level and number of rounds.
 - **The fight:** each child's coach asks them for their own moves, with their own settings. Every big move a child makes lands on their friend's fighter, on both screens, with the friend's fighter making the friend's moves and its name over it. There are no computer's turns, and every big move lands, as the child did what was asked. A round is whoever knocks the other out first.
 - **Fair on both computers:** what a move does is worked out on the computer of the child who made it, and sent with it, so both screens show the same health. Each move also carries all that child's moves have done that round, so one missed while the connection was down is made up by the next. A knockout is checked with the server, so if both happen at once, the round is whoever's got there first. Gems, the shield bubble and the champion's trophy don't come in a fight with a friend, as they're about the computer's moves.
@@ -353,7 +353,7 @@ This game doesn't read the hand at all, as the guns fire by themselves, so it do
 
 **Flying with friends.** Up to 4 children can fly together, each on their own computer with their own camera, the same way friends race in High Five Racers.
 
-- **Making and joining:** under **Fly with a friend** on the title card, a grown-up presses **Make a flight** and sends the link or the code, and the friend opens it.
+- **Making and joining:** under **Fly with a friend** on the title card, a grown-up presses **Make a flight** and tells their friend the 3-letter code, or sends the link. The friend types the code, or opens the link, and is in.
 - **Starting:** everyone chooses a pilot and presses **Let’s fly!**. After the body check and the lesson, each waits until everyone is ready, and then all count down together, side by side. Whoever made the flight can press **Start now**, and anyone can fly on their own.
 - **In the sky:** everyone flies the host's level and number of planes. Each child sees the others' planes where they really are, with a face and a name over each, and a friend's plane fires at the pirates in front of it, like the friend who helps. Each child has their own pirates, so friends help each other rather than taking each other's. A friend's character is never one of the pirates too.
 - **The finish card** says how everyone did: all dropped, and how fast, or how many.
@@ -546,7 +546,7 @@ Prizes fly up to their tally under the score, and they're on the finish card by 
 
 Two children can play each other, each on their own computer with their own camera.
 
-- **Making and joining:** under **Play with a friend** on the title card, a grown-up presses **Make a game** and sends the link or the code. A friend opens it, and can type their name there too. A third is told the game already has two players.
+- **Making and joining:** under **Play with a friend** on the title card, a grown-up presses **Make a game** and tells their friend the 3-letter code, or sends the link. The friend types the code, or opens the link, and is in. A third is told the game already has two players.
 - **Starting:** both press **Let’s play!**. After the hand check, each waits until the other is ready, and then both count down together. Whoever made the game can press **Start now**, and either can play on their own instead.
 - **One court:** the game of whoever made it runs the ball, and sends where it is about 10 times a second. Each game decides when its own child's racket hits the ball, as that child sees it, shows the hit at once, and sends it, so hitting feels immediate for both.
 - **Each on their own side:** each child sees themselves on the side of the hand they play with, so the court is turned round for one of them. The friend's character and racket are where the friend's hand really is, with their name over the racket, and their glove copies their hand finger by finger.

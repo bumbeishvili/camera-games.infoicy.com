@@ -59,9 +59,10 @@ test('two friends fly together from their own computers, on the host\'s level, a
   page.on('websocket', (socket) => sockets.push(socket.url()));
   await openFlight(page, { planes: 3, levels: { 'sky-wings': 4 } });
   await page.locator('#friends-toggle').click();
-  await page.locator('#friends-name').fill('Ana');
   await page.locator('#friends-make').click();
-  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{6}$/);
+  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{3}$/);
+  await page.locator('#friends-name').fill('Ana');
+  await page.locator('#friends-name').dispatchEvent('change');
   const code = await page.locator('#friends-code-shown').textContent();
   expect(page.url()).toContain(`#fly=${code}`);
   await expect(page.locator('#friends-toggle')).toHaveText('Fly with a friend');
@@ -115,7 +116,7 @@ test('two friends fly together from their own computers, on the host\'s level, a
   // Flying with friends doesn't move anyone's own level on, and the only connection was to the race server.
   expect((await skyOf(page)).ownLevel).toBe(4);
   expect((await skyOf(ben.page)).ownLevel).toBe(1);
-  expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/sky-wings/${code}`]);
+  expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/sky-wings/${code}?make=1`]);
 
   // Flying again waits for both again.
   await page.locator('#fly-again').click();
@@ -134,7 +135,7 @@ test('a race code and a flight code are kept apart, and a flight can still be fl
   await openFlight(page);
   await page.locator('#friends-toggle').click();
   await page.locator('#friends-make').click();
-  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{6}$/);
+  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{3}$/);
   const code = await page.locator('#friends-code-shown').textContent();
 
   // Someone with the same code in High Five Racers is in a race of their own, not this flight.

@@ -20,9 +20,13 @@ async function secondPlayer(browser) {
 /** A grown-up makes a game, and gets its code. */
 async function makeGame(page, name) {
   await page.locator('#friends-toggle').click();
-  await page.locator('#friends-name').fill(name);
   await page.locator('#friends-make').click();
-  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{6}$/);
+  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{3}$/);
+  // A name, if they'd like one, once they're in.
+  if (name) {
+    await page.locator('#friends-name').fill(name);
+    await page.locator('#friends-name').dispatchEvent('change');
+  }
   return page.locator('#friends-code-shown').textContent();
 }
 
@@ -126,7 +130,7 @@ test('two friends play one game: the host\'s ball, each on their own side, and e
   expect((await view(ben.page)).ownLevel).toBe(1);
   expect(await ben.page.evaluate(() => window.__game.session.settings.bouncePoints)).toBe(11);
   expect(await ben.page.evaluate(() => window.__game.session.settings.bounceLevel)).toBe('tough');
-  expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/bounce-back/${code}`]);
+  expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/bounce-back/${code}?make=1`]);
   expect(ben.errors).toEqual([]);
   await ben.context.close();
 });

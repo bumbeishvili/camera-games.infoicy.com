@@ -2,6 +2,7 @@
 // they're two separate browsers, talking through the race server on this computer (tools/race-server.mjs),
 // which has the same rules as the one on Cloudflare.
 import { expect, openGame, screenName, show, test, waitForScreen } from '../helpers.js';
+import { CODE_LETTERS } from '../../../server/race-room.js';
 
 const raceOf = (page) => page.evaluate(() => {
   const { race, session } = window.__game;
@@ -56,9 +57,13 @@ const roomOf = (page) => page.evaluate(() => {
 /** A grown-up makes a race, and gets its code. */
 async function makeRace(page, name) {
   await page.locator('#friends-toggle').click();
-  await page.locator('#friends-name').fill(name);
   await page.locator('#friends-make').click();
-  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{6}$/);
+  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{3}$/);
+  // A name, if they'd like one, once they're in.
+  if (name) {
+    await page.locator('#friends-name').fill(name);
+    await page.locator('#friends-name').dispatchEvent('change');
+  }
   return page.locator('#friends-code-shown').textContent();
 }
 
@@ -134,7 +139,7 @@ test('two friends race each other from their own computers, on the host\'s cours
   expect((await raceOf(page)).ownLevel).toBe(3);
   expect((await raceOf(friend.page)).ownLevel).toBe(1);
   // The only connection off the page was to the race server.
-  expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/${code}`]);
+  expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/${code}?make=1`]);
 
   // Racing again waits for both again.
   await page.locator('#play-again').click();
@@ -178,7 +183,7 @@ test('making or joining a race, the title card shows only that, with Let\'s race
   await expect(start).toBeHidden();
   await expect(page.locator('.friends-title')).toHaveText('Race a friend');
   await expect(page.locator('#screen-welcome h1')).toBeVisible();
-  await expect(page.locator('#friends-name')).toBeFocused();
+  await expect(page.locator('#friends-code')).toBeFocused();
   expect(await page.locator('#screen-welcome').evaluate((node) => getComputedStyle(node).backdropFilter)).toBe('blur(6px)');
   await page.screenshot({ path: 'test-results/screens/race-friends-box.png' });
 
@@ -215,17 +220,60 @@ test('making or joining a race, the title card shows only that, with Let\'s race
   await ben.context.close();
 });
 
+test('typing a friend\'s code joins at once, and a new race never lands in someone else\'s', async ({ page, browser }) => {
+  test.setTimeout(120_000);
+  await openGame(page);
+  const code = await makeRace(page, 'Ana');
+
+  // Ben types the code, in small letters, and he's in, with nothing to press.
+  const ben = await secondPlayer(browser);
+  await openGame(ben.page);
+  await ben.page.locator('#friends-toggle').click();
+  await ben.page.locator('#friends-code').pressSequentially(code.toLowerCase(), { delay: 80 });
+  await expect(ben.page.locator('#friends-code-shown')).toHaveText(code);
+  await expect(page.locator('#friends-here li')).toHaveCount(2);
+  await ben.page.screenshot({ path: 'test-results/screens/race-friends-typed.png' });
+
+  // Cat makes a race, and the first code her game picks happens to be Ana's. It's in use, so she gets another,
+  // on her own, and Ana's race still has just Ana and Ben.
+  const cat = await secondPlayer(browser);
+  await openGame(cat.page);
+  await cat.page.locator('#friends-toggle').click();
+  await cat.page.evaluate(([taken, letters]) => {
+    const real = crypto.getRandomValues.bind(crypto);
+    const queue = [...taken].map((letter) => letters.indexOf(letter));
+    crypto.getRandomValues = (array) => {
+      if (queue.length && array.length === 1) {
+        array[0] = queue.shift();
+        return array;
+      }
+      return real(array);
+    };
+  }, [code, CODE_LETTERS]);
+  await cat.page.locator('#friends-make').click();
+  await expect(cat.page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{3}$/);
+  await expect(cat.page.locator('#friends-code-shown')).not.toHaveText(code);
+  await expect(cat.page.locator('#friends-here li')).toHaveCount(1);
+  const hers = await cat.page.locator('#friends-code-shown').textContent();
+  expect(cat.page.url()).toContain(`#race=${hers}`);
+  await expect(page.locator('#friends-here li')).toHaveCount(2);
+  for (const each of [ben, cat]) {
+    expect(each.errors).toEqual([]);
+    await each.context.close();
+  }
+});
+
 test('a wrong code is caught before anything is sent, and the race server can be left', async ({ page }) => {
   await openGame(page);
   const sockets = [];
   page.on('websocket', (socket) => sockets.push(socket.url()));
   await page.locator('#friends-toggle').click();
-  await page.locator('#friends-code').fill('hello');
-  await page.locator('#friends-join button').click();
-  await expect(page.locator('#friends-status')).toHaveText('A race code is 6 letters and numbers.');
+  // Typed in full, a code that can't be one is caught; nothing more is needed to join.
+  await page.locator('#friends-code').fill('hl0');
+  await expect(page.locator('#friends-status')).toHaveText('A race code is 3 letters and numbers.');
   expect(sockets).toEqual([]);
   await page.locator('#friends-make').click();
-  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{6}$/);
+  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{3}$/);
   await page.locator('#friends-leave').click();
   await expect(page.locator('#friends-out')).toBeVisible();
   expect(await screenName(page)).toBe('welcome');
@@ -382,9 +430,10 @@ test('a race holds four, can be joined by its code or the copied link, comes bac
   const ben = await secondPlayer(browser);
   await openGame(ben.page);
   await ben.page.locator('#friends-toggle').click();
-  await ben.page.locator('#friends-name').fill('Ben');
   await ben.page.locator('#friends-code').fill(code.toLowerCase());
-  await ben.page.locator('#friends-join button').click();
+  await expect(ben.page.locator('#friends-in')).toBeVisible();
+  await ben.page.locator('#friends-name').fill('Ben');
+  await ben.page.locator('#friends-name').dispatchEvent('change');
   await expect(ben.page.locator('#friends-here li')).toHaveCount(2);
   const cat = await joiner(browser, code);
   const dan = await joiner(browser, code);

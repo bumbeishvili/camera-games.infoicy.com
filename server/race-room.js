@@ -47,6 +47,7 @@
 //                                      from the others: ball only from the host, and shot only to the host
 //   claimed { k, by }                      balloon k, or round k, went to player by, sent to everyone, them too
 //   full   {}                              the room already has as many as it holds: see mostIn
+//   taken  {}                              making a new game, that code is already in use: choose another
 
 export const MAX_RACERS = 4;
 // A fight is two fighters, and Bounce Back is one child on each side of the net. Every other game's room holds
@@ -54,7 +55,9 @@ export const MAX_RACERS = 4;
 const MOST_IN = { 'mighty-moves': 2, 'bounce-back': 2 };
 export const mostIn = (game) => MOST_IN[game] ?? MAX_RACERS;
 export const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // No 0, O, 1, I or L, which look alike.
-export const CODE_LENGTH = 6;
+// A code is short enough to say out loud or type in a moment. A new game never takes one in use: see arrive.
+export const CODE_LENGTH = 3;
+const OLD_CODE_LENGTH = 6; // Links from before codes were 3 long still open their game.
 export const MOST_BYTES = 1800; // A message bigger than this is ignored. The host's balloons are the biggest.
 const MOST_BALLOONS = 24;
 const MOST_A_SECOND = 40; // Messages a player can send in a second; more are dropped.
@@ -83,7 +86,7 @@ export function takeOver(players, was) {
   return kept;
 }
 
-export const validCode = (code) => typeof code === 'string' && code.length === CODE_LENGTH && [...code].every((letter) => CODE_LETTERS.includes(letter));
+export const validCode = (code) => typeof code === 'string' && [CODE_LENGTH, OLD_CODE_LENGTH].includes(code.length) && [...code].every((letter) => CODE_LETTERS.includes(letter));
 
 /** A fresh room code, from a function giving random whole numbers below a limit. */
 export function makeCode(randomBelow) {
@@ -274,14 +277,21 @@ export class RaceRoom {
   /**
    * A new player has connected. They're given an id and a seat, or told the room is full. kept is what was
    * kept about them from a connection they're taking over: see takeOver. most is how many the room holds.
+   * making says they're making a new game, which must have a code nobody is using, so they're told if it's
+   * taken, even by someone who has only just lost the connection and is coming back.
    */
-  arrive(player, id, kept = null, most = MAX_RACERS) {
+  arrive(player, id, kept = null, most = MAX_RACERS, making = false) {
     if (kept) {
       player.setMeta({ ...kept, id });
       this.tellEveryone();
       return true;
     }
     const others = this.room.players().filter((each) => each !== player && each.meta?.id);
+    const now = this.now();
+    if (making && (others.length || [...this.recent.values()].some(({ at }) => now - at <= COMES_BACK_WITHIN_MS))) {
+      player.send({ t: 'taken' });
+      return false;
+    }
     if (others.length >= most) {
       player.send({ t: 'full' });
       return false;

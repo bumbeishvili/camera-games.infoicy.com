@@ -4,7 +4,7 @@
 // and the runtime answers the players' keep-alive pings itself, so a quiet room costs nothing.
 //
 //   wss://<this server>/room/<CODE> for High Five Racers, /room/<game>/<CODE> for the others, with
-//   ?was=<id> for a player coming back after losing the connection
+//   ?was=<id> for a player coming back after losing the connection, and ?make=1 for one making a new game
 //
 // Deploy with: npx wrangler deploy --config server/wrangler.jsonc
 import { DurableObject } from 'cloudflare:workers';
@@ -80,6 +80,7 @@ export class Room extends DurableObject {
   async fetch(request) {
     const url = new URL(request.url);
     const was = url.searchParams.get('was');
+    const making = url.searchParams.get('make') === '1';
     // /room/<game>/<CODE>, as the worker checked: a fight holds two.
     const [, , game, code] = url.pathname.split('/');
     // Taking over a connection that died without closing, or back within moments of one that did close.
@@ -87,7 +88,7 @@ export class Room extends DurableObject {
     const id = kept ? was : idFor(this.players(), was, newId);
     const [client, server] = Object.values(new WebSocketPair());
     this.ctx.acceptWebSocket(server);
-    if (!this.rules.arrive(this.player(server), id, kept, mostIn(code ? game : ''))) server.close(1000, 'full');
+    if (!this.rules.arrive(this.player(server), id, kept, mostIn(code ? game : ''), making)) server.close(1000, 'full');
     return new Response(null, { status: 101, webSocket: client });
   }
 

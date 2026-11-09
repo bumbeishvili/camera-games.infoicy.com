@@ -112,7 +112,7 @@ server.on('upgrade', (request, socket) => {
     room.rules.leave(player);
     if (!room.players.size) rooms.delete(name);
   };
-  if (!room.rules.arrive(player, id, kept, mostIn(game))) {
+  if (!room.rules.arrive(player, id, kept, mostIn(game), address.searchParams.get('make') === '1')) {
     socket.end(frame(8));
     gone();
     return;

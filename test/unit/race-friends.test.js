@@ -41,16 +41,45 @@ function makeRoom(most = MAX_RACERS) {
   return { rules, join, leave, tick: (ms) => { clock += ms; } };
 }
 
-test('race codes are 6 letters and numbers that can\'t be mistaken for each other', () => {
+test('codes are 3 letters and numbers that can\'t be mistaken for each other, and old 6-long links still work', () => {
   const code = makeCode((below) => Math.floor(Math.random() * below));
-  assert.equal(code.length, 6);
+  assert.equal(code.length, 3);
   assert.ok(validCode(code));
-  assert.ok(!validCode('ABC10O'), 'no 0, O, 1 or I');
-  assert.ok(!validCode('abcdef'));
-  assert.ok(!validCode('ABCDE'));
-  assert.equal(codeInLink('#race=abcdef'), 'ABCDEF', 'typed in small letters');
+  assert.ok(!validCode('A0O') && !validCode('B1I') && !validCode('CLM'), 'no 0, O, 1, I or L');
+  assert.ok(!validCode('abc'));
+  assert.ok(!validCode('AB') && !validCode('ABCD'));
+  assert.ok(validCode('ABCDEF'), 'a link from before codes were short');
+  assert.equal(codeInLink('#race=abc'), 'ABC', 'typed in small letters');
+  assert.equal(codeInLink('#race=abcdef'), 'ABCDEF');
   assert.equal(codeInLink('#race=zz'), null);
   assert.equal(codeInLink(''), null);
+});
+
+test('a new game never takes a code in use, even by someone who has only just lost the connection', () => {
+  const { rules, join } = makeRoom();
+  const making = (id) => {
+    const player = { meta: null, heard: [], setMeta(meta) { this.meta = meta; }, send(message) { this.heard.push(message); } };
+    return { player, inside: rules.arrive(player, id, null, MAX_RACERS, true) };
+  };
+  // Nobody here: it's theirs.
+  const first = making('aaaaaaaa');
+  assert.equal(first.inside, true);
+  // Someone else making a game with the same code is told it's taken, and is not let in.
+  join('bbbbbbbb');
+  const second = making('cccccccc');
+  assert.equal(second.inside, false);
+  assert.deepEqual(second.player.heard, [{ t: 'taken' }]);
+  // Joining it with the code, rather than making it, is how a friend gets in.
+  assert.ok(join('dddddddd'));
+  // Just after everyone has gone, the code is still theirs for a moment, for anyone coming back.
+  const empty = makeRoom();
+  const was = empty.join('eeeeeeee');
+  empty.leave(was);
+  const third = { meta: null, heard: [], setMeta(meta) { this.meta = meta; }, send(message) { this.heard.push(message); } };
+  assert.equal(empty.rules.arrive(third, 'ffffffff', null, MAX_RACERS, true), false);
+  assert.deepEqual(third.heard, [{ t: 'taken' }]);
+  empty.tick(20_000);
+  assert.equal(empty.rules.arrive(third, 'ffffffff', null, MAX_RACERS, true), true);
 });
 
 test('the first in hosts, everyone hears who\'s here, and the host\'s course is raced once all are ready', () => {

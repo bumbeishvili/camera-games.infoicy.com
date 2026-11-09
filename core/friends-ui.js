@@ -4,10 +4,11 @@
 // itself is in friends.js.
 //
 // Once the box is open, by its button or a friend's link, the title card shows nothing else, over the game
-// dimmed and blurred behind it: a name, then making or joining, then the code, who's here, and the game's own
-// start button, moved in under them. Back, or leaving, goes back to the usual title card.
+// dimmed and blurred behind it: making a game, or typing a friend's 3-letter code, which joins as soon as it's
+// typed. Then the code, who's here, a name if they'd like one, and the game's own start button, moved in under
+// them. Back, or leaving, goes back to the usual title card.
 import { byId as characterWithId, ROSTER } from './body/roster.js';
-import { validCode } from '../server/race-room.js';
+import { CODE_LENGTH, validCode } from '../server/race-room.js';
 import { codeInLink, FriendsRoom, linkFor, newCode } from './friends.js';
 
 const NAME_KEY = 'camera-games-race-name';
@@ -43,13 +44,11 @@ const box = (words) => `
   <button id="friends-toggle" class="friends-toggle" type="button" aria-expanded="false" aria-controls="friends-box">${words.toggle}</button>
   <div id="friends-box" class="friends-box" hidden>
     <h2 class="friends-title">${words.toggle}</h2>
-    <label class="friends-field">Your name <input id="friends-name" maxlength="16" autocomplete="off" spellcheck="false"></label>
     <div id="friends-out" class="friends-out">
       <button id="friends-make" class="friends-button" type="button">${words.make}</button>
       <p class="friends-or">or</p>
       <form id="friends-join" class="friends-join">
-        <label class="friends-field">${words.codeLabel} <input id="friends-code" maxlength="6" autocomplete="off" spellcheck="false" autocapitalize="characters"></label>
-        <button class="friends-button" type="submit">Join</button>
+        <label class="friends-field">${words.codeLabel} <input id="friends-code" maxlength="${CODE_LENGTH}" autocomplete="off" spellcheck="false" autocapitalize="characters"></label>
       </form>
       <button id="friends-back" class="friends-link" type="button">Back</button>
     </div>
@@ -60,6 +59,7 @@ const box = (words) => `
       </div>
       <ul id="friends-here" class="friends-here"></ul>
       <p id="friends-lonely" class="friends-lonely">Waiting for a friend to join…</p>
+      <label class="friends-field friends-name">Your name <input id="friends-name" maxlength="16" autocomplete="off" spellcheck="false" placeholder="if you like"></label>
       <p class="friends-how">${words.how}</p>
       <div id="friends-start" class="friends-start"></div>
       <button id="friends-leave" class="friends-link" type="button">${words.leave}</button>
@@ -133,19 +133,19 @@ export class FriendsPanel {
     });
     byId('friends-toggle').addEventListener('click', () => {
       this.openBox(true);
-      byId('friends-name').focus();
+      byId('friends-code').focus();
     });
     byId('friends-back').addEventListener('click', () => {
       this.openBox(false);
       this.status('');
       byId('friends-toggle').focus();
     });
-    byId('friends-make').addEventListener('click', () => this.join(newCode()));
+    byId('friends-make').addEventListener('click', () => this.join(newCode(), { making: true }));
+    // A friend's code joins as soon as it's all typed, with no button to find.
+    byId('friends-code').addEventListener('input', () => this.typedCode(false));
     byId('friends-join').addEventListener('submit', (event) => {
       event.preventDefault();
-      const code = byId('friends-code').value.trim().toUpperCase();
-      if (validCode(code)) this.join(code);
-      else this.status(words.badCode);
+      this.typedCode(true);
     });
     byId('friends-copy').addEventListener('click', () => this.copyLink());
     byId('friends-leave').addEventListener('click', () => this.leave());
@@ -170,6 +170,17 @@ export class FriendsPanel {
     return byId('friends-name').value.replace(/\s+/g, ' ').trim().slice(0, 16);
   }
 
+  /** A friend's code, as it's typed: it joins once it's all there. done is Enter, when a short one is wrong too. */
+  typedCode(done) {
+    const code = byId('friends-code').value.replace(/\s+/g, '').toUpperCase();
+    if (code.length < CODE_LENGTH && !done) {
+      this.status('');
+      return;
+    }
+    if (validCode(code) && code.length === CODE_LENGTH) this.join(code);
+    else this.status(this.words.badCode);
+  }
+
   /** What friends are told about this player, and the course it would be on if they host it. */
   hello() {
     return { name: this.name, ...this.helloFor() };
@@ -191,9 +202,10 @@ export class FriendsPanel {
     else if (!inRoom && startButton.parentElement === slot) this.friendsBox.before(startButton);
   }
 
-  join(code) {
+  /** making is a new game, which gets another code if this one is in use. */
+  join(code, { making = false } = {}) {
     saveName(this.name);
-    this.room.join(code, this.hello());
+    this.room.join(code, this.hello(), { making });
     history.replaceState(null, '', `#${this.linkKey}=${code}`);
   }
 
@@ -344,7 +356,9 @@ export class FriendsPanel {
     byId('friends-lonely').hidden = !inRoom || room.members.length > 1;
     this.placeStart(inRoom);
     byId('friends-code-shown').textContent = room.code ?? '';
-    if (room.code) byId('friends-code').value = room.code;
+    // A new game whose code was in use has another, which the link says too.
+    if (room.code && codeInLink(location.hash, this.linkKey) !== room.code) history.replaceState(null, '', `#${this.linkKey}=${room.code}`);
+    if (inRoom) byId('friends-code').value = '';
     this.status({ connecting: 'Connecting…', full: words.full, lost: words.lost }[room.status] ?? '');
     this.fillList(byId('friends-here'), false);
     this.fillList(byId('friends-waiting'), true);
