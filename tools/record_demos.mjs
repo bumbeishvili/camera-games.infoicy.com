@@ -484,6 +484,41 @@ const FILMS = {
       return { fives, fivesLeft, fivesRight, gatesMet };
     }),
   },
+  'bounce-back': {
+    settings: { bounceHelp: 'lots', bouncePace: 'medium', levels: { 'bounce-back': 6 } },
+    css: '.camera-frame { --camera-small: 22vw !important; }',
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: null, right: 'open', scale: 0.7 }));
+      await page.addScriptTag({ content: CHASE });
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await wait(page, 500);
+    },
+    async play(page) {
+      // The open hand goes to the ball whenever it comes over the net, and back to the middle of its half
+      // after hitting it, as a child would.
+      await page.evaluate(() => new Promise((done) => {
+        const { court, rally, gloves } = window.__game;
+        const stop = window.__chase(
+          () => gloves.right,
+          () => {
+            const { ball } = rally;
+            return ball.side === 'A' ? court.at(ball.u, ball.h) : court.at(-0.62, 0.45);
+          },
+          () => 'open',
+          0.16,
+        );
+        setTimeout(() => {
+          stop();
+          done();
+        }, 14_000);
+      }));
+    },
+    report: (page) => page.evaluate(() => {
+      const { stats, scores } = window.__game.rally;
+      return { hits: stats.hits, longest: stats.longest, prizes: stats.prizes, scores };
+    }),
+  },
   'balloon-pop': {
     settings: { reach: 'none', pace: 'medium' },
     async ready(page) {

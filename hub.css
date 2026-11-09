@@ -238,6 +238,31 @@ body.hub {
 .art-tin-eye { fill: #fff; stroke: var(--ink); stroke-width: 2.5; }
 .art-tin-pupil { fill: var(--ink); }
 .art-tin-mouth { fill: var(--ink); }
+
+/* Bounce Back's picture. */
+.game-art-bounce { background: linear-gradient(#58b8f4, #d3f0ff 46%); }
+.art-bounce-sea { fill: #3a9fe4; }
+.art-bounce-lawn { fill: #86d08f; }
+.art-bounce-court { fill: #4a9fe0; }
+.art-bounce-lines { fill: none; stroke: #fff; stroke-width: 3; stroke-linejoin: round; }
+.art-bounce-net { fill: rgb(255 255 255 / 0.35); stroke: var(--ink); stroke-width: 1.5; }
+.art-bounce-post { fill: none; stroke: var(--ink); stroke-width: 4; stroke-linecap: round; }
+.art-bounce-arc { fill: none; stroke: #fff; stroke-width: 3; stroke-dasharray: 2 9; stroke-linecap: round; }
+.art-bounce-ball { fill: #fff; }
+.art-bounce-red { fill: #ff5a4f; }
+.art-bounce-blue { fill: #3b82f6; }
+.art-bounce-yellow { fill: #ffd23f; }
+.art-bounce-edge { fill: none; stroke: var(--ink); stroke-width: 2.5; }
+.art-bounce-cap { fill: #fff; stroke: var(--ink); stroke-width: 1; }
+.art-bounce-ring { fill: rgb(255 255 255 / 0.2); stroke: #2a78d6; stroke-width: 5; }
+.art-bounce-ring-far { stroke: #ff6f61; stroke-width: 4; }
+.art-bounce-strings { fill: none; stroke: rgb(255 255 255 / 0.7); stroke-width: 1.5; }
+.art-bounce-palm { fill: #3ddc84; stroke: var(--ink); stroke-width: 3; }
+.art-bounce-finger-ink { fill: none; stroke: var(--ink); stroke-width: 10; stroke-linecap: round; }
+.art-bounce-finger { fill: none; stroke: #3ddc84; stroke-width: 6; stroke-linecap: round; }
+.art-bounce-palm-far { fill: #fff; stroke: var(--ink); stroke-width: 2.500; }
+.art-bounce-finger-far { fill: none; stroke: #fff; stroke-width: 5; stroke-linecap: round; }
+.art-bounce-ring-far + .art-bounce-finger-ink { stroke-width: 8.500; }
 .art-paint-pink { fill: #ff7eb6; stroke: var(--ink); stroke-width: 2; }
 .art-paint-blue { fill: #3fb7ff; stroke: var(--ink); stroke-width: 2; }
 .art-paint-yellow { fill: #ffd23f; stroke: var(--ink); stroke-width: 2; }
