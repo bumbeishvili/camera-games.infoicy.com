@@ -162,7 +162,7 @@ class RaceGame {
       onLanded: () => sound.landed(),
       onCrowd: () => sound.crowd(),
       onFinish: () => {
-        this.friends.crossed(session.playSeconds * 1000);
+        this.friends.crossed(this.sinceGo);
         session.finish();
       },
     }, { ...this.cast, reach: session.settings.reach, level: session.level });
@@ -476,7 +476,16 @@ class RaceGame {
     this.session.sound.startEngine();
   }
 
+  /**
+   * How long since "GO!", by the clock on the wall, for friends' games. Not by the game's own clock, which
+   * runs slow on a computer that's struggling and would make it look faster than it is.
+   */
+  get sinceGo() {
+    return performance.now() - this.goAt;
+  }
+
   begin() {
+    this.goAt = performance.now();
     this.race.setMode('race');
     this.race.world.places.startLights.go();
     this.race.celebrateAtLine();
@@ -501,7 +510,7 @@ class RaceGame {
     });
     const { speed, turboOn, boosting } = race.info;
     session.sound.engine(speed, snapshot.drive > 0, turboOn || boosting ? 1 : 0);
-    this.friends.sendCar(race.carState, session.playSeconds * 1000);
+    this.friends.sendCar(race.carState, this.sinceGo);
     this.showProgress();
     this.showFlyFilm(dt);
   }
