@@ -371,6 +371,9 @@ export class Flight {
     this.power = null;
     this.helper = null;
     this.paperIn = 0;
+    // Friends flying on their own computers, whose planes are here where they really are: see mateFires.
+    // Each is { x, y, z, heading, pitch, roll, live }, kept up to date by main.js.
+    this.mates = [];
 
     this.stats = {
       dropped: 0,
@@ -1025,9 +1028,8 @@ export class Flight {
     }
   }
 
-  /** The flying pirate nearest the way the child's plane points, from somewhere, within a cone. */
-  nearestWithin(from, cone, reach) {
-    const { forward } = this;
+  /** The flying pirate nearest the way a plane points, the child's unless said, from somewhere, within a cone. */
+  nearestWithin(from, cone, reach, forward = this.forward) {
     let found = null;
     let nearest = Infinity;
     for (const enemy of this.flying) {
@@ -1059,6 +1061,22 @@ export class Flight {
     if (!target) return;
     helper.shotIn = HELPER.every;
     this.shots.push({ mine: true, kind: 'helper', x: helper.x, y: helper.y, z: helper.z, dx: forward.x, dy: forward.y, dz: forward.z, left: SHOT.life, target });
+  }
+
+  /**
+   * A friend flying on their own computer. Like the friend who helps, their plane fires at a pirate ahead of
+   * it: these pirates are only on this computer, but here the friend is flying with the child, and helps.
+   * Nothing fires while the child rests.
+   */
+  mateFires(mate, dt) {
+    if (!mate.live || this.resting) return;
+    mate.shotIn = (mate.shotIn ?? HELPER.every) - dt;
+    if (mate.shotIn > 0) return;
+    const forward = forwardOf(mate.heading, mate.pitch);
+    const target = this.nearestWithin(mate, HELPER.cone, RANGE, forward);
+    if (!target) return;
+    mate.shotIn = HELPER.every;
+    this.shots.push({ mine: true, kind: 'helper', x: mate.x, y: mate.y, z: mate.z, dx: forward.x, dy: forward.y, dz: forward.z, left: SHOT.life, target });
   }
 
   /* ---------- the child's plane ---------- */
@@ -1175,6 +1193,7 @@ export class Flight {
     this.watchBehind();
     this.moveGift(dt);
     this.usePower(dt);
+    for (const mate of this.mates) this.mateFires(mate, dt);
 
     this.locked = resting ? null : this.findTarget();
     this.setFiring(Boolean(this.locked));

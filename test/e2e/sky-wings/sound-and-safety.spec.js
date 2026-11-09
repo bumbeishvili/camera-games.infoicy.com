@@ -96,10 +96,14 @@ test('Georgian: what the coach asks for changes language', async ({ page }) => {
 test('the game makes no requests off this computer, and the page refuses to', async ({ page, baseURL, pageErrors }) => {
   const requests = [];
   page.on('request', (request) => requests.push(request.url()));
+  // Flying with friends is the only thing that connects anywhere, and only once a grown-up makes or joins one.
+  const sockets = [];
+  page.on('websocket', (socket) => sockets.push(socket.url()));
   await reachFlight(page);
   await page.waitForTimeout(1000);
   const offsite = requests.filter((url) => !url.startsWith(baseURL) && !url.startsWith('data:') && !url.startsWith('blob:'));
   expect(offsite).toEqual([]);
+  expect(sockets).toEqual([]);
   const blocked = await page.evaluate(async () => {
     try {
       await fetch('https://example.com/upload', { method: 'POST', body: 'picture' });
@@ -109,7 +113,7 @@ test('the game makes no requests off this computer, and the page refuses to', as
     }
   });
   expect(blocked).toBe(true);
-  await expect.poll(() => pageErrors.join('\n')).toContain("violates the following Content Security Policy directive: \"connect-src 'self'\"");
+  await expect.poll(() => pageErrors.join('\n')).toContain("violates the following Content Security Policy directive: \"connect-src 'self' wss://hemi-race.infoicy.com ws://localhost:8643\"");
   pageErrors.length = 0;
 });
 

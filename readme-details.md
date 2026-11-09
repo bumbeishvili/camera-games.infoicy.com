@@ -28,7 +28,7 @@ cd camera-games.infoicy.com
 npm start
 ```
 
-Then open <http://localhost:8642> in Chrome and choose a game. Chrome only allows the camera on `localhost` or HTTPS, so opening `index.html` directly won't work. To race friends from here, also run `npm run race-server`, which needs Node.
+Then open <http://localhost:8642> in Chrome and choose a game. Chrome only allows the camera on `localhost` or HTTPS, so opening `index.html` directly won't work. To play with friends from here, also run `npm run race-server`, which needs Node.
 
 ## How the folder is organised
 
@@ -43,6 +43,7 @@ core/                   what every game shares
   camera.js, tracker.worker.js    the webcam and hand tracking
   settings.js, base.css
   levels.js             the ten levels every game has, and where they show
+  friends.js, friends-ui.js    playing with friends on their own computers, and how it looks
   glove.js              the glove that copies a hand, finger by finger
   story.js, fruit.js    who's speaking, and the fruit, in the games with a mission
   body/                 what the whole-body games share
@@ -67,7 +68,7 @@ games/
   smoothie-stand/       its customers and orders, the fair and its sounds
   lighthouse/           its storm and ships, the lamp room and its sounds
 tools/                  the local server, the local race server, and what prepares voices and sounds
-server/                 the server for racing friends in High Five Racers: its rules, and the Cloudflare Worker that runs them
+server/                 the server for playing with friends in High Five Racers and Sky Wings: its rules, and the Cloudflare Worker that runs them
 vendor/                 libraries, the tracking model and fonts
 test/                   unit tests, and Playwright tests for the hub and each game
 ```
@@ -195,7 +196,7 @@ Coins are counted at the top from level 2, and on the finish card with any gems,
 
 **What's sent, and where.** Nothing is sent unless a grown-up makes or joins a race. Then the game sends the name typed, who drives, the host's level and race length, and where the car is on the road 10 times a second: how far along and across, its speed, and whether it's in the air or on turbo. Nothing from the camera is ever sent. It all goes through a small server on Cloudflare ([server/](server/)), which passes it straight on to the others in the race and keeps nothing once they've gone. The code in a link comes after `#`, which browsers don't send to the web server the games come from.
 
-**How it works.** Each race is one Durable Object on Cloudflare, named by its code, and each player keeps one WebSocket open to it. Each game drives its own car and shows the others' cars 120 ms behind what they last sent, so they move smoothly between messages. The same rules run on this computer in [tools/race-server.mjs](tools/race-server.mjs) for the tests. To put the server online, run `npx wrangler login` once, then `npx wrangler deploy --config server/wrangler.jsonc`. It's served at `hemi-race.infoicy.com`.
+**How it works.** Each race is one Durable Object on Cloudflare, named by its code, and each player keeps one WebSocket open to it. Each game drives its own car and shows the others' cars 120 ms behind what they last sent, so they move smoothly between messages. A connection that drops comes back by itself as the same player. During a race the game checks it every 2 seconds and starts a new one if nothing has come back for 6, and someone back within 15 seconds keeps their car, their race and hosting. The same rules run on this computer in [tools/race-server.mjs](tools/race-server.mjs) for the tests, and Sky Wings uses the same server, with rooms of its own. To put the server online, run `npx wrangler login` once, then `npx wrangler deploy --config server/wrangler.jsonc`. It's served at `hemi-race.infoicy.com`.
 
 ## Mighty Moves
 
@@ -319,6 +320,16 @@ The child's two arms are the wings of a toy plane, sitting or standing, and it's
 - **Nothing flashes,** and the picture's brightness is tested through firing, drops and flying right through a cloud, which fades as the plane reaches it. A shot stopped by the shield changes the brightness by under 0.1 out of 255, and flying straight through snow, no part of the picture changes by more than 1.6. There's no muzzle flash and no explosion, only small sparks and soft grey smoke.
 
 This game doesn't read the hand at all, as the guns fire by themselves, so it doesn't practise opening the hand. It's all about the shoulders and both arms.
+
+**Flying with friends.** Up to 4 children can fly together, each on their own computer with their own camera, the same way friends race in High Five Racers.
+
+- **Making and joining:** under **Fly with a friend** on the title card, a grown-up presses **Make a flight** and sends the link or the code, and the friend opens it.
+- **Starting:** everyone chooses a pilot and presses **Let’s fly!**. After the body check and the lesson, each waits until everyone is ready, and then all count down together, side by side. Whoever made the flight can press **Start now**, and anyone can fly on their own.
+- **In the sky:** everyone flies the host's level and number of planes. Each child sees the others' planes where they really are, with a face and a name over each, and a friend's plane fires at the pirates in front of it, like the friend who helps. Each child has their own pirates, so friends help each other rather than taking each other's. A friend's character is never one of the pirates too.
+- **The finish card** says how everyone did: all dropped, and how fast, or how many.
+- **Levels and settings:** a flight with friends doesn't move anyone's own level on, and every setting a grown-up chose stays as it was.
+
+Only the name typed, the pilot chosen and where the plane is, 10 times a second, go to friends, never anything from the camera.
 
 **Levels.** Dropping every plane moves on a level, and being shot down, on Medium or Tough, stays. A level never changes the ring's size, the help with lining up, how hard the pirates shoot, Gentle's hearts or flying up and down by itself. Higher levels make the pirates a little faster and sharper in the turn, but never as fast as the child's plane, and they hunt the child a little more often and dodge for longer when hit. Being hunted gives as long to turn as ever. Every level from 2 also brings something new, which stays for the levels after it:
 
@@ -509,7 +520,7 @@ Where each sound came from is in [CREDITS.md](CREDITS.md).
 
 ## Privacy
 
-Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, except that High Five Racers may reach its race server, which it only does once a grown-up makes or joins a race (see [Racing friends](#high-five-racers)), and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
+Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, except that High Five Racers and Sky Wings may reach the server for playing with friends, which they only do once a grown-up makes or joins a race or a flight (see [Racing friends](#high-five-racers)), and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
 
 ## Tests
 

@@ -1,20 +1,24 @@
-// A race with friends in High Five Racers: who's in a room, and what they pass to each other. The same
-// rules run on Cloudflare (server/worker.js) and on this computer for the tests (tools/race-server.mjs).
-// Nothing here is kept once everyone has gone, and no camera picture ever comes here: only where each car
-// is on the road, the name a player typed, and which character drives.
+// Playing with friends, in High Five Racers and Sky Wings: who's in a room, and what they pass to each other.
+// The same rules run on Cloudflare (server/worker.js) and on this computer for the tests
+// (tools/race-server.mjs). Each game has rooms of its own. Nothing here is kept once everyone has gone, and no
+// camera picture ever comes here: only where each car or plane is, the name a player typed, and which
+// character drives or flies.
 //
 // A player sends JSON messages, each { t, ... }:
-//   hi     { name, driver, level, laps, racing }   first, after connecting, and again if any of it changes.
-//                                      racing says they're in a race, for one who's come back mid-race
-//   ready  {}                              the hand check is done, and they're waiting on the grid
-//   go     {}                              the host starts the race with whoever is ready
-//   car    { ms, d, x, s, l, f, b }        where their car is, about 10 times a second
-//   done   { ms }                          they've crossed the line, this long after "GO!"
+//   hi     { name, driver, level, length, racing }   first, after connecting, and again if any of it changes.
+//                                      length is the race's laps, or a flight's planes to drop. racing says
+//                                      they're in the middle of one, for someone who's come back mid-race
+//   ready  {}                              they're waiting at the start
+//   go     {}                              the host starts with whoever is ready
+//   car    { ms, d, x, s, l, f, b }        where their car is, about 10 times a second, in a race
+//   plane  { ms, x, y, z, h, p, r, s, f }  where their plane is, in a flight
+//   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
+//                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
 // The room sends:
 //   room   { you, members: [{ id, name, driver, ready, racing, host }] }   whenever that changes
-//   go     { level, laps, racers }         the countdown starts now, on the host's course, for racers
-//   car    { from, ... } and done { from, ms }   passed on from the others
+//   go     { level, length, laps, racers }   the countdown starts now, on the host's course (laps is length)
+//   car, plane { from, ... } and done { from, ms, n, w }   passed on from the others
 //   full   {}                              there are already MAX_RACERS in the room
 
 export const MAX_RACERS = 4;
@@ -23,7 +27,6 @@ export const CODE_LENGTH = 6;
 export const MOST_BYTES = 600; // A message bigger than this is ignored.
 const MOST_A_SECOND = 40; // Messages a player can send in a second; more are dropped.
 const COMES_BACK_WITHIN_MS = 15_000; // A player who goes and comes back as soon as this carries on as before.
-const LAPS = [1, 2, 4];
 
 /** A player's id, which a player who lost the connection for a moment brings back to keep their place. */
 export const validId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{8,24}$/.test(id);
@@ -74,6 +77,21 @@ export function cleanName(value) {
 }
 
 const cleanDriver = (value) => (typeof value === 'string' && /^[a-z][a-z-]{0,23}$/.test(value) ? value : '');
+
+/** Only what a plane message should hold, rounded. h is which way it heads, p and r its pitch and roll. */
+export function cleanPlane(message) {
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    x: number(message.x, -5000, 5000, 2),
+    y: number(message.y, -100, 2000, 2),
+    z: number(message.z, -5000, 5000, 2),
+    h: number(message.h, -7, 7, 3),
+    p: number(message.p, -2, 2, 3),
+    r: number(message.r, -2, 2, 3),
+    s: number(message.s, 0, 300, 1),
+    f: message.f ? 1 : 0,
+  };
+}
 
 /** Only what a car message should hold, rounded, so nothing else can be passed on. */
 export function cleanCar(message) {
@@ -133,7 +151,7 @@ export class RaceRoom {
       player.send({ t: 'full' });
       return false;
     }
-    player.setMeta({ id, joined: this.now(), name: '', driver: '', level: 1, laps: 2, ready: false, racing: false });
+    player.setMeta({ id, joined: this.now(), name: '', driver: '', level: 1, length: 2, ready: false, racing: false });
     this.tellEveryone();
     return true;
   }
@@ -154,10 +172,10 @@ export class RaceRoom {
     const others = players.filter((each) => each !== player);
     switch (message.t) {
       case 'hi': {
-        const laps = LAPS.includes(Number(message.laps)) ? Number(message.laps) : meta.laps;
+        const length = number(message.length ?? message.laps, 1, 20, 0) || meta.length;
         // Coming back mid-race, after losing the connection for a moment, they're still racing.
         const racing = meta.racing || (Boolean(message.racing) && !meta.ready);
-        player.setMeta({ ...meta, name: cleanName(message.name), driver: cleanDriver(message.driver), level: number(message.level, 1, 10, 0) || 1, laps, racing });
+        player.setMeta({ ...meta, name: cleanName(message.name), driver: cleanDriver(message.driver), level: number(message.level, 1, 10, 0) || 1, length, racing });
         this.tellEveryone();
         break;
       }
@@ -171,12 +189,15 @@ export class RaceRoom {
         if (hostOf(players) === player && meta.ready) this.start();
         break;
       case 'car':
-        for (const other of others) other.send({ t: 'car', from: meta.id, ...cleanCar(message) });
+      case 'plane': {
+        const moved = message.t === 'plane' ? cleanPlane(message) : cleanCar(message);
+        for (const other of others) other.send({ t: message.t, from: meta.id, ...moved });
         break;
+      }
       case 'done':
         if (!meta.racing) return;
         player.setMeta({ ...meta, racing: false });
-        for (const other of others) other.send({ t: 'done', from: meta.id, ms: number(message.ms, 0, 3_600_000, 0) });
+        for (const other of others) other.send({ t: 'done', from: meta.id, ms: number(message.ms, 0, 3_600_000, 0), n: number(message.n, 0, 100, 0), w: message.w === 0 ? 0 : 1 });
         this.tellEveryone();
         break;
       case 'leave':
@@ -211,7 +232,8 @@ export class RaceRoom {
     const racers = players.filter((each) => each.meta.ready).sort(byJoining);
     if (!host || !racers.length) return;
     for (const racer of racers) racer.setMeta({ ...racer.meta, ready: false, racing: true });
-    const go = { t: 'go', level: host.meta.level, laps: host.meta.laps, racers: racers.map((each) => each.meta.id) };
+    const { level, length } = host.meta;
+    const go = { t: 'go', level, length, laps: length, racers: racers.map((each) => each.meta.id) };
     for (const player of players) player.send(go);
     this.tellEveryone();
   }

@@ -8,6 +8,7 @@ import { idFor, RaceRoom, takeOver, validCode } from '../server/race-room.js';
 
 const PORT = Number(process.env.RACE_PORT ?? 8643);
 const ALLOWED_ORIGINS = ['http://localhost:8642', 'http://127.0.0.1:8642'];
+const GAMES = ['sky-wings']; // As on Cloudflare: High Five Racers' rooms are just the code.
 const MAGIC = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
 const rooms = new Map(); // code: { players: Set, rules }
@@ -64,9 +65,12 @@ const server = createServer((request, response) => {
 
 server.on('upgrade', (request, socket) => {
   const address = new URL(request.url, 'http://localhost');
-  const [, kind, code] = address.pathname.split('/');
+  const [, kind, ...rest] = address.pathname.split('/');
+  const code = rest.at(-1);
+  const game = rest.length === 2 ? rest[0] : '';
   const key = request.headers['sec-websocket-key'];
-  if (kind !== 'room' || !validCode(code) || !key || !ALLOWED_ORIGINS.includes(request.headers.origin)) {
+  const known = kind === 'room' && rest.length <= 2 && validCode(code) && (!game || GAMES.includes(game));
+  if (!known || !key || !ALLOWED_ORIGINS.includes(request.headers.origin)) {
     socket.end('HTTP/1.1 403 Forbidden\r\n\r\n');
     return;
   }
@@ -74,7 +78,8 @@ server.on('upgrade', (request, socket) => {
   socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
   socket.setNoDelay(true);
 
-  const room = roomFor(code);
+  const name = game ? `${game}:${code}` : code;
+  const room = roomFor(name);
   let open = true;
   let meta = null;
   const player = {
@@ -103,7 +108,7 @@ server.on('upgrade', (request, socket) => {
     open = false;
     room.players.delete(player);
     room.rules.leave(player);
-    if (!room.players.size) rooms.delete(code);
+    if (!room.players.size) rooms.delete(name);
   };
   if (!room.rules.arrive(player, id, kept)) {
     socket.end(frame(8));

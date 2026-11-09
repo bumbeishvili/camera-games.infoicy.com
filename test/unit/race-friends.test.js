@@ -65,7 +65,7 @@ test('the first in hosts, everyone hears who\'s here, and the host\'s course is 
   assert.equal(friend.last('go'), undefined, 'not until everyone is ready');
   friend.say({ t: 'ready' });
   for (const player of [host, friend]) {
-    assert.deepEqual(player.last('go'), { t: 'go', level: 7, laps: 1, racers: ['aaaaaaaa', 'bbbbbbbb'] });
+    assert.deepEqual(player.last('go'), { t: 'go', level: 7, length: 1, laps: 1, racers: ['aaaaaaaa', 'bbbbbbbb'] });
   }
   const after = host.last('room').members;
   assert.ok(after.every(({ ready, racing }) => !ready && racing), 'everyone is racing, and has to be ready again for the next');
@@ -98,7 +98,7 @@ test('cars and finishes go to the others, with only what a car message should ho
     assert.deepEqual(other.last('car'), { t: 'car', from: 'aaaaaaaa', ms: 1500, d: 12.35, x: 20, s: 20, l: 0, f: 1, b: 0 });
   }
   two.say({ t: 'done', ms: 61234 });
-  assert.deepEqual(one.last('done'), { t: 'done', from: 'bbbbbbbb', ms: 61234 });
+  assert.deepEqual(one.last('done'), { t: 'done', from: 'bbbbbbbb', ms: 61234, n: 0, w: 1 }, 'a race is always won by finishing');
   assert.equal(three.last('room').members.find(({ id }) => id === 'bbbbbbbb').racing, false);
   two.say({ t: 'done', ms: 1 });
   assert.equal(one.heard.filter(({ t }) => t === 'done').length, 1, 'a finish counts once');
@@ -139,7 +139,7 @@ test('someone who loses the connection mid-race comes back as themselves, still 
   const back = host.last('room').members.find(({ id }) => id === 'bbbbbbbb');
   assert.equal(back.racing, true);
   friend.say({ t: 'done', ms: 65000 });
-  assert.deepEqual(host.last('done'), { t: 'done', from: 'bbbbbbbb', ms: 65000 }, 'and their finish counts');
+  assert.deepEqual(host.last('done'), { t: 'done', from: 'bbbbbbbb', ms: 65000, n: 0, w: 1 }, 'and their finish counts');
   // Saying so on the grid, waiting for a race, doesn't make anyone a racer.
   friend.say({ t: 'ready' });
   friend.say({ t: 'hi', name: 'Nino', racing: true });
@@ -231,4 +231,44 @@ test('a friend\'s car moves smoothly between messages, even when some arrive lat
   assert.equal(track.at(9000).d, track.at(7000).d);
   track.clear();
   assert.equal(track.at(9000), null);
+});
+
+test('in Sky Wings, a friend\'s plane fires at a pirate ahead of it, and never while the child rests', async () => {
+  const { Flight } = await import('../../games/sky-wings/flight.js');
+  const flight = new Flight({ planes: 3, levelNumber: 1, random: () => 0.5 });
+  flight.begin();
+  const enemy = flight.flying[0];
+  // A friend 80 m behind the pirate, pointing straight at it.
+  const mate = { x: enemy.x, y: enemy.y, z: enemy.z + 80, heading: 0, pitch: 0, roll: 0, live: true };
+  flight.mates = [mate];
+  const keepStill = () => Object.assign(enemy, { x: mate.x, y: mate.y, z: mate.z - 80, mode: 'cross', way: { x: mate.x, y: mate.y, z: mate.z - 80 }, modeLeft: 5 });
+  const before = enemy.hitsLeft;
+  for (let i = 0; i < 60; i += 1) {
+    keepStill();
+    flight.update(1 / 60, { out: true });
+  }
+  assert.ok(enemy.hitsLeft < before || enemy.state !== 'flying', 'the friend hit the pirate');
+
+  // Resting, nothing fires at all: not the child's guns, not a friend's.
+  const shots = () => flight.shots.filter(({ kind }) => kind === 'helper').length;
+  for (let i = 0; i < 400; i += 1) flight.update(1 / 60, { out: false });
+  assert.equal(flight.resting, true);
+  const resting = shots();
+  for (let i = 0; i < 60; i += 1) flight.update(1 / 60, { out: false });
+  assert.ok(shots() <= resting, 'no new shots while resting');
+  // A friend who has gone doesn't fire either.
+  mate.live = false;
+  assert.equal(flight.mateFires(mate, 1), undefined);
+});
+
+test('the server passes on where a plane is, and how a flight went, with only what they should hold', () => {
+  const { join } = makeRoom();
+  const one = join('aaaaaaaa');
+  const two = join('bbbbbbbb');
+  one.say({ t: 'ready' });
+  two.say({ t: 'ready' });
+  one.say({ t: 'plane', ms: 2000, x: 12.345, y: 99999, z: -40, h: 3.14159, p: 0.2, r: -0.3, s: 55.55, f: 1, picture: 'not this' });
+  assert.deepEqual(two.last('plane'), { t: 'plane', from: 'aaaaaaaa', ms: 2000, x: 12.35, y: 2000, z: -40, h: 3.142, p: 0.2, r: -0.3, s: 55.6, f: 1 });
+  one.say({ t: 'done', ms: 90000, n: 4, w: 0 });
+  assert.deepEqual(two.last('done'), { t: 'done', from: 'aaaaaaaa', ms: 90000, n: 4, w: 0 }, 'shot down, with 4 dropped');
 });

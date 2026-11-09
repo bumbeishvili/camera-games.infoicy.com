@@ -389,6 +389,9 @@ export class Sky {
     this.gifts = {};
     this.helperPlane = null;
     this.frostIn = new Map();
+    // Friends flying on their own computers: a plane each, and where each is, kept up to date by main.js.
+    this.matePlanes = [];
+    this.mates = [];
 
     this.tracers = new THREE.InstancedMesh(new THREE.BoxGeometry(0.34, 0.34, 1), new THREE.MeshBasicMaterial({ color: '#ffffff', fog: false }), TRACERS);
     this.tracers.frustumCulled = false;
@@ -542,6 +545,42 @@ export class Sky {
       this.scene.add(this.helperPlane.root);
     }
     this.setWeather(flight?.levelRules.sky ?? 'day');
+  }
+
+  /**
+   * Friends flying on their own computers, each with the character they chose: specs in order, and mates,
+   * where each is, as { x, y, z, heading, pitch, roll, live, seen }. As big as the pirates, so they can be
+   * seen from as far away.
+   */
+  setMates(specs = [], mates = []) {
+    for (const plane of this.matePlanes) {
+      this.scene.remove(plane.root);
+      plane.dispose();
+    }
+    this.mates = mates;
+    this.matePlanes = specs.map((spec) => {
+      const plane = new Plane(spec);
+      plane.root.scale.setScalar(ENEMY_SIZE);
+      plane.root.visible = false;
+      this.scene.add(plane.root);
+      return plane;
+    });
+  }
+
+  /** Each friend's plane where they are, once something has come from their game. */
+  drawMates(dt) {
+    this.matePlanes.forEach((plane, index) => {
+      const mate = this.mates[index];
+      plane.root.visible = Boolean(mate?.live && mate.seen && this.view === 'fly');
+      if (!plane.root.visible) return;
+      plane.root.position.set(mate.x, mate.y, mate.z);
+      // Smaller near the camera, and gone right by it, so that a friend flying past or through the child's own
+      // plane never fills the view. These are the child's own plane's planes, so it doesn't happen often.
+      const near = clamp((plane.root.position.distanceTo(this.camera.position) - 12) / 30, 0, 1);
+      plane.root.scale.setScalar(ENEMY_SIZE * Math.max(0.01, near));
+      plane.root.visible = near > 0;
+      plane.update(dt, { spin: 1, heading: mate.heading, pitch: mate.pitch, roll: mate.roll });
+    });
   }
 
   /** The time of day and the weather, which only ever change between flights. */
@@ -961,6 +1000,7 @@ export class Sky {
     this.drawPrizes(dt);
     this.drawGift();
     this.drawPower(dt);
+    this.drawMates(dt);
     this.sparks.update(dt);
     this.updateCamera(dt);
     this.moveSnow(dt);

@@ -3,7 +3,8 @@
 // code, and each player keeps one WebSocket open to it. The sockets hibernate while nothing's being said,
 // and the runtime answers the players' keep-alive pings itself, so a quiet room costs nothing.
 //
-//   wss://<this server>/room/<CODE>, with ?was=<id> for a player coming back after losing the connection
+//   wss://<this server>/room/<CODE> for High Five Racers, /room/sky-wings/<CODE> for Sky Wings, with
+//   ?was=<id> for a player coming back after losing the connection
 //
 // Deploy with: npx wrangler deploy --config server/wrangler.jsonc
 import { DurableObject } from 'cloudflare:workers';
@@ -11,15 +12,19 @@ import { idFor, RaceRoom, takeOver, validCode } from './race-room.js';
 
 // Only the games' own pages may use it.
 const ALLOWED_ORIGINS = ['https://hemi.infoicy.com', 'http://localhost:8642', 'http://127.0.0.1:8642'];
+// The games with rooms of their own. High Five Racers' are just the code, as they came first.
+const GAMES = ['sky-wings'];
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const [, kind, code] = url.pathname.split('/');
-    if (kind !== 'room' || !validCode(code)) return new Response('Not found', { status: 404 });
+    const [, kind, ...rest] = url.pathname.split('/');
+    const code = rest.at(-1);
+    const game = rest.length === 2 ? rest[0] : '';
+    if (kind !== 'room' || rest.length > 2 || !validCode(code) || (game && !GAMES.includes(game))) return new Response('Not found', { status: 404 });
     if (request.headers.get('Upgrade') !== 'websocket') return new Response('WebSocket only', { status: 426 });
     if (!ALLOWED_ORIGINS.includes(request.headers.get('Origin'))) return new Response('Not allowed', { status: 403 });
-    return env.ROOMS.get(env.ROOMS.idFromName(code)).fetch(request);
+    return env.ROOMS.get(env.ROOMS.idFromName(game ? `${game}:${code}` : code)).fetch(request);
   },
 };
 

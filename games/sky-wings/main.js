@@ -6,8 +6,10 @@
 import { BODY_SAY, BodyGame, byElementId } from '../../core/body/game.js';
 import { ROSTER } from '../../core/body/roster.js';
 import { mountBodyShell } from '../../core/body/shell.js';
+import { Track } from '../../core/friends.js';
+import { FriendsPanel, time } from '../../core/friends-ui.js';
 import { FlightSound } from './flight-sound.js';
-import { Flight, HEARTS, MOST_AT_ONCE_EVER, NEW_AT, isOn } from './flight.js';
+import { Flight, HEARTS, MOST_AT_ONCE_EVER, NEW_AT, forwardOf, isOn } from './flight.js';
 import { Lesson } from './lesson.js';
 import { Sky } from './sky.js';
 
@@ -83,6 +85,38 @@ const prizeIcon = (kind) => {
 const PRIZE_WORDS = { coin: ['gold coin', 'gold coins'], gem: ['gem', 'gems'], medal: ['medal', 'medals'], chest: ['treasure chest', 'treasure chests'] };
 const NAME_SHOWN_SECONDS = 3.5;
 
+// Flying with friends, each on their own computer: see core/friends-ui.js for what each of these is.
+const FLY_WORDS = {
+  toggle: 'Fly with a friend',
+  make: 'Make a flight',
+  codeLabel: 'Or a friend’s flight code',
+  codeName: 'Flight code',
+  how: 'Send the link to a friend. Then you both choose a pilot and press <b>Let’s fly!</b>',
+  leave: 'Leave this flight',
+  privacy: 'Only your name, who flies and where your plane is go to your friends. The camera picture stays on this computer.',
+  alone: 'Fly on your own',
+  full: 'That flight already has 4 planes.',
+  lost: 'Can’t reach the flight. Check the internet, then try again.',
+  left: 'You’ve left the flight.',
+  badCode: 'A flight code is 6 letters and numbers.',
+  busy: 'Flying',
+  still: 'still flying',
+};
+const PLANES = [3, 6, 9]; // The numbers of planes to drop a host can have chosen.
+const MOST_FRIENDS = 3;
+const START_APART = 24; // Metres between friends' planes at the start, side by side, rather than all in one place.
+// A friend's plane between what their game sends: where it is, its pitch, roll and speed, the way it heads,
+// which goes the short way round, and, with nothing new for a moment, carrying on the way it was going.
+const PLANE_TRACK = {
+  lerp: ['x', 'y', 'z', 'p', 'r', 's'],
+  angles: ['h'],
+  steps: ['f'],
+  guess: (last, seconds) => {
+    const way = forwardOf(last.h, last.p);
+    return { x: last.x + way.x * last.s * seconds, y: last.y + way.y * last.s * seconds, z: last.z + way.z * last.s * seconds };
+  },
+};
+
 class SkyWings extends BodyGame {
   constructor() {
     super({
@@ -101,6 +135,8 @@ class SkyWings extends BodyGame {
     this.armsOut = true;
     this.wingsDownFor = 0;
     this.marks = [];
+    this.mates = []; // Friends flying on their own computers, in this flight: see setUpMates.
+    this.goAt = 0;
   }
 
   setUp() {
@@ -140,6 +176,21 @@ class SkyWings extends BodyGame {
     });
     this.buildMarks();
     this.sizeAim();
+    // Flying with friends, if a grown-up makes or joins a flight.
+    this.friends = new FriendsPanel({
+      game: 'sky-wings',
+      linkKey: 'fly',
+      words: FLY_WORDS,
+      hello: () => ({ driver: this.chosen?.id ?? this.settings.fighter, level: this.levels.current, length: this.settings.planes }),
+      screen: () => this.screen,
+      portraits: () => this.portraits,
+      onGone: (friend) => this.friendGone(friend),
+      resultText: ({ ms, won, dropped }) => (won ? `all ${dropped} in ${time(ms)}` : `${dropped} dropped`),
+      startAfter: byElementId('start'),
+      waitingBefore: byElementId('screen-finish'),
+      resultsAfter: byElementId('finish-place'),
+      finishTitle: byElementId('finish-title'),
+    });
   }
 
   debug() {
@@ -151,6 +202,12 @@ class SkyWings extends BodyGame {
       },
       get lesson() {
         return game.lesson;
+      },
+      get friends() {
+        return game.friends;
+      },
+      get mates() {
+        return game.mates;
       },
     };
   }
@@ -179,12 +236,12 @@ class SkyWings extends BodyGame {
 
   /**
    * Who flies the pirate planes: everyone but the child's own character, in the roster's order. On the
-   * levels with a friend who helps, never that friend too, so Joze isn't helping and a pirate at once.
-   * With too few left for the planes, some fly twice.
+   * levels with a friend who helps, never that friend too, so Joze isn't helping and a pirate at once, and
+   * never a character a friend flying with the child chose. With too few left for the planes, some fly twice.
    */
-  pirateSpecs(total) {
+  pirateSpecs(total, friendly = []) {
     const helping = this.flight.levelRules.gifts.includes('helper');
-    const pool = ROSTER.filter(({ id }) => id !== this.chosen.id && !(helping && id === this.helper.id));
+    const pool = ROSTER.filter(({ id }) => id !== this.chosen.id && !(helping && id === this.helper.id) && !friendly.includes(id));
     return Array.from({ length: total }, (_, index) => pool[index % pool.length]);
   }
 
@@ -301,11 +358,29 @@ class SkyWings extends BodyGame {
 
   /* ---------- a dogfight ---------- */
 
+  /** Ready to fly. With friends, everyone waits for the others first, and then all count down together. */
   beginCountdown() {
+    const go = () => {
+      if (this.screen === 'waiting') this.countDown();
+    };
+    if (this.friends.holdStart(go)) {
+      this.hideCoach();
+      this.prompt.clear();
+      this.setScreen('waiting');
+      return;
+    }
+    this.countDown();
+  }
+
+  countDown() {
     const { settings, sky } = this;
-    const levelNumber = this.startLevel();
+    // With friends, everyone flies the host's level and number of planes, which doesn't move anyone's own
+    // level on.
+    const friendly = this.friends.current;
+    document.body.toggleAttribute('data-friends-race', Boolean(friendly));
+    const levelNumber = friendly ? friendly.level : this.startLevel();
     this.flight = new Flight({
-      planes: settings.planes,
+      planes: friendly && PLANES.includes(friendly.length) ? friendly.length : settings.planes,
       pace: settings.pace,
       level: settings.level,
       levelNumber,
@@ -313,8 +388,11 @@ class SkyWings extends BodyGame {
       onEvent: (event) => this.onFlightEvent(event),
     });
     this.helper = this.helperSpec();
-    this.pirates = this.pirateSpecs(this.flight.total);
+    this.pirates = this.pirateSpecs(this.flight.total, (friendly?.friends ?? []).map(({ spec }) => spec.id));
+    // With friends, side by side, in the same order on every computer.
+    if (friendly) this.flight.x += (friendly.mySlot - (friendly.racers.length - 1) / 2) * START_APART;
     sky.setFlight(this.flight, this.pirates, this.helper);
+    this.setUpMates(friendly);
     this.namedKinds = new Set();
     this.namedPowers = new Set();
     byElementId('treasure-chip').dataset.on = this.flight.levelRules.prizes ? 'yes' : 'no';
@@ -332,6 +410,33 @@ class SkyWings extends BodyGame {
     this.setScreen('countdown');
   }
 
+  /** Friends' planes, each following what their own game sends about where it is. */
+  setUpMates(friendly) {
+    const friends = (friendly?.friends ?? []).slice(0, MOST_FRIENDS);
+    this.mates = friends.map((friend) => {
+      const track = new Track(PLANE_TRACK);
+      this.friends.follow(friend.id, track);
+      return { friend, track, x: 0, y: 0, z: 0, heading: 0, pitch: 0, roll: 0, speed: 0, live: true, seen: false };
+    });
+    this.flight.mates = this.mates;
+    this.sky.setMates(friends.map(({ spec }) => spec), this.mates);
+  }
+
+  /** Where each friend's plane is now, a moment behind where their game says, so that it moves smoothly. */
+  updateMates() {
+    const now = performance.now();
+    for (const mate of this.mates) {
+      const at = mate.live ? mate.track.at(now) : null;
+      if (at) Object.assign(mate, { x: at.x, y: at.y, z: at.z, heading: at.h, pitch: at.p, roll: at.r, speed: at.s, seen: true });
+    }
+  }
+
+  /** A friend has gone in the middle of a flight, and their plane goes too. */
+  friendGone(friend) {
+    const mate = this.mates.find((each) => each.friend.id === friend.id);
+    if (mate) mate.live = false;
+  }
+
   updateCountdown(dt) {
     const before = Math.ceil(this.countLeft);
     this.countLeft -= dt;
@@ -344,6 +449,7 @@ class SkyWings extends BodyGame {
   }
 
   beginFlying() {
+    this.goAt = performance.now();
     this.setCount(this.translate('Go!'));
     this.sound.go();
     this.sound.startFlying();
@@ -373,6 +479,9 @@ class SkyWings extends BodyGame {
     const { wings } = reader;
     flight.update(dt, { out: wings.out, bank: wings.bank, climb: wings.climb });
     if (flight.state !== 'flying') return;
+    // Where this plane is, for friends' games, timed by the clock on the wall.
+    const heading = Math.atan2(Math.sin(flight.heading), Math.cos(flight.heading));
+    this.friends.sendMove('plane', { x: flight.x, y: flight.y, z: flight.z, h: heading, p: flight.pitch, r: flight.roll, s: flight.speed, f: flight.firing ? 1 : 0 }, performance.now() - this.goAt);
 
     sky.setLive(reader.hasPose ? reader.pose : null);
     this.sound.propeller(flight.speed / flight.pace.speed);
@@ -503,6 +612,20 @@ class SkyWings extends BodyGame {
       holder.append(root);
       return { root, face, fill, arrow, name, enemy: null };
     });
+    // A friend's name and face over their plane, while it can be seen.
+    this.mateMarks = Array.from({ length: MOST_FRIENDS }, () => {
+      const root = document.createElement('div');
+      root.className = 'mate-mark';
+      root.dataset.where = 'none';
+      const face = document.createElement('img');
+      face.className = 'mate-face';
+      face.alt = '';
+      const name = document.createElement('span');
+      name.className = 'mate-name';
+      root.append(face, name);
+      holder.append(root);
+      return { root, face, name, mate: null };
+    });
     // The gift box's mark: its power's picture, and the power's name the first time it comes.
     const gift = document.createElement('div');
     gift.id = 'gift-mark';
@@ -590,6 +713,25 @@ class SkyWings extends BodyGame {
       mark.root.style.transform = `translate(${Math.round(width / 2 + (dx / size) * reach)}px, ${Math.round(height / 2 + (dy / size) * reach)}px)`;
       mark.arrow.style.transform = `rotate(${Math.round((Math.atan2(dy, dx) * 180) / Math.PI)}deg)`;
     });
+    this.updateMateMarks();
+  }
+
+  /** Each friend's name over their plane, while it's on the screen. There are no arrows to friends. */
+  updateMateMarks() {
+    const { sky } = this;
+    this.mateMarks.forEach((mark, index) => {
+      const mate = this.mates[index];
+      const seen = mate?.live && mate.seen ? sky.project(mate.x, mate.y, mate.z) : null;
+      const onScreen = seen && !seen.behind && seen.x > 0 && seen.x < sky.width && seen.y > 0 && seen.y < sky.height;
+      mark.root.dataset.where = onScreen ? 'on' : 'none';
+      if (!onScreen) return;
+      if (mark.mate !== mate) {
+        mark.mate = mate;
+        mark.face.src = this.portraits[mate.friend.spec.id] ?? '';
+        mark.name.textContent = mate.friend.spec.name;
+      }
+      mark.root.style.transform = `translate(${Math.round(seen.x)}px, ${Math.round(seen.y)}px)`;
+    });
   }
 
   /* ---------- what happened ---------- */
@@ -673,6 +815,7 @@ class SkyWings extends BodyGame {
   onFinished(won) {
     const { sky, sound } = this;
     this.won = won;
+    this.friends.finished(performance.now() - this.goAt, { w: won ? 1 : 0, n: this.flight.stats.dropped });
     this.camera.stop();
     this.reader.forget();
     this.latestBody = null;
@@ -681,7 +824,7 @@ class SkyWings extends BodyGame {
     this.prompt.clear();
     this.setCount('');
     this.updateHud();
-    for (const mark of this.marks) mark.root.dataset.where = 'none';
+    for (const mark of [...this.marks, ...this.mateMarks]) mark.root.dataset.where = 'none';
     byElementId('gift-mark').dataset.where = 'none';
     byElementId('power').dataset.on = 'no';
     sound.stopFlying();
@@ -732,8 +875,15 @@ class SkyWings extends BodyGame {
       { name: 'hits', icon: 'ring', label: 'Hits', value: stats.hits },
       { name: 'hurts', icon: 'wings', label: 'Times hit', value: stats.hurts },
     ]);
-    // Dropping them all moves on a level, and being shot down, on the harder settings, doesn't.
-    this.finishLevel(won);
+    // Dropping them all moves on a level, and being shot down, on the harder settings, doesn't. Flying with
+    // friends is on the host's level, so it doesn't move anyone's own level on.
+    if (this.friends.current) {
+      this.levels.last = null;
+      this.levelUi.refresh();
+    } else {
+      this.finishLevel(won);
+    }
+    this.friends.showResults();
     if (won) this.confetti.start();
     this.setScreen('finish');
   }
@@ -741,6 +891,7 @@ class SkyWings extends BodyGame {
   /* ---------- every frame ---------- */
 
   frame(dt, now) {
+    if (this.mates.length) this.updateMates();
     switch (this.screen) {
       case 'lesson':
         this.updateLesson(dt, now);

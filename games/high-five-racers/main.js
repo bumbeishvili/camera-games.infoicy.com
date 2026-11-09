@@ -6,7 +6,7 @@ import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
 import { GameSession, SPOKEN as SPOKEN_EVERYWHERE } from '../../core/session.js';
 import { CarSound } from './car-sound.js';
 import { drawPowerIcon } from './extras.js';
-import { FriendsRace } from './friends-ui.js';
+import { FriendsRace } from './friends-race.js';
 import { Race } from './game.js';
 import { newAt, POWER_KINDS, racePlan, TOP_SPEED } from './rules.js';
 
