@@ -24,6 +24,31 @@ body.hub {
   text-align: center;
 }
 
+/* The code on GitHub, in the top right corner. */
+.hub-github {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: #1f2328;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.2);
+}
+
+.hub-github:hover { background: #000; }
+
+/* On a narrow screen it sits above the title rather than over it. */
+@media (max-width: 700px) {
+  .hub-main { padding-top: 76px; }
+}
+
 .hub-lead {
   font-size: clamp(18px, 2.3vw, 26px);
   font-weight: 500;
