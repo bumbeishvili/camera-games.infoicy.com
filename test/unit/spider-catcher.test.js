@@ -90,7 +90,7 @@ test('every spider home goes round the garden, and the last place ends it with e
   const log = eventsOf();
   const gathering = new Gathering({ onEvent: log.onEvent });
   gathering.nextPlace();
-  assert.equal(gathering.place.who, 'joze');
+  assert.equal(gathering.place.who, 'giraffe');
   while (!gathering.over) {
     while (gathering.home < gathering.place.count) gathering.spiderHome();
     gathering.nextPlace();
@@ -111,9 +111,9 @@ test('letting go costs nothing', () => {
   assert.equal(gathering.stats.letGo, 1);
 });
 
-test('Joze comes first and last, and every friend has one short line', () => {
-  assert.equal(PLACES[0].who, 'joze');
-  assert.equal(PLACES.at(-1).who, 'joze');
+test('Giraffe comes first and last, and every friend has one short line', () => {
+  assert.equal(PLACES[0].who, 'giraffe');
+  assert.equal(PLACES.at(-1).who, 'giraffe');
   assert.ok(PLACES.at(-1).done);
 });
 

@@ -426,7 +426,7 @@ function coinTexture() {
     ctx.beginPath();
     ctx.arc(0, 0, 38, 0, Math.PI * 2);
     ctx.fill();
-    // A giraffe's patches, for Joze.
+    // A giraffe's patches, for Giraffe.
     ctx.fillStyle = '#e59b17';
     for (const [x, y, r] of [[-12, -12, 9], [12, -6, 8], [-4, 14, 10], [18, 16, 6], [-20, 8, 5]]) {
       ctx.beginPath();
@@ -1783,9 +1783,9 @@ export class World {
     this.flyCoin(new THREE.Vector3(laneX(lane), 1.25, -0.4), { map: this.starMap, size: 0.7, lift: 0.4 });
   }
 
-  /** The runner's friend, who runs alongside on the grass from level 9: Joze, or Truffle if Joze is running. */
+  /** The runner's friend, who runs alongside on the grass from level 9: Giraffe, or Truffle if Giraffe is running. */
   makeFriend() {
-    const id = this.runner?.spec.id === 'joze' ? 'truffle' : 'joze';
+    const id = this.runner?.spec.id === 'giraffe' ? 'truffle' : 'giraffe';
     if (this.friend?.spec.id === id) return;
     if (this.friend) {
       this.scene.remove(this.friend.body.root);

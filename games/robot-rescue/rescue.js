@@ -165,7 +165,7 @@ export const BIG_SPOTS = [
 
 /*
  * Each place on the way, in order. Robots come out of the doors and walk to the posts. Peekers pop
- * up from behind the covers, and drones hover around the air spots. Joze comes last, because that's
+ * up from behind the covers, and drones hover around the air spots. Giraffe comes last, because that's
  * where the story ends, and the short rescue still has him in it.
  */
 export const PLACES = [
@@ -215,7 +215,7 @@ export const PLACES = [
   },
   {
     id: 'tower',
-    who: 'joze',
+    who: 'giraffe',
     thanks: 'Hooray! We’re all free!',
     robots: ['big', 'peeker', 'peeker', 'walker', 'drone', 'peeker', 'walker', 'peeker', 'drone', 'walker', 'peeker', 'drone', 'walker'],
     doors: [[-14, 14], [14, 14], [-14, 22], [14, 22], [-9, 28], [9, 28]],

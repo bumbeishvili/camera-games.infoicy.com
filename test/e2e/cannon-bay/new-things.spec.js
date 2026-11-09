@@ -155,7 +155,7 @@ test('level 3: a sailor in a cage is towed behind a pirate, floats free, and is 
   await letGo(page);
   await expectSoon(async () => (await stats(page)).sailors).toBe(1);
   await expect(page.locator('#bay-sailors')).toHaveText('1');
-  // And there they are, on deck with Joze's crew.
+  // And there they are, on deck with Giraffe's crew.
   expect(await page.evaluate(() => window.__game.bay.hero.rescued.map(({ visible }) => visible))).toEqual([true, false, false, false]);
   // The heart is the newest thing here, so it's what the first ship beaten drops.
   await expectSoon(async () => (await stats(page)).hearts).toBe(1);
@@ -522,7 +522,7 @@ test('the story box goes under the prizes along the top, even when they need a s
   await page.evaluate(() => {
     const { battle, game } = window.__game;
     battle.startPower('bounce');
-    game.say('joze', 'Pirates want our treasure! Help me drive them off!');
+    game.say('giraffe', 'Pirates want our treasure! Help me drive them off!');
   });
   await expect(page.locator('#bay-power')).toBeVisible();
   await expect(page.locator('.story')).toBeVisible();

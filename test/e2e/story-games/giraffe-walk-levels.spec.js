@@ -1,12 +1,12 @@
-// Joze's Long Walk Home's levels, with real photos going through the real tracker: what each level
+// Giraffe's Long Walk Home's levels, with real photos going through the real tracker: what each level
 // brings that's new, golden fruit, butterflies leaving flowers, green fruit, the basket, the monkey,
 // the bridge, frosty fruit, fireflies and the parrot, and still all the way home, with nothing flashing.
 import { expect, hands, openGame, show, shot, test, waitForScreen } from '../helpers.js';
 import { atLevel, judgeBrightness, moveGloveTo, startPlaying, stopMoving, storyIs, watchBrightness } from './helpers.js';
 
-const GAME = 'joze-walk';
+const GAME = 'giraffe-walk';
 const GLOVE = ['walk', 'gloves', 'right'];
-const CANVASES = ['backdrop', 'joze-stage', 'game'];
+const CANVASES = ['backdrop', 'giraffe-stage', 'game'];
 const tree = (page) => page.evaluate(() => {
   const { walk, journey } = window.__game;
   const share = (thing) => (thing ? { x: thing.x / walk.width, y: thing.y / walk.height } : null);
@@ -78,7 +78,7 @@ async function carryTo(page, at, isThere) {
   await handIs(page, 'open');
 }
 
-/** Picks a fruit with the real hand and feeds it to Joze. */
+/** Picks a fruit with the real hand and feeds it to Giraffe. */
 async function feedOne(page, find) {
   await reach(page, find);
   await handIs(page, 'fist');
@@ -87,7 +87,7 @@ async function feedOne(page, find) {
   await carryTo(page, mouth, () => window.__game.walk.onMouth);
 }
 
-/** Feeds Joze through the rules, and mends any bridge, until he's at a stop. */
+/** Feeds Giraffe through the rules, and mends any bridge, until he's at a stop. */
 async function skipTo(page, index) {
   for (;;) {
     const state = await tree(page);
@@ -145,10 +145,10 @@ test('what\'s new shows under the countdown, in Georgian when that\'s the voice'
   await expect(page.locator('#level-new-now')).toContainText('ცელქი მაიმუნი');
 });
 
-test('level 2: a real hand feeds Joze the golden fruit, and it\'s a gift for his family', async ({ page }) => {
+test('level 2: a real hand feeds Giraffe the golden fruit, and it\'s a gift for his family', async ({ page }) => {
   test.setTimeout(180_000);
   await startPlaying(page, GAME, atLevel(GAME, 2));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await expect(page.locator('#chip-gifts-box')).toBeVisible();
   const { fruit, introduced } = await tree(page);
   expect(fruit.filter(({ golden }) => golden)).toHaveLength(1);
@@ -165,7 +165,7 @@ test('level 2: a real hand feeds Joze the golden fruit, and it\'s a gift for his
 test('level 3: a butterfly shooed off a fruit by a real open hand leaves a flower', async ({ page }) => {
   test.setTimeout(180_000);
   await startPlaying(page, GAME, atLevel(GAME, 3));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   // Somewhere out of the way, so it lands.
   await moveGloveTo(page, GLOVE, 0.5, 0.85);
   await expect.poll(async () => (await tree(page)).butterfly, { timeout: 30_000 }).not.toBeNull();
@@ -183,7 +183,7 @@ test('level 3: a butterfly shooed off a fruit by a real open hand leaves a flowe
 test('level 4: a real fist on green fruit only wiggles it until it ripens', async ({ page }) => {
   test.setTimeout(180_000);
   await startPlaying(page, GAME, atLevel(GAME, 4));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   const first = await tree(page);
   // Four ripe, one more than he needs, and one green, which may already have ripened by itself on a
   // busy computer.
@@ -215,7 +215,7 @@ test('level 4: a real fist on green fruit only wiggles it until it ripens', asyn
   await expect.poll(async () => (await tree(page)).holding, { timeout: 15_000 }).not.toBeNull();
 });
 
-test('level 5: a real fist takes the basket, and then picks two fruit at once for Joze', async ({ page }) => {
+test('level 5: a real fist takes the basket, and then picks two fruit at once for Giraffe', async ({ page }) => {
   test.setTimeout(240_000);
   await startPlaying(page, GAME, atLevel(GAME, 5));
   await skipTo(page, 1);
@@ -319,11 +319,11 @@ test('level 7: a real hand carries the plank to the gap and mends the bridge, wi
   const { items, bridge } = await tree(page);
   expect(items.map(({ kind }) => kind)).toEqual(['plank']);
   expect(bridge.fixed).toBe(false);
-  // The bridge stays where it is while Joze chews, rather than going with his mouth.
+  // The bridge stays where it is while Giraffe chews, rather than going with his mouth.
   const gaps = await page.evaluate(async () => {
     const { walk, session } = window.__game;
     session.game.eatingUntil = performance.now() + 2200;
-    session.game.jozeDoes('munch');
+    session.game.giraffeDoes('munch');
     const at = [];
     for (let i = 0; i < 60; i += 1) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -344,7 +344,7 @@ test('level 7: a real hand carries the plank to the gap and mends the bridge, wi
   });
   await expect(page.locator('#prompt-text')).toHaveText('Close your hand on the plank!', { timeout: 15_000 });
   expect((await tree(page)).place).toBe('river');
-  // And carrying the plank, the hint is the bridge, not Joze.
+  // And carrying the plank, the hint is the bridge, not Giraffe.
   await reach(page, (state) => state.items[0]);
   await handIs(page, 'fist');
   await expect.poll(async () => (await tree(page)).holding, { timeout: 15_000 }).toBe('plank');
@@ -432,10 +432,10 @@ test('level 9: in the evening, a real fist catches a firefly as a gift', async (
   await stopMoving(page);
 });
 
-test('level 10: a real fist on the feather brings the parrot, who feeds Joze a fruit by himself', async ({ page }) => {
+test('level 10: a real fist on the feather brings the parrot, who feeds Giraffe a fruit by himself', async ({ page }) => {
   test.setTimeout(180_000);
   await startPlaying(page, GAME, atLevel(GAME, 10));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await page.evaluate(() => {
     const { walk } = window.__game;
     walk.level = { ...walk.level, butterflies: false };
@@ -454,7 +454,7 @@ test('level 10: a real fist on the feather brings the parrot, who feeds Joze a f
   await stopMoving(page);
 });
 
-test('level 10: every stop fed still brings Joze home, with the gifts on the finish card', async ({ page }) => {
+test('level 10: every stop fed still brings Giraffe home, with the gifts on the finish card', async ({ page }) => {
   test.setTimeout(180_000);
   await startPlaying(page, GAME, atLevel(GAME, 10));
   const feedThisStop = () => page.evaluate(() => {
@@ -464,7 +464,7 @@ test('level 10: every stop fed still brings Joze home, with the gifts on the fin
     rules.fixBridge();
     while (rules.fed < rules.stop.count) rules.feed();
   });
-  for (const [who, index] of [['joze', 0], ['mochi', 1], ['bramble', 2], ['tur', 3], ['joze', 4]]) {
+  for (const [who, index] of [['giraffe', 0], ['mochi', 1], ['bramble', 2], ['tur', 3], ['giraffe', 4]]) {
     await expect.poll(async () => (await tree(page)).index, { timeout: 30_000 }).toBe(index);
     await storyIs(page, who);
     await page.waitForTimeout(300);
@@ -476,7 +476,7 @@ test('level 10: every stop fed still brings Joze home, with the gifts on the fin
     }
   }
   await waitForScreen(page, 'finish');
-  await expect(page.locator('#screen-finish')).toContainText('Joze is home!');
+  await expect(page.locator('#screen-finish')).toContainText('The giraffe is home!');
   await expect(page.locator('#level-done-text')).toHaveText('All 10 levels done!');
   expect((await tree(page)).fed).toBe(19);
   await expect(page.locator('#sum-right-gifts')).toHaveText(String((await tree(page)).gifts));
@@ -488,7 +488,7 @@ for (const level of [1, 6, 10]) {
   test(`nothing flashes at level ${level}: fruit, butterflies, the monkey, gifts, feeding and walking on`, async ({ page }) => {
     test.setTimeout(240_000);
     await startPlaying(page, GAME, atLevel(GAME, level));
-    await storyIs(page, 'joze');
+    await storyIs(page, 'giraffe');
     // Feeding him a fruit every so often, so he walks on to the next tree in the meantime, with gifts.
     await page.evaluate(() => {
       window.__feeding = setInterval(() => {
@@ -529,7 +529,7 @@ test('level 10 with reduced motion: the fruit sways half as far, and no snow fal
   test.setTimeout(150_000);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await startPlaying(page, GAME, atLevel(GAME, 10));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   const furthest = await page.evaluate(async () => {
     const { walk } = window.__game;
     let most = 0;
@@ -582,8 +582,8 @@ const drawn = (page, words) => page.evaluate((wanted) => [...window.__drawn].som
 test('level 10: the finish card counts the fruit the child fed, in all and by hand, and not the parrot\'s', async ({ page }) => {
   test.setTimeout(240_000);
   await startPlaying(page, GAME, atLevel(GAME, 10));
-  await storyIs(page, 'joze');
-  // The parrot feeds Joze a fruit that isn't the golden one, as if the feather had been taken.
+  await storyIs(page, 'giraffe');
+  // The parrot feeds Giraffe a fruit that isn't the golden one, as if the feather had been taken.
   await page.evaluate(() => {
     const { walk } = window.__game;
     walk.level = { ...walk.level, butterflies: false };
@@ -686,7 +686,7 @@ test('level 9: at the end of the walk a butterfly flies off, and fireflies that 
   test.setTimeout(240_000);
   await startPlaying(page, GAME, atLevel(GAME, 9));
   await skipTo(page, 4);
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   // The open hand on a firefly's loop, where a fist would catch it.
   const fly = await page.evaluate(() => {
     const { walk } = window.__game;
@@ -702,7 +702,7 @@ test('level 9: at the end of the walk a butterfly flies off, and fireflies that 
     window.__game.walk.butterflyIn = 0;
   });
   await expect.poll(() => page.evaluate(() => window.__game.walk.butterfly?.t ?? 0), { timeout: 10_000 }).toBeGreaterThan(0.9);
-  // Joze has had enough, and his thank-you lasts a good while for this.
+  // Giraffe has had enough, and his thank-you lasts a good while for this.
   const leaving = await page.evaluate(() => {
     const { journey, walk, session } = window.__game;
     while (journey.wanted) journey.feed();
@@ -726,7 +726,7 @@ test('level 9: at the end of the walk a butterfly flies off, and fireflies that 
 test('level 10: the parrot\'s name is shown even when the feather is taken while another name shows, in the voice\'s language', async ({ page }) => {
   test.setTimeout(150_000);
   await startPlaying(page, GAME, atLevel(GAME, 10));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await moveGloveTo(page, GLOVE, 0.5, 0.85);
   await watchWords(page, 'walk');
   // Nothing has been named yet, and the golden fruit's name is showing.
@@ -754,7 +754,7 @@ test('level 10: the parrot\'s name is shown even when the feather is taken while
   await expect.poll(() => drawn(page, 'თუთიყუში მეგობარი'), { timeout: 3000, intervals: [100] }).toBe(true);
 });
 
-test('level 8: the snow fades away as Joze walks home from the hill, rather than all going at once', async ({ page }) => {
+test('level 8: the snow fades away as Giraffe walks home from the hill, rather than all going at once', async ({ page }) => {
   test.setTimeout(180_000);
   await startPlaying(page, GAME, atLevel(GAME, 8));
   await skipTo(page, 3);
@@ -783,7 +783,7 @@ test('level 8: the snow fades away as Joze walks home from the hill, rather than
 
 test('the pictures of the places are kept from one walk to the next, and only drawn again when a place looks different', async ({ page }) => {
   await startPlaying(page, GAME, atLevel(GAME, 8));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   const kept = await page.evaluate(() => {
     const { walk } = window.__game;
     const baobab = walk.sceneFor('baobab');
@@ -798,10 +798,10 @@ test('the pictures of the places are kept from one walk to the next, and only dr
   expect(kept).toEqual({ again: true, baobab: true, hill: false });
 });
 
-test('level 3: the names of what was on a tree go with it, rather than showing as Joze walks on', async ({ page }) => {
+test('level 3: the names of what was on a tree go with it, rather than showing as Giraffe walks on', async ({ page }) => {
   test.setTimeout(120_000);
   await startPlaying(page, GAME, atLevel(GAME, 3));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await watchWords(page, 'walk');
   // He's had enough at the first tree straight away, with a name showing and another waiting its turn.
   const walked = await page.evaluate(async () => {

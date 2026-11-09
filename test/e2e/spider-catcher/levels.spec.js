@@ -3,7 +3,7 @@
 import { expect, shot, test, waitForScreen } from '../helpers.js';
 import { atLevel, judgeBrightness, moveGloveTo, startPlaying, stopMoving, storyIs, watchBrightness } from '../story-games/helpers.js';
 import { GAME, GLOVE, garden, handIs, openOnSpider } from './helpers.js';
-const CANVASES = ['backdrop', 'joze-stage', 'game'];
+const CANVASES = ['backdrop', 'giraffe-stage', 'game'];
 
 /**
  * Keeps the hand's photo going after a spider that won't keep still, or the web, in the page, until it's
@@ -31,7 +31,7 @@ const chase = (page, what) => page.evaluate((target) => {
 test('level 10: more spiders out at once, twins, quicker and twistier, and a web that sways', async ({ page }) => {
   test.setTimeout(150_000);
   await startPlaying(page, GAME, atLevel(GAME, 10));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   expect(await page.evaluate(() => window.__game.gathering.places.map(({ count }) => count))).toEqual([3, 3, 5, 5, 3]);
   await page.waitForTimeout(600);
   const first = await garden(page);
@@ -69,7 +69,7 @@ test('level 10: more spiders out at once, twins, quicker and twistier, and a web
 test('level 10: a real hand follows a moving spider, catches it, and puts it in the swaying web', async ({ page }) => {
   test.setTimeout(180_000);
   await startPlaying(page, GAME, atLevel(GAME, 10));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   // Nobody shy for this one: only the moving.
   await page.evaluate(() => {
     for (const spider of window.__game.garden.spiders) spider.shy = false;
@@ -97,7 +97,7 @@ test('level 10: a real hand follows a moving spider, catches it, and puts it in 
 test('level 10: a shy spider scuttles off once as the hand comes near, and then it can be caught', async ({ page }) => {
   test.setTimeout(180_000);
   await startPlaying(page, GAME, atLevel(GAME, 10));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await expect.poll(async () => (await garden(page)).spiders.some(({ catchable }) => catchable), { timeout: 10_000 }).toBe(true);
   // The hand out of the way first, and then one spider, standing still, and shy.
   await moveGloveTo(page, GLOVE, 0.5, 0.9);
@@ -137,7 +137,7 @@ test('level 10: a shy spider scuttles off once as the hand comes near, and then 
 test('level 10: every place done still ends with everyone home', async ({ page }) => {
   test.setTimeout(180_000);
   await startPlaying(page, GAME, atLevel(GAME, 10));
-  for (const [who, index] of [['joze', 0], ['mochi', 1], ['bramble', 2], ['frost', 3], ['joze', 4]]) {
+  for (const [who, index] of [['giraffe', 0], ['mochi', 1], ['bramble', 2], ['frost', 3], ['giraffe', 4]]) {
     await expect.poll(async () => (await garden(page)).index, { timeout: 30_000 }).toBe(index);
     await storyIs(page, who);
     if (index === 2) {
@@ -156,10 +156,10 @@ test('level 10: every place done still ends with everyone home', async ({ page }
 });
 
 for (const level of [1, 6, 10]) {
-  test(`nothing flashes at level ${level}: spiders moving, landing in webs, Joze clapping, and moving between places${level > 1 ? ', with berries, helpers and visitors' : ''}`, async ({ page }) => {
+  test(`nothing flashes at level ${level}: spiders moving, landing in webs, Giraffe clapping, and moving between places${level > 1 ? ', with berries, helpers and visitors' : ''}`, async ({ page }) => {
     test.setTimeout(240_000);
     await startPlaying(page, GAME, atLevel(GAME, level));
-    await storyIs(page, 'joze');
+    await storyIs(page, 'giraffe');
     // A spider home every so often, the real way into the web, so the places go by meanwhile. From
     // level 2, berries hop out and are picked up, and the butterfly, basket and chest come and go.
     await page.evaluate((more) => {
@@ -192,7 +192,7 @@ for (const level of [1, 6, 10]) {
 test('the garden is bright and friendly, not dark: the picture is light on average at every place', async ({ page }) => {
   test.setTimeout(150_000);
   await startPlaying(page, GAME, atLevel(GAME, 10));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   const brightness = await page.evaluate(async () => {
     const { garden: place } = window.__game;
     const small = document.createElement('canvas');
@@ -217,7 +217,7 @@ test('level 10 with reduced motion: the web sways half as far', async ({ page })
   test.setTimeout(150_000);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await startPlaying(page, GAME, atLevel(GAME, 10));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   const furthest = await page.evaluate(async () => {
     const { garden: place } = window.__game;
     const middle = place.across(0.38);

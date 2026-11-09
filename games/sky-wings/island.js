@@ -464,7 +464,7 @@ export class Island {
     const { scene, spinning } = this;
     scene.add(buildCastle());
 
-    // The town, on a grid round a square, with a giant Joze in the middle of it.
+    // The town, on a grid round a square, with a giant Giraffe in the middle of it.
     const { town, fair, farm } = PLACES;
     const walls = ['#fff1d6', '#ffe0b8', '#f7d3c4', '#e7efd6', '#f4e3b1', '#ffffff'];
     const roofs = ['#d9534f', '#c9683d', '#a8483f', '#4f7fb5', '#b5573a', '#7f5a9e'];
@@ -493,7 +493,7 @@ export class Island {
     instanced(scene, ROOF(), houses.map((house, index) => ({ ...house, colour: roofs[(index * 7) % roofs.length] })));
     scene.add(buildChurch(town.x - 46, town.z - 40));
 
-    this.statue = new Fighter3D(byId('joze'));
+    this.statue = new Fighter3D(byId('giraffe'));
     this.statue.setPose(makePose());
     this.statue.update(0.5);
     this.statue.root.scale.setScalar(13);

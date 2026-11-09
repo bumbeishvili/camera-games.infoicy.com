@@ -1,4 +1,4 @@
-// Joze's Smoothie Stand, with real photos going through the real tracker.
+// Giraffe's Smoothie Stand, with real photos going through the real tracker.
 import { expect, hands, shot, show, test, waitForScreen } from '../helpers.js';
 import { startPlaying, storyIs } from './helpers.js';
 

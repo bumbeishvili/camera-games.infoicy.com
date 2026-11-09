@@ -1,4 +1,4 @@
-// Joze's Long Walk Home: Joze is lost, and hungry at every stop on the way back to his family. The
+// Giraffe's Long Walk Home: Giraffe is lost, and hungry at every stop on the way back to his family. The
 // child closes a hand on fruit, carries it to his mouth and opens to feed him. The story is in
 // journey.js, and the land he walks through is in walk.js.
 import { MoveDemo } from '../../core/body/demo.js';
@@ -11,11 +11,11 @@ import { Journey, STOPS, newAt } from './journey.js';
 import { Walk } from './walk.js';
 
 const CLOSE_ON_IT = 'Close your hand on the fruit!';
-const OPEN_FOR_JOZE = 'Bring it to Joze, and open your hand!';
+const OPEN_FOR_GIRAFFE = 'Bring it to the giraffe, and open your hand!';
 // For the broken bridge, from level 7. These are shown but not said, as they have no voice.
 const ON_THE_PLANK = ['Close your hand on the plank!', 'მოკუმე ხელი ფიცარზე!'];
 const TO_THE_BRIDGE = ['Bring it to the bridge, and open your hand!', 'ხიდთან მიიტანე და ხელი გაშალე!'];
-const HOME = 'Joze is home!';
+const HOME = 'The giraffe is home!';
 
 const LAST_WORDS_SECONDS = 2.4;
 const HINT_AFTER_SECONDS = 4;
@@ -68,13 +68,13 @@ class WalkGame {
         this.walk.introduce('parrot', () => (this.walk.parrot === parrot ? parrot : null));
       },
     });
-    this.joze = new MoveDemo(byId('joze-stage'));
-    this.joze.setCharacter(characterById('joze'));
+    this.giraffe = new MoveDemo(byId('giraffe-stage'));
+    this.giraffe.setCharacter(characterById('giraffe'));
     this.applySettings();
     const game = this;
     this.debug = {
       walk: this.walk,
-      joze: this.joze,
+      giraffe: this.giraffe,
       get journey() {
         return game.journey;
       },
@@ -92,7 +92,7 @@ class WalkGame {
 
   setHands() {
     this.applySettings();
-    this.jozeDoes('jozeWaits');
+    this.giraffeDoes('giraffeWaits');
   }
 
   settingChanged() {
@@ -100,8 +100,8 @@ class WalkGame {
   }
 
   /** He faces the tree, on the side of the hand being played with. */
-  jozeDoes(name) {
-    this.joze.show(name, this.session.settings.hands);
+  giraffeDoes(name) {
+    this.giraffe.show(name, this.session.settings.hands);
   }
 
   /** What's new at a level, for the title card and the countdown: see NEW_AT in journey.js. */
@@ -122,7 +122,7 @@ class WalkGame {
     const gifts = this.journey.level.golden > 0;
     byId('chip-gifts-box').hidden = !gifts;
     byId('sum-left-gifts').closest('tr').hidden = !gifts;
-    this.jozeDoes('jozeWaits');
+    this.giraffeDoes('giraffeWaits');
     this.showProgress();
   }
 
@@ -172,7 +172,7 @@ class WalkGame {
   onStop({ stop, features }) {
     const { walk } = this;
     walk.arriveAt(stop.place);
-    this.jozeDoes('jozeWaits');
+    this.giraffeDoes('giraffeWaits');
     this.story.say(stop.who, stop.hello);
     this.idleFor = 0;
     walk.hangFruit(stop.fruit, stop.count, features);
@@ -206,7 +206,7 @@ class WalkGame {
     sound.play('crunch', { gain: 0.8, rate: 0.95 + Math.random() * 0.12 });
     this.idleFor = 0;
     this.eatingUntil = performance.now() + MOUTH_HOLD_MS;
-    this.jozeDoes('munch');
+    this.giraffeDoes('munch');
     this.journey.feed(count, { golden });
   }
 
@@ -223,7 +223,7 @@ class WalkGame {
       this.later(LAST_WORDS_SECONDS, () => this.journey.nextStop());
       return;
     }
-    this.jozeDoes('walk');
+    this.giraffeDoes('walk');
     this.walk.walkTo(next.place, this.journey.level.walkSeconds);
   }
 
@@ -233,7 +233,7 @@ class WalkGame {
     const { length } = journey.stops;
     byId('chip-stops').textContent = `${Math.max(1, Math.min(length, journey.index + 1))} of ${length}`;
     byId('race-progress-fill').style.width = `${Math.round(share * 100)}%`;
-    byId('map-joze').style.left = `${Math.round(share * 1000) / 10}%`;
+    byId('map-giraffe').style.left = `${Math.round(share * 1000) / 10}%`;
     byId('chip-gifts').textContent = `🎁 ${journey.gifts}`;
   }
 
@@ -246,8 +246,8 @@ class WalkGame {
         what();
       }
     }
-    this.joze.update(dt);
-    const head = this.joze.headOnPage();
+    this.giraffe.update(dt);
+    const head = this.giraffe.headOnPage();
     if (head) {
       // His mouth is at the front of his head, and he's facing the tree.
       const way = this.session.settings.hands === 'right' ? 1 : -1;
@@ -256,7 +256,7 @@ class WalkGame {
     this.walk.update(dt, snapshot, { aspect: this.session.camera.aspect, playing: true, showHands: true });
     if (this.eatingUntil && performance.now() > this.eatingUntil) {
       this.eatingUntil = 0;
-      if (this.walk.walking === 0 && this.walk.fruit.length) this.jozeDoes('jozeWaits');
+      if (this.walk.walking === 0 && this.walk.fruit.length) this.giraffeDoes('giraffeWaits');
     }
     this.idleFor += dt;
     const filming = this.session.playSeconds < FILM_SECONDS && this.journey.stats.fed === 0;
@@ -271,7 +271,7 @@ class WalkGame {
       this.filming = false;
       document.body.dataset.film = 'off';
     }
-    this.joze.update(dt);
+    this.giraffe.update(dt);
     const counting = this.session.screen === 'countdown';
     this.walk.update(dt, snapshot, { aspect: this.session.camera.aspect, showHands: counting });
   }
@@ -286,7 +286,7 @@ class WalkGame {
     // Closing the hand is part of this game, so it isn't asked to open unless it's time to.
     if (needed && !needed.key.startsWith('closed')) return needed;
     const shown = (key, [en, ka]) => ({ key, text: session.settings.language === 'ka' ? ka : en, side: null, silent: true });
-    // The plank goes in the gap in the bridge, not to Joze.
+    // The plank goes in the gap in the bridge, not to Giraffe.
     if (walk.holding?.kind === 'plank') return shown('to-the-bridge', TO_THE_BRIDGE);
     const stopped = this.idleFor > HINT_AFTER_SECONDS;
     // Just after taking the basket or the feather, the hand opens before it picks a fruit, so if it
@@ -295,21 +295,21 @@ class WalkGame {
     // He's had enough here, and it's the bridge that's still to mend, so it's the plank, not more fruit.
     if (journey.wanted === 0 && !journey.bridgeFixed) return stopped ? shown('on-the-plank', ON_THE_PLANK) : null;
     // Once they've got the idea, these only come back if they seem to have stopped.
-    if (walk.holding && (journey.stats.fed === 0 || stopped)) return { key: 'bring', text: OPEN_FOR_JOZE, side: null };
+    if (walk.holding && (journey.stats.fed === 0 || stopped)) return { key: 'bring', text: OPEN_FOR_GIRAFFE, side: null };
     if (!walk.holding && stopped && walk.fruit.some(({ state }) => state === 'hanging')) return { key: 'close-on-it', text: CLOSE_ON_IT, side: null };
     return null;
   }
 
   finished() {
     this.story.hide();
-    this.joze.hide();
+    this.giraffe.hide();
     this.walk.labels = [];
   }
 
   summary() {
     const { gifts } = this.journey;
     const { hands } = this.session.settings;
-    // The fruit the child's own hand fed Joze, with each hand and in all, so the big number and the rows
+    // The fruit the child's own hand fed Giraffe, with each hand and in all, so the big number and the rows
     // agree. The parrot's fruit isn't the child's, and fruit fed after he'd had enough still counts.
     const { fed } = this.walk;
     return { hero: fed.left + fed.right, noun: 'walk', rows: { fed, gifts: { left: hands === 'left' ? gifts : 0, right: hands === 'right' ? gifts : 0 } } };
@@ -318,12 +318,12 @@ class WalkGame {
 
 new GameSession({
   shell: {
-    title: 'Joze’s Long Walk Home',
-    startLabel: 'Help Joze',
+    title: 'Giraffe’s Long Walk Home',
+    startLabel: 'Help Giraffe',
     againLabel: 'Walk again',
     finishTitle: HOME,
     heroMark: '🍎',
-    heroNoun: 'fruit fed to Joze',
+    heroNoun: 'fruit fed to Giraffe',
     extraRows: [{ id: 'fed', label: 'Fruit fed' }, { id: 'gifts', label: 'Gifts for home' }],
     hudTop: `
       <div class="hud-top">
@@ -334,7 +334,7 @@ new GameSession({
       </div>
       <div class="map" aria-hidden="true">
         <div class="race-progress"><div id="race-progress-fill" class="race-progress-fill"></div></div>
-        <span id="map-joze" class="map-joze">🦒</span>
+        <span id="map-giraffe" class="map-giraffe">🦒</span>
         <span class="map-home">🏠</span>
       </div>
       ${STORY_BOX}
@@ -354,7 +354,7 @@ new GameSession({
       </div>`,
     panelSettings: `
       <fieldset class="choice">
-        <legend>How far to reach (how close the tree is to Joze)</legend>
+        <legend>How far to reach (how close the tree is to Giraffe)</legend>
         <label><input type="radio" name="reach" value="none"> Far</label>
         <label><input type="radio" name="reach" value="little"> Medium</label>
         <label><input type="radio" name="reach" value="lots"> Close</label>
@@ -362,7 +362,7 @@ new GameSession({
   },
   defaults: { reach: 'little' },
   choices: { reach: String },
-  tagline: (side) => `Joze is lost! Pick fruit with your ${side} hand, carry it to him, and open your hand to feed him, all the way home.`,
+  tagline: (side) => `Giraffe is lost! Pick fruit with your ${side} hand, carry it to him, and open your hand to feed him, all the way home.`,
   finishLine: HOME,
   lines: new URL('./audio/voice/lines.json', import.meta.url),
   portraits: () => renderPortraits(ROSTER),

@@ -1,4 +1,4 @@
-// The story and rules of Tank Patrol. Robot tanks are rolling into Joze's valley, and he's riding in the
+// The story and rules of Tank Patrol. Robot tanks are rolling into Giraffe's valley, and he's riding in the
 // child's tank to stop them. The hand is a pointer: a closed hand drives the tank to where it points,
 // and an open hand swings the turret there, and the gun fires by itself at any robot tank under it that
 // is in range. Closing to drive nearer and opening to fire is the exercise, and that's how it's won.

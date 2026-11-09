@@ -288,7 +288,7 @@ body[data-screen='playing'] .marks { display: block; }
 
 body[data-screen='playing'] .bay-labels { display: block; }
 
-/* With prizes along the top, Joze and the captains speak from a little lower down, and lower still if
+/* With prizes along the top, Giraffe and the captains speak from a little lower down, and lower still if
    the prizes need a second row. --hud-bottom is set by main.js. */
 body:has(.bay-prizes[data-on='yes']) .story { top: max(154px, calc(var(--hud-bottom, 0px) + 10px)); }
 

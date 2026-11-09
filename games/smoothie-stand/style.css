@@ -1,4 +1,4 @@
-/* Joze's Smoothie Stand. The gloves roam the screen, so the meter keeps out of the way in a corner. */
+/* Giraffe's Smoothie Stand. The gloves roam the screen, so the meter keeps out of the way in a corner. */
 :root { --meter-size: clamp(72px, 8.5vw, 108px); }
 
 .hands-bar {

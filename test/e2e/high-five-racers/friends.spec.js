@@ -73,12 +73,12 @@ test('two friends race each other from their own computers, on the host\'s cours
 
   // The friend opens the link on their own computer, at a level of their own.
   const friend = await secondPlayer(browser);
-  await openGame(friend.page, { laps: 4, fighter: 'joze' }, 'high-five-racers', `#race=${code}`);
+  await openGame(friend.page, { laps: 4, fighter: 'giraffe' }, 'high-five-racers', `#race=${code}`);
   await expect(friend.page.locator('#friends-code-shown')).toHaveText(code);
   for (const each of [page, friend.page]) {
     await expect(each.locator('#friends-here li')).toHaveCount(2);
     await expect(each.locator('#friends-here')).toContainText('Dato');
-    await expect(each.locator('#friends-here')).toContainText('Joze');
+    await expect(each.locator('#friends-here')).toContainText('Giraffe');
   }
   await expect(page.locator('#friends-here')).toContainText('Dato (you)');
 
@@ -99,7 +99,7 @@ test('two friends race each other from their own computers, on the host\'s cours
   const host = await raceOf(page);
   const guest = await raceOf(friend.page);
   expect([host.level, host.laps, guest.level, guest.laps]).toEqual([3, 1, 3, 1]);
-  expect(host.friends.map(({ name }) => name)).toEqual(['Joze']);
+  expect(host.friends.map(({ name }) => name)).toEqual(['Giraffe']);
   expect(guest.friends.map(({ name }) => name)).toEqual(['Dato']);
 
   // Each sees the other's car where it really is, a moment ago.
@@ -127,7 +127,7 @@ test('two friends race each other from their own computers, on the host\'s cours
   await expect(friend.page.locator('.friends-results li').nth(0)).toContainText('1st Dato');
   await expect(friend.page.locator('.friends-results li').nth(1)).toContainText('2nd You');
   // The host's card fills in as the friend gets there.
-  await expect(page.locator('.friends-results li').nth(1)).toContainText('2nd Joze');
+  await expect(page.locator('.friends-results li').nth(1)).toContainText('2nd Giraffe');
   await page.screenshot({ path: 'test-results/screens/racers-friends-finish.png' });
 
   // Racing friends doesn't move anyone's own level on.
@@ -253,7 +253,7 @@ test('a friend who loses the connection for a moment carries on in the same car,
   await waitForScreen(ben.page, 'finish');
   await nearlyThere(page, 40);
   await waitForScreen(page, 'finish');
-  await expect(page.locator('.friends-results li').nth(0)).toContainText('1st Joze');
+  await expect(page.locator('.friends-results li').nth(0)).toContainText('1st Giraffe');
   await expect(page.locator('.friends-results li').nth(1)).toContainText('2nd You');
   await expect(page.locator('#screen-finish h2')).toHaveText('Great racing!');
   expect(ben.errors).toEqual([]);

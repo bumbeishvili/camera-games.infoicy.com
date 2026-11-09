@@ -720,7 +720,7 @@ test('every captain\'s line is in that character\'s own voice', () => {
   const lines = JSON.parse(readFileSync(new URL('lines.json', FOLDER)));
   const shared = JSON.parse(readFileSync(new URL('../../core/body/voice/lines.json', import.meta.url)));
   const voiceOf = Object.fromEntries(shared.filter(({ id }) => id.startsWith('shout-')).map((line) => [line.id.slice('shout-'.length), line]));
-  const said = lines.filter(({ id }) => id.startsWith('captain-') || id.startsWith('joze-'));
+  const said = lines.filter(({ id }) => id.startsWith('captain-') || id.startsWith('giraffe-'));
   assert.ok(said.length >= 10);
   for (const { id, voice, kaVoice, kaPitch } of said) {
     const who = id.split('-')[id.startsWith('captain-') ? 1 : 0];

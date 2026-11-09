@@ -4,7 +4,7 @@ import { handGone, handIs, noShells, oneTankAt, openPatrol, patrolIs, pointAt, s
 
 const MIDDLE = { x: 3, z: 6 };
 
-test('the title, then straight into it: tanks are already rolling, and Joze says what\'s wrong', async ({ page }) => {
+test('the title, then straight into it: tanks are already rolling, and Giraffe says what\'s wrong', async ({ page }) => {
   await openPatrol(page);
   await expect(page.locator('h1')).toHaveText('Tank Patrol');
   await expect(page.locator('#tagline')).toContainText('Close your right hand to drive');
@@ -26,7 +26,7 @@ test('the title, then straight into it: tanks are already rolling, and Joze says
   await shot(page, 'k3-countdown');
   await waitForScreen(page, 'playing');
   expect(Date.now() - started).toBeLessThan(6000);
-  await expect(page.locator('#story')).toHaveAttribute('data-who', 'joze');
+  await expect(page.locator('#story')).toHaveAttribute('data-who', 'giraffe');
   await expect(page.locator('#story-line')).toHaveText('Robot tanks in my valley! Let’s stop them!');
   await expect(page.locator('body')).toHaveAttribute('data-film', 'on');
   await page.waitForTimeout(1000);

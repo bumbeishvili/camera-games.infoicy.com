@@ -674,17 +674,17 @@ test('the whole rescue can be finished, and everyone gets freed in turn', () => 
   assert.ok(mission.stats.robots <= total && mission.stats.robots > total - atTheEnd, `${mission.stats.robots}`);
 });
 
-test('the short rescue has three stops, and still ends with Joze', () => {
+test('the short rescue has three stops, and still ends with Giraffe', () => {
   const { mission, log } = makeMission({ stops: 3 });
   assert.equal(mission.stops.length, 3);
-  assert.equal(mission.stops.at(-1).who, 'joze');
+  assert.equal(mission.stops.at(-1).who, 'giraffe');
   playThrough(mission);
   assert.equal(mission.phase, 'won');
-  assert.equal(log.events.filter(({ type }) => type === 'freed').at(-1).place.who, 'joze');
+  assert.equal(log.events.filter(({ type }) => type === 'freed').at(-1).place.who, 'giraffe');
 });
 
-test('Joze comes last, and each stop has someone different in it', () => {
-  assert.equal(PLACES.at(-1).who, 'joze');
+test('Giraffe comes last, and each stop has someone different in it', () => {
+  assert.equal(PLACES.at(-1).who, 'giraffe');
   assert.equal(new Set(PLACES.map(({ who }) => who)).size, PLACES.length);
   assert.ok(PLACES.at(-1).robots.includes('big'));
   assert.ok(!PLACES.slice(0, -1).some(({ robots }) => robots.includes('big')));
@@ -732,7 +732,7 @@ test('its weak spots open up one at a time, with hardly a wait', () => {
   assert.equal(log.count('spot-done'), big.spots.length);
 });
 
-test('when the big one goes, its helpers all go with it, and Joze is freed', () => {
+test('when the big one goes, its helpers all go with it, and Giraffe is freed', () => {
   const { mission, big, log } = atTheBigOne();
   run(mission, 1, { hand: 'open' });
   assert.ok(mission.robots.length > 1);
@@ -744,7 +744,7 @@ test('when the big one goes, its helpers all go with it, and Joze is freed', () 
   assert.ok(!mission.robots.length);
   assert.equal(mission.queue.length, 0);
   assert.ok(log.events.some(({ type, robot }) => type === 'robot-dropped' && robot === big));
-  assert.ok(log.events.some(({ type, place }) => type === 'freed' && place.who === 'joze'));
+  assert.ok(log.events.some(({ type, place }) => type === 'freed' && place.who === 'giraffe'));
   run(mission, 5, { hand: 'open' });
   assert.equal(mission.phase, 'won');
 });

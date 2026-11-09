@@ -1,4 +1,4 @@
-// Joze's Smoothie Stand's levels, with real photos going through the real tracker: what each level
+// Giraffe's Smoothie Stand's levels, with real photos going through the real tracker: what each level
 // brings that's new, tip coins, golden fruit, watermelons, the bee and the power-ups, rotten fruit,
 // fruit thrown across and tough fruit, and still the Golden Cup at the end, with nothing flashing.
 import { expect, openGame, show, shot, test, waitForScreen } from '../helpers.js';

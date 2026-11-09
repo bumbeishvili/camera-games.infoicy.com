@@ -10,5 +10,5 @@
   {"id": "widget-hello", "text": "Six bananas, please! Beep!", "ka": "ექვსი ბანანი, თუ შეიძლება! ბიპ!", "voice": "am_echo", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -6},
   {"id": "kit-hello", "text": "Five peaches! Watch out for rotten fruit!", "ka": "ხუთი ატამი! ფრთხილად, დამპალი ხილია!", "voice": "af_nicole", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 6},
   {"id": "bramble-hello", "text": "Four apples, four bananas and four plums, please!", "ka": "ოთხი ვაშლი, ოთხი ბანანი და ოთხი ქლიავი, თუ შეიძლება!", "voice": "bm_george", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -18},
-  {"id": "bramble-thanks", "text": "The Golden Cup goes to Joze’s stand!", "ka": "ოქროს თასი ჯოზეს ჯიხურს ეკუთვნის!", "voice": "bm_george", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -18}
+  {"id": "bramble-thanks", "text": "The Golden Cup goes to the giraffe’s stand!", "ka": "ოქროს თასი ჟირაფის ჯიხურს ეკუთვნის!", "voice": "bm_george", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -18}
 ]

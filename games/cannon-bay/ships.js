@@ -1,5 +1,5 @@
 // The ships of Cannon Bay: wooden hulls in bright paint, built from simple shapes with no image files,
-// whose sails come up and down. The child's has Joze on the back of it with his long neck above the
+// whose sails come up and down. The child's has Giraffe on the back of it with his long neck above the
 // rail, and giraffe spots on its sails. Each pirate ship belongs to one of the other characters, in their
 // colours and with their mark on its sails. They're all original designs made for this game.
 import * as THREE from '../../vendor/three/three.module.js';
@@ -31,7 +31,7 @@ const DECK = { main: 5.8, fore: 8.2, back: 10.8, foreEnds: 0.19, backStarts: 0.7
 
 /** Each one's paint: its hull, the band above it, its trim, its sails and the mark on them. */
 export const LOOKS = {
-  joze: { hull: '#b8763a', upper: '#e9c48a', trim: '#6a4bd8', bottom: '#5b3a22', sail: ['#fff0c9', '#fff0c9'], spots: '#c9823f', mark: null, markColour: '#6a4bd8', flag: '#6a4bd8', flagMark: '#ffd23f' },
+  giraffe: { hull: '#b8763a', upper: '#e9c48a', trim: '#6a4bd8', bottom: '#5b3a22', sail: ['#fff0c9', '#fff0c9'], spots: '#c9823f', mark: null, markColour: '#6a4bd8', flag: '#6a4bd8', flagMark: '#ffd23f' },
   truffle: { hull: '#ff6f9f', upper: '#ffd1df', trim: '#2f6fed', bottom: '#8f2f55', sail: ['#ffffff', '#ff9dbb'], mark: 'bubble', markColour: '#2f6fed' },
   kit: { hull: '#f7822b', upper: '#ffc38a', trim: '#2b2f52', bottom: '#8a3f10', sail: ['#ffe9cf', '#ff9f4f'], mark: 'leaf', markColour: '#2b2f52' },
   mochi: { hull: '#c79bff', upper: '#f1e2ff', trim: '#ff5fa2', bottom: '#6a4a9e', sail: ['#ffe16b', '#ffffff'], mark: 'star', markColour: '#ff5fa2' },
@@ -268,7 +268,7 @@ function paintedTexture(look) {
   ctx.fillStyle = look.sail[1];
   const stripes = 6;
   for (let i = 1; i < stripes; i += 2) ctx.fillRect((i / stripes) * size, 0, size / stripes, size);
-  // Giraffe spots on Joze's.
+  // Giraffe spots on Giraffe's.
   if (look.spots) {
     ctx.fillStyle = look.spots;
     for (const [x, y, w, h, tilt] of [[52, 56, 25, 20, 0.3], [128, 44, 30, 22, -0.2], [204, 62, 23, 21, 0.4], [86, 124, 27, 25, -0.4], [168, 118, 29, 23, 0.2], [44, 190, 24, 22, -0.1], [122, 198, 31, 23, 0.3], [208, 186, 24, 26, -0.3]]) {
@@ -508,25 +508,25 @@ function deckWheel() {
   return wheel;
 }
 
-const JOZE_SIZE = 5.6;
-const JOZE_AT = [0, DECK.back - 0.15, 9.2];
+const GIRAFFE_SIZE = 5.6;
+const GIRAFFE_AT = [0, DECK.back - 0.15, 9.2];
 const WHEEL_AT = [0, DECK.back + 3.3, 12.6];
 
-/** The child's ship, with Joze as its captain on the back of it. */
+/** The child's ship, with Giraffe as its captain on the back of it. */
 export class HeroShip extends Ship {
   constructor(spec) {
-    super(LOOKS.joze);
-    this.joze = new Fighter3D(spec);
-    this.joze.root.scale.setScalar(JOZE_SIZE);
-    this.joze.root.position.set(...JOZE_AT);
-    this.joze.root.rotation.y = -0.32;
-    this.joze.setExpression('happy');
-    this.body.add(this.joze.root);
+    super(LOOKS.giraffe);
+    this.giraffe = new Fighter3D(spec);
+    this.giraffe.root.scale.setScalar(GIRAFFE_SIZE);
+    this.giraffe.root.position.set(...GIRAFFE_AT);
+    this.giraffe.root.rotation.y = -0.32;
+    this.giraffe.setExpression('happy');
+    this.body.add(this.giraffe.root);
     // A very small hat, with his two little horns coming through it.
     const hat = captainHat('#27305e', '#ffd23f', 0.82);
     hat.position.set(0, 0.34, -0.02);
     hat.rotation.x = -0.1;
-    this.joze.head.add(hat);
+    this.giraffe.head.add(hat);
 
     this.pose = makePose();
     Object.assign(this.pose, { handLX: 0.1, handLY: -0.42, handLZ: 0.72, handRX: -0.1, handRY: -0.42, handRZ: 0.72 });
@@ -569,8 +569,8 @@ export class HeroShip extends Ship {
     }
   }
 
-  /** How Joze stands from moment to moment, with his long neck swaying as the ship rolls. */
-  updateJoze(dt, { wheel = 0, roll = 0, pitch = 0, look = 0, hurt = 0, cheering = false, calm = 1, time = 0 }) {
+  /** How Giraffe stands from moment to moment, with his long neck swaying as the ship rolls. */
+  updateGiraffe(dt, { wheel = 0, roll = 0, pitch = 0, look = 0, hurt = 0, cheering = false, calm = 1, time = 0 }) {
     this.wheel.rotation.z = -wheel * 2.4;
     const { pose } = this;
     // His head stays on the view from behind, unless there's something to look at.
@@ -585,8 +585,8 @@ export class HeroShip extends Ship {
     } else {
       Object.assign(pose, { handLX: 0.1 + reach, handLY: -0.42, handLZ: 0.72, handRX: -0.1 + reach, handRY: -0.42, handRZ: 0.72, up: 0 });
     }
-    this.joze.setPose(pose);
-    this.joze.update(dt);
+    this.giraffe.setPose(pose);
+    this.giraffe.update(dt);
   }
 }
 

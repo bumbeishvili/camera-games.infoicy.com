@@ -56,7 +56,7 @@ const CHAIN_REACH = 3.4; // How far it spreads, in balloon sizes.
 const CHAIN_MOST = 6;
 const BIG_SIZE = 1.75;
 const BASKET_FALL = 0.11; // How fast a friend's basket comes down, in screen heights a second.
-const FRIENDS = ['joze', 'mochi', 'frost', 'truffle']; // Joze first.
+const FRIENDS = ['giraffe', 'mochi', 'frost', 'truffle']; // Giraffe first.
 const PRIZE_MARKS = { sweet: '🍬', star: '⭐', gem: '💎', heart: '💗' };
 const POWER_MARKS = { bubble: '✋', magnet: '🧲', bird: '🐦' };
 // The little label each new thing gets the first time it comes along, in English and Georgian.
@@ -192,7 +192,7 @@ function makeBubbleSprite() {
   return canvas;
 }
 
-/** A friend peeping over the side of a basket: Joze, Mochi, Frost or Truffle, from simple shapes. */
+/** A friend peeping over the side of a basket: Giraffe, Mochi, Frost or Truffle, from simple shapes. */
 function makeFriendSprite(who) {
   const canvas = document.createElement('canvas');
   canvas.width = 200;
@@ -209,12 +209,12 @@ function makeFriendSprite(who) {
     ctx.stroke();
   };
   const looks = {
-    joze: { face: '#f5c451', inner: '#fff0c9' },
+    giraffe: { face: '#f5c451', inner: '#fff0c9' },
     mochi: { face: '#ffffff', inner: '#ffc2d8' },
     frost: { face: '#2f4a6b', inner: '#ffffff' },
     truffle: { face: '#ffb3c6', inner: '#ff8fae' },
   }[who];
-  if (who === 'joze') {
+  if (who === 'giraffe') {
     // Two little horns with round tips, and ears.
     for (const x of [72, 128]) {
       ctx.fillStyle = '#c98a3a';
@@ -238,7 +238,7 @@ function makeFriendSprite(who) {
     blob(138, 66, 18, 16, looks.face, 0.6);
   }
   blob(100, 120, 62, 56, looks.face);
-  if (who === 'joze') {
+  if (who === 'giraffe') {
     ctx.fillStyle = '#c98a3a';
     for (const [x, y, r] of [[64, 100, 9], [138, 96, 8], [126, 140, 7]]) {
       ctx.beginPath();

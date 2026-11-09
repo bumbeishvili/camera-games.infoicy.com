@@ -26,9 +26,9 @@ Shared sounds are in `core/audio/sfx/`, and each game's own are in its `audio/` 
 | `sizzle.ogg` (Balloon Pop) | [Fried egg](https://bigsoundbank.com/fried-egg-s0485.html) | TheoPichard, BigSoundBank | CC0 | The egg going into the pan cut out, level set, end faded |
 | `propeller.ogg` (Sky Wings) | [Small airplane moving away](https://bigsoundbank.com/small-airplane-moving-away-s0501.html) | Joseph Sardin, BigSoundBank | CC0 | The steady first part cut out and looped, level set |
 | `guns.ogg`, `gun-pop.ogg` (Sky Wings) | [Paintball: Shots](https://bigsoundbank.com/paintball-tirs-s0528.html) | BigSoundBank | CC0 | Single shots cut out, softened and retimed into a steady rattle, with `tools/build_gun_sounds.py` |
-| `chop.ogg` (Joze's Smoothie Stand) | [Cutting board, zucchini #1](https://bigsoundbank.com/cutting-board-zucchini-1-s2068.html) | BigSoundBank | CC0 | The loudest moment cut out, level set |
-| `mixer.ogg` (Joze's Smoothie Stand) | [Electric hand mixer #1](https://bigsoundbank.com/electric-hand-mixer-1-s1752.html) | Joseph Sardin, BigSoundBank | CC0 | Two seconds from the steady part, softened at each end |
-| `crunch.ogg` (Joze's Long Walk Home) | [Apple crunched #1](https://bigsoundbank.com/apple-crunched-1-s1113.html) | Joseph Sardin, BigSoundBank | CC0 | The loudest moment cut out, level set |
+| `chop.ogg` (Giraffe's Smoothie Stand) | [Cutting board, zucchini #1](https://bigsoundbank.com/cutting-board-zucchini-1-s2068.html) | BigSoundBank | CC0 | The loudest moment cut out, level set |
+| `mixer.ogg` (Giraffe's Smoothie Stand) | [Electric hand mixer #1](https://bigsoundbank.com/electric-hand-mixer-1-s1752.html) | Joseph Sardin, BigSoundBank | CC0 | Two seconds from the steady part, softened at each end |
+| `crunch.ogg` (Giraffe's Long Walk Home) | [Apple crunched #1](https://bigsoundbank.com/apple-crunched-1-s1113.html) | Joseph Sardin, BigSoundBank | CC0 | The loudest moment cut out, level set |
 | `wipe.ogg` (The Lighthouse Keeper) | [Cleaning glass](https://bigsoundbank.com/cleaning-glass-s0689.html) | Joseph Sardin, BigSoundBank | CC0 | Looped from the steady part |
 | `horn.ogg` (The Lighthouse Keeper) | [Horn of a ship #1](https://bigsoundbank.com/horn-of-a-ship-1-s0261.html) | DenisChardonnet, BigSoundBank | CC0 | Five seconds, softened at each end, level set |
 | `waves.ogg` (The Lighthouse Keeper) | [Beach, small waves](https://bigsoundbank.com/beach-small-waves-s0265.html) | DenisChardonnet, BigSoundBank | CC0 | Twenty seconds, looped |

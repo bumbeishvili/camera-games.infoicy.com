@@ -1,5 +1,5 @@
 // The picture of Cannon Bay: the island from sea level, rolling waves around the camera, the child's
-// ship with Joze on it, the pirate ships, the firing zones on the water, and the cannonballs between them.
+// ship with Giraffe on it, the pirate ships, the firing zones on the water, and the cannonballs between them.
 // The camera sits behind and a little above the child's ship, and follows it round.
 //
 // Nothing flashes or strobes, as seizures are more common in children with hemiplegia. There are no
@@ -412,8 +412,8 @@ function buildGulls(scene) {
 /* ------------------------------- the whole picture ------------------------------- */
 
 export class Bay {
-  /** joze is his character, and pirates are the ones who can be captains of the pirate ships. */
-  constructor(canvas, joze, pirates) {
+  /** giraffe is his character, and pirates are the ones who can be captains of the pirate ships. */
+  constructor(canvas, giraffe, pirates) {
     this.canvas = canvas;
     this.chart = getChart();
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -451,7 +451,7 @@ export class Bay {
     this.sparks = new Sparks(this.scene);
     this.buildSea();
 
-    this.hero = new HeroShip(joze);
+    this.hero = new HeroShip(giraffe);
     this.scene.add(this.hero.root);
     this.heroRock = { pitch: 0, roll: 0, y: 0 };
 
@@ -673,7 +673,7 @@ export class Bay {
     for (const bubble of this.bubbles) bubble.visible = false;
     this.shapeZones();
     this.setWeather(battle?.plan ?? {});
-    this.hero.joze.setExpression('happy');
+    this.hero.giraffe.setExpression('happy');
     this.cheering = false;
     if (battle) this.cameraYaw = battle.heading;
   }
@@ -878,7 +878,7 @@ export class Bay {
       this.sparks.emit({ shape: prize.kind === 'heart' ? 'star' : i % 2 ? 'star' : 'spark', colour: colours[i % colours.length], at: { x: prize.x, y: 6, z: prize.z }, velocity: [Math.cos(angle) * 6, between(6, 10), Math.sin(angle) * 6], life: 0.6, size: 2.2, spin: 4, gravity: 10 });
     }
     if (prize.kind === 'cage') {
-      this.hero.joze.setExpression('happy');
+      this.hero.giraffe.setExpression('happy');
       this.cheerLeft = 1.4;
     }
   }
@@ -894,7 +894,7 @@ export class Bay {
 
   onLittleBeaten({ pirate }) {
     this.pieces(pirate, ['#b8743a', '#c99458'], 4);
-    this.hero.joze.setExpression('happy');
+    this.hero.giraffe.setExpression('happy');
   }
 
   /** One of the pirate king's sails coming down, in a soft puff of its own colour. */
@@ -944,14 +944,14 @@ export class Bay {
     // A raft has nobody on it: it comes apart into two little ones.
     if (!boat) {
       this.pieces(pirate, ['#b8743a', '#c99458'], 6);
-      this.hero.joze.setExpression('happy');
+      this.hero.giraffe.setExpression('happy');
       this.cheerLeft = 1.8;
       return;
     }
     ship.lifeboat.board(ship.captain);
     ship.lifeboat.place(boat.x, 0.1, boat.z, boat.heading);
     this.puffs({ x: pirate.x, y: 9, z: pirate.z }, { count: 8, colours: ['#a59e95', '#8a837b', '#bdb7ae'], size: 7, speed: 5, up: 1.2, life: 1.8, grow: 5, opacity: 0.55 });
-    this.hero.joze.setExpression('happy');
+    this.hero.giraffe.setExpression('happy');
     this.cheerLeft = 1.8;
   }
 
@@ -961,12 +961,12 @@ export class Bay {
       const angle = (i / 4) * Math.PI * 2 + Math.random();
       this.sparks.emit({ shape: 'rock', colour: '#c99458', at: { x, y: 9, z }, velocity: [Math.cos(angle) * 8, between(6, 12), Math.sin(angle) * 8], life: 0.6, size: 1.8, spin: 5, gravity: 16 });
     }
-    this.hero.joze.setExpression('hurt', 0.7);
+    this.hero.giraffe.setExpression('hurt', 0.7);
   }
 
   onWon() {
     this.cheering = true;
-    this.hero.joze.setExpression('happy');
+    this.hero.giraffe.setExpression('happy');
   }
 
   /* ---------- every frame ---------- */
@@ -1030,7 +1030,7 @@ export class Bay {
     hero.updateFlags(dt, 0.4 + 0.6 * calm);
     hero.showRescued(battle?.stats.sailors ?? 0);
 
-    // Joze keeps an eye on whoever's being fired at, and otherwise looks about and back at the child.
+    // Giraffe keeps an eye on whoever's being fired at, and otherwise looks about and back at the child.
     const target = battle?.zones.right.target ?? battle?.zones.left.target ?? null;
     let look = 0.32 + Math.sin(this.time * 0.37) * 0.4 * calm;
     if (target) {
@@ -1038,7 +1038,7 @@ export class Bay {
       look = clamp(off + 0.32, -1.5, 1.5);
     }
     this.cheerLeft = Math.max(0, (this.cheerLeft ?? 0) - dt);
-    hero.updateJoze(dt, {
+    hero.updateGiraffe(dt, {
       wheel: battle?.wheel ?? 0,
       roll: heroRock.roll,
       pitch: heroRock.pitch,

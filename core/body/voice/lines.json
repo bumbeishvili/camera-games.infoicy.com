@@ -17,5 +17,5 @@
   {"id": "shout-nova", "text": "To the stars! Meow!", "ka": "ვარსკვლავებისკენ! მიაუ!", "voice": "af_bella", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 12},
   {"id": "shout-cinder", "text": "Fired up and ready!", "ka": "ცეცხლივით მზად ვარ!", "voice": "am_adam", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 6},
   {"id": "shout-tur", "text": "Up the mountain! Here I come!", "ka": "მთას მივუყვები, მოვდივარ!", "voice": "bm_lewis", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -6},
-  {"id": "shout-joze", "text": "Look up! Here comes Joze!", "ka": "ზემოთ აიხედე! ჯოზე მოდის!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0}
+  {"id": "shout-giraffe", "text": "Look up! Here comes the giraffe!", "ka": "ზემოთ აიხედე! ჟირაფი მოდის!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0}
 ]

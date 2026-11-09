@@ -78,7 +78,7 @@ function powerPictures() {
 const ordinal = (place) => ['1st', '2nd', '3rd', '4th'][place - 1] ?? `${place}th`;
 
 /**
- * Who drives what. Whoever the child chose in the other games drives, and Joze if nobody was. rivals is
+ * Who drives what. Whoever the child chose in the other games drives, and Giraffe if nobody was. rivals is
  * everyone who could be in the other cars, in order: three of them race at first, and higher levels add more.
  */
 function castFor(settings) {

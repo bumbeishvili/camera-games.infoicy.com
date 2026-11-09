@@ -1,4 +1,4 @@
-// The story and rules of Spider Catcher. Joze's little spider friends have run off all over the garden,
+// The story and rules of Spider Catcher. Giraffe's little spider friends have run off all over the garden,
 // and the child brings them home: a hand that opens near a spider and closes on it picks it up, it's
 // carried to its web, and opening the hand over the web lets it in. Each spider home makes its web a
 // little fuller. There's no screen in this file, so it runs in the unit tests.
@@ -8,14 +8,14 @@ import { ramp, stepsAt } from '../../core/levels.js';
 
 // Each place in the garden: how many spiders live in its web, who's there, and what they say.
 export const PLACES = [
-  { place: 'gate', count: 3, who: 'joze', hello: 'My little spiders ran off! Please bring them home!' },
+  { place: 'gate', count: 3, who: 'giraffe', hello: 'My little spiders ran off! Please bring them home!' },
   { place: 'carrots', count: 3, who: 'mochi', hello: 'Spiders in my carrots! Help them home!' },
   { place: 'honey', count: 4, who: 'bramble', hello: 'One is swinging from my honey tree!' },
   { place: 'pond', count: 4, who: 'frost', hello: 'They’re playing by the pond. Catch them!' },
   {
     place: 'house',
     count: 3,
-    who: 'joze',
+    who: 'giraffe',
     hello: 'The last ones! Then everyone is home!',
     done: 'Thank you! All my spiders are home!',
   },

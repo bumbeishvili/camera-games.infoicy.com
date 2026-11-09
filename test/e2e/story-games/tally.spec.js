@@ -3,7 +3,7 @@
 import { expect, test } from '../helpers.js';
 import { atLevel, startPlaying } from './helpers.js';
 
-for (const [game, chip, scene] of [['lighthouse', 'chip-treasure', 'room'], ['joze-walk', 'chip-gifts', 'walk'], ['smoothie-stand', 'chip-coins', 'field']]) {
+for (const [game, chip, scene] of [['lighthouse', 'chip-treasure', 'room'], ['giraffe-walk', 'chip-gifts', 'walk'], ['smoothie-stand', 'chip-coins', 'field']]) {
   test(`${game}: what's collected flies to its own count at the top`, async ({ page }) => {
     await startPlaying(page, game, atLevel(game, 2));
     const spot = await page.evaluate(([id, name]) => {

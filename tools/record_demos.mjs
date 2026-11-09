@@ -172,7 +172,7 @@ const FILMS = {
     },
     report: (page) => page.evaluate(() => window.__game.battle.stats),
   },
-  'joze-walk': {
+  'giraffe-walk': {
     settings: { reach: 'little' },
     css: '.camera-frame { --camera-small: 24vw !important; left: 66% !important; }',
     async ready(page) {

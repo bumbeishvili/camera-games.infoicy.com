@@ -10,9 +10,9 @@ const GAMES = [
   { name: 'Robot Rescue', folder: 'robot-rescue', start: 'Ride to the rescue' },
   { name: 'Tank Patrol', folder: 'tank-patrol', start: 'Climb aboard' },
   { name: 'Cannon Bay', folder: 'cannon-bay', start: 'Set sail!' },
-  { name: 'Joze’s Long Walk Home', folder: 'joze-walk', start: 'Help Joze' },
+  { name: 'Giraffe’s Long Walk Home', folder: 'giraffe-walk', start: 'Help Giraffe' },
   { name: 'Spider Catcher', folder: 'spider-catcher', start: 'Catch the spiders' },
-  { name: 'Joze’s Smoothie Stand', folder: 'smoothie-stand', start: 'Open the stand' },
+  { name: 'Giraffe’s Smoothie Stand', folder: 'smoothie-stand', start: 'Open the stand' },
   { name: 'The Lighthouse Keeper', folder: 'lighthouse', start: 'Climb the lighthouse' },
 ];
 

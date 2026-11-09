@@ -1,4 +1,4 @@
-// The tanks: the child's own, with Joze's long neck sticking up out of the hatch, and the robot tanks and
+// The tanks: the child's own, with Giraffe's long neck sticking up out of the hatch, and the robot tanks and
 // their little crews. They're all toys, in bright colours with a dark outline, so they stand out from the
 // valley behind them. Nobody gets hurt: when a robot tank stops, its crew climbs out and waves.
 import * as THREE from '../../vendor/three/three.module.js';
@@ -9,7 +9,7 @@ import { groundY } from './valley-map.js';
 
 const INK = '#1d2740';
 const OUTLINE = 0.055;
-const JOZE_SIZE = 2.7;
+const GIRAFFE_SIZE = 2.7;
 const EXTRA_NECK = 0.46; // He's riding with his neck stuck up out of the hatch, so it's even longer than usual.
 const PADS_PER_SIDE = 26;
 
@@ -171,14 +171,14 @@ class TankBody {
 
 /* ------------------------------- the child's tank ------------------------------- */
 
-/** Joze, with some more neck, to stick up out of the hatch and sway about. */
-function longNeckedJoze() {
-  const joze = byId('joze');
+/** Giraffe, with some more neck, to stick up out of the hatch and sway about. */
+function longNeckedGiraffe() {
+  const giraffe = byId('giraffe');
   return {
-    ...joze,
-    build: { ...joze.build, neck: joze.build.neck + EXTRA_NECK },
+    ...giraffe,
+    build: { ...giraffe.build, neck: giraffe.build.neck + EXTRA_NECK },
     dress(kit) {
-      joze.dress(kit);
+      giraffe.dress(kit);
       const { add, ball: blob, taper, curl, colours } = kit;
       add('torso', taper(0.14, 0.122, 0.72), colours.body, [0, 1.06, 0]);
       add('torso', curl([[0, 1.14, -0.145], [0, 1.4, -0.13], [0, 1.7, -0.125]], 0.04, 0.026), '#8a4f1d');
@@ -226,7 +226,7 @@ export class ChildTank extends TankBody {
       { geometry: cylinder(0.32, 0.26, 0.2, 10), colour: '#1d2740', at: [1.7, 3.2, 3] },
     ]);
 
-    // The turret, which turns, with the hatch Joze rides in.
+    // The turret, which turns, with the hatch Giraffe rides in.
     this.turret = new THREE.Group();
     this.turret.position.set(0, 2.42, 0.25);
     this.root.add(this.turret);
@@ -257,15 +257,15 @@ export class ChildTank extends TankBody {
     this.flag.position.set(0, 2.55, 0);
     this.mast.add(this.flag);
 
-    // Joze, who's very pleased to be here.
-    this.joze = new Fighter3D(longNeckedJoze());
-    this.joze.root.scale.setScalar(JOZE_SIZE);
-    this.joze.root.position.set(0, -1.42, 0.34);
-    this.turret.add(this.joze.root);
+    // Giraffe, who's very pleased to be here.
+    this.giraffe = new Fighter3D(longNeckedGiraffe());
+    this.giraffe.root.scale.setScalar(GIRAFFE_SIZE);
+    this.giraffe.root.position.set(0, -1.42, 0.34);
+    this.turret.add(this.giraffe.root);
     this.pose = makePose();
     this.pose.footLX = 0.12;
     this.pose.footRX = -0.12;
-    this.joze.setExpression('happy');
+    this.giraffe.setExpression('happy');
     this.hands = 0; // From down on the rim to up in the air.
     this.fingers = 0;
     this.leanX = 0;
@@ -291,14 +291,14 @@ export class ChildTank extends TankBody {
   }
 
   hit() {
-    this.joze.setExpression('hurt', 0.9);
+    this.giraffe.setExpression('hurt', 0.9);
     this.rattle = 1;
     this.leanSpeedX += (Math.random() < 0.5 ? -1 : 1) * (this.reducedMotion ? 0.5 : 2.2);
   }
 
   /** He cheers, for as long as it says. */
   cheer(seconds = 2) {
-    this.joze.setExpression('happy', seconds);
+    this.giraffe.setExpression('happy', seconds);
     this.cheerLeft = seconds;
   }
 
@@ -342,7 +342,7 @@ export class ChildTank extends TankBody {
     const idly = this.reducedMotion ? 0 : Math.sin(this.time * 0.6) * 0.25;
     const wantLook = lookAt ? clamp((lookAt.x - x) / 26, -1, 1) * 0.75 : idly;
     this.lookYaw = damp(this.lookYaw, wantLook, 5, dt);
-    this.joze.root.rotation.y = tank.turret + this.lookYaw * 0.45;
+    this.giraffe.root.rotation.y = tank.turret + this.lookYaw * 0.45;
 
     // His arms go up when the child's hand is open, and rest on the rim when it's closed.
     this.cheerLeft = Math.max(0, (this.cheerLeft ?? 0) - dt);
@@ -369,8 +369,8 @@ export class ChildTank extends TankBody {
       wristL: -0.3,
       wristR: -0.3,
     });
-    this.joze.setPose(pose);
-    this.joze.update(dt);
+    this.giraffe.setPose(pose);
+    this.giraffe.update(dt);
 
     // Being hit gives the whole tank a shake, which dies away.
     this.rattle = Math.max(0, this.rattle - dt * 1.6);

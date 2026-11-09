@@ -1,4 +1,4 @@
-// Spider Catcher: Joze's little spider friends have run off all over the garden. The child opens a hand
+// Spider Catcher: Giraffe's little spider friends have run off all over the garden. The child opens a hand
 // near one and closes it to pick it up, carries it across to its web, and opens the hand to let it in.
 // The story and rules are in spiders.js, and the garden is in garden.js.
 import { MoveDemo } from '../../core/body/demo.js';
@@ -18,7 +18,7 @@ const ALL_HOME = 'Every spider is home!';
 const LAST_WORDS_SECONDS = 2.4;
 const HINT_AFTER_SECONDS = 4;
 const FILM_SECONDS = 16;
-const CLAP_SECONDS = 1.7; // Joze claps for each spider home, then watches again.
+const CLAP_SECONDS = 1.7; // Giraffe claps for each spider home, then watches again.
 const BIRDS_LEVEL = 0.35;
 
 const byId = (id) => document.getElementById(id);
@@ -63,13 +63,13 @@ class SpiderGame {
       return box && box.width ? { x: box.left + box.width / 2, y: box.top + box.height / 2 } : { x: 80, y: 40 };
     };
     byId('finish-hero')?.closest('.finish-hero')?.insertAdjacentHTML('afterend', '<p id="finish-prizes" class="finish-prizes"></p>');
-    this.joze = new MoveDemo(byId('joze-stage'));
-    this.joze.setCharacter(characterById('joze'));
+    this.giraffe = new MoveDemo(byId('giraffe-stage'));
+    this.giraffe.setCharacter(characterById('giraffe'));
     this.applySettings();
     const game = this;
     this.debug = {
       garden: this.garden,
-      joze: this.joze,
+      giraffe: this.giraffe,
       get gathering() {
         return game.gathering;
       },
@@ -85,7 +85,7 @@ class SpiderGame {
 
   setHands() {
     this.applySettings();
-    this.jozeDoes('jozeWaits');
+    this.giraffeDoes('giraffeWaits');
   }
 
   settingChanged() {
@@ -93,8 +93,8 @@ class SpiderGame {
   }
 
   /** He faces the spiders, on the side of the hand being played with. */
-  jozeDoes(name) {
-    this.joze.show(name, this.session.settings.hands);
+  giraffeDoes(name) {
+    this.giraffe.show(name, this.session.settings.hands);
   }
 
   /** A new game, at this level: see gardenAt in spiders.js for what each level brings. */
@@ -115,7 +115,7 @@ class SpiderGame {
     this.showBerries();
     this.garden.arriveAt(PLACES[0].place, 0);
     this.gathering = new Gathering({ level, onEvent: (event) => this.onGathering(event) });
-    this.jozeDoes('jozeWaits');
+    this.giraffeDoes('giraffeWaits');
     this.showProgress();
   }
 
@@ -141,7 +141,7 @@ class SpiderGame {
 
   onPlace({ place }) {
     this.garden.arriveAt(place.place, place.count);
-    this.jozeDoes('jozeWaits');
+    this.giraffeDoes('giraffeWaits');
     this.story.say(place.who, place.hello);
     this.idleFor = 0;
     this.showProgress();
@@ -152,7 +152,7 @@ class SpiderGame {
     sound.play('home', { gain: 0.75, rate: 0.95 + Math.random() * 0.12 });
     this.idleFor = 0;
     this.clapUntil = performance.now() + CLAP_SECONDS * 1000;
-    this.jozeDoes('clap');
+    this.giraffeDoes('clap');
     this.gathering.spiderHome();
   }
 
@@ -171,7 +171,7 @@ class SpiderGame {
     const next = this.gathering.places[this.gathering.index + 1];
     if (!next) return;
     this.clapUntil = 0;
-    this.jozeDoes('walk');
+    this.giraffeDoes('walk');
     this.garden.goTo(next.place);
   }
 
@@ -210,13 +210,13 @@ class SpiderGame {
         what();
       }
     }
-    this.joze.update(dt);
+    this.giraffe.update(dt);
     this.garden.update(dt, snapshot, { aspect: this.session.camera.aspect, playing: true, showHands: true });
     if (this.clapUntil && performance.now() > this.clapUntil) {
       this.clapUntil = 0;
-      if (this.garden.moving === 0) this.jozeDoes('jozeWaits');
+      if (this.garden.moving === 0) this.giraffeDoes('giraffeWaits');
     }
-    if (this.garden.moving === 0 && this.joze.playing?.name === 'walk') this.jozeDoes('jozeWaits');
+    if (this.garden.moving === 0 && this.giraffe.playing?.name === 'walk') this.giraffeDoes('giraffeWaits');
     this.idleFor += dt;
     const filming = this.session.playSeconds < FILM_SECONDS && this.gathering.stats.home === 0;
     if (filming !== this.filming) {
@@ -230,7 +230,7 @@ class SpiderGame {
       this.filming = false;
       document.body.dataset.film = 'off';
     }
-    this.joze.update(dt);
+    this.giraffe.update(dt);
     const counting = this.session.screen === 'countdown';
     this.garden.update(dt, snapshot, { aspect: this.session.camera.aspect, showHands: counting });
   }
@@ -261,7 +261,7 @@ class SpiderGame {
   finished() {
     this.session.sound.stopLoop('birds');
     this.story.hide();
-    this.joze.hide();
+    this.giraffe.hide();
   }
 
   summary() {
@@ -324,7 +324,7 @@ new GameSession({
   },
   defaults: { reach: 'little' },
   choices: { reach: String },
-  tagline: (side) => `Joze’s little spiders ran off! Close your ${side} hand on one, carry it to its web, and open your hand to put it home.`,
+  tagline: (side) => `Giraffe’s little spiders ran off! Close your ${side} hand on one, carry it to its web, and open your hand to put it home.`,
   finishLine: ALL_HOME,
   lines: new URL('./audio/voice/lines.json', import.meta.url),
   portraits: () => renderPortraits(ROSTER),

@@ -602,7 +602,7 @@ export class Field {
     this.bits(this.point.set(tank.x, tank.y + 5, tank.z), { count: 5, shapes: ['star'], colours: ['#ffd23f', '#ffffff'], size: 0.75, speed: 4, life: 0.75, gravity: 7 });
   }
 
-  /** The valley's safe again: Joze cheers, and the fort's flags change hands. */
+  /** The valley's safe again: Giraffe cheers, and the fort's flags change hands. */
   onAllStopped() {
     this.celebrating = true;
     this.valley.setFlags(true);

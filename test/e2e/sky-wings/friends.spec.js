@@ -88,7 +88,7 @@ test('two friends fly together from their own computers, on the host\'s level, a
   expect(guest.mates.map(({ name }) => name)).toEqual(['Ana']);
   // A friend's character is never one of the pirates too.
   expect(host.pirates).not.toContain('kit');
-  expect(guest.pirates).not.toContain('joze');
+  expect(guest.pirates).not.toContain('giraffe');
 
   // Each sees the other's plane where it really is, a moment ago.
   await expect.poll(async () => (await skyOf(page)).mates[0].seen, { timeout: 15_000 }).toBe(true);

@@ -57,10 +57,10 @@ test('the first in hosts, everyone hears who\'s here, and the host\'s course is 
   const host = join('aaaaaaaa');
   host.say({ t: 'hi', name: 'Dato', driver: 'kit', level: 7, laps: 1 });
   const friend = join('bbbbbbbb');
-  friend.say({ t: 'hi', name: 'Nino', driver: 'joze', level: 2, laps: 4 });
+  friend.say({ t: 'hi', name: 'Nino', driver: 'giraffe', level: 2, laps: 4 });
   const room = friend.last('room');
   assert.equal(room.you, 'bbbbbbbb');
-  assert.deepEqual(room.members.map(({ name, driver, host: hosting }) => [name, driver, hosting]), [['Dato', 'kit', true], ['Nino', 'joze', false]]);
+  assert.deepEqual(room.members.map(({ name, driver, host: hosting }) => [name, driver, hosting]), [['Dato', 'kit', true], ['Nino', 'giraffe', false]]);
 
   host.say({ t: 'ready' });
   assert.equal(friend.last('go'), undefined, 'not until everyone is ready');

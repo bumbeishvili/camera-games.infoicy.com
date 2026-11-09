@@ -226,11 +226,11 @@ test('level 5: popping both of a pair drops a gem, and it\'s by the sea', async 
   await expect.poll(async () => (await field(page)).kinds.gem, { timeout: 8000 }).toBe(1);
 });
 
-test('level 6: a friend floats up in a basket by themselves, Joze first; popping all three brings them down, with a heart', async ({ page }) => {
+test('level 6: a friend floats up in a basket by themselves, Giraffe first; popping all three brings them down, with a heart', async ({ page }) => {
   await startAt(page, 6);
   // The hand away, so that it doesn't pop any of the basket's balloons.
   await show(page, null, null);
-  await expect.poll(() => page.evaluate(() => window.__game.balloons.baskets[0]?.friend), { timeout: 20_000 }).toBe('joze');
+  await expect.poll(() => page.evaluate(() => window.__game.balloons.baskets[0]?.friend), { timeout: 20_000 }).toBe('giraffe');
   await page.evaluate(() => {
     const [basket] = window.__game.balloons.baskets;
     basket.y = window.__game.balloons.height * 0.75;

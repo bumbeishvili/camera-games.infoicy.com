@@ -397,7 +397,7 @@ test('level 9: a friend comes running alongside and catches a star for each one 
     const { world } = window.__game;
     return { id: world.friend.spec.id, shown: world.friend.body.root.visible, x: world.friend.body.root.position.x };
   });
-  expect(friend.id).toBe('truffle'); // Joze is running, so it's Truffle who comes along.
+  expect(friend.id).toBe('truffle'); // Giraffe is running, so it's Truffle who comes along.
   expect(friend.shown).toBe(true);
   expect(friend.x).toBeLessThan(-2.5);
   await expect.poll(async () => (await runState(page)).stats.friendStars, { timeout: 8000 }).toBeGreaterThanOrEqual(4);

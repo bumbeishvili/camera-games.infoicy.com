@@ -1,7 +1,7 @@
 [
   {"id": "close-on-it", "text": "Close your hand on the fruit!", "ka": "მოკუმე ხელი ხილზე!"},
-  {"id": "open-for-joze", "text": "Bring it to Joze, and open your hand!", "ka": "ჯოზესთან მიიტანე და ხელი გაშალე!"},
-  {"id": "home", "text": "Joze is home!", "ka": "ჯოზე სახლშია!"},
+  {"id": "open-for-giraffe", "text": "Bring it to the giraffe, and open your hand!", "ka": "ჟირაფთან მიიტანე და ხელი გაშალე!"},
+  {"id": "home", "text": "The giraffe is home!", "ka": "ჟირაფი სახლშია!"},
   {"id": "baobab-hello", "text": "I’m lost, and so hungry! Figs, please!", "ka": "დავიკარგე და ძალიან მშია! ლეღვი, თუ შეიძლება!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
   {"id": "grass-hello", "text": "Your family went this way! Take some mangoes!", "ka": "შენი ოჯახი ამ გზით წავიდა! აიღე მანგო!", "voice": "af_sky", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 24},
   {"id": "river-hello", "text": "It’s a long way round. Eat up, little one.", "ka": "გრძელი გზაა. ჭამე, პატარავ.", "voice": "bm_george", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -18},

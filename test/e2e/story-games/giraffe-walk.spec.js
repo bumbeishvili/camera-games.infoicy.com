@@ -1,19 +1,19 @@
-// Joze's Long Walk Home, with real photos going through the real tracker.
+// Giraffe's Long Walk Home, with real photos going through the real tracker.
 import { expect, hands, shot, show, test, waitForScreen } from '../helpers.js';
 import { moveGloveTo, startPlaying, stopMoving, storyIs } from './helpers.js';
 
-const GAME = 'joze-walk';
+const GAME = 'giraffe-walk';
 const GLOVE = ['walk', 'gloves', 'right'];
 const journey = (page) => page.evaluate(() => {
   const { journey: rules, walk } = window.__game;
   return { index: rules.index, fed: rules.fed, stats: rules.stats, holding: Boolean(walk.holding), hanging: walk.fruit.filter(({ state }) => state === 'hanging').length };
 });
 
-test('closing a real hand on a fruit picks it, and opening it at Joze\'s mouth feeds him', async ({ page }) => {
+test('closing a real hand on a fruit picks it, and opening it at Giraffe\'s mouth feeds him', async ({ page }) => {
   test.setTimeout(150_000);
   await startPlaying(page, GAME);
   // The fruit is there as soon as the game starts.
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await expect.poll(async () => (await journey(page)).hanging, { timeout: 1000 }).toBeGreaterThan(0);
   await page.waitForTimeout(800);
   await shot(page, 'w1-first-stop');
@@ -38,7 +38,7 @@ test('closing a real hand on a fruit picks it, and opening it at Joze\'s mouth f
   });
   await expect.poll(async () => (await journey(page)).holding, { timeout: 15_000 }).toBe(true);
   await shot(page, 'w3-picked');
-  await expect(page.locator('#prompt-text')).toHaveText('Bring it to Joze, and open your hand!', { timeout: 10_000 });
+  await expect(page.locator('#prompt-text')).toHaveText('Bring it to the giraffe, and open your hand!', { timeout: 10_000 });
 
   // Across to his mouth, still holding on.
   const mouth = await page.evaluate(() => {
@@ -75,7 +75,7 @@ test('opening a hand anywhere else lets go of the fruit, and it goes back on the
   await expect.poll(async () => (await journey(page)).hanging, { timeout: 10_000 }).toBeGreaterThanOrEqual(2);
 });
 
-test('every stop fed brings Joze along the road, and home at last', async ({ page }) => {
+test('every stop fed brings Giraffe along the road, and home at last', async ({ page }) => {
   test.setTimeout(180_000);
   await startPlaying(page, GAME);
   const feedThisStop = () => page.evaluate(() => {
@@ -88,7 +88,7 @@ test('every stop fed brings Joze along the road, and home at last', async ({ pag
   await expect.poll(() => page.evaluate(() => window.__game.walk.walking), { timeout: 2000 }).toBeGreaterThan(0);
   await page.waitForTimeout(1000);
   await shot(page, 'w6-walking');
-  for (const [who, index] of [['mochi', 1], ['bramble', 2], ['tur', 3], ['joze', 4]]) {
+  for (const [who, index] of [['mochi', 1], ['bramble', 2], ['tur', 3], ['giraffe', 4]]) {
     await expect.poll(async () => (await journey(page)).index, { timeout: 30_000 }).toBe(index);
     await storyIs(page, who);
     await expect.poll(async () => (await journey(page)).hanging, { timeout: 1000 }).toBeGreaterThan(0);
@@ -98,11 +98,11 @@ test('every stop fed brings Joze along the road, and home at last', async ({ pag
   }
   await expect(page.locator('#story-line')).toContainText('Thank you');
   await waitForScreen(page, 'finish');
-  await expect(page.locator('#screen-finish')).toContainText('Joze is home!');
+  await expect(page.locator('#screen-finish')).toContainText('The giraffe is home!');
   await shot(page, 'w8-finish');
 });
 
-test('the left hand has its tree on the left, with Joze across from it', async ({ page }) => {
+test('the left hand has its tree on the left, with Giraffe across from it', async ({ page }) => {
   await startPlaying(page, GAME, { hands: 'left' }, ['open', null, { scale: 0.7 }]);
   await expect.poll(async () => (await journey(page)).hanging, { timeout: 20_000 }).toBeGreaterThan(0);
   const { fruitX, mouthX, width } = await page.evaluate(() => {

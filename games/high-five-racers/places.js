@@ -1,5 +1,5 @@
 // The places along the road: the grandstands and start line, a village, a tunnel through a hill, a farm,
-// the lake and its bridge, a forest, Joze's family and the Harvest Fair from the other games. Each one is
+// the lake and its bridge, a forest, Giraffe's family and the Harvest Fair from the other games. Each one is
 // built from simple shapes and joined into a mesh or two, so all of this costs a few dozen draw calls.
 import * as THREE from '../../vendor/three/three.module.js';
 import { canvasTexture, damp, faceted, handPath, lerp, Mesher, seededRandom, starPath, TAU } from './kit.js';
@@ -15,7 +15,7 @@ const BRIGHTS = ['#ff5a4f', '#ffd23f', '#3b82f6', '#27c96b', '#a855f7', '#ff8a2b
 
 /* ------------------------------- signs ------------------------------- */
 
-const POSTERS = ['title', 'smoothie', 'balloons', 'lighthouse', 'leap', 'wings', 'mighty', 'five', 'turbo', 'joze', 'fair', 'tunnel'];
+const POSTERS = ['title', 'smoothie', 'balloons', 'lighthouse', 'leap', 'wings', 'mighty', 'five', 'turbo', 'giraffe', 'fair', 'tunnel'];
 const POSTER_COLUMNS = 2;
 const POSTER_ROWS = 6;
 const POSTER_WIDTH = 1024;
@@ -58,7 +58,7 @@ function drawPosters(ctx) {
     smoothie() {
       ctx.fillStyle = '#ffd23f';
       ctx.fillRect(0, 0, W, H);
-      text('Joze’s Smoothies', 620, H / 2 + 4, 88, '#8a3d10');
+      text('Giraffe’s Smoothies', 620, H / 2 + 4, 88, '#8a3d10');
       ctx.fillStyle = '#ff7eb6';
       ctx.beginPath();
       ctx.moveTo(90, 70);
@@ -171,10 +171,10 @@ function drawPosters(ctx) {
       ctx.fill();
       circle(175, 225, 48, '#ffd84a');
     },
-    joze() {
+    giraffe() {
       ctx.fillStyle = '#6a4bd8';
       ctx.fillRect(0, 0, W, H);
-      text('GO JOZE GO!', 640, H / 2 + 4, 112, '#ffd23f');
+      text('GO GIRAFFE GO!', 640, H / 2 + 4, 112, '#ffd23f');
       ctx.fillStyle = '#f5c451';
       ctx.beginPath();
       ctx.ellipse(170, 150, 90, 100, 0, 0, TAU);
@@ -211,7 +211,7 @@ function drawPosters(ctx) {
       ctx.strokeStyle = '#ffe27a';
       ctx.lineWidth = 12;
       ctx.strokeRect(14, 14, W - 28, H - 28);
-      text('Joze’s Tunnel', W / 2, H / 2 + 6, 128, '#ffe27a');
+      text('Giraffe’s Tunnel', W / 2, H / 2 + 6, 128, '#ffe27a');
     },
   };
   POSTERS.forEach((name, index) => {
@@ -550,9 +550,9 @@ function buildGrandstand(b, m, from, to, side, rows) {
     });
     // Signs along the front.
     const sign = b.offset(front.x, front.z, turn, 0, 0.47);
-    boards.add(b.pick(['five', 'title', 'joze', 'smoothie', 'fair', 'turbo', 'balloons', 'mighty']), sign.x, baseY + 0.62, sign.z, turn, 3, 1);
+    boards.add(b.pick(['five', 'title', 'giraffe', 'smoothie', 'fair', 'turbo', 'balloons', 'mighty']), sign.x, baseY + 0.62, sign.z, turn, 3, 1);
     const sign2 = b.offset(front.x, front.z, turn, -3.4, 0.47);
-    boards.add(b.pick(['five', 'joze', 'wings', 'leap']), sign2.x, baseY + 0.62, sign2.z, turn, 3, 1);
+    boards.add(b.pick(['five', 'giraffe', 'wings', 'leap']), sign2.x, baseY + 0.62, sign2.z, turn, 3, 1);
     const sign3 = b.offset(front.x, front.z, turn, 3.4, 0.47);
     boards.add(b.pick(['title', 'lighthouse', 'five']), sign3.x, baseY + 0.62, sign3.z, turn, 3, 1);
     if (Math.round((d - from) / bay) % 2 === 0) {
@@ -1283,7 +1283,7 @@ function buildFarm(b) {
   world.medium.add(mesh);
 }
 
-/* ------------------------------- Joze's family ------------------------------- */
+/* ------------------------------- Giraffe's family ------------------------------- */
 
 function giraffe(m, x, y, z, turn, size) {
   const hide = '#f5c451';
@@ -1325,7 +1325,7 @@ function buildFamily(b) {
     const at = b.at(d, ROAD_HALF + out);
     giraffe(m, at.x, b.ground(at.x, at.z) - 0.05, at.z, track.facingRoad(d, 1) + twist, size);
   }
-  // Their sign, with Joze on it.
+  // Their sign, with Giraffe on it.
   const sign = b.at(985, ROAD_HALF + 12);
   const turn = track.facingRoad(985, 1) - 0.5;
   const y = b.ground(sign.x, sign.z);
@@ -1335,7 +1335,7 @@ function buildFamily(b) {
     s.box(WOOD, 0, 4.2, -0.15, 9.6, 3.3, 0.12);
   });
   const face = b.offset(sign.x, sign.z, turn, 0, 0);
-  boards.add('joze', face.x, y + 4.2, face.z, turn, 9.2, 3.05);
+  boards.add('giraffe', face.x, y + 4.2, face.z, turn, 9.2, 3.05);
   b.solid(m);
 }
 
@@ -1518,7 +1518,7 @@ function buildBillboards(b) {
   const posts = [
     [62, 1, 'five'], [262, -1, 'turbo'], [316, 1, 'mighty'], [530, -1, 'smoothie'], [700, 1, 'lighthouse'], [840, 1, 'leap'],
     [905, -1, 'wings'], [990, -1, 'balloons'], [1110, 1, 'fair'], [1215, 1, 'turbo'], [1245, 1, 'smoothie'], [1275, 1, 'wings'],
-    [1228, -1, 'five'], [1262, -1, 'joze'], [1300, -1, 'mighty'],
+    [1228, -1, 'five'], [1262, -1, 'giraffe'], [1300, -1, 'mighty'],
   ];
   for (const [d, side, poster] of posts) {
     const at = b.at(d, side * (ROAD_HALF + 11));

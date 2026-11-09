@@ -296,11 +296,11 @@ test('level 9: in the snow, a helper friend comes to join in with one big move',
   await oneBigMove(page);
   await expect(newLabel(page)).toContainText('Helper friend');
   await expect(page.locator('.powerup[data-kind="helper"]')).toBeVisible();
-  // Joze comes to help, unless Joze is the child's fighter or the opponent.
+  // Giraffe comes to help, unless Giraffe is the child's fighter or the opponent.
   const helper = await page.evaluate(() => ({ id: window.__game.arena.helper?.spec.id, player: window.__game.game.chosen.id, npc: window.__game.game.opponent.id }));
   expect(helper.id).toBeTruthy();
   expect([helper.player, helper.npc]).not.toContain(helper.id);
-  if (helper.player !== 'joze' && helper.npc !== 'joze') expect(helper.id).toBe('joze');
+  if (helper.player !== 'giraffe' && helper.npc !== 'giraffe') expect(helper.id).toBe('giraffe');
   await page.waitForTimeout(700);
   await shot(page, 'mighty-moves-l9-helper-snow');
   await oneBigMove(page);

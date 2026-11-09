@@ -26,7 +26,7 @@ const POWER_UPS = { shield: '🫧', glow: '⚡', helper: '🤝' };
 // The coin emoji is silver and small, so in the fight a coin is drawn as a gold one instead.
 const markHtml = (id) => (id === 'coin' ? '<span class="coin-mark"></span>' : NEW_THINGS[id].mark);
 
-const DEFAULTS = { moveSize: 'small', jumps: 'yes', level: 'gentle', rounds: 3, fighter: 'joze' };
+const DEFAULTS = { moveSize: 'small', jumps: 'yes', level: 'gentle', rounds: 3, fighter: 'giraffe' };
 const CHOICES = { jumps: String, level: String, rounds: Number };
 
 // Every one of these has a rendered voice file: see audio/voice/lines.json.
@@ -248,7 +248,7 @@ class MightyMoves extends BodyGame {
     this.arena.showPowerUps(player);
   }
 
-  /** The friend who helps: Joze, unless the child is Joze, or the opponent is. */
+  /** The friend who helps: Giraffe, unless the child is Giraffe, or the opponent is. */
   helperSpec() {
     return ROSTER.find((spec) => spec.id !== this.chosen.id && spec.id !== this.opponent.id);
   }

@@ -61,7 +61,7 @@ test('level 10 has five other cars, more big hands and ramps, and the order show
   expect(seen.level).toBe(10);
   expect(seen.rivals).toHaveLength(5);
   expect(new Set(seen.rivals).size).toBe(5);
-  expect(seen.rivals).not.toContain('joze');
+  expect(seen.rivals).not.toContain('giraffe');
   expect(seen.shownCars).toBe(5);
   expect(seen.place).toBe(6);
   expect(seen.gates).toHaveLength(19);

@@ -630,7 +630,7 @@ test('Tank Patrol keeps its talking short, and everything it says has a voice in
     assert.ok(text.split(/\s+/).length <= MOST_WORDS, `too long: ${text}`);
     assert.match(ka, /[Ⴀ-ჿ]/, id);
     for (const language of ['en', 'ka']) assert.ok(existsSync(new URL(`${language}/${id}.ogg`, folder)), `${language}/${id}`);
-    if (voice) assert.deepEqual([voice, kaVoice, kaPitch], ['am_michael', 'ka-GE-GiorgiNeural', 0], `${id} is Joze`);
+    if (voice) assert.deepEqual([voice, kaVoice, kaPitch], ['am_michael', 'ka-GE-GiorgiNeural', 0], `${id} is Giraffe`);
   }
   const source = readFileSync(new URL('../../games/tank-patrol/main.js', import.meta.url), 'utf8');
   for (const { text } of lines) assert.ok(source.includes(text), `nothing says: ${text}`);

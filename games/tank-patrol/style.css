@@ -223,7 +223,7 @@ body[data-hands='left'] .film { left: auto; right: 16px; }
 }
 
 /* What's been picked up, and the power-up that's on, from level 2, in a row of their own under the progress
-   bar, so the row along the top and the prompt beside it stay as they are. Joze's box goes down under
+   bar, so the row along the top and the prompt beside it stay as they are. Giraffe's box goes down under
    them, and so does the mirror on a window standing on end. --hud-bottom is set by main.js. */
 .chip[hidden] { display: none; }
 .chips-more:not(:has(.chip:not([hidden]))) { display: none; }

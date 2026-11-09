@@ -1,4 +1,4 @@
-// Cannon Bay: pirates have come for the island's treasure, and Captain Joze asks the child to drive them
+// Cannon Bay: pirates have come for the island's treasure, and Captain Giraffe asks the child to drive them
 // off. One hand does it all. Moving it from side to side turns the ship's wheel, opening it raises the
 // sails, and the cannons fire by themselves at any pirate ship in a firing zone. This file runs it from
 // start to finish. The rules are in battle.js, the picture is in sea.js, and the ships are in ships.js.
@@ -37,7 +37,7 @@ const CAPTAINS = {
 const DEFAULTS = { bayPace: 'slow', bayCannons: 'open', bayLevel: 'gentle', bayShips: 6 };
 const CHOICES = { bayPace: String, bayCannons: String, bayLevel: String, bayShips: Number };
 
-const AFTER_WIN_SECONDS = 2.2; // A moment to see Joze cheering, after the last ship has gone down.
+const AFTER_WIN_SECONDS = 2.2; // A moment to see Giraffe cheering, after the last ship has gone down.
 const AFTER_LOST_SECONDS = 1.4;
 const STORY_SECONDS = 4.4;
 const CAPTAIN_SPEAKS_WITHIN = 280;
@@ -107,8 +107,8 @@ class CannonBay {
   constructor(session) {
     this.session = session;
     this.story = new StoryBox(session);
-    this.pirateSpecs = ROSTER.filter(({ id }) => id !== 'joze');
-    this.bay = new Bay(byElement('game'), characterWithId('joze'), this.pirateSpecs);
+    this.pirateSpecs = ROSTER.filter(({ id }) => id !== 'giraffe');
+    this.bay = new Bay(byElement('game'), characterWithId('giraffe'), this.pirateSpecs);
     this.buildMarks();
     this.buildWheel();
     this.labelHolder = byElement('bay-labels');
@@ -187,7 +187,7 @@ class CannonBay {
 
   begin() {
     this.battle.begin();
-    this.say('joze', MISSION);
+    this.say('giraffe', MISSION);
     this.nextCaptainIn = FIRST_CAPTAIN_AFTER;
     // The weather, if it's new, is named out over the water in front.
     const { plan } = this.battle;
@@ -360,7 +360,7 @@ class CannonBay {
     if (left === 1) {
       sound.say(ONE_LEFT, { ifQuiet: true });
     } else if (left > 1 && boat && this.saidBye % BYE_EVERY === 0) {
-      this.say('joze', BYE_BYE, { ifQuiet: true });
+      this.say('giraffe', BYE_BYE, { ifQuiet: true });
     }
     if (boat) this.saidBye += 1;
     // A raft has nobody on it, so no lifeboat is launched, and nobody is heard rowing or said to be.

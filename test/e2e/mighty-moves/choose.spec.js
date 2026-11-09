@@ -9,7 +9,7 @@ test('there are ten fighters to choose from, and the choice is remembered', asyn
   const cards = page.locator('.fighter-card');
   await expect(cards).toHaveCount(10);
   await expect(page.locator('.fighter-card[aria-checked="true"]')).toHaveCount(1);
-  await expect(page.locator('#chosen-name')).toHaveText('Joze');
+  await expect(page.locator('#chosen-name')).toHaveText('Giraffe');
   await page.waitForTimeout(700);
   await shot(page, 'm2-choose');
 
@@ -58,7 +58,7 @@ test('the opponent is never your own fighter, and it can be changed', async ({ p
     await page.locator('#next-opponent').click();
   }
   expect(opponents.size).toBe(9);
-  expect(opponents.has('Joze')).toBe(false);
+  expect(opponents.has('Giraffe')).toBe(false);
 
   await page.locator('#opponent-name').textContent();
   const current = await page.locator('#opponent-name').textContent();

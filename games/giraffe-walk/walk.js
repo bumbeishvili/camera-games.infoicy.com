@@ -1,5 +1,5 @@
-// The way home: the land going by behind Joze, the tree at each stop, and the glove that picks fruit
-// and carries it to his mouth. Joze himself is 3D, on his own canvas between the land and everything
+// The way home: the land going by behind Giraffe, the tree at each stop, and the glove that picks fruit
+// and carries it to his mouth. Giraffe himself is 3D, on his own canvas between the land and everything
 // else. The tree grows on the side of the hand being played with, so feeding him is a reach across.
 //
 // Nothing flashes: seizures are more common in children with hemiplegia. Green fruit ripens slowly,
@@ -80,7 +80,7 @@ export class Walk {
     this.level = walkAt(1);
     this.levelNumber = 1;
     this.items = []; // A basket, a feather or a plank, from the higher levels.
-    this.gifts = []; // Gifts for Joze's family, waiting to be picked up.
+    this.gifts = []; // Gifts for Giraffe's family, waiting to be picked up.
     this.flying = []; // Gifts on their way up to the count.
     this.flies = []; // Fireflies.
     this.snow = [];
@@ -138,7 +138,7 @@ export class Walk {
     return `${name}${this.snowyAt(name) ? '-snow' : ''}${this.eveningAt(name) ? '-evening' : ''}`;
   }
 
-  /** A wide picture of a place, for going by behind Joze. It's only drawn once for each way it looks. */
+  /** A wide picture of a place, for going by behind Giraffe. It's only drawn once for each way it looks. */
   sceneFor(name) {
     const key = this.sceneKey(name);
     if (this.scenes[key]) return this.scenes[key];
@@ -199,7 +199,7 @@ export class Walk {
   /**
    * The first time something new comes in a game, its name fades in beside it for a moment. at says
    * where it is now, on the screen, or null while it can't be seen. Everything here is at a stop, so
-   * nothing is named while Joze walks or once he's had enough. A name only counts as shown once it
+   * nothing is named while Giraffe walks or once he's had enough. A name only counts as shown once it
    * has been: one still waiting when its thing goes waits for the next of its kind instead.
    */
   introduce(key, at) {
@@ -296,7 +296,7 @@ export class Walk {
     this.treeLook = this.lookOf(this.place);
     // A basket, a feather or the plank hangs in a place on the tree that has no fruit, so it's no
     // further to reach.
-    const towardsJoze = side === 'right' ? -1 : 1;
+    const towardsGiraffe = side === 'right' ? -1 : 1;
     // Each falls and goes back on the tree like a fruit when it's dropped, so it needs the same fields.
     const item = (what, dx, dy) => ({ kind: what, homeX: (across + dx) * width, homeY: dy * height, x: (across + dx) * width, y: dy * height, state: 'hanging', r: this.fruitSize, vy: 0, backIn: 0 });
     const free = SPOTS.slice(total).reverse();
@@ -309,7 +309,7 @@ export class Walk {
       this.bridge = { fixed: false, x: this.gap.x / width };
       // The plank, blown into the tree, in the free place furthest from the gap, so it's a carry.
       const { gap } = this;
-      const spots = free.length ? free : [[towardsJoze * -0.09, 0.22]];
+      const spots = free.length ? free : [[towardsGiraffe * -0.09, 0.22]];
       const far = spots.reduce((best, spot) => {
         const distance = ([dx, dy]) => Math.hypot((across + dx) * width - gap.x, dy * height - gap.y);
         return distance(spot) > distance(best) ? spot : best;
@@ -317,16 +317,16 @@ export class Walk {
       this.items.push(item('plank', ...far));
     }
     this.flies = Array.from({ length: features.fireflies }, (_, i) => ({
-      cx: (across + towardsJoze * (0.02 + i * 0.06)) * width,
+      cx: (across + towardsGiraffe * (0.02 + i * 0.06)) * width,
       cy: (0.3 + i * 0.16) * height,
       rx: width * 0.05,
       ry: height * 0.06,
       phase: i * 2.4,
       caught: false,
-      x: (across + towardsJoze * (0.02 + i * 0.06)) * width,
+      x: (across + towardsGiraffe * (0.02 + i * 0.06)) * width,
       y: (0.3 + i * 0.16) * height,
     }));
-    // The snow came in with the hill, as Joze walked there, and goes with it. By the time he's
+    // The snow came in with the hill, as Giraffe walked there, and goes with it. By the time he's
     // anywhere else, it has faded away.
     if (features.snowy) this.letItSnow();
     else this.snow = [];
@@ -347,7 +347,7 @@ export class Walk {
   }
 
   /**
-   * Where the gap in the bridge is, on the screen: between Joze and the tree, nearer him, but clear of
+   * Where the gap in the bridge is, on the screen: between Giraffe and the tree, nearer him, but clear of
    * him. The bridge is behind him, as it's in the land he walks through. Once there's a bridge, it
    * stays where it was put.
    */
@@ -423,7 +423,7 @@ export class Walk {
   }
 
   /**
-   * Joze has had enough here: a butterfly on the tree flies off, and the names of what was on it fade
+   * Giraffe has had enough here: a butterfly on the tree flies off, and the names of what was on it fade
    * out from where they are, rather than staying on for the next tree. As he walks on, and at the end.
    */
   leaveTree() {
@@ -433,7 +433,7 @@ export class Walk {
     }
   }
 
-  /** Gifts still waiting have been found, so they go to the count: as Joze walks on, and at the very end. */
+  /** Gifts still waiting have been found, so they go to the count: as Giraffe walks on, and at the very end. */
   keepWaitingGifts() {
     for (const gift of this.gifts) this.giftFound(gift);
     this.gifts = [];
@@ -544,7 +544,7 @@ export class Walk {
         monkey.x = monkey.startX + Math.sin(monkey.t * MONKEY_RUN * 20) * this.width * 0.08;
         monkey.y = monkey.startY + (canopy - monkey.startY) * climbed * climbed * (3 - 2 * climbed);
         if (monkey.fruit.state !== 'hanging') {
-          // Taken from him: a coconut for Joze, thrown down to the hand.
+          // Taken from him: a coconut for Giraffe, thrown down to the hand.
           this.addGift('coconut', monkey.x, monkey.y);
           this.events.onMonkey?.();
           Object.assign(monkey, { state: 'going', t: 0, fromX: monkey.x, fromY: monkey.y });
@@ -577,7 +577,7 @@ export class Walk {
     this.events.onMonkeyComes?.(this.monkey);
   }
 
-  /** The parrot, from the feather: off to a fruit, and then to Joze's mouth with it. */
+  /** The parrot, from the feather: off to a fruit, and then to Giraffe's mouth with it. */
   sendParrot() {
     const free = this.fruit.filter((fruit) => this.pickable(fruit) && !this.withMonkey(fruit));
     if (!free.length) return;
@@ -618,14 +618,14 @@ export class Walk {
       }
     } else {
       const share = Math.min(1, parrot.t / PARROT_TO_FRUIT);
-      // Away past Joze and off the side, rather than up past the camera's picture.
+      // Away past Giraffe and off the side, rather than up past the camera's picture.
       parrot.x = parrot.fromX + (this.side === 'right' ? -1 : 1) * share * this.width * 0.5;
       parrot.y = parrot.fromY + share * this.height * 0.1;
       if (share === 1) this.parrot = null;
     }
   }
 
-  /** A gift for Joze's family, where something happened: it waits there to be picked up. */
+  /** A gift for Giraffe's family, where something happened: it waits there to be picked up. */
   addGift(kind, x, y) {
     const gift = { kind, x, y, age: 0 };
     this.gifts.push(gift);
@@ -635,7 +635,7 @@ export class Walk {
 
   /**
    * Gifts drift to a hand nearby, whatever it's doing, and fireflies are caught by a closed hand while
-   * Joze is at their tree. Once he's had enough there they fade with it, and can't be caught.
+   * Giraffe is at their tree. Once he's had enough there they fade with it, and can't be caught.
    */
   moveGifts(dt, playing) {
     const glove = this.gloves[this.side];
@@ -694,7 +694,7 @@ export class Walk {
       }
       const glove = this.gloves[this.side];
       const shooed = glove.visible && glove.status === 'open' && this.isNear(flier.fruit, glove);
-      // Shooed off by a hand, it leaves a flower for Joze's family.
+      // Shooed off by a hand, it leaves a flower for Giraffe's family.
       if (shooed && flier.t >= BUTTERFLY_ARRIVES) this.addGift('flower', flier.fruit.x + flier.fruit.r * 0.3, flier.fruit.y - flier.fruit.r * 0.85);
       if (shooed || flier.t >= level.butterflyStays || flier.fruit.state !== 'hanging') this.butterflyLeaves();
       return;
@@ -740,7 +740,7 @@ export class Walk {
       seen,
       closed,
       near: seen ? this.fruitNear(glove) : null,
-      // The plank goes in the gap in the bridge, and everything else to Joze's mouth.
+      // The plank goes in the gap in the bridge, and everything else to Giraffe's mouth.
       onMouth: before?.kind === 'plank' ? this.onGap : this.onMouth,
     });
     if (result === 'picked') {
@@ -1301,7 +1301,7 @@ export class Walk {
     if (!parrot) return;
     const size = this.fruitSize * 0.9;
     const flap = Math.sin(this.time * Math.PI * 2 * (this.reducedMotion ? 0.8 : 2));
-    // He comes in from the tree's side and flies on past Joze, so he always faces the same way.
+    // He comes in from the tree's side and flies on past Giraffe, so he always faces the same way.
     const way = this.side === 'right' ? -1 : 1;
     ctx.save();
     ctx.translate(parrot.x, parrot.y);
@@ -1382,7 +1382,7 @@ function lookAtLevel(level) {
   }));
 }
 
-/** Gifts for Joze's family, drawn once each. */
+/** Gifts for Giraffe's family, drawn once each. */
 function paintGift(kind) {
   const canvas = document.createElement('canvas');
   canvas.width = 120;

@@ -21,13 +21,13 @@ async function raceWithOpenHand(page, settings = {}) {
   await waitUntilMoving(page);
 }
 
-test('Joze drives the child\'s car, with three other characters in the others', async ({ page }) => {
+test('Giraffe drives the child\'s car, with three other characters in the others', async ({ page }) => {
   await openGame(page);
   const cast = await page.evaluate(() => {
     const { race } = window.__game;
     return { you: race.player.spec.id, others: race.rivals.map((rival) => rival.spec.id) };
   });
-  expect(cast).toEqual({ you: 'joze', others: ['truffle', 'kit', 'mochi'] });
+  expect(cast).toEqual({ you: 'giraffe', others: ['truffle', 'kit', 'mochi'] });
 });
 
 test('whoever was chosen in the other games drives here too, and can be changed under the gear', async ({ page }) => {
@@ -36,13 +36,13 @@ test('whoever was chosen in the other games drives here too, and can be changed 
     const { race } = window.__game;
     return { you: race.player.spec.id, others: race.rivals.map((rival) => rival.spec.id) };
   });
-  expect(await cast()).toEqual({ you: 'kit', others: ['joze', 'truffle', 'mochi'] });
+  expect(await cast()).toEqual({ you: 'kit', others: ['giraffe', 'truffle', 'mochi'] });
 
   await page.locator('#open-panel').click();
   await expect(page.locator('input[name="fighter"][value="kit"]')).toBeChecked();
   await page.locator('input[name="fighter"][value="tur"]').check();
   await page.locator('#close-panel').click();
-  expect(await cast()).toEqual({ you: 'tur', others: ['joze', 'truffle', 'kit'] });
+  expect(await cast()).toEqual({ you: 'tur', others: ['giraffe', 'truffle', 'kit'] });
   await expect(page.locator('.order-row.is-you')).toHaveAttribute('data-who', 'tur');
 });
 
@@ -50,7 +50,7 @@ test('any of the characters can drive, on either hand', async ({ page }) => {
   await openGame(page);
   const drivers = await page.locator('input[name="fighter"]').evaluateAll((inputs) => inputs.map((input) => input.value));
   expect(drivers).toHaveLength(10);
-  expect(drivers[0]).toBe('joze');
+  expect(drivers[0]).toBe('giraffe');
   await page.locator('#open-panel').click();
   for (const [index, id] of drivers.entries()) {
     await page.locator(`input[name="fighter"][value="${id}"]`).check();
@@ -70,7 +70,7 @@ test('any of the characters can drive, on either hand', async ({ page }) => {
 test('the order of the race shows everyone\'s face, and the child\'s car stands out', async ({ page }) => {
   await raceWithOpenHand(page);
   await expect(page.locator('.order-row')).toHaveCount(4);
-  await expect(page.locator('.order-row.is-you')).toHaveAttribute('data-who', 'joze');
+  await expect(page.locator('.order-row.is-you')).toHaveAttribute('data-who', 'giraffe');
   const allHavePictures = await page.locator('.order-row img').evaluateAll((pictures) => pictures.every((picture) => picture.naturalWidth > 0));
   expect(allHavePictures).toBe(true);
 });

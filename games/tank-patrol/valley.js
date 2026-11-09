@@ -1,4 +1,4 @@
-// Joze's valley, a toy world that fits on the screen: a river with its bridges, a village and its church,
+// Giraffe's valley, a toy world that fits on the screen: a river with its bridges, a village and its church,
 // a farm with its fields and windmill, an orchard, a pond, woods all round, and an old fort on the hill
 // at the far side. Things there are many of share one instanced mesh, and everything flat is painted on
 // the floor by ground-paint.js, so it's quick to draw and a slow computer can show fewer of them.

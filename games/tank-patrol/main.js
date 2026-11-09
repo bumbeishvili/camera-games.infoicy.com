@@ -1,4 +1,4 @@
-// Tank Patrol: robot tanks are rolling into Joze's valley, and he's riding in the child's tank to stop
+// Tank Patrol: robot tanks are rolling into Giraffe's valley, and he's riding in the child's tank to stop
 // them. A closed hand drives the tank to where it points, and an open hand fires at any robot tank under
 // the crosshair that the gun can reach. The story and rules are in patrol.js, the valley is in valley.js,
 // and the picture is in field.js.
@@ -11,10 +11,10 @@ import { POWERS, PRIZES, Patrol, newsAt, readHand } from './patrol.js';
 import { PatrolSound } from './patrol-sound.js';
 
 // Each of these has a rendered voice file: see audio/voice/lines.json.
-const JOZE_ASKS = 'Robot tanks in my valley! Let’s stop them!';
-const JOZE_WAVING = 'Look! The little robot’s waving!';
-const JOZE_TICKLES = 'Ooh, that tickles!';
-const JOZE_ONE_MORE = 'One more tank!';
+const GIRAFFE_ASKS = 'Robot tanks in my valley! Let’s stop them!';
+const GIRAFFE_WAVING = 'Look! The little robot’s waving!';
+const GIRAFFE_TICKLES = 'Ooh, that tickles!';
+const GIRAFFE_ONE_MORE = 'One more tank!';
 const FINISH = 'You saved the valley!';
 const SO_CLOSE = 'So close!';
 const CLOSE_TO_DRIVE = 'Close your hand to drive!';
@@ -31,7 +31,7 @@ const TOO_FAR_PROMPT_SECONDS = 0.5;
 const OPEN_PROMPT_SECONDS = 2.2; // Closed, with a tank in reach, and not driving anywhere.
 const CLOSE_PROMPT_SECONDS = 4; // Open, with nothing in reach.
 const SPOKEN_AT_MOST = 2; // Each prompt is spoken this many times in a game, and read after that.
-const TICKLES_AT_MOST = 2; // Joze only says this now and then.
+const TICKLES_AT_MOST = 2; // Giraffe only says this now and then.
 const NAMES_AFTER_SECONDS = 1.3; // Names of new things wait until "GO!" has gone.
 
 const byId = (id) => document.getElementById(id);
@@ -143,7 +143,7 @@ class TankGame {
     const { sound } = this.session;
     this.patrol.begin();
     sound.startPatrol();
-    this.story.say('joze', JOZE_ASKS);
+    this.story.say('giraffe', GIRAFFE_ASKS);
     this.storyFor = STORY_SECONDS;
     this.field.child.cheer(1.6);
   }
@@ -197,7 +197,7 @@ class TankGame {
   onStopped({ left, part }) {
     const { sound } = this.session;
     sound.stopped();
-    if (left === 1 && !part) this.sayAsJoze(JOZE_ONE_MORE, { quietly: true });
+    if (left === 1 && !part) this.sayAsGiraffe(GIRAFFE_ONE_MORE, { quietly: true });
   }
 
   /** Prizes come in handfuls, so their twinkle isn't played for every one. */
@@ -257,7 +257,7 @@ class TankGame {
     this.session.sound.crew();
     if (!this.saidWaving) {
       this.saidWaving = true;
-      this.sayAsJoze(JOZE_WAVING);
+      this.sayAsGiraffe(GIRAFFE_WAVING);
     }
   }
 
@@ -269,7 +269,7 @@ class TankGame {
     chip.classList.add('is-hurt');
     if (this.ticklesSaid < TICKLES_AT_MOST && hearts > 0) {
       this.ticklesSaid += 1;
-      this.sayAsJoze(JOZE_TICKLES, { quietly: true });
+      this.sayAsGiraffe(GIRAFFE_TICKLES, { quietly: true });
     }
   }
 
@@ -277,11 +277,11 @@ class TankGame {
     if (on) this.story.hide();
   }
 
-  /** Joze says something, with his picture up for a moment. Quietly means only if nothing else is being said. */
-  sayAsJoze(line, { quietly = false } = {}) {
+  /** Giraffe says something, with his picture up for a moment. Quietly means only if nothing else is being said. */
+  sayAsGiraffe(line, { quietly = false } = {}) {
     const { sound } = this.session;
     if (quietly && sound.currentVoice) return;
-    this.story.say('joze', line);
+    this.story.say('giraffe', line);
     this.storyFor = STORY_SECONDS;
   }
 
@@ -382,7 +382,7 @@ class TankGame {
     const hand = this.readTheHand(snapshot);
     field.playing = false;
     if (this.preview || counting) patrol.warmUp(dt);
-    // Behind the finish, the crews carry on waving and Joze carries on cheering.
+    // Behind the finish, the crews carry on waving and Giraffe carries on cheering.
     else if (session.screen === 'finish') patrol.update(dt);
     field.showMarks = counting;
     if (counting) {
@@ -558,10 +558,10 @@ new GameSession({
   },
   defaults: { pace: 'slow', reach: 'little', driving: 'closed', tankLevel: 'gentle', tanks: 6 },
   choices: { pace: String, reach: String, driving: String, tankLevel: String, tanks: Number },
-  tagline: (side) => `Robot tanks are rolling into Joze’s valley! Close your ${side} hand to drive, and open it to fire.`,
+  tagline: (side) => `Robot tanks are rolling into Giraffe’s valley! Close your ${side} hand to drive, and open it to fire.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),
-  portraits: () => renderPortraits([characterById('joze')]),
+  portraits: () => renderPortraits([characterById('giraffe')]),
   createSound: (options) => new PatrolSound(options),
   createGame: (session) => new TankGame(session),
 }).start();

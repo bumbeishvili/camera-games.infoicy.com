@@ -69,19 +69,19 @@ test('every level from 2 says what it brings, on the title card and as coming up
     6: ['🎈Balloon pirates', '🌅Sunset'],
     7: ['❄️Snowflake shot', '🛡️Shield bubble'],
     8: ['👑Pirate captain', '👥Pirate pairs'],
-    // Flying as Joze, the friend who helps is someone else, who isn't one of the pirates.
+    // Flying as Giraffe, the friend who helps is someone else, who isn't one of the pirates.
     9: ['4️⃣Four at once', '🤝Nova helps', '🌨️Light snow'],
     10: ['💰Treasure airship', '📄Paper planes'],
   });
 
-  // Flying as someone else, it's Joze who comes to help.
+  // Flying as someone else, it's Giraffe who comes to help.
   await page.locator('#start').click();
   await page.locator('.fighter-card[data-fighter="kit"]').click();
   await page.evaluate(() => {
     window.__game.game.levels.choose(9);
     window.__game.game.levelUi.refresh();
   });
-  expect(await chips(page)).toContain('🦒Joze helps');
+  expect(await chips(page)).toContain('🦒Giraffe helps');
 });
 
 test('level 1 has no prizes, gift boxes or new pirates', async ({ page }) => {
@@ -328,7 +328,7 @@ test('level 9: a friend flies alongside and helps, in light snow', async ({ page
   expect((await flightState(page)).enemies.filter(({ state }) => state === 'flying')).toHaveLength(4);
   await giftAhead(page, 'helper');
   await expect.poll(() => powerNow(page), { timeout: 8000 }).toBe('helper');
-  await expect(page.locator('#power-name')).toHaveText('Joze helps!');
+  await expect(page.locator('#power-name')).toHaveText('Giraffe helps!');
   await holdPlaneInFront(page, { ahead: 120, across: 8 });
   await expect.poll(async () => (await shotKinds(page)).includes('helper'), { timeout: 6000 }).toBe(true);
   const helper = await page.evaluate(() => {
@@ -336,11 +336,11 @@ test('level 9: a friend flies alongside and helps, in light snow', async ({ page
     const pirates = window.__game.game.pirates.map(({ id }) => id);
     return { shown: sky.helperPlane.root.visible, who: sky.helperPlane.spec.id, beside: Math.hypot(flight.helper.x - flight.x, flight.helper.z - flight.z), pirates };
   });
-  expect(helper).toMatchObject({ shown: true, who: 'joze' });
+  expect(helper).toMatchObject({ shown: true, who: 'giraffe' });
   expect(helper.beside).toBeLessThan(30);
-  // Joze is helping, so he isn't one of the pirates, as he would be at level 1 flying as someone else.
+  // Giraffe is helping, so he isn't one of the pirates, as he would be at level 1 flying as someone else.
   expect(helper.pirates).toHaveLength(6);
-  expect(helper.pirates).not.toContain('joze');
+  expect(helper.pirates).not.toContain('giraffe');
   expect(helper.pirates).not.toContain('kit');
   await page.waitForTimeout(1200);
   await shot(page, 'sky-wings-l9-helper');
@@ -608,7 +608,7 @@ async function armsAndFly(page) {
 test('level 9 in Georgian: the friend who helps is named in Georgian', async ({ page }) => {
   await reachFlight(page, at(9, { planes: 6, fighter: 'kit', language: 'ka' }));
   await page.evaluate(() => window.__game.flight.startPower('helper'));
-  await expect(page.locator('#power-name')).toHaveText('ჯოზე გეხმარება!');
+  await expect(page.locator('#power-name')).toHaveText('ჟირაფი გეხმარება!');
 });
 
 test('level 10: the treasure airship goes down gently with its pilot aboard: no smoke and no parachute', async ({ page }) => {

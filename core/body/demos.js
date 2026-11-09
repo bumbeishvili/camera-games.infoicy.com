@@ -151,7 +151,7 @@ export const DEMOS = {
   block: {
     frames: [[0, REST], [0.25, REST], [0.6, guardUp], [1.4, guardUp], [1.75, REST], [2, REST]],
   },
-  jozeWaits: {
+  giraffeWaits: {
     turn: 0.7,
     frames: [[0, looksUp], [0.8, looksUpHigher], [1.6, looksUp]],
   },

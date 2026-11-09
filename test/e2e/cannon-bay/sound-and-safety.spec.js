@@ -86,7 +86,7 @@ test('the wind and the water follow the sails', async ({ page }) => {
 test('Georgian: what\'s said and shown changes language', async ({ page }) => {
   await startPlaying(page, { language: 'ka', bayShips: 4 });
   await expect(page.locator('#story-line')).toHaveText('მეკობრეებს ჩვენი განძი უნდათ! დამეხმარე, გავყაროთ ისინი!', { timeout: 10_000 });
-  await expect(page.locator('#story-name')).toHaveText('ჯოზე');
+  await expect(page.locator('#story-name')).toHaveText('ჟირაფი');
   await show(page, null, 'fist', { scale: 0.7 });
   await waitForHand(page, 'closed');
   await expect(page.locator('#prompt-text')).toHaveText('გაშალე ხელი, რომ იალქნები ავწიოთ!', { timeout: 10_000 });
@@ -94,15 +94,15 @@ test('Georgian: what\'s said and shown changes language', async ({ page }) => {
   await shot(page, 'c-georgian');
 });
 
-test('Joze says the mission as it begins, and each captain speaks as they come near, without anything waiting', async ({ page }) => {
+test('Giraffe says the mission as it begins, and each captain speaks as they come near, without anything waiting', async ({ page }) => {
   await startPlaying(page, { bayShips: 4 });
-  await expect(page.locator('#story')).toHaveAttribute('data-who', 'joze', { timeout: 10_000 });
+  await expect(page.locator('#story')).toHaveAttribute('data-who', 'giraffe', { timeout: 10_000 });
   await expect(page.locator('#story-line')).toContainText('Pirates want our treasure');
   await page.waitForTimeout(300);
   await shot(page, 'c-mission');
   // Already sailing while it's said.
   expect((await battleState(page)).state).toBe('sailing');
-  await expect.poll(async () => page.locator('#story').getAttribute('data-who'), { timeout: 25_000 }).not.toBe('joze');
+  await expect.poll(async () => page.locator('#story').getAttribute('data-who'), { timeout: 25_000 }).not.toBe('giraffe');
   const who = await page.locator('#story').getAttribute('data-who');
   const order = await page.evaluate(() => window.__game.game.order);
   expect(order).toContain(who);

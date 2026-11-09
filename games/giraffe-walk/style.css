@@ -1,4 +1,4 @@
-/* Joze's Long Walk Home: the land, then Joze, then the tree, fruit and glove on top of him. */
+/* Giraffe's Long Walk Home: the land, then Giraffe, then the tree, fruit and glove on top of him. */
 :root { --meter-size: clamp(72px, 8.5vw, 108px); }
 
 #backdrop, #game {
@@ -9,7 +9,7 @@
   display: block;
 }
 
-#joze-stage {
+#giraffe-stage {
   position: fixed;
   bottom: 2vh;
   height: 88vh;
@@ -18,8 +18,8 @@
 }
 
 /* On the other side from the tree, so feeding him is a reach across. */
-body[data-side='right'] #joze-stage { left: 17vw; }
-body[data-side='left'] #joze-stage { right: 17vw; }
+body[data-side='right'] #giraffe-stage { left: 17vw; }
+body[data-side='left'] #giraffe-stage { right: 17vw; }
 
 /* Down here, as his mouth is where the child is looking. */
 body[data-screen='playing'] .prompt { top: auto; bottom: 58px; }
@@ -51,7 +51,7 @@ body[data-hands='left'] .hands-bar { justify-content: flex-start; }
 
 body[data-screen='playing'] .map { display: block; }
 .map .race-progress { position: absolute; left: 0; right: 0; top: 10px; width: 100%; }
-.map-joze { position: absolute; top: -8px; font-size: 32px; transform: translateX(-50%); transition: left 0.5s ease; }
+.map-giraffe { position: absolute; top: -8px; font-size: 32px; transform: translateX(-50%); transition: left 0.5s ease; }
 .map-home { position: absolute; right: -14px; top: -8px; font-size: 32px; }
 
 /* A little film: a hand closing on a fruit, carrying it across, and opening at a mouth. */

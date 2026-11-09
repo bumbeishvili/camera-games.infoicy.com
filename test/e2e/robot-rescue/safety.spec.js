@@ -103,10 +103,10 @@ test('the talk goes by while the game carries on: nothing waits for a line to fi
   const before = await rescue(page);
   expect(before.phase).toBe('fighting');
   await page.waitForTimeout(300);
-  await expect(page.locator('#story')).toHaveAttribute('data-who', 'joze');
+  await expect(page.locator('#story')).toHaveAttribute('data-who', 'giraffe');
   await expect(page.locator('#story-line')).toHaveText('Help! The robots caught all of us!');
   expect((await rescue(page)).phase).toBe('fighting');
-  // Going by the game's own clock, the robots haven't stopped while Joze is speaking.
+  // Going by the game's own clock, the robots haven't stopped while Giraffe is speaking.
   const moved = await page.evaluate(async () => {
     const { mission } = window.__game;
     const from = mission.time;

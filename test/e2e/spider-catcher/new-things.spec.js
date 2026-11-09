@@ -193,7 +193,7 @@ for (const [level, words] of [[2, ['Berries']], [5, ['Butterfly', 'Shy spiders']
 test('level 2: a spider caught leaves a berry, picked up when the hand comes back by it, and counted', async ({ page }) => {
   test.setTimeout(180_000);
   await startPlaying(page, GAME, atLevel(GAME, 2));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await expect(page.locator('.chip-berries')).toBeVisible();
   await openOn(page, 'playing');
   await closeAndCatch(page);
@@ -262,7 +262,7 @@ test('level 3: a ladybird plays at the carrots, and goes home to her flower, not
 test('level 4: a sleepy spider can\'t be caught until an open hand held by it wakes it', async ({ page }) => {
   test.setTimeout(200_000);
   await startPlaying(page, GAME, atLevel(GAME, 4));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   // The hand down out of the way, and the second one out asleep, the way the level brings them.
   await moveGloveTo(page, GLOVE, 0.3, 0.9);
   await expect.poll(() => page.evaluate(() => {
@@ -294,7 +294,7 @@ test('level 4: a sleepy spider can\'t be caught until an open hand held by it wa
 test('level 5: the butterfly comes, and touched, the spiders slow right down to watch it for a while', async ({ page }) => {
   test.setTimeout(200_000);
   await startPlaying(page, GAME, atLevel(GAME, 5));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await moveGloveTo(page, GLOVE, 0.5, 0.3);
   await expect.poll(async () => (await extras(page)).butterfly, { timeout: 15_000 }).toBe('resting');
   await stopMoving(page);
@@ -327,7 +327,7 @@ test('level 5: the butterfly comes, and touched, the spiders slow right down to 
 test('level 6: the basket carries two at once, and both go into the web together', async ({ page }) => {
   test.setTimeout(240_000);
   await startPlaying(page, GAME, atLevel(GAME, 6));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await expect.poll(async () => (await extras(page)).basket, { timeout: 10_000 }).toBe('waiting');
   await page.waitForTimeout(300);
   await shot(page, 'spider-new-basket');
@@ -374,7 +374,7 @@ test('level 7: a treasure chest at the carrots opens under an open hand held on 
 test('level 8: two webs, and each spider goes to the web of its colour; the wrong one just lets it go', async ({ page }) => {
   test.setTimeout(240_000);
   await startPlaying(page, GAME, atLevel(GAME, 8));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   expect((await extras(page)).webs).toBe(2);
   await page.waitForTimeout(500);
   await shot(page, 'spider-new-two-webs');
@@ -396,7 +396,7 @@ test('level 8: two webs, and each spider goes to the web of its colour; the wron
 test('level 9: a spider sails about on a leaf boat, and can be caught off it', async ({ page }) => {
   test.setTimeout(200_000);
   await startPlaying(page, GAME, atLevel(GAME, 9));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await expect.poll(() => page.evaluate(() => window.__game.garden.spiders.some(({ kind }) => kind === 'boat')), { timeout: 15_000 }).toBe(true);
   await page.waitForTimeout(600);
   await shot(page, 'spider-new-boat');
@@ -411,7 +411,7 @@ test('level 9: a spider sails about on a leaf boat, and can be caught off it', a
 test('level 10: the golden spider brings a shower of berries home, which are picked up at the web', async ({ page }) => {
   test.setTimeout(240_000);
   await startPlaying(page, GAME, atLevel(GAME, 10));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await expect.poll(() => page.evaluate(() => window.__game.garden.spiders.some(({ golden }) => golden)), { timeout: 15_000 }).toBe(true);
   await page.evaluate(() => {
     for (const spider of window.__game.garden.spiders) Object.assign(spider, { shy: false });
@@ -430,10 +430,10 @@ test('level 10: the golden spider brings a shower of berries home, which are pic
   await expect.poll(async () => (await extras(page)).picked, { timeout: 15_000 }).toBeGreaterThanOrEqual(5);
 });
 
-test('berries nobody picks up fade when Joze moves on, and cost nothing', async ({ page }) => {
+test('berries nobody picks up fade when Giraffe moves on, and cost nothing', async ({ page }) => {
   test.setTimeout(150_000);
   await startPlaying(page, GAME, atLevel(GAME, 2));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await show(page, null, null);
   await page.evaluate(() => {
     const { garden: place } = window.__game;
@@ -455,7 +455,7 @@ const handStatus = (page) => page.evaluate(() => window.__game.monitor.snapshot.
 test('level 8: with the basket, opening at one web only lets in the spider that lives there, and the other stays in the basket', async ({ page }) => {
   test.setTimeout(240_000);
   await startPlaying(page, GAME, atLevel(GAME, 8));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   const ready = () => page.evaluate(() => {
     const { garden: place } = window.__game;
     const free = place.spiders.filter((spider) => spider.state === 'playing' && spider.kind !== 'ladybird' && spider.kind !== 'boat' && !spider.golden);
@@ -514,7 +514,7 @@ test('level 8: with the basket, opening at one web only lets in the spider that 
 test('level 4: a sleepy spider wakes on its own loop however long it slept, and moves across when the hand is switched', async ({ page }) => {
   test.setTimeout(200_000);
   await startPlaying(page, GAME, atLevel(GAME, 4));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   // The hand away, so nothing wakes or catches it.
   await show(page, null, null);
   await expect.poll(() => page.evaluate(() => window.__game.garden.spiders.filter(({ state }) => state === 'playing').length), { timeout: 15_000 }).toBeGreaterThan(1);
@@ -613,7 +613,7 @@ test('level 6: the basket, and its label, only come during play, never behind th
 test('level 5: the butterfly\'s time only runs while the hand is open, so resting never wastes it', async ({ page }) => {
   test.setTimeout(200_000);
   await startPlaying(page, GAME, atLevel(GAME, 5));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await expect.poll(async () => (await extras(page)).butterfly, { timeout: 15_000 }).toBe('resting');
   // Sent off to help, as touching it does.
   await page.evaluate(() => {
@@ -642,7 +642,7 @@ test('level 5: the butterfly\'s time only runs while the hand is open, so restin
 test('a treasure chest\'s lid opens upwards for either hand', async ({ page }) => {
   test.setTimeout(200_000);
   await startPlaying(page, GAME, atLevel(GAME, 7));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   const lid = await page.evaluate(() => {
     const { garden: place } = window.__game;
     const canvas = document.createElement('canvas');
@@ -660,7 +660,7 @@ test('a treasure chest\'s lid opens upwards for either hand', async ({ page }) =
       place.drawChest(ctx, chest);
       const way = hand === 'right' ? 1 : -1;
       out[hand] = {
-        // Standing up above its hinge, on Joze's side of the chest.
+        // Standing up above its hinge, on Giraffe's side of the chest.
         up: solid(chest.x - way * r * 1.25, chest.y - r * 1.6),
         // And nothing hanging down below the chest.
         down: [-0.6, 0, 0.6].some((share) => solid(chest.x + share * r, chest.y + r * 1.2)),
@@ -682,7 +682,7 @@ test('a treasure chest\'s lid opens upwards for either hand', async ({ page }) =
 test('level 2: a berry under a hand held above it comes up to the hand smoothly, without bobbing', async ({ page }) => {
   test.setTimeout(150_000);
   await startPlaying(page, GAME, atLevel(GAME, 2));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await moveGloveTo(page, GLOVE, 0.5, 0.35);
   await expect.poll(() => page.evaluate(() => {
     const { garden: place } = window.__game;
@@ -719,7 +719,7 @@ test('level 2: a berry under a hand held above it comes up to the hand smoothly,
 test('level 6: moving on to the next place, the basket left behind fades away rather than vanishing', async ({ page }) => {
   test.setTimeout(150_000);
   await startPlaying(page, GAME, atLevel(GAME, 6));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   // The hand away, so the basket stays in the grass.
   await show(page, null, null);
   await expect.poll(async () => (await extras(page)).basket, { timeout: 15_000 }).toBe('waiting');
@@ -761,7 +761,7 @@ test('level 6: moving on to the next place, the basket left behind fades away ra
 test('level 9: a leaf boat stays on its stream, all the way along', async ({ page }) => {
   test.setTimeout(150_000);
   await startPlaying(page, GAME, atLevel(GAME, 9));
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await show(page, null, null);
   await expect.poll(() => page.evaluate(() => window.__game.garden.spiders.some(({ kind, state }) => kind === 'boat' && state === 'playing')), { timeout: 15_000 }).toBe(true);
   const along = await page.evaluate(async () => {

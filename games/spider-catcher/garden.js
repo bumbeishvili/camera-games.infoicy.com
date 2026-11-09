@@ -1,5 +1,5 @@
 // The garden: each place's picture, the web, the spiders playing, and the glove that catches them and
-// carries them home. Joze is 3D, on his own canvas between the garden and everything else. The spiders
+// carries them home. Giraffe is 3D, on his own canvas between the garden and everything else. The spiders
 // play on the side of the hand in play, and their web is across from them, so bringing one home is a
 // reach across.
 //
@@ -18,7 +18,7 @@ import {
 
 const PALM_SHARE = 0.105;
 const WEB_SIZE = 0.15; // The web's radius, in screen heights.
-const WEB_ACROSS = 0.38; // Where the web hangs, across the screen from the side Joze is on.
+const WEB_ACROSS = 0.38; // Where the web hangs, across the screen from the side Giraffe is on.
 const WEB_DOWN = 0.5;
 const GARDEN_ACROSS = 0.76; // The middle of where the spiders play, with no help reaching.
 const GARDEN_DOWN = 0.55;
@@ -307,12 +307,12 @@ export class Garden {
     this.scenes = {};
   }
 
-  /** Which way is away from Joze: 1 when the spiders play on the right. */
+  /** Which way is away from Giraffe: 1 when the spiders play on the right. */
   get way() {
     return this.side === 'right' ? 1 : -1;
   }
 
-  /** Across the screen, in pixels, from the side Joze is on. */
+  /** Across the screen, in pixels, from the side Giraffe is on. */
   across(share) {
     return (this.side === 'right' ? share : 1 - share) * this.width;
   }
@@ -1107,7 +1107,7 @@ export class Garden {
     return scene;
   }
 
-  /** What makes each place itself, drawn by Joze's side so it's never in the spiders' way. */
+  /** What makes each place itself, drawn by Giraffe's side so it's never in the spiders' way. */
   paintPlace(ctx, name, look) {
     const { height } = this;
     const at = (share) => this.across(share);
@@ -1178,7 +1178,7 @@ export class Garden {
         ctx.fill();
       }
     } else if (name === 'house') {
-      // Joze's little house, with a round window.
+      // Giraffe's little house, with a round window.
       const x = at(0.06);
       ctx.fillStyle = '#ffe2b0';
       ctx.fillRect(x - height * 0.1, height * 0.42, height * 0.2, height * 0.24);
@@ -1449,7 +1449,7 @@ export class Garden {
 
   /**
    * A little wooden treasure chest, with a gold band, whose lid swings open upwards. It's hinged on
-   * Joze's side, so it's mirrored for the left hand.
+   * Giraffe's side, so it's mirrored for the left hand.
    */
   drawChest(ctx, chest, fade = 1) {
     const { x, y, r } = chest;

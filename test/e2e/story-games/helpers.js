@@ -54,7 +54,7 @@ export const watchBrightness = (page, frames, canvases = ['game']) => page.evalu
     for (const id of ids) {
       const canvas = document.getElementById(id);
       // A 3D picture is only there to read straight after it's drawn, so it's drawn again first.
-      const three = window.__game.joze;
+      const three = window.__game.giraffe;
       if (three?.canvas === canvas && three.playing) three.renderer.render(three.scene, three.camera);
       const box = canvas.getBoundingClientRect();
       context.drawImage(canvas, (box.left / innerWidth) * wide, (box.top / innerHeight) * high, (box.width / innerWidth) * wide, (box.height / innerHeight) * high);

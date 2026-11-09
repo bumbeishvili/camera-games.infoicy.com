@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { GIFTS, Journey, NEW_THINGS as WALK_NEW_THINGS, Picking, STOPS, featuresAt, newAt as walkNew, stopsAt, walkAt, warm } from '../../games/joze-walk/journey.js';
+import { GIFTS, Journey, NEW_THINGS as WALK_NEW_THINGS, Picking, STOPS, featuresAt, newAt as walkNew, stopsAt, walkAt, warm } from '../../games/giraffe-walk/journey.js';
 import { DAY, FRUITS, GOLDEN_COINS, NEW_THINGS as SMOOTHIE_NEW_THINGS, POWER_SECONDS as SMOOTHIE_POWER_SECONDS, Stand, fairAt, nearestOnPath, newAt as smoothieNew } from '../../games/smoothie-stand/orders.js';
 import { CLEAN_ENOUGH, LANTERN_SCALE, Mud, NEW_THINGS, POWER_SECONDS, SHIPS, Storm, newAt as lighthouseNew, stormAt } from '../../games/lighthouse/storm.js';
 
@@ -11,7 +11,7 @@ const eventsOf = () => {
   return { events, onEvent: (event) => events.push(event), types: () => events.map(({ type }) => type) };
 };
 
-/* ---------- Joze's Smoothie Stand ---------- */
+/* ---------- Giraffe's Smoothie Stand ---------- */
 
 test('slicing what\'s on the order finishes it, and what isn\'t on it doesn\'t count', () => {
   const log = eventsOf();
@@ -78,9 +78,9 @@ test('a fast swipe counts along the whole of its path, not only where it ended',
   assert.equal(nearestOnPath(5, 5, 5, 5, 5, 15), 10);
 });
 
-/* ---------- Joze's Long Walk Home ---------- */
+/* ---------- Giraffe's Long Walk Home ---------- */
 
-test('feeding Joze at every stop brings him home', () => {
+test('feeding Giraffe at every stop brings him home', () => {
   const log = eventsOf();
   const journey = new Journey({ onEvent: log.onEvent });
   journey.nextStop();
@@ -203,7 +203,7 @@ test('a shorter storm still has Bramble and the honey in it, last of all', () =>
 
 const MOST_WORDS = 11; // Children are here to move, and nobody's waiting for anyone to finish talking.
 
-for (const game of ['smoothie-stand', 'joze-walk', 'lighthouse', 'robot-rescue']) {
+for (const game of ['smoothie-stand', 'giraffe-walk', 'lighthouse', 'robot-rescue']) {
   test(`${game} keeps its talking short, and everything it says has a voice in both languages`, () => {
     const folder = new URL(`../../games/${game}/audio/voice/`, import.meta.url);
     const lines = JSON.parse(readFileSync(new URL('lines.json', folder)));
@@ -213,7 +213,7 @@ for (const game of ['smoothie-stand', 'joze-walk', 'lighthouse', 'robot-rescue']
       for (const language of ['en', 'ka']) assert.ok(existsSync(new URL(`${language}/${id}.ogg`, folder)), `${language}/${id}`);
     }
     const source = readFileSync(new URL(`../../games/${game}/main.js`, import.meta.url), 'utf8');
-    const rules = readFileSync(new URL(`../../games/${game}/${{ 'smoothie-stand': 'orders', 'joze-walk': 'journey', lighthouse: 'storm', 'robot-rescue': 'rescue' }[game]}.js`, import.meta.url), 'utf8');
+    const rules = readFileSync(new URL(`../../games/${game}/${{ 'smoothie-stand': 'orders', 'giraffe-walk': 'journey', lighthouse: 'storm', 'robot-rescue': 'rescue' }[game]}.js`, import.meta.url), 'utf8');
     for (const { text } of lines) assert.ok(source.includes(text) || rules.includes(text), `nothing says: ${text}`);
   });
 }
@@ -708,9 +708,9 @@ test('lighthouse: level 10 is still within reach: at most a third longer, and no
   }
 });
 
-/* Joze's Long Walk Home */
+/* Giraffe's Long Walk Home */
 
-test('joze walk: level 1 is the walk as it always was', () => {
+test('giraffe walk: level 1 is the walk as it always was', () => {
   assert.deepEqual(stopsAt(1), STOPS);
   const level = walkAt(1);
   assert.equal(level.walkSeconds, 2.8);
@@ -726,7 +726,7 @@ test('joze walk: level 1 is the walk as it always was', () => {
   assert.deepEqual(walkNew(1), []);
 });
 
-test('joze walk: each level is a little harder than the one before', () => {
+test('giraffe walk: each level is a little harder than the one before', () => {
   climbsEveryLevel(walkAt, {
     hungrier: more,
     walkSeconds: less,
@@ -764,7 +764,7 @@ const WALK_ON = {
 };
 const onAnyStop = (key, level) => STOPS.some((_, index) => WALK_ON[key](walkAt(level), featuresAt(level, index)));
 
-test('joze walk: every level from 2 brings something new, switched on from that level and kept after it', () => {
+test('giraffe walk: every level from 2 brings something new, switched on from that level and kept after it', () => {
   const seen = new Set();
   for (const level of LEVELS.slice(1)) {
     const news = walkNew(level);
@@ -783,7 +783,7 @@ test('joze walk: every level from 2 brings something new, switched on from that 
   assert.deepEqual([...seen].sort(), Object.keys(WALK_NEW_THINGS).sort());
 });
 
-test('joze walk: what each stop has, at the levels where it comes', () => {
+test('giraffe walk: what each stop has, at the levels where it comes', () => {
   // The basket at the second stop, and the fourth too from level 9.
   assert.deepEqual(STOPS.map((_, index) => featuresAt(5, index).basket), [false, true, false, false, false]);
   assert.deepEqual(STOPS.map((_, index) => featuresAt(9, index).basket), [false, true, false, true, false]);
@@ -796,7 +796,7 @@ test('joze walk: what each stop has, at the levels where it comes', () => {
   assert.deepEqual(STOPS.map((_, index) => featuresAt(10, index).parrot), [true, false, false, false, false]);
 });
 
-test('joze walk: feeding Joze a golden fruit is a gift for his family too, and two at once from a basket', () => {
+test('giraffe walk: feeding Giraffe a golden fruit is a gift for his family too, and two at once from a basket', () => {
   const log = eventsOf();
   const journey = new Journey({ level: 5, onEvent: log.onEvent });
   journey.nextStop();
@@ -821,7 +821,7 @@ test('joze walk: feeding Joze a golden fruit is a gift for his family too, and t
   assert.equal(journey.fed, 3);
 });
 
-test('joze walk: from level 7, the river stop isn\'t done until the bridge is mended', () => {
+test('giraffe walk: from level 7, the river stop isn\'t done until the bridge is mended', () => {
   const log = eventsOf();
   const journey = new Journey({ level: 7, onEvent: log.onEvent });
   for (let index = 0; index < 3; index += 1) {
@@ -851,7 +851,7 @@ test('joze walk: from level 7, the river stop isn\'t done until the bridge is me
   assert.ok(before.bridgeFixed);
 });
 
-test('joze walk: a closed hand warms frosty fruit, and the warmth adds up however it comes and goes', () => {
+test('giraffe walk: a closed hand warms frosty fruit, and the warmth adds up however it comes and goes', () => {
   const fruit = { frost: true };
   assert.equal(warm(fruit, 0.4, 1), false);
   // Coming and going loses nothing.
@@ -861,7 +861,7 @@ test('joze walk: a closed hand warms frosty fruit, and the warmth adds up howeve
   assert.ok(warm({ frost: false }, 0, 1));
 });
 
-test('joze walk: gifts are counted, each kind on its own', () => {
+test('giraffe walk: gifts are counted, each kind on its own', () => {
   const log = eventsOf();
   const journey = new Journey({ level: 10, onEvent: log.onEvent });
   journey.nextStop();
@@ -871,7 +871,7 @@ test('joze walk: gifts are counted, each kind on its own', () => {
   assert.equal(log.types().filter((type) => type === 'gift').length, GIFTS.length);
 });
 
-test('joze walk: at level 10, Joze is hungrier at two stops, and it still ends at home', () => {
+test('giraffe walk: at level 10, Giraffe is hungrier at two stops, and it still ends at home', () => {
   const stops = stopsAt(10);
   assert.deepEqual(stops.map(({ count }) => count), [3, 3, 5, 5, 3]);
   const log = eventsOf();
@@ -908,14 +908,14 @@ function walkLoad(level) {
   return { seconds, perMinute: (moves / seconds) * 60, reactSeconds: Infinity };
 }
 
-test('joze walk: level 10 is still within reach: at most a third longer, and not twice the moves', () => {
+test('giraffe walk: level 10 is still within reach: at most a third longer, and not twice the moves', () => {
   const first = walkLoad(1);
   for (const level of LEVELS) {
     const now = walkLoad(level);
     assert.ok(now.seconds <= first.seconds * 1.34, `level ${level}: ${now.seconds} against ${first.seconds}`);
     assert.ok(now.perMinute <= first.perMinute * 2, `level ${level}`);
   }
-  console.log(`joze walk: ${first.seconds.toFixed(1)}s at level 1, ${walkLoad(10).seconds.toFixed(1)}s at level 10`);
+  console.log(`giraffe walk: ${first.seconds.toFixed(1)}s at level 1, ${walkLoad(10).seconds.toFixed(1)}s at level 10`);
   // Nothing in the walk has a time limit: green fruit ripens, butterflies fly off and the monkey gives
   // his fruit back by themselves, and frosty fruit only needs a short warming.
   assert.ok(walkAt(10).butterflyStays <= 5);
@@ -924,7 +924,7 @@ test('joze walk: level 10 is still within reach: at most a third longer, and not
   assert.ok(walkAt(10).thawSeconds <= 1.2);
 });
 
-/* Joze's Smoothie Stand */
+/* Giraffe's Smoothie Stand */
 
 test('smoothie stand: level 1 is the fair as it always was', () => {
   const level = fairAt(1);

@@ -34,7 +34,7 @@
   {"id": "move-nova", "text": "Comet Pounce!", "ka": "კომეტის ნახტომი!", "voice": "af_bella", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 12},
   {"id": "move-cinder", "text": "Ember Spin!", "ka": "ნაკვერჩხლის ტრიალი!", "voice": "am_adam", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 6},
   {"id": "move-tur", "text": "Mountain Charge!", "ka": "მთის იერიში!", "voice": "bm_lewis", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -6},
-  {"id": "move-joze", "text": "Neck Swing!", "ka": "კისრის მოქნევა!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "move-giraffe", "text": "Neck Swing!", "ka": "კისრის მოქნევა!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
   {"id": "palm", "text": "Palm Strike!", "ka": "ხელისგულის დარტყმა!", "voice": "am_fenrir", "kaVoice": "ka-GE-GiorgiNeural"},
   {"id": "whirlwind", "text": "Whirlwind!", "ka": "გრიგალი!", "voice": "am_fenrir", "kaVoice": "ka-GE-GiorgiNeural"},
   {"id": "power-kick", "text": "Power Kick!", "ka": "ძლიერი წიხლი!", "voice": "am_fenrir", "kaVoice": "ka-GE-GiorgiNeural"},

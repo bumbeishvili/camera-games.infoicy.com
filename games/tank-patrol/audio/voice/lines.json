@@ -1,8 +1,8 @@
 [
-  {"id": "joze-asks", "text": "Robot tanks in my valley! Let’s stop them!", "ka": "რობოტი ტანკები ჩემს ხეობაშია! გავაჩეროთ ისინი!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
-  {"id": "joze-waving", "text": "Look! The little robot’s waving!", "ka": "შეხედე! პატარა რობოტი ხელს გვიქნევს!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
-  {"id": "joze-tickles", "text": "Ooh, that tickles!", "ka": "უი, მეღიტინება!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
-  {"id": "joze-one-more", "text": "One more tank!", "ka": "კიდევ ერთი ტანკი!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "giraffe-asks", "text": "Robot tanks in my valley! Let’s stop them!", "ka": "რობოტი ტანკები ჩემს ხეობაშია! გავაჩეროთ ისინი!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "giraffe-waving", "text": "Look! The little robot’s waving!", "ka": "შეხედე! პატარა რობოტი ხელს გვიქნევს!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "giraffe-tickles", "text": "Ooh, that tickles!", "ka": "უი, მეღიტინება!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "giraffe-one-more", "text": "One more tank!", "ka": "კიდევ ერთი ტანკი!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
   {"id": "finish", "text": "You saved the valley!", "ka": "ხეობა გადაარჩინე!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
   {"id": "so-close", "text": "So close!", "ka": "კინაღამ გამოგივიდა!"},
   {"id": "close-to-drive", "text": "Close your hand to drive!", "ka": "მოკუმე ხელი, რომ ტანკმა იაროს!"},

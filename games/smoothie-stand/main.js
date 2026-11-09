@@ -1,4 +1,4 @@
-// Joze's Smoothie Stand: on the day of the Harvest Fair, everyone comes with an order, and the child
+// Giraffe's Smoothie Stand: on the day of the Harvest Fair, everyone comes with an order, and the child
 // slices what it needs with an open hand. The story and rules are in orders.js, and the fair is in
 // field.js. It's right-handed unless a grown-up chooses the left.
 import { renderPortraits } from '../../core/body/portraits.js';
@@ -63,7 +63,7 @@ class SmoothieGame {
         this.stand.power('honey');
       },
     });
-    this.field.joze = Object.assign(new Image(), { src: session.portraits.joze });
+    this.field.giraffe = Object.assign(new Image(), { src: session.portraits.giraffe });
     this.applySettings();
     const game = this;
     this.debug = {
@@ -317,7 +317,7 @@ class SmoothieGame {
 
 new GameSession({
   shell: {
-    title: 'Joze’s Smoothie Stand',
+    title: 'Giraffe’s Smoothie Stand',
     startLabel: 'Open the stand',
     againLabel: 'Another fair',
     finishTitle: WON,

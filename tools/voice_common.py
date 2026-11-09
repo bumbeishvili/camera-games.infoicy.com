@@ -17,7 +17,7 @@ VOICE_DIRS = [
     ROOT / "games" / "leap-trail" / "audio" / "voice",
     ROOT / "games" / "sky-wings" / "audio" / "voice",
     ROOT / "games" / "smoothie-stand" / "audio" / "voice",
-    ROOT / "games" / "joze-walk" / "audio" / "voice",
+    ROOT / "games" / "giraffe-walk" / "audio" / "voice",
     ROOT / "games" / "lighthouse" / "audio" / "voice",
     ROOT / "games" / "robot-rescue" / "audio" / "voice",
     ROOT / "games" / "cannon-bay" / "audio" / "voice",

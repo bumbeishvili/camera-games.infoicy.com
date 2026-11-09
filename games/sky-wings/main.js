@@ -24,7 +24,7 @@ const WING_CLIMB_SHOWN = 22;
 const MARK_MARGIN = 70; // How far from the edge of the screen the arrows to other planes stay.
 const LIMIT_PROMPT_FROM = 0.25;
 
-const DEFAULTS = { moveSize: 'small', pace: 'slow', planes: 6, level: 'gentle', climbing: 'yes', fighter: 'joze' };
+const DEFAULTS = { moveSize: 'small', pace: 'slow', planes: 6, level: 'gentle', climbing: 'yes', fighter: 'giraffe' };
 const CHOICES = { pace: String, planes: Number, level: String, climbing: String };
 
 // Every one of these has a rendered voice file: see audio/voice/lines.json.
@@ -220,23 +220,23 @@ class SkyWings extends BodyGame {
   newAt(level) {
     return (NEW_AT[level] ?? []).filter(({ thing }) => isOn(thing, level, this.settings.planes)).map(({ thing, mark, name, nameKa }) => {
       if (thing !== 'gift:helper') return { mark, name, nameKa };
-      // The friend who helps is Joze, unless the child is flying as Joze.
+      // The friend who helps is Giraffe, unless the child is flying as Giraffe.
       const helper = this.helperSpec();
-      return helper.id === 'joze' ? { mark, name: 'Joze helps', nameKa: 'ჯოზე გეხმარება' } : { mark: '🤝', name: `${helper.name} helps`, nameKa: `${helper.nameKa ?? helper.name} გეხმარება` };
+      return helper.id === 'giraffe' ? { mark, name: 'Giraffe helps', nameKa: 'ჟირაფი გეხმარება' } : { mark: '🤝', name: `${helper.name} helps`, nameKa: `${helper.nameKa ?? helper.name} გეხმარება` };
     });
   }
 
-  /** The friend who comes to help: Joze first, or someone who isn't a pirate this time. */
+  /** The friend who comes to help: Giraffe first, or someone who isn't a pirate this time. */
   helperSpec() {
     const chosen = this.chosen?.id ?? this.settings.fighter;
-    if (chosen !== 'joze') return ROSTER[0];
+    if (chosen !== 'giraffe') return ROSTER[0];
     const pirates = new Set(ROSTER.filter(({ id }) => id !== chosen).slice(0, this.settings.planes).map(({ id }) => id));
     return ROSTER.find(({ id }) => id !== chosen && !pirates.has(id)) ?? ROSTER.at(-1);
   }
 
   /**
    * Who flies the pirate planes: everyone but the child's own character, in the roster's order. On the
-   * levels with a friend who helps, never that friend too, so Joze isn't helping and a pirate at once, and
+   * levels with a friend who helps, never that friend too, so Giraffe isn't helping and a pirate at once, and
    * never a character a friend flying with the child chose. With too few left for the planes, some fly twice.
    */
   pirateSpecs(total, friendly = []) {

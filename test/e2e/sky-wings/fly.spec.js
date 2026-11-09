@@ -352,7 +352,7 @@ test('the sky pirates are other characters, and every character can fly', async 
   const pilots = await page.evaluate(() => window.__game.sky.enemyPlanes.map(({ spec }) => spec.id));
   expect(pilots).toHaveLength(6);
   expect(new Set(pilots).size).toBe(6);
-  expect(pilots).not.toContain('joze');
+  expect(pilots).not.toContain('giraffe');
   const ids = await page.evaluate(async () => {
     const { ROSTER } = await import('/core/body/roster.js');
     return ROSTER.map(({ id }) => id);

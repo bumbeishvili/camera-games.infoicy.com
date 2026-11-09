@@ -32,7 +32,7 @@ const DEFAULTS = {
   obstacles: 20,
   onMissed: 'stumble',
   trailLanes: 'yes',
-  fighter: 'joze',
+  fighter: 'giraffe',
 };
 const CHOICES = { jumpWith: String, pace: String, obstacles: Number, onMissed: String, trailLanes: String };
 

@@ -1,4 +1,4 @@
-// Where everything is in Joze's valley. The rules need it to know where a tank can drive, and the picture
+// Where everything is in Giraffe's valley. The rules need it to know where a tank can drive, and the picture
 // builds the valley from it, so there's no screen in this file and it runs in the unit tests. Units are
 // the same everywhere, with x to the right, z towards the camera and y up. It's a toy world, so a tank
 // is about as long as a cottage.

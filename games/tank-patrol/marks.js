@@ -313,7 +313,7 @@ export class Marks {
     else this.drawSight(x, y, R, look, auto);
 
     // A little copy of the hand beside it, so the crosshair is plainly the hand, on the side away from
-    // the tank so as not to hide Joze.
+    // the tank so as not to hide Giraffe.
     if (glove?.visible) {
       const reach = R + palmSize * 1.9;
       let side = x >= tankX ? 1 : -1;

@@ -1,11 +1,11 @@
-// The story of Joze's Long Walk Home. Joze got lost following a butterfly, and his family are at the
+// The story of Giraffe's Long Walk Home. Giraffe got lost following a butterfly, and his family are at the
 // watering hole. It's a long way, and he gets hungry at every stop. Each fruit the child picks and
 // feeds him gets him closer to home. There's no screen in this file, so it runs in the unit tests.
 import { clampLevel, ramp, stepsAt } from '../../core/levels.js';
 
 // Each stop: the place, what grows there, how many it takes, who's there, and what they say.
 export const STOPS = [
-  { place: 'baobab', fruit: 'fig', count: 3, who: 'joze', hello: 'I’m lost, and so hungry! Figs, please!' },
+  { place: 'baobab', fruit: 'fig', count: 3, who: 'giraffe', hello: 'I’m lost, and so hungry! Figs, please!' },
   { place: 'grass', fruit: 'mango', count: 3, who: 'mochi', hello: 'Your family went this way! Take some mangoes!' },
   { place: 'river', fruit: 'banana', count: 4, who: 'bramble', hello: 'It’s a long way round. Eat up, little one.' },
   { place: 'hill', fruit: 'apple', count: 4, who: 'tur', hello: 'You can see home from here! Have some apples!' },
@@ -13,7 +13,7 @@ export const STOPS = [
     place: 'home',
     fruit: 'orange',
     count: 3,
-    who: 'joze',
+    who: 'giraffe',
     hello: 'Mum! Dad! I’m home! Oranges for everyone!',
     done: 'Thank you for bringing me home!',
   },
@@ -24,7 +24,7 @@ const FALSE_START_SECONDS = 0.15; // A closed hand has to stay closed this long 
 // Which stops get one more fruit to eat as the levels go up, in this order: the long ones in the middle.
 const HUNGRIER_AT = ['river', 'hill', 'grass'];
 
-// Gifts Joze takes home to his family, picked up on the way: a golden fruit he's eaten, a flower from a
+// Gifts Giraffe takes home to his family, picked up on the way: a golden fruit he's eaten, a flower from a
 // butterfly that's been shooed off, a coconut from the monkey, and fireflies caught.
 export const GIFTS = ['golden', 'flower', 'coconut', 'firefly'];
 
@@ -70,11 +70,11 @@ export function newAt(level) {
  */
 export function walkAt(level) {
   return {
-    // Stops where Joze is hungrier and eats one more: none at level 1, then one, then two.
+    // Stops where Giraffe is hungrier and eats one more: none at level 1, then one, then two.
     hungrier: stepsAt(level, { 1: 0, 2: 1, 6: 2 }),
     // Seconds walking from one tree to the next: a little quicker each level.
     walkSeconds: ramp(level, 2.8, 2.2),
-    // From level 2, one fruit on each tree is golden. Feeding it to Joze is a gift for his family too.
+    // From level 2, one fruit on each tree is golden. Feeding it to Giraffe is a gift for his family too.
     golden: stepsAt(level, { 1: 0, 2: 1 }),
     // From level 3, the fruit sways on its branch in the wind, this far either way, in screen widths.
     sway: level >= 3 ? ramp(level, 0.004, 0.022) : 0,
@@ -100,7 +100,7 @@ export function walkAt(level) {
     monkeyEvery: ramp(level, 12, 9),
     monkeyStays: ramp(level, 6, 8),
     // From level 7, the bridge at the river has a plank missing. Carrying the plank to the gap and
-    // opening the hand there mends it, so Joze can cross.
+    // opening the hand there mends it, so Giraffe can cross.
     bridge: level >= 7,
     // From level 8, the hill is snowy, and some fruit on its tree is frosty. A closed hand held on a
     // frosty fruit warms it, adding up however the hand comes and goes, and then it can be picked.
@@ -110,7 +110,7 @@ export function walkAt(level) {
     // hand on one catches it, as a gift.
     fireflies: stepsAt(level, { 1: 0, 9: 2 }),
     // At level 10, a parrot's feather hangs on the first tree. Closing a hand on it brings the
-    // parrot, who carries a fruit to Joze by himself.
+    // parrot, who carries a fruit to Giraffe by himself.
     parrot: level >= 10,
   };
 }
@@ -202,7 +202,7 @@ export class Journey {
     this.emit('stop', { stop: this.stop, index: this.index, total: this.stops.length, features: this.features });
   }
 
-  /** Fruit went into Joze's mouth: one, or two from a basket. golden says how many were golden. */
+  /** Fruit went into Giraffe's mouth: one, or two from a basket. golden says how many were golden. */
   feed(count = 1, { golden = 0 } = {}) {
     if (!this.stop) return;
     // A golden fruit is a gift for his family whenever it's eaten, even once he's had enough here, as it's
@@ -228,7 +228,7 @@ export class Journey {
     if (this.stop && this.fed >= this.stop.count && this.bridgeFixed) this.emit('stop-done', { stop: this.stop });
   }
 
-  /** A gift for Joze's family, picked up on the way. */
+  /** A gift for Giraffe's family, picked up on the way. */
   gift(kind) {
     this.gifts += 1;
     this.stats.gifts += 1;
@@ -246,7 +246,7 @@ export class Journey {
 /**
  * What happens to a fruit as a hand comes and goes, frame by frame. It's kept apart from the drawing
  * so it can be tested: a closed hand on a fruit picks it, it goes where the hand goes, and opening the
- * hand lets it go, into Joze's mouth if that's where it is.
+ * hand lets it go, into Giraffe's mouth if that's where it is.
  */
 export class Picking {
   constructor() {

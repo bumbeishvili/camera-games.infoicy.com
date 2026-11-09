@@ -401,7 +401,7 @@ test('in Georgian, the names of new things are in Georgian too', async ({ page }
 });
 
 for (const [width, height] of [[1024, 640], [800, 600], [390, 844]]) {
-  test(`at ${width} by ${height}, with every prize and three power-ups, the chips stay clear of the mirror and Joze's box`, async ({ page }) => {
+  test(`at ${width} by ${height}, with every prize and three power-ups, the chips stay clear of the mirror and Giraffe's box`, async ({ page }) => {
     await page.setViewportSize({ width, height });
     await startPatrol(page, atLevel(10));
     await page.evaluate(() => {
@@ -409,7 +409,7 @@ for (const [width, height] of [[1024, 640], [800, 600], [390, 844]]) {
       Object.assign(patrol.stats, { bolts: 24, gems: 3, stars: 6, friends: 1 });
       for (const name of ['boing', 'magnet', 'slow']) patrol.powerUp(name);
       game.showHaul();
-      game.sayAsJoze('One more tank!');
+      game.sayAsGiraffe('One more tank!');
     });
     await page.waitForTimeout(700);
     const box = (selector) => page.locator(selector).boundingBox();
@@ -423,7 +423,7 @@ for (const [width, height] of [[1024, 640], [800, 600], [390, 844]]) {
       const chip = await box(selector);
       expect(apart(chip, mirror), `${selector} and mirror`).toBe(true);
       expect(apart(chip, gear), `${selector} and gear`).toBe(true);
-      expect(apart(chip, story), `${selector} and Joze`).toBe(true);
+      expect(apart(chip, story), `${selector} and Giraffe`).toBe(true);
       if (prompt) expect(apart(chip, prompt), `${selector} and the prompt`).toBe(true);
       expect(chip.x + chip.width).toBeLessThanOrEqual(width);
       expect(chip.y).toBeGreaterThan((await box('.race-progress')).y);

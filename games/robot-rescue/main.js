@@ -16,7 +16,7 @@ const CLOSE_FOR_SHIELD = 'Close your hand for the shield!';
 const GOLD_STARS = 'Shoot the gold stars on the big robot!';
 const FINISH = 'You saved everyone!';
 const SO_CLOSE = 'So close!';
-const JOZE_ASKS = 'Help! The robots caught all of us!';
+const GIRAFFE_ASKS = 'Help! The robots caught all of us!';
 
 const BY_THE_END = {
   won: { mark: '🎉', one: 'friend freed', many: 'friends freed' },
@@ -146,7 +146,7 @@ class RescueGame {
   begin() {
     const { sound } = this.session;
     sound.startRide();
-    this.story.say('joze', JOZE_ASKS);
+    this.story.say('giraffe', GIRAFFE_ASKS);
     this.storyFor = STORY_SECONDS;
   }
 

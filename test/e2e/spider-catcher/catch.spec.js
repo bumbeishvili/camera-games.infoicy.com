@@ -13,7 +13,7 @@ test('a real hand opens by a spider and closes on it, carries it to the web, and
   test.setTimeout(150_000);
   await startPlaying(page, GAME);
   // The spiders are out playing as soon as the game starts.
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await expect.poll(async () => (await garden(page)).spiders.length, { timeout: 1000 }).toBeGreaterThan(0);
   await page.waitForTimeout(800);
   await shot(page, 'spider-1-first-place');
@@ -44,9 +44,9 @@ test('a real hand opens by a spider and closes on it, carries it to the web, and
 test('a fist that comes along closed doesn\'t catch: the hand has to open and close on a spider', async ({ page }) => {
   test.setTimeout(150_000);
   await startPlaying(page, GAME);
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await holdStill(page);
-  // Closed well away from the spiders, down on Joze's side, for longer than a catch lasts.
+  // Closed well away from the spiders, down on Giraffe's side, for longer than a catch lasts.
   await moveGloveTo(page, GLOVE, 0.3, 0.88);
   await page.waitForTimeout(1500);
   await handIs(page, 'fist');
@@ -73,7 +73,7 @@ test('a fist that comes along closed doesn\'t catch: the hand has to open and cl
 test('opening anywhere but the web lets the spider go back to playing, at no cost', async ({ page }) => {
   test.setTimeout(150_000);
   await startPlaying(page, GAME);
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await openOnSpider(page);
   await handIs(page, 'fist');
   await expect.poll(async () => (await garden(page)).holding, { timeout: 15_000 }).toBe(true);
@@ -90,7 +90,7 @@ test('opening anywhere but the web lets the spider go back to playing, at no cos
 test('a hand that can\'t be read never lets a spider in, and a hand that has gone lets it go', async ({ page }) => {
   test.setTimeout(150_000);
   await startPlaying(page, GAME);
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   await openOnSpider(page);
   await handIs(page, 'fist');
   await expect.poll(async () => (await garden(page)).holding, { timeout: 15_000 }).toBe(true);
@@ -125,7 +125,7 @@ test('every spider home goes from place to place, with each friend, and ends wit
     const { gathering } = window.__game;
     while (gathering.home < gathering.place.count) gathering.spiderHome();
   });
-  for (const [who, index] of [['joze', 0], ['mochi', 1], ['bramble', 2], ['frost', 3], ['joze', 4]]) {
+  for (const [who, index] of [['giraffe', 0], ['mochi', 1], ['bramble', 2], ['frost', 3], ['giraffe', 4]]) {
     await expect.poll(async () => (await garden(page)).index, { timeout: 30_000 }).toBe(index);
     await storyIs(page, who);
     await expect.poll(async () => (await garden(page)).spiders.length, { timeout: 1000 }).toBeGreaterThan(0);
@@ -147,7 +147,7 @@ test('every spider home goes from place to place, with each friend, and ends wit
 
 test('with the left hand, the spiders play on the left and their web is across on the right', async ({ page }) => {
   await startPlaying(page, GAME, { hands: 'left' }, ['open', null, { scale: 0.7 }]);
-  await storyIs(page, 'joze');
+  await storyIs(page, 'giraffe');
   const { spiders, web, width } = await garden(page);
   for (const { x } of spiders) expect(x).toBeLessThan(width / 2);
   expect(web.x).toBeGreaterThan(width / 2);

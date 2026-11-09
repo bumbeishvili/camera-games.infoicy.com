@@ -59,7 +59,7 @@ def save(audio, game, name):
 
 save(shaped(loudest_moment("cutting-board-zucchini-1", 0.22), 0.8), "smoothie-stand", "chop.ogg")
 save(shaped(cut("electric-hand-mixer-1", 1.5, 3.5), 0.55, fade_in=0.08, fade_out=0.5), "smoothie-stand", "mixer.ogg")
-save(shaped(loudest_moment("apple-crunched-1", 0.5), 0.8, fade_out=0.15), "joze-walk", "crunch.ogg")
+save(shaped(loudest_moment("apple-crunched-1", 0.5), 0.8, fade_out=0.15), "giraffe-walk", "crunch.ogg")
 save(looped(cut("cleaning-glass", 1.5, 5.5), 0.3) * 0.8, "lighthouse", "wipe.ogg")
 save(shaped(cut("horn-of-a-ship-1", 0.2, 5.2), 0.5, fade_in=0.2, fade_out=1.5), "lighthouse", "horn.ogg")
 save(looped(cut("beach-small-waves", 8, 28)) * 0.7, "lighthouse", "waves.ogg")

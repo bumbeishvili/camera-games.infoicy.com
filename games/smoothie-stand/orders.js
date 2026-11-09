@@ -1,5 +1,5 @@
-// The story and rules of Joze's Smoothie Stand. It's the day of the Harvest Fair, and everyone has
-// come to Joze's stand with an order. Whatever they asked for is what's worth slicing. There's no
+// The story and rules of Giraffe's Smoothie Stand. It's the day of the Harvest Fair, and everyone has
+// come to Giraffe's stand with an order. Whatever they asked for is what's worth slicing. There's no
 // screen in this file, so it runs in the unit tests.
 import { clampLevel, ramp, rampWhole, stepsAt } from '../../core/levels.js';
 
@@ -18,7 +18,7 @@ export const DAY = [
     order: { apple: 4, banana: 4, plum: 4 },
     rotten: true,
     hello: 'Four apples, four bananas and four plums, please!',
-    thanks: 'The Golden Cup goes to Joze’s stand!',
+    thanks: 'The Golden Cup goes to the giraffe’s stand!',
   },
 ];
 

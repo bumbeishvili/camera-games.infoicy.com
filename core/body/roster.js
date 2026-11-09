@@ -43,9 +43,9 @@ const patchOn = (centre, [rx, ry, rz], turn, rise) => ({
 
 export const ROSTER = [
   {
-    id: 'joze',
-    name: 'Joze',
-    nameKa: 'ჯოზე',
+    id: 'giraffe',
+    name: 'Giraffe',
+    nameKa: 'ჟირაფი',
     species: 'Giraffe',
     speciesKa: 'ჟირაფი',
     title: 'The Tallest Striker',
@@ -55,8 +55,8 @@ export const ROSTER = [
     burstColours: ['#7ac74f', '#3f9d3f', '#ffd23f'],
     voice: 'am_michael',
     pitch: 0,
-    shout: 'Look up! Here comes Joze!',
-    shoutKa: 'ზემოთ აიხედე! ჯოზე მოდის!',
+    shout: 'Look up! Here comes the giraffe!',
+    shoutKa: 'ზემოთ აიხედე! ჟირაფი მოდის!',
     colours: {
       body: '#f5c451',
       belly: '#fff0c9',

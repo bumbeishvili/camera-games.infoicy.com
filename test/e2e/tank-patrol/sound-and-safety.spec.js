@@ -104,10 +104,10 @@ test('the engine, birds and music play all through and stop at the end, nothing 
   for (const line of said) expect(line.split(/\s+/).length, line).toBeLessThan(11);
 });
 
-test('Joze\'s lines are in his own voice, and Georgian changes what\'s on the screen and what\'s said', async ({ page }) => {
+test('Giraffe\'s lines are in his own voice, and Georgian changes what\'s on the screen and what\'s said', async ({ page }) => {
   await startPatrol(page, { language: 'ka' });
   await expect(page.locator('#story-line')).toHaveText('რობოტი ტანკები ჩემს ხეობაშია! გავაჩეროთ ისინი!', { timeout: 5000 });
-  await expect(page.locator('#story-name')).toHaveText('ჯოზე');
+  await expect(page.locator('#story-name')).toHaveText('ჟირაფი');
   await page.waitForTimeout(400);
   await shot(page, 'k23-georgian');
 });

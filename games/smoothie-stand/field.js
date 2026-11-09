@@ -1,4 +1,4 @@
-// The Harvest Fair behind Joze's stand: fruit flying up, a glove that copies the child's hand, and
+// The Harvest Fair behind Giraffe's stand: fruit flying up, a glove that copies the child's hand, and
 // the blender on the counter. An open hand moving through a fruit slices it. A closed one bumps it.
 //
 // Nothing flashes: seizures are more common in children with hemiplegia. A slice is a few drops
@@ -104,7 +104,7 @@ export class SmoothieField {
     this.level = fairAt(1);
     this.blenderLevel = 0;
     this.blenderSpin = 0;
-    this.joze = null;
+    this.giraffe = null;
     this.tokenTarget = { x: 120, y: 200 };
     this.sliced = { left: 0, right: 0 };
     this.configure({ pace: 'slow', side: 'right', slicing: 'swipe' });
@@ -711,13 +711,13 @@ export class SmoothieField {
 
   /** The blender on the counter, filling up as an order comes together. */
   drawBlender(ctx) {
-    const { height, width, joze } = this;
+    const { height, width, giraffe } = this;
     const baseY = height * 0.985;
     const size = height * 0.2;
     const x = width * (this.side === 'right' ? 0.17 : 0.83);
-    if (joze?.complete && joze.naturalWidth) {
+    if (giraffe?.complete && giraffe.naturalWidth) {
       const picture = height * 0.3;
-      ctx.drawImage(joze, x - size * 1.45, baseY - picture * 1.02, picture, picture);
+      ctx.drawImage(giraffe, x - size * 1.45, baseY - picture * 1.02, picture, picture);
     }
     const wobble = this.blenderSpin > 0 && !this.reducedMotion ? Math.sin(this.time * 40) * height * 0.002 : 0;
     ctx.save();

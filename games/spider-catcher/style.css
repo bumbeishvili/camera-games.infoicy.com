@@ -1,4 +1,4 @@
-/* Spider Catcher: the garden, then Joze, then the web, the spiders and the glove on top of him. */
+/* Spider Catcher: the garden, then Giraffe, then the web, the spiders and the glove on top of him. */
 :root { --meter-size: clamp(72px, 8.5vw, 108px); }
 
 #backdrop, #game {
@@ -9,7 +9,7 @@
   display: block;
 }
 
-#joze-stage {
+#giraffe-stage {
   position: fixed;
   bottom: 2vh;
   height: 72vh;
@@ -18,8 +18,8 @@
 }
 
 /* By the web, across from where the spiders play, so bringing one home is a reach across. */
-body[data-side='right'] #joze-stage { left: 0; }
-body[data-side='left'] #joze-stage { right: 0; }
+body[data-side='right'] #giraffe-stage { left: 0; }
+body[data-side='left'] #giraffe-stage { right: 0; }
 
 /* Down here, out of the way of the spiders. */
 body[data-screen='playing'] .prompt { top: auto; bottom: 58px; }
