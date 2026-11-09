@@ -63,7 +63,8 @@ body.hub {
 }
 
 .game-card {
-  display: block;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   padding-bottom: 22px;
   background: var(--surface);
@@ -98,7 +99,14 @@ body.hub {
   fill: var(--accent);
 }
 
-.game-card h2 { margin-top: 16px; }
+/* A name on one line sits in the middle of the room a longer one beside it takes. */
+.game-card h2 {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  margin-top: 16px;
+  padding: 0 12px;
+}
 
 .game-card p {
   margin-top: 4px;
@@ -298,7 +306,6 @@ body.hub {
 .art-bay-smoke { fill: #fff; opacity: 0.9; }
 .art-bay-splash { fill: #fff; }
 
-/* The film of a game being played, over its card while the pointer rests there. */
 /* Each card's film, over its picture, fading in once it's playing. */
 .game-art { position: relative; }
 
@@ -314,23 +321,24 @@ body.hub {
 
 .game-card.is-playing .game-film { opacity: 1; }
 
-/* What moves the game takes, along the bottom of the film while the card is pointed at or chosen. */
-.game-card .game-moves {
+/* What the game is about, along the bottom of the film while the card is pointed at or chosen. Until then, a
+   card is just its film and its name. */
+.game-card .game-about {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
   margin: 0;
-  padding: 6px 12px 8px;
-  background: rgba(255, 255, 255, 0.92);
+  padding: 8px 14px 10px;
+  background: rgba(255, 255, 255, 0.93);
   color: var(--ink);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 600;
   line-height: 1.3;
   text-align: center;
   opacity: 0;
   transition: opacity 0.25s;
 }
 
-.game-card:hover .game-moves,
-.game-card:focus-visible .game-moves { opacity: 1; }
+.game-card:hover .game-about,
+.game-card:focus-visible .game-about { opacity: 1; }

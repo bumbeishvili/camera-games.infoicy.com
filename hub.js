@@ -1,7 +1,8 @@
 // Each game's card plays a film of the game being played, over its picture, while the card is on the screen,
-// so how each game works can be seen at a glance. Resting the pointer on a card, or the keyboard, also says
-// what moves it takes. For anyone who prefers reduced motion, a film only plays, a little slower, while its
-// card is pointed at or chosen. demos/ holds the films, which tools/record_demos.mjs makes.
+// so how each game works can be seen at a glance, with just its name below. Pointing at a card, or choosing it
+// with the keyboard, shows what the game is about, along the bottom of the film. For anyone who prefers reduced
+// motion, a film only plays, a little slower, while its card is pointed at or chosen. demos/ holds the films,
+// which tools/record_demos.mjs makes.
 const SLOWER = 0.7;
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const rate = () => (still ? SLOWER : 1);
@@ -15,10 +16,12 @@ function filmFor(card) {
   film.preload = 'none';
   film.setAttribute('aria-hidden', 'true');
   art.append(film);
-  const moves = document.createElement('p');
-  moves.className = 'game-moves';
-  moves.textContent = card.dataset.moves;
-  art.append(moves);
+  // What the game is about goes over the bottom of the film, where it only shows while the card is pointed at.
+  const about = card.querySelector(':scope > p');
+  if (about) {
+    about.classList.add('game-about');
+    art.append(about);
+  }
 
   const play = () => {
     // Only fetched once its card is first on the screen.

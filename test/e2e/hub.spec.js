@@ -66,9 +66,10 @@ for (const { folder } of GAMES.slice(0, 2)) {
 /** A card's film: how far it's got, whether it's paused, and how fast it plays. */
 const filmOf = (card) => card.locator('.game-film').evaluate((film) => ({ time: film.currentTime, paused: film.paused, rate: film.playbackRate }));
 
-test('every game\'s card plays a film of it while it\'s on the screen, and pointing at it says what moves it takes', async ({ page }) => {
+test('every game\'s card plays a film of it while it\'s on the screen, and pointing at it says what the game is about', async ({ page }) => {
   test.setTimeout(150_000);
   await page.goto('/');
+  await expect(page.locator('.game-moves')).toHaveCount(0);
   for (const { name, folder } of GAMES) {
     await test.step(name, async () => {
       const card = page.locator('.game-card', { hasText: name });
@@ -78,11 +79,12 @@ test('every game\'s card plays a film of it while it\'s on the screen, and point
       await expect.poll(async () => (await filmOf(card)).time, { timeout: 10_000 }).toBeGreaterThan(0.3);
       await expect(card).toHaveClass(/is-playing/);
       expect(await card.locator('.game-film').getAttribute('src')).toBe(`demos/${folder}.webm`);
-      const moves = card.locator('.game-moves');
-      await expect(moves).toHaveText(await card.getAttribute('data-moves'));
-      await expect(moves).toHaveCSS('opacity', '0');
+      // Just its film and its name, until it's pointed at.
+      const about = card.locator('.game-art .game-about');
+      await expect(about).toHaveCount(1);
+      await expect(about).toHaveCSS('opacity', '0');
       await card.hover();
-      await expect(moves).toHaveCSS('opacity', '1');
+      await expect(about).toHaveCSS('opacity', '1');
       await shot(page, `h6-film-${folder}`);
     });
   }
