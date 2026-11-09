@@ -5,7 +5,7 @@
 //   node tools/race-server.mjs
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
-import { idFor, mostIn, RaceRoom, takeOver, validCode } from '../server/race-room.js';
+import { COMES_BACK_WITHIN_MS, idFor, mostIn, RaceRoom, takeOver, validCode } from '../server/race-room.js';
 
 const PORT = Number(process.env.RACE_PORT ?? 8643);
 // The games' pages on this computer, on whichever port they're served from.
@@ -84,9 +84,13 @@ server.on('upgrade', (request, socket) => {
   const room = roomFor(name);
   let open = true;
   let meta = null;
+  let heardAt = Date.now();
   const player = {
     get meta() {
       return meta;
+    },
+    get heardAt() {
+      return heardAt;
     },
     setMeta(next) {
       meta = next;
@@ -110,9 +114,15 @@ server.on('upgrade', (request, socket) => {
     open = false;
     room.players.delete(player);
     room.rules.leave(player);
-    if (!room.players.size) rooms.delete(name);
+    // An empty room is kept a while, as on Cloudflare, for anyone coming back to it.
+    if (!room.players.size) {
+      setTimeout(() => {
+        if (!room.players.size && rooms.get(name) === room) rooms.delete(name);
+      }, COMES_BACK_WITHIN_MS).unref();
+    }
   };
-  if (!room.rules.arrive(player, id, kept, mostIn(game), address.searchParams.get('make') === '1')) {
+  const making = address.searchParams.get('make') === '1';
+  if (!room.rules.arrive(player, id, kept, { most: mostIn(game), making, fresh: !was && !making })) {
     socket.end(frame(8));
     gone();
     return;
@@ -121,6 +131,7 @@ server.on('upgrade', (request, socket) => {
   let pending = Buffer.alloc(0);
   let parts = [];
   socket.on('data', (chunk) => {
+    heardAt = Date.now();
     pending = readFrames(Buffer.concat([pending, chunk]), (opcode, payload, last) => {
       if (opcode === 8) {
         socket.end(frame(8));

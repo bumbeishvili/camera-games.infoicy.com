@@ -12,6 +12,7 @@ import { CODE_LENGTH, validCode } from '../server/race-room.js';
 import { codeInLink, FriendsRoom, linkFor, newCode } from './friends.js';
 
 const NAME_KEY = 'camera-games-race-name';
+const NOBODY = 'There’s no game with that code just now. Check it with your friend.';
 // A friend who has gone for this long has really gone, and their car or plane goes too. Someone who lost the
 // connection for a moment is back well before.
 const GONE_AFTER_MS = 4000;
@@ -236,7 +237,8 @@ export class FriendsPanel {
    * countdown. False without friends, to start at once as usual.
    */
   holdStart(go) {
-    if (!this.room.inRoom) {
+    // Getting back in after losing the connection for a moment is still with friends: ready goes when it's back.
+    if (!this.room.joined) {
       this.current = null;
       return false;
     }
@@ -350,7 +352,8 @@ export class FriendsPanel {
   /** Who's here, on the title card and the waiting screen, and anyone who's gone in the middle. */
   changed() {
     const { room, words } = this;
-    const inRoom = room.inRoom;
+    // Getting back in after losing the connection, it stays as it was, saying so.
+    const inRoom = room.joined;
     byId('friends-out').hidden = inRoom;
     byId('friends-in').hidden = !inRoom;
     byId('friends-lonely').hidden = !inRoom || room.members.length > 1;
@@ -359,7 +362,8 @@ export class FriendsPanel {
     // A new game whose code was in use has another, which the link says too.
     if (room.code && codeInLink(location.hash, this.linkKey) !== room.code) history.replaceState(null, '', `#${this.linkKey}=${room.code}`);
     if (inRoom) byId('friends-code').value = '';
-    this.status({ connecting: 'Connecting…', full: words.full, lost: words.lost }[room.status] ?? '');
+    const said = { connecting: room.you ? 'Reconnecting…' : 'Connecting…', full: words.full, lost: words.lost, nobody: NOBODY }[room.status] ?? '';
+    this.status(said);
     this.fillList(byId('friends-here'), false);
     this.fillList(byId('friends-waiting'), true);
 
@@ -367,7 +371,7 @@ export class FriendsPanel {
     const waiting = Boolean(this.go);
     byId('friends-now').hidden = !room.hosting;
     let text = '';
-    if (!inRoom) text = { connecting: 'Connecting…', full: words.full, lost: words.lost }[room.status] ?? words.left;
+    if (room.status !== 'in') text = said || words.left;
     else if (room.members.length < 2) text = 'Nobody else is here yet. Send them the link.';
     else text = room.hosting ? 'It starts when everyone is ready, or press Start now.' : 'It starts when everyone is ready.';
     byId('friends-wait-status').textContent = waiting ? text : '';

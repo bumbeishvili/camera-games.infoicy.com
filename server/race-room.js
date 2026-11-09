@@ -48,6 +48,7 @@
 //   claimed { k, by }                      balloon k, or round k, went to player by, sent to everyone, them too
 //   full   {}                              the room already has as many as it holds: see mostIn
 //   taken  {}                              making a new game, that code is already in use: choose another
+//   nobody {}                              joining by a code, there's no game with it just now
 
 export const MAX_RACERS = 4;
 // A fight is two fighters, and Bounce Back is one child on each side of the net. Every other game's room holds
@@ -61,7 +62,10 @@ const OLD_CODE_LENGTH = 6; // Links from before codes were 3 long still open the
 export const MOST_BYTES = 1800; // A message bigger than this is ignored. The host's balloons are the biggest.
 const MOST_BALLOONS = 24;
 const MOST_A_SECOND = 40; // Messages a player can send in a second; more are dropped.
-const COMES_BACK_WITHIN_MS = 15_000; // A player who goes and comes back as soon as this carries on as before.
+// A player who goes and comes back as soon as this carries on as before, as when a laptop wakes up again.
+export const COMES_BACK_WITHIN_MS = 120_000;
+// A connection that's said nothing for this long, not even its keep-alive "ping", has died without closing.
+const STALE_MS = 90_000;
 
 /** A player's id, which a player who lost the connection for a moment brings back to keep their place. */
 export const validId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{8,24}$/.test(id);
@@ -251,9 +255,11 @@ function hostOf(players) {
 }
 
 /**
- * The rules of one room. room.players() is everyone connected now, each as { meta, setMeta(meta), send(message) },
- * where meta is what's kept about them: { id, joined, name, driver, level, laps, ready, racing }. now() is the time
- * in milliseconds. Nothing is kept here between calls, so it works the same on a server that sleeps in between.
+ * The rules of one room. room.players() is everyone connected now, each as { meta, setMeta(meta), send(message),
+ * close(), heardAt }: meta is what's kept about them, { id, joined, seen, name, driver, level, laps, ready, racing },
+ * and heardAt when anything last came from them, even a keep-alive "ping". now() is the time in milliseconds.
+ * recent, who has just gone, is all that's kept between calls, and the Cloudflare server saves it, as it can
+ * sleep in between.
  */
 export class RaceRoom {
   constructor(room, now = () => Date.now()) {
@@ -275,28 +281,40 @@ export class RaceRoom {
   }
 
   /**
-   * A new player has connected. They're given an id and a seat, or told the room is full. kept is what was
-   * kept about them from a connection they're taking over: see takeOver. most is how many the room holds.
-   * making says they're making a new game, which must have a code nobody is using, so they're told if it's
-   * taken, even by someone who has only just lost the connection and is coming back.
+   * A new player has connected. They're given an id and a seat, or told why not. kept is what was kept about
+   * them from a connection they're taking over: see takeOver. most is how many the room holds. making says
+   * they're making a new game, which must have a code nobody is using, even someone who has only just lost the
+   * connection and is coming back. fresh says they're joining by a code, which needs a game to be there.
    */
-  arrive(player, id, kept = null, most = MAX_RACERS, making = false) {
+  arrive(player, id, kept = null, { most = MAX_RACERS, making = false, fresh = false } = {}) {
     if (kept) {
-      player.setMeta({ ...kept, id });
+      player.setMeta({ ...kept, id, seen: this.now() });
       this.tellEveryone();
       return true;
     }
-    const others = this.room.players().filter((each) => each !== player && each.meta?.id);
     const now = this.now();
-    if (making && (others.length || [...this.recent.values()].some(({ at }) => now - at <= COMES_BACK_WITHIN_MS))) {
+    // Someone whose connection died without closing doesn't keep the place a friend coming back needs.
+    for (const each of this.room.players()) {
+      if (each !== player && each.meta?.id && now - (each.heardAt ?? now) > STALE_MS) {
+        each.close?.();
+        this.leave(each);
+      }
+    }
+    const others = this.room.players().filter((each) => each !== player && each.meta?.id);
+    const comingBack = [...this.recent.values()].some(({ at }) => now - at <= COMES_BACK_WITHIN_MS);
+    if (making && (others.length || comingBack)) {
       player.send({ t: 'taken' });
+      return false;
+    }
+    if (fresh && !others.length && !comingBack) {
+      player.send({ t: 'nobody' });
       return false;
     }
     if (others.length >= most) {
       player.send({ t: 'full' });
       return false;
     }
-    player.setMeta({ id, joined: this.now(), name: '', driver: '', level: 1, length: 2, mode: '', ready: false, racing: false });
+    player.setMeta({ id, joined: now, seen: now, name: '', driver: '', level: 1, length: 2, mode: '', ready: false, racing: false });
     this.tellEveryone();
     return true;
   }

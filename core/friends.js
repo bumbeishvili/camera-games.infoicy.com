@@ -12,12 +12,35 @@ export const RACE_SERVER = LOCAL ? `ws://localhost:${Number(globalThis.location.
 const SEND_EVERY_MS = 100; // Where the car or plane is, 10 times a second.
 // A connection can die without closing, as when the wifi drops, and then nothing more comes. Asking every so
 // often, and hearing nothing back for a while, is how that's noticed: quickly in a race, slowly otherwise.
-const HEARTBEAT = { racing: { every: 2000, silent: 6000 }, waiting: { every: 25_000, silent: 60_000 } };
-const RETRIES = 6; // Coming back within about 12 seconds.
+const HEARTBEAT = { racing: { every: 2000, silent: 6000 }, waiting: { every: 10_000, silent: 25_000 } };
+// Losing the connection, it tries again, sooner at first and then every few seconds, for as long as it takes:
+// a laptop waking up or wifi coming back can take a while. After this many tries it says it can't get through.
+const RETRIES = 6;
+const RETRY_MOST_MS = 5000;
+const CONNECT_WITHIN_MS = 8000; // A connection still not open after this is given up for a new one.
+const ANSWER_WITHIN_MS = 4000; // Saying something that matters, an answer should come within this.
+const ID_KEY = 'camera-games-friends'; // This page's player id in each game it's in, for coming back after a reload.
 const NEW_CODE_TRIES = 8; // Making a game, codes in use are passed over for another, this many times at most.
 const SHOW_BEHIND_MS = 120; // Friends are shown this far in the past, so there's always a next place to go to.
 const GUESS_AHEAD_MS = 500; // With nothing new for a while, they carry on this far the way they were going.
 const KEEP_SAMPLES = 30;
+
+function savedId(game, code) {
+  try {
+    return sessionStorage.getItem(`${ID_KEY}:${game}:${code}`);
+  } catch {
+    return null;
+  }
+}
+
+function saveId(game, code, id) {
+  try {
+    if (id) sessionStorage.setItem(`${ID_KEY}:${game}:${code}`, id);
+    else sessionStorage.removeItem(`${ID_KEY}:${game}:${code}`);
+  } catch {
+    // Private windows can refuse. Coming back after a reload is then as someone new.
+  }
+}
 
 /** A fresh code. */
 export const newCode = () => makeCode((below) => crypto.getRandomValues(new Uint32Array(1))[0] % below);
@@ -95,7 +118,9 @@ export class Track {
  * One room, from this computer's side. game is which game's rooms, as the server keeps each game's apart:
  * '' for High Five Racers, whose rooms came first, or 'sky-wings'. events: onChange() whenever who's here or
  * the connection changes, onGo({ level, length, racers }) as it starts, onMove(id, message) for where a
- * friend is, and onDone(id, message) as they finish. status is off, connecting, in, full or lost.
+ * friend is, and onDone(id, message) as they finish. status is off, connecting, in, full, nobody (no game with
+ * that code) or lost. A connection that's lost is made again by itself, for as long as it takes, and whatever
+ * mattered that may have been lost with it, being ready or finished, is said again.
  */
 export class FriendsRoom {
   constructor(game = '', events = {}) {
@@ -109,10 +134,23 @@ export class FriendsRoom {
     this.socket = null;
     this.sentAt = {}; // When each kind of thing was last sent, as each is sent at most 10 times a second.
     this.racing = false; // In a race, which a connection lost for a moment and back again carries on with.
+    this.readyToGo = false; // Waiting at the start, until it starts.
+    this.finishedWith = null; // The finish, until the next start, in case it has to be said again.
+    this.checkedAt = null;
+    // Back from sleep, or with the wifi back, it doesn't wait for the next try.
+    globalThis.addEventListener?.('online', () => this.wake());
+    globalThis.document?.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') this.wake();
+    });
   }
 
   get inRoom() {
     return this.status === 'in';
+  }
+
+  /** In a game, or getting back into it after losing the connection: still in it, as far as the game goes. */
+  get joined() {
+    return this.status === 'in' || (Boolean(this.you) && ['connecting', 'lost'].includes(this.status));
   }
 
   get me() {
@@ -134,6 +172,8 @@ export class FriendsRoom {
     this.making = making;
     this.codesTried = tried;
     this.tries = 0;
+    // Back in a game this page was in, as after a reload: the same player, keeping their place.
+    this.you = making ? null : savedId(this.game, code);
     this.connect();
   }
 
@@ -150,11 +190,20 @@ export class FriendsRoom {
       return;
     }
     this.socket = socket;
+    clearTimeout(this.connecting);
+    this.connecting = setTimeout(() => {
+      if (this.socket === socket && socket.readyState === WebSocket.CONNECTING) this.reconnect();
+    }, CONNECT_WITHIN_MS);
     socket.addEventListener('open', () => {
+      clearTimeout(this.connecting);
       this.tries = 0;
       this.heardAt = performance.now();
       this.pingedAt = this.heardAt;
+      this.checkedAt = null;
       this.say({ t: 'hi', ...this.hello, racing: this.racing });
+      // Whatever mattered and may have been lost with the last connection goes again.
+      if (this.readyToGo) this.say({ t: 'ready' });
+      if (this.finishedWith) this.say(this.finishedWith);
       clearInterval(this.pinger);
       this.pinger = setInterval(() => this.beat(), 1000);
     });
@@ -173,25 +222,46 @@ export class FriendsRoom {
     const { socket } = this;
     this.socket = null;
     clearInterval(this.pinger);
+    clearTimeout(this.connecting);
     try {
       socket?.close();
     } catch {
       // Already closing.
     }
-    if (this.tries >= RETRIES) {
-      this.lost();
-      return;
-    }
     this.tries += 1;
+    // Still trying, but after a while it says it can't get through.
+    this.status = this.tries > RETRIES ? 'lost' : 'connecting';
+    this.events.onChange?.();
     clearTimeout(this.retry);
-    this.retry = setTimeout(() => this.connect(), 600 * this.tries);
+    this.retry = setTimeout(() => this.connect(), Math.min(RETRY_MOST_MS, 600 * this.tries));
+  }
+
+  /** Back from sleep, or with the wifi back: tries again now, or checks the connection still works. */
+  wake() {
+    if (!this.code) return;
+    if (this.status === 'in') {
+      this.checkSoon();
+    } else if (['connecting', 'lost'].includes(this.status) && !this.socket) {
+      // Waiting for the next try: no need to wait.
+      clearTimeout(this.retry);
+      this.connect();
+    }
+  }
+
+  /** After saying something that matters, the server should answer soon. If it doesn't, start again. */
+  checkSoon(now = performance.now()) {
+    if (this.socket?.readyState !== WebSocket.OPEN) return;
+    this.checkedAt = now;
+    this.pingedAt = now;
+    this.send('ping');
   }
 
   /** Asks the server now and then, and starts again if it has gone quiet. */
   beat(now = performance.now()) {
     if (this.socket?.readyState !== WebSocket.OPEN) return;
     const { every, silent } = this.racing ? HEARTBEAT.racing : HEARTBEAT.waiting;
-    if (now - this.heardAt > silent) {
+    const unanswered = this.checkedAt !== null && this.heardAt < this.checkedAt && now - this.checkedAt > ANSWER_WITHIN_MS;
+    if (now - this.heardAt > silent || unanswered) {
       this.reconnect();
       return;
     }
@@ -218,7 +288,15 @@ export class FriendsRoom {
     } catch {
       return;
     }
-    if (message.t === 'taken') {
+    if (message.t === 'nobody') {
+      // No game with that code just now: nothing to wait for, so nothing more is tried.
+      this.status = 'nobody';
+      this.socket?.close();
+      this.socket = null;
+      clearInterval(this.pinger);
+      saveId(this.game, this.code, null);
+      this.events.onChange?.();
+    } else if (message.t === 'taken') {
       // Someone's using that code: another, then, unless that's happened again and again.
       if (this.codesTried + 1 >= NEW_CODE_TRIES) {
         this.lost();
@@ -229,6 +307,7 @@ export class FriendsRoom {
       this.making = false;
       this.status = 'in';
       this.you = message.you;
+      saveId(this.game, this.code, this.you);
       this.members = message.members;
       this.events.onChange?.();
     } else if (message.t === 'full') {
@@ -237,6 +316,7 @@ export class FriendsRoom {
       this.socket = null;
       this.events.onChange?.();
     } else if (message.t === 'go') {
+      this.readyToGo = false;
       this.events.onGo?.(message);
     } else if (['car', 'plane', 'score', 'hand', 'world', 'claimed', 'hit', 'pose', 'racket', 'ball', 'shot'].includes(message.t)) {
       this.events.onMove?.(message.from, message);
@@ -261,7 +341,10 @@ export class FriendsRoom {
 
   ready() {
     this.racing = false;
+    this.readyToGo = true;
+    this.finishedWith = null;
     this.say({ t: 'ready' });
+    this.checkSoon();
   }
 
   /** The host starts the race with whoever is ready. */
@@ -297,12 +380,17 @@ export class FriendsRoom {
   /** Finished, this long after "GO!". extra is how it went: n, how many were dropped, and w, 1 if all of them. */
   done(ms, extra = {}) {
     this.racing = false;
-    this.say({ t: 'done', ms: Math.round(ms), ...extra });
+    this.finishedWith = { t: 'done', ms: Math.round(ms), ...extra };
+    this.say(this.finishedWith);
+    this.checkSoon();
   }
 
   leave() {
     clearTimeout(this.retry);
+    clearTimeout(this.connecting);
     clearInterval(this.pinger);
+    // Leaving on purpose, coming back is as someone new.
+    if (this.code && this.status !== 'off') saveId(this.game, this.code, null);
     const { socket } = this;
     this.socket = null;
     if (socket) {
@@ -315,6 +403,8 @@ export class FriendsRoom {
     }
     this.status = 'off';
     this.racing = false;
+    this.readyToGo = false;
+    this.finishedWith = null;
     this.members = [];
     this.you = null;
     this.code = null;

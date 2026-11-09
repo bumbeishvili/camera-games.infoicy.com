@@ -272,11 +272,61 @@ test('a wrong code is caught before anything is sent, and the race server can be
   await page.locator('#friends-code').fill('hl0');
   await expect(page.locator('#friends-status')).toHaveText('A race code is 3 letters and numbers.');
   expect(sockets).toEqual([]);
+  // A code nobody has made a race with is told so, rather than waiting on its own.
+  await page.locator('#friends-code').fill('zzz');
+  await expect(page.locator('#friends-status')).toHaveText('There’s no game with that code just now. Check it with your friend.');
+  await expect(page.locator('#friends-out')).toBeVisible();
   await page.locator('#friends-make').click();
   await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{3}$/);
   await page.locator('#friends-leave').click();
   await expect(page.locator('#friends-out')).toBeVisible();
   expect(await screenName(page)).toBe('welcome');
+});
+
+/** The connection can't be made for this long, as when the wifi has dropped. */
+const offlineFor = (page, ms) => page.evaluate((forMs) => {
+  const Real = window.WebSocket;
+  const until = Date.now() + forMs;
+  window.WebSocket = class extends Real {
+    constructor(...args) {
+      if (Date.now() < until) throw new Error('offline');
+      super(...args);
+    }
+  };
+}, ms);
+
+test('the connection dropping on the finish card, just as Race again is pressed, still races together again', async ({ page, browser }) => {
+  test.setTimeout(240_000);
+  await openGame(page, { laps: 1 });
+  const code = await makeRace(page, 'Ana');
+  const ben = await joiner(browser, code);
+  await getReady(page);
+  await getReady(ben.page);
+  await waitForScreen(page, 'playing');
+  await waitForScreen(ben.page, 'playing');
+  for (const each of [page, ben.page]) await nearlyThere(each, 4);
+  await waitForScreen(page, 'finish');
+  await waitForScreen(ben.page, 'finish');
+  const was = (await roomOf(ben.page)).you;
+
+  // Ben's wifi drops for a few seconds, just as he presses Race again. His game waits for it to come back,
+  // still with his friend, rather than racing on its own, and says so.
+  await offlineFor(ben.page, 3000);
+  await ben.page.evaluate(() => window.__game.game.friends.room.socket.close());
+  await ben.page.locator('#play-again').click();
+  await waitForScreen(ben.page, 'waiting');
+  await expect(ben.page.locator('#friends-wait-status')).toHaveText('Reconnecting…');
+  await expect.poll(async () => (await roomOf(ben.page)).status, { timeout: 20_000 }).toBe('in');
+  expect((await roomOf(ben.page)).you).toBe(was);
+
+  // Back, and ready: as soon as Ana presses Race again too, they race each other.
+  await page.locator('#play-again').click();
+  await waitForScreen(page, 'playing');
+  await waitForScreen(ben.page, 'playing');
+  expect((await raceOf(ben.page)).friends.map(({ name }) => name)).toEqual(['Ana']);
+  expect((await raceOf(page)).friends).toHaveLength(1);
+  expect(ben.errors).toEqual([]);
+  await ben.context.close();
 });
 
 test('the host can start without a friend who isn\'t ready, who then races the next one, three together', async ({ page, browser }) => {
@@ -445,16 +495,18 @@ test('a race holds four, can be joined by its code or the copied link, comes bac
   await expect(eve.page.locator('#friends-status')).toHaveText('That race already has 4 cars.');
   await expect(eve.page.locator('#friends-out')).toBeVisible();
 
-  // Reloading the page goes back into the same race, with the name kept.
+  // Reloading the page goes back into the same race as the same player, with the name and place kept.
+  const ben1 = (await roomOf(ben.page)).you;
   await ben.page.reload();
   await expect(ben.page.locator('#friends-code-shown')).toHaveText(code);
   await expect(ben.page.locator('#friends-here li')).toHaveCount(4);
   await expect(page.locator('#friends-here')).toContainText('Ben');
+  expect((await roomOf(ben.page)).you).toBe(ben1);
 
-  // The host goes, and whoever has been there longest hosts instead: Cat, as Ben came back after her.
+  // The host goes, and whoever has been there longest hosts instead: Ben, who kept his place through the reload.
   await page.locator('#friends-leave').click();
-  await expect.poll(async () => (await roomOf(cat.page)).hosting, { timeout: 10_000 }).toBe(true);
-  expect((await roomOf(ben.page)).members.map(({ host }) => host)).toEqual([true, false, false]);
+  await expect.poll(async () => (await roomOf(ben.page)).hosting, { timeout: 10_000 }).toBe(true);
+  expect((await roomOf(cat.page)).members.map(({ host }) => host)).toEqual([true, false, false]);
   for (const each of [ben, cat, dan, eve]) {
     expect(each.errors).toEqual([]);
     await each.context.close();

@@ -138,10 +138,11 @@ test('a race code and a flight code are kept apart, and a flight can still be fl
   await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{3}$/);
   const code = await page.locator('#friends-code-shown').textContent();
 
-  // Someone with the same code in High Five Racers is in a race of their own, not this flight.
+  // Someone with the same code in High Five Racers is told there's no race with it, and isn't in this flight.
   const racer = await secondPlayer(browser);
   await openGame(racer.page, {}, 'high-five-racers', `#race=${code}`);
-  await expect(racer.page.locator('#friends-here li')).toHaveCount(1);
+  await expect(racer.page.locator('#friends-status')).toHaveText('There’s no game with that code just now. Check it with your friend.');
+  await expect(racer.page.locator('#friends-here li')).toHaveCount(0);
   await expect(page.locator('#friends-here li')).toHaveCount(1);
   await racer.context.close();
 
