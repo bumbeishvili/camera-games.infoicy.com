@@ -205,7 +205,8 @@ test('level 4: some fruit is thrown across, from one side to the other, and stil
   await page.waitForTimeout(700);
   const across = await page.evaluate(() => window.__game.field.fruit.filter(({ across: going }) => going).map(({ vx }) => vx / innerWidth));
   for (const vx of across) expect(Math.abs(vx)).toBeGreaterThan(0.06);
-  expect((await stand(page)).introduced).toContain('across');
+  // Its name is shown, first of anything waiting, as it's what's new at this level.
+  await expect.poll(async () => (await stand(page)).introduced, { timeout: 5000 }).toContain('across');
   await shot(page, 'sm-across');
 });
 
@@ -503,4 +504,93 @@ test('level 10 with reduced motion: fruit barely spins, and the day still goes o
   for (const spin of spins) expect(spin).toBe(0.3);
   await finishOrder(page);
   await storyIs(page, 'mochi');
+});
+
+/** Notes the words drawn on the fair from now on, such as the names of new things. */
+const watchWords = (page) => page.evaluate(() => {
+  const { ctx } = window.__game.field;
+  const fillText = ctx.fillText.bind(ctx);
+  window.__drawn = new Set();
+  ctx.fillText = (text, ...rest) => {
+    window.__drawn.add(text);
+    return fillText(text, ...rest);
+  };
+});
+const drawn = (page, words) => page.evaluate((wanted) => [...window.__drawn].some((text) => text.includes(wanted)), words);
+
+test('level 5: the magnet is named, though its bubble starts below the screen while another name shows, in the voice\'s language', async ({ page }) => {
+  test.setTimeout(150_000);
+  await startPlaying(page, GAME, atLevel(GAME, 5));
+  await storyIs(page, 'truffle');
+  await quiet(page);
+  await handAway(page);
+  await watchWords(page);
+  // Only the bubble this test throws, and a tip coin's name showing first.
+  await page.evaluate(() => {
+    const { field, stand: rules } = window.__game;
+    rules.specialIn = Infinity;
+    field.tossTips(1);
+  });
+  await expect.poll(() => drawn(page, 'Tip coins'), { timeout: 5000, intervals: [100] }).toBe(true);
+  await page.evaluate(() => window.__game.field.throwBubble('magnet'));
+  await expect.poll(() => drawn(page, 'Magnet'), { timeout: 8000, intervals: [100] }).toBe(true);
+  await shot(page, 'sm-magnet-named');
+  // A grown-up changes the voice to Georgian while it shows, and the name changes with it.
+  await page.evaluate(() => window.__game.session.changeSettings({ language: 'ka' }));
+  await expect.poll(() => drawn(page, 'მაგნიტი'), { timeout: 3000, intervals: [100] }).toBe(true);
+});
+
+test('level 7: watermelon wedges stay within reach, and the honey slows coins, bubbles and the bee as well as fruit', async ({ page }) => {
+  test.setTimeout(150_000);
+  await startPlaying(page, GAME, atLevel(GAME, 7));
+  await storyIs(page, 'truffle');
+  await quiet(page);
+  await handAway(page);
+  // A watermelon sliced near the edge of the reach, which is from 0.38 to 0.9 of the way across.
+  const spread = await page.evaluate(async () => {
+    const { field } = window.__game;
+    field.slice({ kind: 'melon', x: innerWidth * 0.86, y: innerHeight * 0.5, vx: 0, vy: 0, r: field.fruitSize * 1.35 }, field.gloves.right);
+    let low = Infinity;
+    let high = -Infinity;
+    const until = performance.now() + 5000;
+    while (performance.now() < until && field.coins.some(({ kind }) => kind === 'wedge')) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      for (const { kind, x } of field.coins) {
+        if (kind !== 'wedge') continue;
+        low = Math.min(low, x / innerWidth);
+        high = Math.max(high, x / innerWidth);
+      }
+    }
+    return { low, high };
+  });
+  console.log('wedges', JSON.stringify(spread));
+  expect(spread.low).toBeGreaterThanOrEqual(0.38);
+  expect(spread.high).toBeLessThanOrEqual(0.9);
+  // The same moment of floating, with the honey and without.
+  const floated = await page.evaluate(() => {
+    const { field } = window.__game;
+    const was = field.powerOn;
+    const step = (honey) => {
+      field.powerOn = (kind) => honey && kind === 'honey';
+      const from = innerHeight * 0.7;
+      const coin = { kind: 'coin', x: innerWidth * 0.6, y: from, vx: 0, vy: -innerHeight * 0.3, gravity: 0, r: 20, age: 1 };
+      const bubble = { power: 'magnet', x: innerWidth * 0.6, y: from, vx: 0, vy: -innerHeight * 0.3, gravity: 0, r: 20, age: 1 };
+      field.coins = [coin];
+      field.bubbles = [bubble];
+      field.bee = { from: innerWidth * 0.4, to: innerWidth * 0.8, t: 1, x: 0, y: 0, leaving: false, honey: true, way: 1 };
+      field.updateExtras(0.2, false);
+      return { coin: from - coin.y, bubble: from - bubble.y, bee: field.bee.t - 1 };
+    };
+    const without = step(false);
+    const withHoney = step(true);
+    field.powerOn = was;
+    field.coins = [];
+    field.bubbles = [];
+    field.bee = null;
+    return { without, withHoney };
+  });
+  for (const thing of ['coin', 'bubble', 'bee']) {
+    expect(floated.without[thing]).toBeGreaterThan(0);
+    expect(floated.withHoney[thing]).toBeCloseTo(floated.without[thing] / 2, 5);
+  }
 });

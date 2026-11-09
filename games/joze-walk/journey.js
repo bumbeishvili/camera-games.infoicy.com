@@ -252,6 +252,9 @@ export class Picking {
   constructor() {
     this.held = null;
     this.closedFor = 0;
+    // The hand closed on something that isn't carried, like the basket, and has to open before it
+    // picks anything else, so that one close never takes two things.
+    this.spent = false;
   }
 
   /** near is the fruit the hand is on, if any. Returns 'picked', 'fed', 'dropped' or null. */
@@ -263,17 +266,27 @@ export class Picking {
       this.held = null;
       return 'dropped';
     }
+    if (!closed) this.spent = false;
     if (this.held) {
       if (closed) return null;
       this.held = null;
       return onMouth ? 'fed' : 'dropped';
     }
-    this.closedFor = closed && near ? this.closedFor + dt : 0;
+    this.closedFor = closed && near && !this.spent ? this.closedFor + dt : 0;
     if (this.closedFor >= FALSE_START_SECONDS) {
       this.held = near;
       this.closedFor = 0;
       return 'picked';
     }
     return null;
+  }
+
+  /**
+   * What was just picked isn't carried: the basket goes onto the hand, and the feather calls the
+   * parrot. The hand has to open before it picks again.
+   */
+  used() {
+    this.held = null;
+    this.spent = true;
   }
 }

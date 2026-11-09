@@ -233,11 +233,39 @@ test('level 5: a real fist takes the basket, and then picks two fruit at once fo
   await reach(page, (state) => state.items[0]);
   await handIs(page, 'fist');
   await expect.poll(async () => (await tree(page)).basket, { timeout: 15_000 }).toBe(true);
+  // The same fist, kept closed and taken onto a fruit, doesn't pick it: the hand opens first, and it's
+  // asked to, if it stays closed.
+  const { fruit } = await tree(page);
+  const near = fruit.find(({ pickable }) => pickable);
+  await moveGloveTo(page, GLOVE, near.x, near.y, { right: 'fist' });
+  await expect(page.locator('#prompt-text')).toHaveText('Open your right hand!', { timeout: 15_000 });
+  expect((await tree(page)).holding).toBeNull();
   await handIs(page, 'open');
+  // Only the two fruit furthest apart left, so the second comes a long way to the basket. Where it is
+  // the moment it's taken is noted: still by its branch, as it comes to the hand rather than jumping.
+  await page.evaluate(() => {
+    const { walk } = window.__game;
+    const free = walk.fruit.filter((one) => walk.pickable(one));
+    const apart = ([a, b]) => Math.hypot(a.homeX - b.homeX, a.homeY - b.homeY);
+    let pair = [free[0], free[1]];
+    for (const a of free) for (const b of free) if (apart([a, b]) > apart(pair)) pair = [a, b];
+    for (const fruit of walk.fruit) if (!pair.includes(fruit)) fruit.state = 'gone';
+    window.__second = null;
+    const look = () => {
+      const { extra } = walk;
+      if (extra) window.__second = { fromBranch: Math.hypot(extra.x - extra.homeX, extra.y - extra.homeY) / walk.height, apart: apart(pair) / walk.height };
+      else requestAnimationFrame(look);
+    };
+    look();
+  });
   await page.waitForTimeout(600);
   await feedOne(page, (state) => state.fruit.find(({ pickable }) => pickable));
   await expect.poll(async () => (await tree(page)).fed, { timeout: 15_000 }).toBeGreaterThanOrEqual(3 + 2);
   expect((await tree(page)).basket).toBe(false);
+  const second = await page.evaluate(() => window.__second);
+  console.log('second fruit', JSON.stringify(second));
+  expect(second.apart).toBeGreaterThan(0.2);
+  expect(second.fromBranch).toBeLessThan(second.apart * 0.3);
   await stopMoving(page);
 });
 
@@ -246,16 +274,19 @@ test('level 6: the cheeky monkey takes a fruit, a real fist takes it back, and h
   await startPlaying(page, GAME, atLevel(GAME, 6));
   await skipTo(page, 1);
   await moveGloveTo(page, GLOVE, 0.5, 0.85);
+  // No butterflies, and no basket, which a fist near it takes first, and then has to open again.
   await page.evaluate(() => {
     const { walk } = window.__game;
     walk.level = { ...walk.level, butterflies: false, monkeyStays: 60 };
+    walk.items = [];
     walk.monkeyIn = 0;
   });
   await expect.poll(async () => (await tree(page)).monkey?.state, { timeout: 15_000 }).toBe('holding');
   await page.waitForTimeout(1200);
   await shot(page, 'jw-monkey');
   const { monkey } = await tree(page);
-  expect((await tree(page)).introduced).toContain('monkey');
+  // His name is shown, first of anything still waiting, as he's what's new at this level.
+  await expect.poll(async () => (await tree(page)).introduced, { timeout: 5000 }).toContain('monkey');
   await reach(page, (state) => state.fruit[monkey.at]);
   await handIs(page, 'fist');
   await expect.poll(async () => (await tree(page)).holding, { timeout: 15_000 }).not.toBeNull();
@@ -265,7 +296,7 @@ test('level 6: the cheeky monkey takes a fruit, a real fist takes it back, and h
   await stopMoving(page);
 });
 
-test('level 7: a real hand carries the plank to the gap and mends the bridge', async ({ page }) => {
+test('level 7: a real hand carries the plank to the gap and mends the bridge, with hints about the plank, not fruit', async ({ page }) => {
   test.setTimeout(240_000);
   await startPlaying(page, GAME, atLevel(GAME, 7));
   await skipTo(page, 0);
@@ -288,20 +319,60 @@ test('level 7: a real hand carries the plank to the gap and mends the bridge', a
   const { items, bridge } = await tree(page);
   expect(items.map(({ kind }) => kind)).toEqual(['plank']);
   expect(bridge.fixed).toBe(false);
+  // The bridge stays where it is while Joze chews, rather than going with his mouth.
+  const gaps = await page.evaluate(async () => {
+    const { walk, session } = window.__game;
+    session.game.eatingUntil = performance.now() + 2200;
+    session.game.jozeDoes('munch');
+    const at = [];
+    for (let i = 0; i < 60; i += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      at.push(walk.gap.x / walk.width);
+    }
+    return at;
+  });
+  expect(Math.max(...gaps) - Math.min(...gaps)).toBeLessThan(0.0005);
+  expect(gaps[0]).toBeCloseTo(bridge.gap.x, 4);
   await page.waitForTimeout(800);
   await shot(page, 'jw-bridge');
+  // He's had enough here and every fruit has gone, but the bridge isn't mended: the hint is the plank.
+  await moveGloveTo(page, GLOVE, 0.5, 0.85);
+  await page.evaluate(() => {
+    const { journey, walk } = window.__game;
+    while (journey.wanted) journey.feed();
+    for (const fruit of walk.fruit) fruit.state = 'gone';
+  });
+  await expect(page.locator('#prompt-text')).toHaveText('Close your hand on the plank!', { timeout: 15_000 });
+  expect((await tree(page)).place).toBe('river');
+  // And carrying the plank, the hint is the bridge, not Joze.
   await reach(page, (state) => state.items[0]);
   await handIs(page, 'fist');
   await expect.poll(async () => (await tree(page)).holding, { timeout: 15_000 }).toBe('plank');
-  await carryTo(page, bridge.gap, () => window.__game.walk.onGap);
-  await expect.poll(async () => (await tree(page)).bridge?.fixed, { timeout: 15_000 }).toBe(true);
+  await expect(page.locator('#prompt-text')).toHaveText('Bring it to the bridge, and open your hand!', { timeout: 10_000 });
+  // Noted as it happens, as he walks on straight away, and the bridge goes with the river.
+  await page.evaluate(() => {
+    window.__mended = false;
+    const look = () => {
+      if (window.__game.walk.bridge?.fixed) window.__mended = true;
+      else requestAnimationFrame(look);
+    };
+    look();
+  });
+  // Opened once the fist has settled just above the gap, as the photo of an open hand has its middle
+  // lower down than the fist's, as a real hand's moves a little as it opens.
+  const above = { x: bridge.gap.x, y: bridge.gap.y - 0.1 };
+  await moveGloveTo(page, GLOVE, above.x, above.y, { right: 'fist' });
+  await expect.poll(() => page.evaluate(({ x, y }) => {
+    const { walk } = window.__game;
+    const glove = walk.gloves.right;
+    return glove.visible && Math.hypot(glove.x - x * walk.width, glove.y - y * walk.height) <= walk.height * 0.04;
+  }, above), { timeout: 30_000 }).toBe(true);
+  expect(await page.evaluate(() => window.__game.walk.onGap)).toBe(true);
+  await handIs(page, 'open');
+  await expect.poll(() => page.evaluate(() => window.__mended), { timeout: 15_000 }).toBe(true);
   expect(await page.evaluate(() => window.__game.journey.bridgeFixed)).toBe(true);
   await shot(page, 'jw-bridge-mended');
-  // Fed, and off he goes over it.
-  await page.evaluate(() => {
-    const { journey } = window.__game;
-    while (journey.wanted) journey.feed();
-  });
+  // He'd had enough, so off he goes over it.
   await expect.poll(async () => (await tree(page)).place, { timeout: 30_000 }).toBe('hill');
   await stopMoving(page);
 });
@@ -494,4 +565,260 @@ test('level 7: a plank dropped away from the gap goes back on the tree, so the b
   });
   const plankState = () => page.evaluate(() => window.__game.walk.items.find(({ kind }) => kind === 'plank')?.state);
   await expect.poll(plankState, { timeout: 15_000 }).toBe('hanging');
+});
+
+/** Notes the words drawn on a canvas from now on, such as the names of new things. */
+const watchWords = (page, scene) => page.evaluate((name) => {
+  const { ctx } = window.__game[name];
+  const fillText = ctx.fillText.bind(ctx);
+  window.__drawn = new Set();
+  ctx.fillText = (text, ...rest) => {
+    window.__drawn.add(text);
+    return fillText(text, ...rest);
+  };
+}, scene);
+const drawn = (page, words) => page.evaluate((wanted) => [...window.__drawn].some((text) => text.includes(wanted)), words);
+
+test('level 10: the finish card counts the fruit the child fed, in all and by hand, and not the parrot\'s', async ({ page }) => {
+  test.setTimeout(240_000);
+  await startPlaying(page, GAME, atLevel(GAME, 10));
+  await storyIs(page, 'joze');
+  // The parrot feeds Joze a fruit that isn't the golden one, as if the feather had been taken.
+  await page.evaluate(() => {
+    const { walk } = window.__game;
+    walk.level = { ...walk.level, butterflies: false };
+    walk.items.find(({ kind }) => kind === 'feather').state = 'gone';
+    const fruit = walk.fruit.find((one) => walk.pickable(one) && !one.golden);
+    const fromX = walk.width * 1.05;
+    const fromY = walk.height * 0.45;
+    walk.parrot = { fruit, t: 0, state: 'to-fruit', x: fromX, y: fromY, fromX, fromY };
+  });
+  await expect.poll(async () => (await tree(page)).fed, { timeout: 15_000 }).toBe(1);
+  // An open hand held at his mouth, with a fruit put in it: that's a fruit the hand fed him.
+  const { mouth } = await tree(page);
+  await moveGloveTo(page, GLOVE, mouth.x, mouth.y);
+  await expect.poll(() => page.evaluate(() => window.__game.walk.onMouth), { timeout: 30_000 }).toBe(true);
+  const feedByHand = (golden) => page.evaluate((wanted) => {
+    const { walk } = window.__game;
+    const fruit = walk.fruit.find((one) => walk.pickable(one) && one.golden === wanted);
+    fruit.state = 'held';
+    walk.picking.held = fruit;
+  }, golden);
+  await feedByHand(false);
+  await expect.poll(async () => (await tree(page)).fed, { timeout: 10_000 }).toBe(2);
+  // The golden fig is the last he needs here, so he walks on to the mangoes as it goes up to the count,
+  // and it goes up as a golden fig.
+  await page.evaluate(() => {
+    const { walk } = window.__game;
+    window.__golden = null;
+    const look = () => {
+      const flier = walk.flying.find(({ kind }) => kind === 'golden');
+      if (flier) window.__golden = `${walk.place} ${flier.fruit}`;
+      else requestAnimationFrame(look);
+    };
+    look();
+  });
+  await feedByHand(true);
+  await expect.poll(() => page.evaluate(() => window.__golden), { timeout: 10_000 }).toBe('grass fig');
+  // The rest of the way through the rules, which isn't the child's hand.
+  await page.evaluate(() => {
+    window.__skip = setInterval(() => {
+      const { journey, walk } = window.__game;
+      if (!journey.stop || walk.walking > 0 || !walk.fruit.length) return;
+      if (walk.bridge) walk.bridge.fixed = true;
+      journey.fixBridge();
+      while (journey.wanted) journey.feed();
+    }, 300);
+  });
+  await waitForScreen(page, 'finish');
+  await page.evaluate(() => clearInterval(window.__skip));
+  expect((await tree(page)).fed).toBe(19);
+  // Two fed by the hand: the big number and the rows agree.
+  await expect(page.locator('#finish-hero')).toHaveText('2');
+  await expect(page.locator('#sum-right-fed')).toHaveText('2');
+  await expect(page.locator('#sum-left-fed')).toHaveText('0');
+});
+
+test('level 6: the monkey climbs up with a fruit, and when he gives it back it goes back to its branch, without jumping', async ({ page }) => {
+  test.setTimeout(180_000);
+  await startPlaying(page, GAME, atLevel(GAME, 6));
+  await skipTo(page, 1);
+  await moveGloveTo(page, GLOVE, 0.5, 0.85);
+  const moves = await page.evaluate(async () => {
+    const { walk } = window.__game;
+    walk.level = { ...walk.level, butterflies: false, monkeyStays: 2.5 };
+    walk.monkeyIn = 1000;
+    // He comes for the lowest fruit, as far as can be from the treetop he climbs to.
+    const fruit = walk.fruit.filter((one) => walk.pickable(one)).reduce((low, one) => (one.homeY > low.homeY ? one : low));
+    const homeX = walk.treeAcross * walk.width;
+    const homeY = 0.08 * walk.height;
+    walk.monkey = { state: 'coming', fruit, t: 0, x: homeX, y: homeY, fromX: homeX, fromY: homeY, homeX, homeY };
+    const states = new Set();
+    let monkeyAt = null;
+    let fruitAt = null;
+    let monkeyStep = 0;
+    let fruitStep = 0;
+    const until = performance.now() + 6000;
+    while (performance.now() < until) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const { monkey } = walk;
+      if (monkey) {
+        states.add(monkey.state);
+        if (monkeyAt) monkeyStep = Math.max(monkeyStep, Math.hypot(monkey.x - monkeyAt.x, monkey.y - monkeyAt.y) / walk.height);
+        monkeyAt = { x: monkey.x, y: monkey.y };
+      }
+      if (fruitAt) fruitStep = Math.max(fruitStep, Math.hypot(fruit.x - fruitAt.x, fruit.y - fruitAt.y) / walk.height);
+      fruitAt = { x: fruit.x, y: fruit.y };
+    }
+    return { states: [...states], monkeyStep, fruitStep, state: fruit.state, fromHome: Math.hypot(fruit.x - fruit.homeX, fruit.y - fruit.homeY) / walk.height };
+  });
+  console.log('monkey', JSON.stringify(moves));
+  expect(moves.states).toEqual(['coming', 'holding', 'going']);
+  // At most a little each frame, even on a busy computer.
+  expect(moves.monkeyStep).toBeLessThan(0.05);
+  expect(moves.fruitStep).toBeLessThan(0.05);
+  // And the fruit is back on its branch.
+  expect(moves.state).toBe('hanging');
+  expect(moves.fromHome).toBeLessThan(0.05);
+});
+
+test('level 9: at the end of the walk a butterfly flies off, and fireflies that have faded can\'t be caught', async ({ page }) => {
+  test.setTimeout(240_000);
+  await startPlaying(page, GAME, atLevel(GAME, 9));
+  await skipTo(page, 4);
+  await storyIs(page, 'joze');
+  // The open hand on a firefly's loop, where a fist would catch it.
+  const fly = await page.evaluate(() => {
+    const { walk } = window.__game;
+    walk.monkey = null;
+    walk.monkeyIn = 1000;
+    const [one] = walk.flies;
+    return { x: one.cx / walk.width, y: one.cy / walk.height };
+  });
+  await moveGloveTo(page, GLOVE, fly.x, fly.y);
+  await expect.poll(() => page.evaluate(() => window.__game.walk.gloves.right.visible), { timeout: 15_000 }).toBe(true);
+  // A butterfly on a fruit.
+  await page.evaluate(() => {
+    window.__game.walk.butterflyIn = 0;
+  });
+  await expect.poll(() => page.evaluate(() => window.__game.walk.butterfly?.t ?? 0), { timeout: 10_000 }).toBeGreaterThan(0.9);
+  // Joze has had enough, and his thank-you lasts a good while for this.
+  const leaving = await page.evaluate(() => {
+    const { journey, walk, session } = window.__game;
+    while (journey.wanted) journey.feed();
+    session.game.timer = 60;
+    return walk.butterfly?.leaving;
+  });
+  expect(leaving).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.__game.walk.butterfly), { timeout: 5000 }).toBeNull();
+  await shot(page, 'jw-home-thanks');
+  // A fist where the fireflies were catches nothing now.
+  await handIs(page, 'fist');
+  await expect.poll(async () => (await hands(page)).right.status, { timeout: 10_000 }).toBe('closed');
+  await page.waitForTimeout(1500);
+  expect((await tree(page)).stats.firefly).toBe(0);
+  await page.evaluate(() => {
+    window.__game.session.game.timer = 0;
+  });
+  await waitForScreen(page, 'finish');
+});
+
+test('level 10: the parrot\'s name is shown even when the feather is taken while another name shows, in the voice\'s language', async ({ page }) => {
+  test.setTimeout(150_000);
+  await startPlaying(page, GAME, atLevel(GAME, 10));
+  await storyIs(page, 'joze');
+  await moveGloveTo(page, GLOVE, 0.5, 0.85);
+  await watchWords(page, 'walk');
+  // Nothing has been named yet, and the golden fruit's name is showing.
+  await page.evaluate(() => {
+    const { walk } = window.__game;
+    walk.level = { ...walk.level, butterflies: false };
+    walk.labels = [];
+    walk.introduced = new Set();
+    const golden = walk.fruit.find((one) => one.golden);
+    walk.introduce('golden', () => (golden.state === 'hanging' ? golden : null));
+  });
+  await expect.poll(() => drawn(page, 'Golden fruit'), { timeout: 5000, intervals: [100] }).toBe(true);
+  // The feather is taken before its name's turn.
+  await page.evaluate(() => {
+    const { walk } = window.__game;
+    const feather = walk.items.find(({ kind }) => kind === 'feather');
+    walk.introduce('parrot', () => (feather.state === 'hanging' ? feather : null));
+    feather.state = 'gone';
+    walk.sendParrot();
+  });
+  // It's named beside the parrot instead.
+  await expect.poll(() => drawn(page, 'Parrot helper'), { timeout: 8000, intervals: [100] }).toBe(true);
+  // A grown-up changes the voice to Georgian while it shows, and the name changes with it.
+  await page.evaluate(() => window.__game.session.changeSettings({ language: 'ka' }));
+  await expect.poll(() => drawn(page, 'თუთიყუში მეგობარი'), { timeout: 3000, intervals: [100] }).toBe(true);
+});
+
+test('level 8: the snow fades away as Joze walks home from the hill, rather than all going at once', async ({ page }) => {
+  test.setTimeout(180_000);
+  await startPlaying(page, GAME, atLevel(GAME, 8));
+  await skipTo(page, 3);
+  await storyIs(page, 'tur');
+  const shown = await page.evaluate(async () => {
+    const { walk, journey } = window.__game;
+    // How much snow can be seen: none once it's gone, and otherwise as much as shows.
+    const snow = () => (walk.snow.length ? walk.snowShown ?? 1 : 0);
+    const seen = [snow()];
+    while (journey.wanted) journey.feed();
+    while (walk.walking > 0 || seen.length < 10) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      seen.push(snow());
+    }
+    for (let i = 0; i < 10; i += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      seen.push(snow());
+    }
+    return seen;
+  });
+  expect(shown[0]).toBe(1);
+  expect(shown.at(-1)).toBe(0);
+  const drops = shown.slice(1).map((value, index) => shown[index] - value);
+  expect(Math.max(...drops)).toBeLessThan(0.1);
+});
+
+test('the pictures of the places are kept from one walk to the next, and only drawn again when a place looks different', async ({ page }) => {
+  await startPlaying(page, GAME, atLevel(GAME, 8));
+  await storyIs(page, 'joze');
+  const kept = await page.evaluate(() => {
+    const { walk } = window.__game;
+    const baobab = walk.sceneFor('baobab');
+    const hill = walk.sceneFor('hill');
+    // Another walk at the same level.
+    walk.setLevel(8);
+    const again = walk.sceneFor('baobab') === baobab && walk.sceneFor('hill') === hill;
+    // And at level 9, where the hill is in the evening as well as snowy.
+    walk.setLevel(9);
+    return { again, baobab: walk.sceneFor('baobab') === baobab, hill: walk.sceneFor('hill') === hill };
+  });
+  expect(kept).toEqual({ again: true, baobab: true, hill: false });
+});
+
+test('level 3: the names of what was on a tree go with it, rather than showing as Joze walks on', async ({ page }) => {
+  test.setTimeout(120_000);
+  await startPlaying(page, GAME, atLevel(GAME, 3));
+  await storyIs(page, 'joze');
+  await watchWords(page, 'walk');
+  // He's had enough at the first tree straight away, with a name showing and another waiting its turn.
+  const walked = await page.evaluate(async () => {
+    const { walk, journey } = window.__game;
+    const names = walk.labels.length;
+    while (journey.wanted) journey.feed();
+    // Past the moment a name already showing takes to fade out, and up to the frame before he gets to
+    // the next tree, whose own names can come as he arrives.
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    window.__drawn.clear();
+    let drawn = [];
+    while (walk.walking > 0) {
+      drawn = [...window.__drawn];
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    return { names, drawn };
+  });
+  expect(walked.names).toBeGreaterThanOrEqual(2);
+  expect(walked.drawn).toEqual([]);
 });

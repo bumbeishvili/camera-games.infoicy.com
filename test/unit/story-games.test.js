@@ -120,6 +120,28 @@ test('a closed hand picks a fruit up, and an open hand lets it go', () => {
   assert.equal(picking.held, null);
 });
 
+test('a fist kept closed after taking the basket or the feather has to open before it picks a fruit', () => {
+  const picking = new Picking();
+  const basket = { kind: 'basket' };
+  const fruit = { kind: 'fig' };
+  const step = (change) => picking.update(0.1, { closed: true, seen: true, near: fruit, onMouth: false, ...change });
+  step({ near: basket });
+  assert.equal(step({ near: basket }), 'picked');
+  // The basket goes onto the hand rather than being carried.
+  picking.used();
+  assert.equal(picking.held, null);
+  // Still closed, and on a fruit, it takes nothing, however long it stays.
+  for (let i = 0; i < 30; i += 1) assert.equal(step(), null);
+  // Nor if it goes out of the picture and comes back closed.
+  assert.equal(step({ seen: false }), null);
+  for (let i = 0; i < 5; i += 1) assert.equal(step(), null);
+  // Opening and closing again does, as usual.
+  assert.equal(step({ closed: false }), null);
+  assert.equal(step(), null);
+  assert.equal(step(), 'picked');
+  assert.equal(picking.held, fruit);
+});
+
 test('letting go somewhere else drops it, and so does the hand leaving the picture', () => {
   const picking = new Picking();
   const fruit = { id: 1 };
@@ -411,6 +433,40 @@ test('lighthouse: from level 3, a crab walks back and forth with a pearl, and le
   assert.ok(pearl && !pearl.hidden);
   for (let i = 0; i < 10; i += 1) storm.update(0.1, { hand: handAt(pearl) });
   assert.equal(storm.stats.pearls, 1);
+});
+
+test('lighthouse: a crab let go of as its window comes clean walks off, rather than vanishing', () => {
+  const log = eventsOf();
+  const storm = new Storm({ level: 3, random: seeded(4), onEvent: log.onEvent });
+  storm.nextShip();
+  for (let y = 0.05; y <= 0.3; y += 0.1) for (let x = 0; x <= 1; x += 0.03) storm.wipe(x, y, 0.1, 0.15);
+  const [crab] = storm.crabs;
+  assert.ok(crab);
+  sweep(storm);
+  assert.ok(storm.clean);
+  // The screen is told, so it can show the crab going, and the crab wasn't counted as touched.
+  const off = log.events.filter(({ type }) => type === 'crab-off');
+  assert.deepEqual(off.map((event) => event.crab), [crab]);
+  assert.equal(storm.stats.crabs, 0);
+  assert.ok(log.types().indexOf('crab-off') < log.types().indexOf('window-clean'));
+});
+
+test('lighthouse: the gull\'s wipe isn\'t the hand, so a splat it sets off still lands away from the hand', () => {
+  const log = eventsOf();
+  const storm = new Storm({ level: 2, random: seeded(3), onEvent: log.onEvent });
+  storm.nextShip();
+  const { at } = storm.coming.find(({ what }) => what === 'splat');
+  // The hand wipes the left of the window, up to just before the splat, ending at the left edge.
+  for (let x = 0.02; x <= 0.5 && storm.mud.share < at - 0.08; x += 0.04) for (let y = 0.05; y <= 1 && storm.mud.share < at - 0.08; y += 0.1) storm.wipe(x, y, 0.06, 0.1);
+  storm.wipe(0.1, 0.5, 0.06, 0.1);
+  const hand = { ...storm.lastWipe };
+  assert.deepEqual(log.types().filter((type) => type === 'splat'), []);
+  // The gull goes across the right of the window, which sets the splat off.
+  for (let x = 0.98; x >= 0.5 && !log.types().includes('splat'); x -= 0.02) storm.wipe(x, 0.5, 0.1, 0.2, 0, { byHand: false });
+  assert.deepEqual(storm.lastWipe, hand, 'the gull doesn\'t move where the hand is');
+  const splat = log.events.find(({ type }) => type === 'splat');
+  assert.ok(splat, 'the gull set it off');
+  assert.ok(Math.hypot(splat.x - hand.x, splat.y - hand.y) >= 0.3, `the splat landed by the hand, at ${splat.x}, ${splat.y}`);
 });
 
 test('lighthouse: for less motion, crabs walk at half speed', () => {

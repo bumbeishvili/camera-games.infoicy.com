@@ -184,7 +184,7 @@ test('level 3: a crab walks on the glass, and gives its pearl to a real open han
   await page.waitForTimeout(1200);
   const walked = await storm(page);
   expect(Math.abs(walked.crabs[0].x - crabs[0].x)).toBeGreaterThan(0.03);
-  expect(walked.introduced).toContain('crab');
+  await expect.poll(async () => (await storm(page)).introduced, { timeout: 5000 }).toContain('crab');
   await shot(page, 'lh-crab');
   await chase(page, (state) => state.crabs[0], (state) => state.stats.crabs >= 1);
   await page.waitForTimeout(300);
@@ -425,4 +425,130 @@ test('level 10 with reduced motion: the starfish keeps still, crabs walk slower,
   expect(still.crab).toBeLessThan(0.7);
   expect(still.drops).toBe(0);
   expect(still.reduced).toBe(true);
+});
+
+/** Notes the words drawn on the room from now on, such as the names of new things. */
+const watchWords = (page) => page.evaluate(() => {
+  const { ctx } = window.__game.room;
+  const fillText = ctx.fillText.bind(ctx);
+  window.__drawn = new Set();
+  ctx.fillText = (text, ...rest) => {
+    window.__drawn.add(text);
+    return fillText(text, ...rest);
+  };
+});
+const drawn = (page, words) => page.evaluate((wanted) => [...window.__drawn].some((text) => text.includes(wanted)), words);
+
+test('level 5: the big lantern is named even when it\'s picked up while another name shows, in the voice\'s language', async ({ page }) => {
+  test.setTimeout(150_000);
+  await startPlaying(page, GAME, atLevel(GAME, 5, { reach: 'none' }));
+  await storyIs(page, 'frost');
+  await handAway(page);
+  await watchWords(page);
+  await page.evaluate(() => window.__game.storm.addCrab());
+  await expect.poll(() => drawn(page, 'Crab'), { timeout: 5000, intervals: [100] }).toBe(true);
+  // The lantern comes, and is picked up while the crab's name is still showing.
+  await page.evaluate(() => {
+    const { storm: rules } = window.__game;
+    rules.addPower('lantern');
+    const power = rules.powers.at(-1);
+    power.age = 1;
+    rules.update(0.05, { hand: { x: power.x, y: power.y, sizeX: 0.08, sizeY: 0.1 } });
+  });
+  expect(await page.evaluate(() => window.__game.storm.active.lantern)).toBeGreaterThan(0);
+  // It's named beside its badge instead.
+  await expect.poll(() => drawn(page, 'Big lantern'), { timeout: 8000, intervals: [100] }).toBe(true);
+  await shot(page, 'lh-lantern-named');
+  // A grown-up changes the voice to Georgian while it shows, and the name changes with it.
+  await page.evaluate(() => window.__game.session.changeSettings({ language: 'ka' }));
+  await expect.poll(() => drawn(page, 'დიდი ფარანი'), { timeout: 3000, intervals: [100] }).toBe(true);
+});
+
+test('level 5: with the big lantern, rubbing takes no more moving than without it', async ({ page }) => {
+  test.setTimeout(120_000);
+  await startPlaying(page, GAME, atLevel(GAME, 5, { reach: 'none' }));
+  await storyIs(page, 'frost');
+  await handAway(page);
+  // The same stroke across the glass, with the lantern and without, as the room tells the rules.
+  const rubbed = await page.evaluate(() => {
+    const { room, storm: rules } = window.__game;
+    const { window: glass } = room;
+    const stroke = (lantern) => {
+      rules.active.lantern = lantern ? 6 : 0;
+      let moved = 0;
+      let size = 0;
+      room.last = null;
+      for (let i = 0; i <= 20; i += 1) {
+        room.wipeAt({ x: glass.x + glass.width * (0.2 + i * 0.03), y: glass.y + glass.height * 0.5 }, (x, y, sizeX, sizeY, step) => {
+          moved += step;
+          size = sizeX;
+          return 0;
+        });
+      }
+      room.last = null;
+      return { moved, size };
+    };
+    const without = stroke(false);
+    const withIt = stroke(true);
+    rules.active.lantern = 0;
+    return { without, withIt };
+  });
+  console.log('rubbed', JSON.stringify(rubbed));
+  expect(rubbed.without.moved).toBeGreaterThan(3);
+  expect(rubbed.withIt.moved).toBeCloseTo(rubbed.without.moved, 5);
+  // And the lantern's wipe is still the bigger one.
+  expect(rubbed.withIt.size).toBeCloseTo(rubbed.without.size * 1.6, 5);
+});
+
+test('level 9: a gull in flight waits while the hands are checked again mid-round, and its wipe counts after', async ({ page }) => {
+  test.setTimeout(180_000);
+  await startPlaying(page, GAME, atLevel(GAME, 9, { reach: 'none' }));
+  await storyIs(page, 'frost');
+  await handAway(page);
+  const mudNow = () => page.evaluate(() => {
+    const { room, storm: rules } = window.__game;
+    const { data } = room.mud.getContext('2d').getImageData(0, 0, room.mud.width, room.mud.height);
+    let mud = 0;
+    for (let i = 3; i < data.length; i += 64) mud += data[i];
+    return { t: room.gull?.t ?? null, share: rules.mud.share, mud };
+  });
+  // The gull sets off, and a grown-up asks for the hands to be checked again straight away.
+  await page.evaluate(() => {
+    const { room, session } = window.__game;
+    room.sendGull(0.5);
+    session.recheckHands();
+  });
+  await waitForScreen(page, 'check');
+  const before = await mudNow();
+  await page.waitForTimeout(3000);
+  // Nothing has wiped the picture that the rules don't know about: the gull waited.
+  expect(await mudNow()).toEqual(before);
+  expect(before.t).not.toBeNull();
+  // The hand comes back for the check, and then goes, and the gull flies on, wiping as it goes.
+  await show(page, null, 'open', { scale: 0.7 });
+  await waitForScreen(page, 'playing');
+  await handAway(page);
+  await expect.poll(async () => (await mudNow()).t, { timeout: 10_000 }).toBeNull();
+  const after = await mudNow();
+  console.log('gull after the check', (after.share - before.share).toFixed(2));
+  expect(after.share - before.share).toBeGreaterThan(0.1);
+});
+
+test('level 3: a crab nobody touched walks off the glass as its window comes clean', async ({ page }) => {
+  test.setTimeout(120_000);
+  await startPlaying(page, GAME, atLevel(GAME, 3, { reach: 'none' }));
+  await storyIs(page, 'frost');
+  await handAway(page);
+  await wipeMud(page, 0.15);
+  expect((await storm(page)).crabs).toHaveLength(1);
+  await wipeMud(page);
+  const off = await page.evaluate(() => {
+    const { room, storm: rules } = window.__game;
+    return { clean: rules.clean, crabs: rules.crabs.length, leaving: room.leaving.length };
+  });
+  expect(off).toEqual({ clean: true, crabs: 0, leaving: 1 });
+  await page.waitForTimeout(400);
+  await shot(page, 'lh-crab-walks-off');
+  // And its pearl was kept.
+  expect((await storm(page)).stats.pearls).toBeGreaterThanOrEqual(1);
 });

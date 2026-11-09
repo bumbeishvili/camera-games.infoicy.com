@@ -138,13 +138,33 @@ export class LampRoom {
 
   /**
    * The first time something new comes in a game, its name fades in beside it for a moment. at says
-   * where it is now, on the screen.
+   * where it is now, on the screen, or null while it can't be seen. A name only counts as shown once
+   * it has been: one still waiting when its thing goes waits for the next of its kind instead.
    */
   introduce(key, at) {
     if (this.introduced.has(key) || !NEW_THINGS[key]) return;
-    this.introduced.add(key);
+    const waiting = this.labels.find((label) => label.key === key);
+    if (!waiting) this.labels.push({ key, at, t: 0 });
+    else if (!waiting.started && waiting.at() === null) Object.assign(waiting, { at, wait: 0 });
+  }
+
+  /** A new thing's name, in the language the voice speaks now. */
+  labelText({ key }) {
     const { mark, name, nameKa } = NEW_THINGS[key];
-    this.labels.push({ key, mark, text: this.language === 'ka' ? nameKa : name, at, t: 0 });
+    return `${mark} ${this.language === 'ka' ? nameKa : name}`;
+  }
+
+  /** Where a power-up's badge is while it's on, at the bottom of the window, or null. */
+  badgeAt(kind) {
+    if (!this.mud || !(this.storm?.active[kind] > 0)) return null;
+    const { window: glass, height } = this;
+    return { x: glass.x + glass.width / 2 + (kind === 'bubble' ? 1 : -1) * height * 0.06, y: glass.y + glass.height - height * 0.06 };
+  }
+
+  /** Where the gull is while it flies across, or null. */
+  gullAt() {
+    const { gull, window: glass } = this;
+    return gull?.x === undefined ? null : { x: glass.x + gull.x, y: glass.y + gull.yNow };
   }
 
   /** Where a place on the glass, given in shares of the window, is on the screen. */
@@ -266,7 +286,12 @@ export class LampRoom {
     this.sailing = SAIL_SECONDS;
   }
 
-  update(dt, snapshot, { aspect = this.aspect, wiping = false, showHands = false, wipe = () => 0 } = {}) {
+  /**
+   * One frame. wipe(x, y, sizeX, sizeY, moved, how) tells the rules about a wipe, and only comes in
+   * play: without it, as during a hand check in the middle of a round, nothing wipes, and the gull
+   * waits where it is, so the mud on the screen is always the mud the rules count.
+   */
+  update(dt, snapshot, { aspect = this.aspect, wiping = false, showHands = false, wipe = null } = {}) {
     this.time += dt;
     this.aspect = aspect;
     for (const side of ['left', 'right']) {
@@ -278,7 +303,7 @@ export class LampRoom {
 
     const glove = this.gloves[this.side];
     let wipedNow = 0;
-    if (wiping && this.mud && glove.visible && glove.status === 'open') wipedNow = this.wipeAt(glove, wipe);
+    if (wiping && wipe && this.mud && glove.visible && glove.status === 'open') wipedNow = this.wipeAt(glove, wipe);
     else this.last = null;
     this.wipeSpeed += (Math.min(1, wipedNow > 0 ? 1 : glove.speed * 1.5) * (glove.visible && glove.status === 'open' ? 1 : 0) - this.wipeSpeed) * (1 - Math.exp(-dt * 10));
 
@@ -294,7 +319,6 @@ export class LampRoom {
     this.leaving = this.leaving.filter(({ fall }) => fall < 1);
     for (const flier of this.flying) flier.t += dt / FLY_SECONDS;
     this.flying = this.flying.filter(({ t }) => t < 1);
-    this.labels = stepLabels(this.labels, dt, this.fresh);
     for (const bounce of this.bounces) bounce.t += dt / BOUNCE_SECONDS;
     this.bounces = this.bounces.filter(({ t }) => t < 1);
     for (const sparkle of this.sparkles) {
@@ -303,7 +327,8 @@ export class LampRoom {
       sparkle.y += sparkle.vy * dt;
     }
     this.sparkles = this.sparkles.filter(({ life }) => life > 0);
-    if (this.gull) this.flyGull(dt, wipe);
+    if (this.gull && wipe) this.flyGull(dt, wipe);
+    this.labels = stepLabels(this.labels, dt, this.fresh, this.introduced);
 
     if (this.mudFading) {
       this.mudLeft = Math.max(0, this.mudLeft - dt * (this.night ? NIGHT_MUD_FADE : MUD_FADE));
@@ -332,14 +357,19 @@ export class LampRoom {
       this.last = null;
       return 0;
     }
-    const added = this.wipeLine(this.last ?? { x, y }, { x, y }, this.wipeSize, wipe);
+    // Rubbing goes by how far the hand moved in lengths of an ordinary wipe, so the lantern's bigger
+    // wipe rubs seaweed and starfish off as quickly as ever, and reaches them from further away.
+    const added = this.wipeLine(this.last ?? { x, y }, { x, y }, this.wipeSize, wipe, WIPE_SIZE * height);
     this.last = { x, y };
     if (added) this.addDrips(glove);
     return added;
   }
 
-  /** Takes the mud off from one place on the glass to another, in pixels from its corner. */
-  wipeLine(from, { x, y }, size, wipe) {
+  /**
+   * Takes the mud off from one place on the glass to another, in pixels from its corner. rubLength
+   * is how far counts as one length of a wipe, for rubbing.
+   */
+  wipeLine(from, { x, y }, size, wipe, rubLength = size) {
     const { window: glass, ratio } = this;
     if (!this.mud) return 0;
     const ctx = this.mud.getContext('2d');
@@ -361,18 +391,21 @@ export class LampRoom {
     for (let i = 1; i <= steps; i += 1) {
       const px = from.x + ((x - from.x) * i) / steps;
       const py = from.y + ((y - from.y) * i) / steps;
-      added += wipe(px / glass.width, py / glass.height, size / glass.width, size / glass.height, distance / size / steps);
+      added += wipe(px / glass.width, py / glass.height, size / glass.width, size / glass.height, distance / rubLength / steps);
     }
     return added;
   }
 
-  /** The gull, across the window from the far side, wiping as it goes. It doesn't rub anything off. */
+  /**
+   * The gull, across the window from the far side, wiping as it goes. It doesn't rub anything off,
+   * and it isn't the hand, so what the storm throws still lands away from the hand.
+   */
   flyGull(dt, wipe) {
     const { gull, window: glass, side } = this;
     gull.t = Math.min(1, gull.t + dt / GULL_SECONDS);
     const share = side === 'right' ? 1.05 - gull.t * 1.1 : -0.05 + gull.t * 1.1;
     const at = { x: share * glass.width, y: gull.y * glass.height + Math.sin(gull.t * Math.PI * 2) * glass.height * 0.03 };
-    if (this.mud && !this.mudFading) this.wipeLine(gull.last ?? at, at, GULL_WIPE * this.height, (x, y, sizeX, sizeY) => wipe(x, y, sizeX, sizeY, 0));
+    if (this.mud && !this.mudFading) this.wipeLine(gull.last ?? at, at, GULL_WIPE * this.height, (x, y, sizeX, sizeY) => wipe(x, y, sizeX, sizeY, 0, { byHand: false }));
     gull.last = at;
     gull.x = at.x;
     gull.yNow = at.y;
@@ -678,31 +711,36 @@ export class LampRoom {
     this.drawLabels(ctx);
   }
 
-  /** Treasure, crabs and power-ups on the glass, over the mud. They go with the last of it. */
+  /**
+   * Treasure, crabs and power-ups on the glass, over the mud. They go with the last of it, apart from
+   * crabs walking off, which take their own time.
+   */
   drawOnGlass(ctx) {
     const { storm } = this;
-    if (!storm || !this.mud) return;
+    if (!storm || (!this.mud && !this.leaving.length)) return;
     const { window: glass, height, time } = this;
     const bob = this.reducedMotion ? 0 : 1;
     ctx.save();
     ctx.beginPath();
     ctx.roundRect(glass.x, glass.y, glass.width, glass.height, 22);
     ctx.clip();
-    ctx.globalAlpha = this.mudLeft;
-    for (const power of storm.powers) {
-      const { x, y } = this.onScreen(power);
-      const grow = Math.min(1, power.age / 0.5);
-      drawPower(ctx, power.kind, x, y + Math.sin(time * 1.6 + power.x * 9) * height * 0.006 * bob, height * 0.05 * grow, height);
+    if (this.mud) {
+      ctx.globalAlpha = this.mudLeft;
+      for (const power of storm.powers) {
+        const { x, y } = this.onScreen(power);
+        const grow = Math.min(1, power.age / 0.5);
+        drawPower(ctx, power.kind, x, y + Math.sin(time * 1.6 + power.x * 9) * height * 0.006 * bob, height * 0.05 * grow, height);
+      }
+      for (const prize of storm.prizes) {
+        if (prize.hidden) continue;
+        const { x, y } = this.onScreen(prize);
+        const grow = Math.min(1, prize.age / PRIZE_READY_SECONDS);
+        const size = height * PRIZE_SHARE * (0.4 + 0.6 * grow * (2 - grow));
+        const sprite = this.sprites[prize.kind];
+        ctx.drawImage(sprite, x - size, y - size + Math.sin(time * 2 + prize.x * 7) * height * 0.004 * bob, size * 2, size * 2);
+      }
+      for (const crab of storm.crabs) this.drawCrab(ctx, crab, 0, true);
     }
-    for (const prize of storm.prizes) {
-      if (prize.hidden) continue;
-      const { x, y } = this.onScreen(prize);
-      const grow = Math.min(1, prize.age / PRIZE_READY_SECONDS);
-      const size = height * PRIZE_SHARE * (0.4 + 0.6 * grow * (2 - grow));
-      const sprite = this.sprites[prize.kind];
-      ctx.drawImage(sprite, x - size, y - size + Math.sin(time * 2 + prize.x * 7) * height * 0.004 * bob, size * 2, size * 2);
-    }
-    for (const crab of storm.crabs) this.drawCrab(ctx, crab, 0, true);
     ctx.globalAlpha = 1;
     for (const crab of this.leaving) this.drawCrab(ctx, crab, crab.fall, false);
     ctx.restore();
@@ -789,10 +827,9 @@ export class LampRoom {
       ctx.roundRect(glass.x + height * 0.02, glass.y + height * 0.02, glass.width - height * 0.04, glass.height - height * 0.04, 30);
       ctx.stroke();
       // Its badge at the bottom of the window, clear of the camera's picture at the top.
-      const badgeY = glass.y + glass.height - height * 0.06;
-      const badgeX = glass.x + glass.width / 2 + height * 0.06;
-      drawPower(ctx, 'bubble', badgeX, badgeY, height * 0.032, height);
-      drawProgress(ctx, height * 0.042, left / POWER_SECONDS.bubble, height, badgeX, badgeY);
+      const badge = this.badgeAt('bubble');
+      drawPower(ctx, 'bubble', badge.x, badge.y, height * 0.032, height);
+      drawProgress(ctx, height * 0.042, left / POWER_SECONDS.bubble, height, badge.x, badge.y);
       ctx.restore();
     }
     for (const bounce of this.bounces) {
@@ -813,24 +850,24 @@ export class LampRoom {
   drawLanternGlow(ctx) {
     const left = this.storm?.active.lantern ?? 0;
     const glove = this.gloves[this.side];
-    if (left <= 0 || !glove.visible || !this.mud) return;
-    const r = this.wipeSize;
+    if (left <= 0 || !this.mud) return;
+    const { height } = this;
     ctx.save();
-    // A thin ring and only a faint fill, as it goes wherever the hand goes, however quickly.
     ctx.globalAlpha = Math.min(1, left / 1.2);
-    ctx.fillStyle = 'rgb(255 214 110 / 0.08)';
-    ctx.strokeStyle = 'rgb(255 205 90 / 0.6)';
-    ctx.lineWidth = this.height * 0.005;
-    ctx.beginPath();
-    ctx.arc(glove.x, glove.y, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
+    if (glove.visible) {
+      // A thin ring and only a faint fill, as it goes wherever the hand goes, however quickly.
+      ctx.fillStyle = 'rgb(255 214 110 / 0.08)';
+      ctx.strokeStyle = 'rgb(255 205 90 / 0.6)';
+      ctx.lineWidth = height * 0.005;
+      ctx.beginPath();
+      ctx.arc(glove.x, glove.y, this.wipeSize, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
     // Its badge stays still at the bottom of the window, beside the bubble shield's, if that's on.
-    const { window: glass, height } = this;
-    const badgeX = glass.x + glass.width / 2 - height * 0.06;
-    const badgeY = glass.y + glass.height - height * 0.06;
-    drawPower(ctx, 'lantern', badgeX, badgeY, height * 0.03, height);
-    drawProgress(ctx, height * 0.04, left / POWER_SECONDS.lantern, height, badgeX, badgeY);
+    const badge = this.badgeAt('lantern');
+    drawPower(ctx, 'lantern', badge.x, badge.y, height * 0.03, height);
+    drawProgress(ctx, height * 0.04, left / POWER_SECONDS.lantern, height, badge.x, badge.y);
     ctx.restore();
   }
 
@@ -866,7 +903,7 @@ export class LampRoom {
   /** The name of a new thing, fading in above it, with a soft ring round it. */
   drawLabels(ctx) {
     const [label] = this.labels;
-    if (label) drawLabel(ctx, label, label.at(), this.width, this.height, LABEL_SECONDS);
+    if (label?.started) drawLabel(ctx, label, this.labelText(label), label.at(), this.width, this.height, LABEL_SECONDS);
   }
 }
 
@@ -1135,19 +1172,30 @@ function drawProgress(ctx, r, share, height, x = 0, y = 0) {
 }
 
 /**
- * One name at a time, so they never pile up. The names of what's new at this level always get their
- * turn, but an older one that's waited a while is let go, and so is one whose thing has gone.
+ * One name at a time, so they never pile up. A name only starts once its thing can be seen, and only
+ * then counts as shown, in shown. What's new at this level goes first, and waits for as long as it
+ * takes. An older one that's waited a while is let go, to come again with the next of its kind.
  */
-function stepLabels(labels, dt, fresh) {
-  labels.forEach((label, index) => {
-    if (index === 0) label.t += dt;
+function stepLabels(labels, dt, fresh, shown) {
+  if (labels.length && !labels[0].started) {
+    const ready = labels.filter((label) => label.at() !== null);
+    const next = ready.find((label) => fresh.has(label.key)) ?? ready[0];
+    if (next) {
+      const { x, y } = next.at();
+      Object.assign(next, { started: true, last: { x, y } });
+      shown.add(next.key);
+      labels = [next, ...labels.filter((label) => label !== next)];
+    }
+  }
+  for (const label of labels) {
+    if (label.started) label.t += dt;
     else label.wait = (label.wait ?? 0) + dt;
-  });
-  return labels.filter((label, index) => label.t < LABEL_SECONDS && (index === 0 || ((fresh.has(label.key) || label.wait < LABEL_WAIT) && label.at() !== null)));
+  }
+  return labels.filter((label) => (label.started ? label.t < LABEL_SECONDS : fresh.has(label.key) || label.wait < LABEL_WAIT));
 }
 
 /** A new thing's name in a little rounded box above it, fading in and out, with a soft ring. */
-function drawLabel(ctx, label, now, width, height, lasts) {
+function drawLabel(ctx, label, text, now, width, height, lasts) {
   // Where its thing is, or was last, if it's just gone. The ring follows it, and the name stays
   // where it first came, so nothing bright moves quickly.
   const at = now ?? label.last;
@@ -1165,7 +1213,6 @@ function drawLabel(ctx, label, now, width, height, lasts) {
   ctx.arc(at.x, at.y, height * (0.075 + 0.01 * Math.min(1, label.t)), 0, Math.PI * 2);
   ctx.stroke();
   ctx.font = `600 ${font}px Fredoka, system-ui, sans-serif`;
-  const text = `${label.mark} ${label.text}`;
   const wide = ctx.measureText(text).width + font * 1.2;
   const x = Math.min(width - wide / 2 - 8, Math.max(wide / 2 + 8, label.home.x));
   // Above its thing, or below it near the top, where the camera's picture is.

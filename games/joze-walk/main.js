@@ -12,6 +12,9 @@ import { Walk } from './walk.js';
 
 const CLOSE_ON_IT = 'Close your hand on the fruit!';
 const OPEN_FOR_JOZE = 'Bring it to Joze, and open your hand!';
+// For the broken bridge, from level 7. These are shown but not said, as they have no voice.
+const ON_THE_PLANK = ['Close your hand on the plank!', 'მოკუმე ხელი ფიცარზე!'];
+const TO_THE_BRIDGE = ['Bring it to the bridge, and open your hand!', 'ხიდთან მიიტანე და ხელი გაშალე!'];
 const HOME = 'Joze is home!';
 
 const LAST_WORDS_SECONDS = 2.4;
@@ -46,6 +49,7 @@ class WalkGame {
       canTakeTwo: () => this.journey.wanted >= 2,
       onBasket: () => session.sound.handsOpen(),
       onBridge: () => {
+        this.idleFor = 0;
         session.sound.handsOpen();
         this.journey.fixBridge();
       },
@@ -58,7 +62,7 @@ class WalkGame {
         if (gift.kind === 'flower') this.walk.introduce('butterflies', () => (this.walk.gifts.includes(gift) ? gift : null));
       },
       onMonkeyComes: (monkey) => this.walk.introduce('monkey', () => (this.walk.monkey === monkey ? monkey : null)),
-      onButterflyComes: (flier) => this.walk.introduce('butterflies', () => (this.walk.butterfly === flier ? { x: flier.fruit.x, y: flier.fruit.y - flier.fruit.r } : null)),
+      onButterflyComes: (flier) => this.walk.introduce('butterflies', () => (this.walk.butterfly === flier && !flier.leaving ? { x: flier.fruit.x, y: flier.fruit.y - flier.fruit.r } : null)),
       onParrot: (parrot) => {
         session.sound.handsOpen();
         this.walk.introduce('parrot', () => (this.walk.parrot === parrot ? parrot : null));
@@ -78,9 +82,11 @@ class WalkGame {
   }
 
   applySettings() {
-    const { hands, reach } = this.session.settings;
+    const { hands, reach, language } = this.session.settings;
     this.walk.side = hands;
     this.walk.reach = reach;
+    // The names of new things are in the language the voice speaks, even if it changes mid-walk.
+    this.walk.language = language;
     document.body.dataset.side = hands;
   }
 
@@ -107,7 +113,6 @@ class WalkGame {
   prepare(level) {
     this.applySettings();
     this.story.hide();
-    this.walk.language = this.session.settings.language;
     this.walk.fruit = [];
     this.walk.fed = { left: 0, right: 0 };
     this.walk.arriveAt(STOPS[0].place);
@@ -179,8 +184,8 @@ class WalkGame {
   introduceStop() {
     const { walk } = this;
     const fruit = (test) => walk.fruit.find(test);
-    // Each name is beside its thing while it's still on the tree.
-    const onTree = (thing, still = () => true) => () => (thing.state === 'hanging' && still() ? thing : null);
+    // Each name is beside its thing while it's still on this tree, and never on the next one's.
+    const onTree = (thing, still = () => true) => () => ((walk.fruit.includes(thing) || walk.items.includes(thing)) && thing.state === 'hanging' && still() ? thing : null);
     const golden = fruit(({ golden: shiny }) => shiny);
     if (golden) walk.introduce('golden', onTree(golden));
     if (walk.level.sway > 0) {
@@ -192,8 +197,7 @@ class WalkGame {
     const frosty = fruit(({ frost }) => frost);
     if (frosty) walk.introduce('frost', onTree(frosty, () => frosty.frost));
     for (const item of walk.items) walk.introduce({ basket: 'basket', plank: 'bridge', feather: 'parrot' }[item.kind], onTree(item));
-    const [fly] = walk.flies;
-    if (fly) walk.introduce('fireflies', () => (fly.caught ? null : fly));
+    if (walk.flies.length) walk.introduce('fireflies', () => walk.flies.find(({ caught }) => !caught) ?? null);
   }
 
   /** Fruit eaten: one, or two from the basket, or one the parrot brought. */
@@ -211,7 +215,9 @@ class WalkGame {
     this.walk.fruit = [];
     const next = this.journey.stops[this.journey.index + 1];
     if (!next) {
-      // He's home: gifts still waiting, like a coconut the monkey has just thrown down, are kept.
+      // He's home: a butterfly on the tree flies off, and gifts still waiting, like a coconut the monkey
+      // has just thrown down, are kept.
+      this.walk.leaveTree();
       this.walk.keepWaitingGifts();
       this.story.say(stop.who, stop.done);
       this.later(LAST_WORDS_SECONDS, () => this.journey.nextStop());
@@ -275,15 +281,22 @@ class WalkGame {
   }
 
   prompt(snapshot, dt) {
-    const { session, walk } = this;
+    const { session, walk, journey } = this;
     const needed = session.handsPrompt(snapshot, dt);
     // Closing the hand is part of this game, so it isn't asked to open unless it's time to.
     if (needed && !needed.key.startsWith('closed')) return needed;
-    // Once they've got the idea, this only comes back if they seem to have stopped.
-    if (walk.holding && (this.journey.stats.fed === 0 || this.idleFor > HINT_AFTER_SECONDS)) {
-      return { key: 'bring', text: OPEN_FOR_JOZE, side: null };
-    }
-    if (!walk.holding && walk.fruit.length && this.idleFor > HINT_AFTER_SECONDS) return { key: 'close-on-it', text: CLOSE_ON_IT, side: null };
+    const shown = (key, [en, ka]) => ({ key, text: session.settings.language === 'ka' ? ka : en, side: null, silent: true });
+    // The plank goes in the gap in the bridge, not to Joze.
+    if (walk.holding?.kind === 'plank') return shown('to-the-bridge', TO_THE_BRIDGE);
+    const stopped = this.idleFor > HINT_AFTER_SECONDS;
+    // Just after taking the basket or the feather, the hand opens before it picks a fruit, so if it
+    // stays closed for a while, it's asked to open.
+    if (walk.picking.spent) return stopped ? needed : null;
+    // He's had enough here, and it's the bridge that's still to mend, so it's the plank, not more fruit.
+    if (journey.wanted === 0 && !journey.bridgeFixed) return stopped ? shown('on-the-plank', ON_THE_PLANK) : null;
+    // Once they've got the idea, these only come back if they seem to have stopped.
+    if (walk.holding && (journey.stats.fed === 0 || stopped)) return { key: 'bring', text: OPEN_FOR_JOZE, side: null };
+    if (!walk.holding && stopped && walk.fruit.some(({ state }) => state === 'hanging')) return { key: 'close-on-it', text: CLOSE_ON_IT, side: null };
     return null;
   }
 
@@ -296,7 +309,10 @@ class WalkGame {
   summary() {
     const { gifts } = this.journey;
     const { hands } = this.session.settings;
-    return { hero: this.journey.stats.fed, noun: 'walk', rows: { fed: this.walk.fed, gifts: { left: hands === 'left' ? gifts : 0, right: hands === 'right' ? gifts : 0 } } };
+    // The fruit the child's own hand fed Joze, with each hand and in all, so the big number and the rows
+    // agree. The parrot's fruit isn't the child's, and fruit fed after he'd had enough still counts.
+    const { fed } = this.walk;
+    return { hero: fed.left + fed.right, noun: 'walk', rows: { fed, gifts: { left: hands === 'left' ? gifts : 0, right: hands === 'right' ? gifts : 0 } } };
   }
 }
 

@@ -156,15 +156,30 @@ export class SmoothieField {
 
   /**
    * The first time something new comes in a game, its name fades in beside it for a moment. at says
-   * where it is now, on the screen.
+   * where it is now, on the screen, or null while it can't be seen, as when it's still below the
+   * screen. A name only counts as shown once it has been: one still waiting when its thing goes waits
+   * for the next of its kind instead.
    */
-  introduce(key, at, x = at()?.x) {
+  introduce(key, at, x = at()?.x, y = this.height * LABEL_DOWN) {
     if (this.introduced.has(key) || !NEW_THINGS[key]) return;
-    this.introduced.add(key);
-    const { mark, name, nameKa } = NEW_THINGS[key];
     // Things fly up here, so the name waits in the sky above where it's going, and the ring follows it.
-    const home = x === undefined ? undefined : { x, y: this.height * LABEL_DOWN };
-    this.labels.push({ key, mark, text: this.language === 'ka' ? nameKa : name, at, t: 0, home });
+    const home = x === undefined ? undefined : { x, y };
+    const waiting = this.labels.find((label) => label.key === key);
+    if (!waiting) this.labels.push({ key, at, t: 0, home });
+    else if (!waiting.started && waiting.at() === null) Object.assign(waiting, { at, home, wait: 0 });
+  }
+
+  /** A new thing's name, in the language the voice speaks now. */
+  labelText({ key }) {
+    const { mark, name, nameKa } = NEW_THINGS[key];
+    return `${mark} ${this.language === 'ka' ? nameKa : name}`;
+  }
+
+  /** Where a power-up's badge is, beside the count of coins, while it's on, or null. */
+  badgeAt(kind) {
+    const on = Object.keys(POWER_SECONDS).filter((power) => this.powerOn(power));
+    const index = on.indexOf(kind);
+    return index < 0 ? null : { x: this.tallyAt.x + this.height * (0.15 + index * 0.085), y: this.tallyAt.y };
   }
 
   /** Something floating up slowly from below, within reach, to a height, as for coins. */
@@ -199,7 +214,7 @@ export class SmoothieField {
   throwBubble(power) {
     const bubble = this.floatUp({ power, r: this.fruitSize * 1.05 }, BUBBLE_GRAVITY, BUBBLE_PEAK);
     this.bubbles.push(bubble);
-    this.introduce(power, () => (this.bubbles.includes(bubble) && bubble.y < this.height ? bubble : null), bubble.x);
+    this.introduce(power, () => (this.bubbles.includes(bubble) && !bubble.popped && bubble.y < this.height ? bubble : null), bubble.x);
     return bubble;
   }
 
@@ -527,13 +542,24 @@ export class SmoothieField {
     return near <= reach;
   }
 
-  /** Coins, wedges, power-up bubbles and the bee, from the higher levels. */
+  /**
+   * Coins, wedges, power-up bubbles and the bee, from the higher levels. With the honey they float at
+   * half speed too, like the fruit.
+   */
   updateExtras(dt, slicing) {
+    const floatDt = dt * (this.powerOn('honey') ? HONEY_SLOW : 1);
+    const [low, high] = REACH[this.side];
     const keep = (thing) => {
-      thing.age += dt;
-      thing.vy += thing.gravity * dt;
-      thing.x += thing.vx * dt;
-      thing.y += thing.vy * dt;
+      thing.age += floatDt;
+      thing.vy += thing.gravity * floatDt;
+      // Never drifting out of reach: at the edge of the reach it stops going further, and one that
+      // started a little outside it comes back in, gently.
+      const inner = low * this.width + thing.r;
+      const outer = high * this.width - thing.r;
+      if (thing.x < inner) thing.vx = Math.max(thing.vx, (inner - thing.x) * 2);
+      else if (thing.x > outer) thing.vx = Math.min(thing.vx, (outer - thing.x) * 2);
+      thing.x += thing.vx * floatDt;
+      thing.y += thing.vy * floatDt;
       return thing.y < this.height + thing.r * 2;
     };
     this.coins = this.coins.filter((coin) => {
@@ -552,10 +578,10 @@ export class SmoothieField {
       }
       return keep(bubble);
     });
-    if (this.bee) this.moveBee(dt, slicing);
+    if (this.bee) this.moveBee(floatDt, slicing);
     for (const flier of this.flying) flier.t += dt / FLY_SECONDS;
     this.flying = this.flying.filter(({ t }) => t < 1);
-    this.labels = stepLabels(this.labels, dt, this.fresh);
+    this.labels = stepLabels(this.labels, dt, this.fresh, this.introduced);
   }
 
   popBubble(bubble) {
@@ -564,7 +590,11 @@ export class SmoothieField {
       const angle = (i / count) * Math.PI * 2;
       this.drops.push({ x: bubble.x + Math.cos(angle) * bubble.r, y: bubble.y + Math.sin(angle) * bubble.r, vx: Math.cos(angle) * this.height * 0.15, vy: Math.sin(angle) * this.height * 0.15, size: bubble.r * 0.08, life: 0.4, colour: '#bfe8ff' });
     }
+    bubble.popped = true;
     this.events.onPower?.(bubble.power);
+    // Popped before its name had its turn, it's named beside its badge while it's on.
+    const badge = this.badgeAt(bubble.power);
+    if (badge) this.introduce(bubble.power, () => this.badgeAt(bubble.power), badge.x, badge.y);
   }
 
   /** The bee buzzing across in a gentle wave, until a hand touches it and it gives its honey. */
@@ -787,7 +817,7 @@ export class SmoothieField {
     this.drawPowers(ctx);
     this.drawFlying(ctx);
     const [label] = this.labels;
-    if (label) drawLabel(ctx, label, label.at(), width, height, LABEL_SECONDS);
+    if (label?.started) drawLabel(ctx, label, this.labelText(label), label.at(), width, height, LABEL_SECONDS);
   }
 
   /** Coins and wedges floating up, power-up bubbles, and the bee. */
@@ -1145,19 +1175,30 @@ function drawBee(ctx, bee, time, reduced, height) {
 }
 
 /**
- * One name at a time, so they never pile up. The names of what's new at this level always get their
- * turn, but an older one that's waited a while is let go, and so is one whose thing has gone.
+ * One name at a time, so they never pile up. A name only starts once its thing can be seen, and only
+ * then counts as shown, in shown. What's new at this level goes first, and waits for as long as it
+ * takes. An older one that's waited a while is let go, to come again with the next of its kind.
  */
-function stepLabels(labels, dt, fresh) {
-  labels.forEach((label, index) => {
-    if (index === 0) label.t += dt;
+function stepLabels(labels, dt, fresh, shown) {
+  if (labels.length && !labels[0].started) {
+    const ready = labels.filter((label) => label.at() !== null);
+    const next = ready.find((label) => fresh.has(label.key)) ?? ready[0];
+    if (next) {
+      const { x, y } = next.at();
+      Object.assign(next, { started: true, last: { x, y } });
+      shown.add(next.key);
+      labels = [next, ...labels.filter((label) => label !== next)];
+    }
+  }
+  for (const label of labels) {
+    if (label.started) label.t += dt;
     else label.wait = (label.wait ?? 0) + dt;
-  });
-  return labels.filter((label, index) => label.t < LABEL_SECONDS && (index === 0 || ((fresh.has(label.key) || label.wait < LABEL_WAIT) && label.at() !== null)));
+  }
+  return labels.filter((label) => (label.started ? label.t < LABEL_SECONDS : fresh.has(label.key) || label.wait < LABEL_WAIT));
 }
 
 /** A new thing's name in a little rounded box above it, fading in and out, with a soft ring. */
-function drawLabel(ctx, label, now, width, height, lasts) {
+function drawLabel(ctx, label, text, now, width, height, lasts) {
   // Where its thing is, or was last, if it's just gone. The ring follows it, and the name stays
   // where it first came, so nothing bright moves quickly.
   const at = now ?? label.last;
@@ -1175,7 +1216,6 @@ function drawLabel(ctx, label, now, width, height, lasts) {
   ctx.arc(at.x, at.y, height * (0.075 + 0.01 * Math.min(1, label.t)), 0, Math.PI * 2);
   ctx.stroke();
   ctx.font = `600 ${font}px Fredoka, system-ui, sans-serif`;
-  const text = `${label.mark} ${label.text}`;
   const wide = ctx.measureText(text).width + font * 1.2;
   const x = Math.min(width - wide / 2 - 8, Math.max(wide / 2 + 8, label.home.x));
   // Above its thing, or below it near the top, where the camera's picture is.

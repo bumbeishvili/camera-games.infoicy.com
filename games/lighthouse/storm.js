@@ -305,12 +305,13 @@ export class Storm {
   /**
    * A wipe, as in Mud.wipe, with moved saying how far the hand went in it, in lengths of a wipe, which
    * is what rubs seaweed and starfish off. It returns how much mud it cleaned, and says when the
-   * window is clean enough.
+   * window is clean enough. byHand is false for the gull's wipe, which isn't where the hand is, so
+   * what lands on the glass still lands away from the hand.
    */
-  wipe(x, y, sizeX, sizeY, moved = 0) {
+  wipe(x, y, sizeX, sizeY, moved = 0, { byHand = true } = {}) {
     if (!this.mud || this.clean) return 0;
     const added = this.mud.wipe(x, y, sizeX, sizeY);
-    this.lastWipe = { x, y };
+    if (byHand) this.lastWipe = { x, y };
     if (moved > 0) this.rub(x, y, sizeX, sizeY, moved);
     for (const prize of this.prizes) {
       if (prize.hidden && this.mud.isClean(prize.x, prize.y)) {
@@ -362,7 +363,11 @@ export class Storm {
     this.coming = [];
     // Nothing on a window is ever missed: the treasure out on the glass, the shells still under the last
     // bits of mud and the pearls the crabs are carrying are all kept for the child as it comes clean.
-    for (const crab of this.crabs) this.prizes.push(this.makePrize('pearl', crab.x, crab.y));
+    // A crab that lets go of its pearl like this walks off the glass, as one that's touched does.
+    for (const crab of this.crabs) {
+      this.prizes.push(this.makePrize('pearl', crab.x, crab.y));
+      this.emit('crab-off', { crab });
+    }
     this.crabs = [];
     for (const prize of [...this.prizes]) {
       prize.hidden = false;

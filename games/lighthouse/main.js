@@ -43,8 +43,10 @@ class LighthouseGame {
   }
 
   applySettings() {
-    const { hands, reach } = this.session.settings;
+    const { hands, reach, language } = this.session.settings;
     this.room.configure({ side: hands, reach });
+    // The names of new things are in the language the voice speaks, even if it changes mid-round.
+    this.room.language = language;
   }
 
   setHands() {
@@ -70,7 +72,6 @@ class LighthouseGame {
     this.applySettings();
     this.story.hide();
     this.room.restart();
-    this.room.language = this.session.settings.language;
     this.room.mud = null;
     this.room.setBoat(null);
     this.room.boat = null;
@@ -159,14 +160,20 @@ class LighthouseGame {
         room.crabLeaves(event.crab);
         session.sound.handsOpen();
       },
+      // A crab nobody touched, letting go of its pearl as the window comes clean.
+      'crab-off': () => room.crabLeaves(event.crab),
       'power-out': () => room.introduce(event.power.kind, on(() => storm.powers, event.power)),
+      // Picked up before its name had its turn, a power-up is named beside its badge while it's on.
       power: () => {
         room.sparkle(event.power);
+        room.introduce(event.power.kind, () => room.badgeAt(event.power.kind));
         session.sound.handsOpen();
       },
+      // And the gull beside the gull, as it flies across.
       gull: () => {
         room.sparkle(event.power, '#ffffff');
         room.sendGull(event.y);
+        room.introduce('gull', () => room.gullAt());
         session.sound.handsOpen();
       },
       'ship-home': () => this.onShipHome(),
@@ -219,7 +226,7 @@ class LighthouseGame {
     byId('race-progress-fill').style.width = `${Math.round(((storm.home + Math.min(1, windowShare) * 0.999) / storm.ships.length) * 100)}%`;
   }
 
-  wipe = (x, y, sizeX, sizeY, moved) => this.storm.wipe(x, y, sizeX, sizeY, moved);
+  wipe = (x, y, sizeX, sizeY, moved, how) => this.storm.wipe(x, y, sizeX, sizeY, moved, how);
 
   update(dt, snapshot) {
     if (this.after) {

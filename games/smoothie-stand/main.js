@@ -75,8 +75,10 @@ class SmoothieGame {
   }
 
   applySettings() {
-    const { pace, slicing, hands } = this.session.settings;
+    const { pace, slicing, hands, language } = this.session.settings;
     this.field.configure({ pace, slicing, side: hands });
+    // The names of new things are in the language the voice speaks, even if it changes mid-round.
+    this.field.language = language;
   }
 
   setHands(side) {
@@ -97,7 +99,6 @@ class SmoothieGame {
     this.applySettings();
     this.field.setLevel(level);
     this.field.reset();
-    this.field.language = this.session.settings.language;
     this.field.fresh = new Set(newAt(level).map(({ key }) => key));
     this.story.hide();
     byId('order').replaceChildren();
