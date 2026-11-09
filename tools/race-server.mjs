@@ -4,7 +4,7 @@
 //   node tools/race-server.mjs
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
-import { idFor, RaceRoom, validCode } from '../server/race-room.js';
+import { idFor, RaceRoom, takeOver, validCode } from '../server/race-room.js';
 
 const PORT = Number(process.env.RACE_PORT ?? 8643);
 const ALLOWED_ORIGINS = ['http://localhost:8642', 'http://127.0.0.1:8642'];
@@ -87,9 +87,17 @@ server.on('upgrade', (request, socket) => {
     send(message) {
       if (open) socket.write(frame(1, Buffer.from(JSON.stringify(message))));
     },
+    close() {
+      if (open) socket.end(frame(8, Buffer.from([0x03, 0xe8])));
+      gone();
+    },
   };
-  const id = idFor([...room.players], address.searchParams.get('was'), () => randomBytes(9).toString('base64url'));
+  // In the room first, so that a connection it takes over going doesn't leave the room empty and gone.
   room.players.add(player);
+  const was = address.searchParams.get('was');
+  // Taking over a connection that died without closing, or back within moments of one that did close.
+  const kept = takeOver([...room.players], was) ?? room.rules.cameBack(was);
+  const id = kept ? was : idFor([...room.players], was, () => randomBytes(9).toString('base64url'));
   const gone = () => {
     if (!open) return;
     open = false;
@@ -97,7 +105,7 @@ server.on('upgrade', (request, socket) => {
     room.rules.leave(player);
     if (!room.players.size) rooms.delete(code);
   };
-  if (!room.rules.arrive(player, id)) {
+  if (!room.rules.arrive(player, id, kept)) {
     socket.end(frame(8));
     gone();
     return;

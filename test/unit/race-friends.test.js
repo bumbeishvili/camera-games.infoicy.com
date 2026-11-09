@@ -2,7 +2,7 @@
 // is moved smoothly from what their game sends.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanCar, cleanName, idFor, makeCode, MAX_RACERS, RaceRoom, validCode } from '../../server/race-room.js';
+import { cleanCar, cleanName, idFor, makeCode, MAX_RACERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
 import { CarTrack, codeInLink } from '../../games/high-five-racers/friends.js';
 
 /** A room with players who keep what they're sent, as the server's sockets would pass it on. */
@@ -144,6 +144,52 @@ test('someone who loses the connection mid-race comes back as themselves, still 
   friend.say({ t: 'ready' });
   friend.say({ t: 'hi', name: 'Nino', racing: true });
   assert.equal(host.last('room').members.find(({ id }) => id === 'bbbbbbbb').racing, false);
+});
+
+test('coming back while the old connection is still there, as when the wifi drops, takes it over and keeps hosting', () => {
+  const { rules, join } = makeRoom();
+  const host = join('aaaaaaaa');
+  host.say({ t: 'hi', name: 'Ana', level: 6 });
+  const friend = join('bbbbbbbb');
+  host.say({ t: 'ready' });
+  friend.say({ t: 'ready' });
+  let closed = 0;
+  host.close = () => {
+    closed += 1;
+  };
+  // The new connection is in the room before it's given anyone's id.
+  const back = { meta: null, heard: [], setMeta(meta) { this.meta = meta; }, send(message) { this.heard.push(message); } };
+  const players = [host, friend, back];
+  const kept = takeOver(players, 'aaaaaaaa');
+  assert.equal(closed, 1, 'the old connection goes');
+  assert.equal(host.meta, null);
+  assert.ok(rules.arrive(back, 'aaaaaaaa', kept));
+  assert.deepEqual(back.meta, { ...kept, id: 'aaaaaaaa' });
+  assert.equal(back.meta.racing, true);
+  assert.equal(back.meta.name, 'Ana');
+  assert.equal(takeOver(players, 'cccccccc'), null, 'nobody to take over');
+  assert.equal(takeOver(players, 'not valid!'), null);
+});
+
+test('back within moments of a connection that did close, a player carries on as before, still hosting', () => {
+  const { rules, join, leave, tick } = makeRoom();
+  const host = join('aaaaaaaa');
+  host.say({ t: 'hi', name: 'Ana' });
+  const friend = join('bbbbbbbb');
+  host.say({ t: 'ready' });
+  friend.say({ t: 'ready' });
+  const joined = host.meta.joined;
+  leave(host);
+  assert.equal(friend.last('room').members.find(({ host: hosting }) => hosting).id, 'bbbbbbbb', 'meanwhile the friend hosts');
+  tick(2000);
+  const kept = rules.cameBack('aaaaaaaa');
+  assert.equal(kept.joined, joined);
+  assert.equal(kept.racing, true);
+  assert.equal(rules.cameBack('aaaaaaaa'), null, 'only once');
+  // Too long gone, and they start again.
+  leave(friend);
+  tick(16_000);
+  assert.equal(rules.cameBack('bbbbbbbb'), null);
 });
 
 test('names are cleaned, and a flood of messages is cut off', () => {

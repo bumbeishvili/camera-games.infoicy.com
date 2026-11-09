@@ -7,7 +7,7 @@
 //
 // Deploy with: npx wrangler deploy --config server/wrangler.jsonc
 import { DurableObject } from 'cloudflare:workers';
-import { idFor, RaceRoom, validCode } from './race-room.js';
+import { idFor, RaceRoom, takeOver, validCode } from './race-room.js';
 
 // Only the games' own pages may use it.
 const ALLOWED_ORIGINS = ['https://hemi.infoicy.com', 'http://localhost:8642', 'http://127.0.0.1:8642'];
@@ -59,6 +59,13 @@ export class Room extends DurableObject {
             // It's closing.
           }
         },
+        close() {
+          try {
+            ws.close(1000, 'replaced');
+          } catch {
+            // Already closed.
+          }
+        },
       };
       this.seen.set(ws, player);
     }
@@ -66,10 +73,13 @@ export class Room extends DurableObject {
   }
 
   async fetch(request) {
-    const id = idFor(this.players(), new URL(request.url).searchParams.get('was'), newId);
+    const was = new URL(request.url).searchParams.get('was');
+    // Taking over a connection that died without closing, or back within moments of one that did close.
+    const kept = takeOver(this.players(), was) ?? this.rules.cameBack(was);
+    const id = kept ? was : idFor(this.players(), was, newId);
     const [client, server] = Object.values(new WebSocketPair());
     this.ctx.acceptWebSocket(server);
-    if (!this.rules.arrive(this.player(server), id)) server.close(1000, 'full');
+    if (!this.rules.arrive(this.player(server), id, kept)) server.close(1000, 'full');
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -77,10 +87,12 @@ export class Room extends DurableObject {
     if (typeof message === 'string') this.rules.hear(this.player(ws), message);
   }
 
-  webSocketClose(ws, code) {
+  webSocketClose(ws) {
     this.goodbye(ws);
+    // Always 1000: the code that came in can be one that mustn't be sent back, like 1005 for "none given",
+    // and then the player's browser waits 10 seconds for an answer before it can connect again.
     try {
-      ws.close(code, 'bye');
+      ws.close(1000, 'bye');
     } catch {
       // Already closed.
     }

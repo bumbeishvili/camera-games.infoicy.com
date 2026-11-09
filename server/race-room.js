@@ -22,6 +22,7 @@ export const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // No 0, O, 1, I 
 export const CODE_LENGTH = 6;
 export const MOST_BYTES = 600; // A message bigger than this is ignored.
 const MOST_A_SECOND = 40; // Messages a player can send in a second; more are dropped.
+const COMES_BACK_WITHIN_MS = 15_000; // A player who goes and comes back as soon as this carries on as before.
 const LAPS = [1, 2, 4];
 
 /** A player's id, which a player who lost the connection for a moment brings back to keep their place. */
@@ -30,6 +31,21 @@ export const validId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{8,24}$/
 /** The id for a player arriving: the one they had, if they're coming back and nobody has it, or a new one. */
 export function idFor(players, was, fresh) {
   return validId(was) && !players.some((player) => player.meta?.id === was) ? was : fresh();
+}
+
+/**
+ * A player coming back with the id they had, whose old connection is still here: one that died without
+ * closing, as when the wifi drops. The old one goes, quietly, and what was kept about them carries on with
+ * the new one, so they keep their place, and hosting if they were. Returns that, or null.
+ */
+export function takeOver(players, was) {
+  if (!validId(was)) return null;
+  const old = players.find((player) => player.meta?.id === was);
+  if (!old) return null;
+  const kept = old.meta;
+  old.setMeta(null);
+  old.close();
+  return kept;
 }
 
 export const validCode = (code) => typeof code === 'string' && code.length === CODE_LENGTH && [...code].every((letter) => CODE_LETTERS.includes(letter));
@@ -89,10 +105,29 @@ export class RaceRoom {
     this.room = room;
     this.now = now;
     this.counts = new Map(); // id: { second, count }, to drop a flood of messages. Fine to lose.
+    this.recent = new Map(); // id: { meta, at }, for those who have just gone: see cameBack. Fine to lose too.
   }
 
-  /** A new player has connected. They're given an id and a seat, or told the room is full. */
-  arrive(player, id) {
+  /** What was kept about a player who went a moment ago and is back with their id, or null. */
+  cameBack(was) {
+    const now = this.now();
+    for (const [id, { at }] of this.recent) if (now - at > COMES_BACK_WITHIN_MS) this.recent.delete(id);
+    const recent = this.recent.get(was);
+    if (!recent) return null;
+    this.recent.delete(was);
+    return recent.meta;
+  }
+
+  /**
+   * A new player has connected. They're given an id and a seat, or told the room is full. kept is what was
+   * kept about them from a connection they're taking over: see takeOver.
+   */
+  arrive(player, id, kept = null) {
+    if (kept) {
+      player.setMeta({ ...kept, id });
+      this.tellEveryone();
+      return true;
+    }
     const others = this.room.players().filter((each) => each !== player && each.meta?.id);
     if (others.length >= MAX_RACERS) {
       player.send({ t: 'full' });
@@ -155,6 +190,7 @@ export class RaceRoom {
   leave(player) {
     if (!player.meta?.id) return;
     this.counts.delete(player.meta.id);
+    this.recent.set(player.meta.id, { meta: player.meta, at: this.now() });
     player.setMeta(null);
     if (!this.startIfAllReady()) this.tellEveryone();
   }

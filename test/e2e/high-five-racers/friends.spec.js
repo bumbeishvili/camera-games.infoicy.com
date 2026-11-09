@@ -260,6 +260,41 @@ test('a friend who loses the connection for a moment carries on in the same car,
   await ben.context.close();
 });
 
+test('a connection that goes quiet without closing, as when the wifi drops, comes back by itself, in the same car and still hosting', async ({ page, browser }) => {
+  test.setTimeout(240_000);
+  await openGame(page, { laps: 1 });
+  const code = await makeRace(page, 'Ana');
+  const ben = await joiner(browser, code);
+  await getReady(page);
+  await getReady(ben.page);
+  await waitForScreen(page, 'playing');
+  await waitForScreen(ben.page, 'playing');
+  const { you } = await roomOf(page);
+
+  // Nothing more gets through to the host on her connection, though it's still open: only on a new one.
+  await page.evaluate(() => {
+    const { room } = window.__game.game.friends;
+    const hear = room.hear.bind(room);
+    const old = room.socket;
+    room.hear = (text) => {
+      if (room.socket !== old) hear(text);
+    };
+  });
+  await page.waitForTimeout(10_000);
+  expect(await roomOf(page)).toMatchObject({ you, status: 'in', hosting: true });
+  // Ben typed no name, so his game shows his driver's.
+  expect((await roomOf(ben.page)).members.map(({ name, host }) => [name, host])).toEqual([['Ana', true], ['', false]]);
+  // Ben never lost Ana's car, and it's where she really is.
+  const [seen, own] = await Promise.all([raceOf(ben.page), raceOf(page)]);
+  expect(seen.friends).toHaveLength(1);
+  expect(Math.abs(seen.friends[0].distance - own.distance)).toBeLessThan(15);
+  // And Ana sees Ben's car again.
+  const [hers, his] = await Promise.all([raceOf(page), raceOf(ben.page)]);
+  expect(Math.abs(hers.friends[0].distance - his.distance)).toBeLessThan(15);
+  expect(ben.errors).toEqual([]);
+  await ben.context.close();
+});
+
 test('a friend who leaves in the middle of a race takes their car away, and isn\'t waited for at the finish', async ({ page, browser }) => {
   test.setTimeout(240_000);
   await openGame(page, { laps: 1 });

@@ -8,8 +8,10 @@ import { makeCode, validCode } from '../../server/race-room.js';
 const LOCAL = ['localhost', '127.0.0.1'].includes(globalThis.location?.hostname);
 export const RACE_SERVER = LOCAL ? 'ws://localhost:8643' : 'wss://hemi-race.infoicy.com';
 const SEND_EVERY_MS = 100; // Where the car is, 10 times a second.
-const PING_EVERY_MS = 25_000; // Keeps the connection from being dropped while nobody's racing.
-const RETRIES = 3;
+// A connection can die without closing, as when the wifi drops, and then nothing more comes. Asking every so
+// often, and hearing nothing back for a while, is how that's noticed: quickly in a race, slowly otherwise.
+const HEARTBEAT = { racing: { every: 2000, silent: 6000 }, waiting: { every: 25_000, silent: 60_000 } };
+const RETRIES = 6; // Coming back within about 12 seconds.
 const SHOW_BEHIND_MS = 120; // Friends' cars are shown this far in the past, so there's always a next place to go to.
 const GUESS_AHEAD_MS = 500; // With nothing new for a while, a car carries on this far at the speed it was going.
 const KEEP_SAMPLES = 30;
@@ -120,29 +122,59 @@ export class FriendsRoom {
       const was = this.you ? `?was=${encodeURIComponent(this.you)}` : '';
       socket = new WebSocket(`${RACE_SERVER}/room/${this.code}${was}`);
     } catch {
-      this.lost();
+      this.reconnect();
       return;
     }
     this.socket = socket;
     socket.addEventListener('open', () => {
       this.tries = 0;
+      this.heardAt = performance.now();
+      this.pingedAt = this.heardAt;
       this.say({ t: 'hi', ...this.hello, racing: this.racing });
       clearInterval(this.pinger);
-      this.pinger = setInterval(() => this.send('ping'), PING_EVERY_MS);
+      this.pinger = setInterval(() => this.beat(), 1000);
     });
     socket.addEventListener('message', ({ data }) => this.hear(data));
     socket.addEventListener('close', () => {
-      if (this.socket !== socket) return;
-      clearInterval(this.pinger);
-      if (this.status === 'full') return;
-      // A moment's break is put right by itself. A friend sees this player go and come back.
-      if (this.tries < RETRIES) {
-        this.tries += 1;
-        this.retry = setTimeout(() => this.connect(), 600 * this.tries);
-        return;
-      }
-      this.lost();
+      if (this.socket !== socket || this.status === 'full') return;
+      this.reconnect();
     });
+  }
+
+  /**
+   * A moment's break is put right by itself, with a new connection, as the same player. The old one isn't
+   * waited for: one that died without closing could take a long time to say so.
+   */
+  reconnect() {
+    const { socket } = this;
+    this.socket = null;
+    clearInterval(this.pinger);
+    try {
+      socket?.close();
+    } catch {
+      // Already closing.
+    }
+    if (this.tries >= RETRIES) {
+      this.lost();
+      return;
+    }
+    this.tries += 1;
+    clearTimeout(this.retry);
+    this.retry = setTimeout(() => this.connect(), 600 * this.tries);
+  }
+
+  /** Asks the server now and then, and starts again if it has gone quiet. */
+  beat(now = performance.now()) {
+    if (this.socket?.readyState !== WebSocket.OPEN) return;
+    const { every, silent } = this.racing ? HEARTBEAT.racing : HEARTBEAT.waiting;
+    if (now - this.heardAt > silent) {
+      this.reconnect();
+      return;
+    }
+    if (now - this.pingedAt >= every) {
+      this.pingedAt = now;
+      this.send('ping');
+    }
   }
 
   lost() {
@@ -154,6 +186,7 @@ export class FriendsRoom {
   }
 
   hear(text) {
+    this.heardAt = performance.now();
     if (text === 'pong') return;
     let message;
     try {
