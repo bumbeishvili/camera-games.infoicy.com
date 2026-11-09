@@ -18,12 +18,6 @@ Movement-based games for children, played in front of a webcam.
 
 ## Play
 
-You need a computer with a webcam, Google Chrome and Python 3.
-
-```
-python3 tools/serve.py
-```
-
-Then open <http://localhost:8642> in Chrome.
+Open **<https://hemi.infoicy.com>** in Google Chrome on a computer with a webcam.
 
 Full details: [readme-details.md](readme-details.md)
