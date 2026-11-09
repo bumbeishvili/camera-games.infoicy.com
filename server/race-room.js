@@ -15,6 +15,9 @@
 //   car    { ms, d, x, s, l, f, b }        where their car is, about 10 times a second, in a race
 //   plane  { ms, x, y, z, h, p, r, s, f }  where their plane is, in a flight
 //   score  { ms, n }                       how many they've popped, or got right, so far
+//   hand   { ms, x, y, v, o, p }           where their glove is in Balloon Pop, from 0 to 1 across and down
+//                                      the screen, whether it can be seen and is open, and p, its 21
+//                                      points from the middle of the palm, as x, y, x, y..., in palms
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
@@ -94,6 +97,19 @@ export function cleanPlane(message) {
     r: number(message.r, -2, 2, 3),
     s: number(message.s, 0, 300, 1),
     f: message.f ? 1 : 0,
+  };
+}
+
+/** Only what a hand message should hold, rounded, with its 21 points or none. */
+export function cleanHand(message) {
+  const points = Array.isArray(message.p) && message.p.length === 42 ? message.p.map((value) => number(value, -4, 4, 2)) : [];
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    x: number(message.x, -0.5, 1.5, 3),
+    y: number(message.y, -0.5, 1.5, 3),
+    v: message.v && points.length ? 1 : 0,
+    o: message.o ? 1 : 0,
+    p: points,
   };
 }
 
@@ -197,8 +213,9 @@ export class RaceRoom {
         for (const other of others) other.send({ t: 'score', from: meta.id, ms: number(message.ms, 0, 3_600_000, 0), n: number(message.n, 0, 1000, 0) });
         break;
       case 'car':
-      case 'plane': {
-        const moved = message.t === 'plane' ? cleanPlane(message) : cleanCar(message);
+      case 'plane':
+      case 'hand': {
+        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand }[message.t](message);
         for (const other of others) other.send({ t: message.t, from: meta.id, ...moved });
         break;
       }

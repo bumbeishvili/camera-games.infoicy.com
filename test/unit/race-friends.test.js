@@ -2,7 +2,8 @@
 // is moved smoothly from what their game sends.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanCar, cleanName, idFor, makeCode, MAX_RACERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
+import { cleanCar, cleanHand, cleanName, idFor, makeCode, MAX_RACERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
+import { Track } from '../../core/friends.js';
 import { CarTrack, codeInLink } from '../../games/high-five-racers/friends.js';
 
 /** A room with players who keep what they're sent, as the server's sockets would pass it on. */
@@ -286,4 +287,30 @@ test('in Balloon Pop, scores go to the others, and the host\'s number of balloon
   assert.deepEqual(friend.last('score'), { t: 'score', from: 'aaaaaaaa', ms: 4000, n: 7 });
   friend.say({ t: 'done', ms: 60000, n: 12, w: 1 });
   assert.deepEqual(host.last('done'), { t: 'done', from: 'bbbbbbbb', ms: 60000, n: 12, w: 1 });
+});
+
+test('a friend\'s glove in Balloon Pop: only its place, whether it\'s open, and its 21 points, rounded', () => {
+  const points = Array.from({ length: 42 }, (_, index) => (index % 2 ? 0.123456 : -9));
+  const hand = cleanHand({ ms: 900, x: 0.51234, y: 2, v: 1, o: 1, p: points, picture: 'not this' });
+  assert.deepEqual(Object.keys(hand), ['ms', 'x', 'y', 'v', 'o', 'p']);
+  assert.equal(hand.x, 0.512);
+  assert.equal(hand.y, 1.5, 'no further off the screen than half of it');
+  assert.equal(hand.p.length, 42);
+  assert.deepEqual(hand.p.slice(0, 2), [-4, 0.12]);
+  // Anything but 21 points is none, and with none it can't be seen.
+  assert.deepEqual(cleanHand({ v: 1, p: [1, 2, 3] }).p, []);
+  assert.equal(cleanHand({ v: 1, p: [1, 2, 3] }).v, 0);
+  assert.ok(JSON.stringify({ t: 'hand', from: 'abcdefghijkl', ...cleanHand({ ms: 3_599_999, x: -0.5, y: -0.5, v: 1, o: 1, p: Array(42).fill(-3.99) }) }).length < 600, 'well under the most a message can be');
+});
+
+test('a list of points moves smoothly from one message to the next', () => {
+  const track = new Track({ lerp: ['x'], lists: ['p'], steps: ['v'] });
+  track.push({ ms: 0, x: 0, p: [0, 0], v: 1 }, 1000);
+  track.push({ ms: 100, x: 1, p: [1, -1], v: 1 }, 1100);
+  const half = track.at(1000 + 50 + 120);
+  assert.ok(Math.abs(half.x - 0.5) < 1e-9);
+  assert.deepEqual(half.p.map((value) => Math.round(value * 10) / 10), [0.5, -0.5]);
+  // A hand that's gone has no points, and that's a step rather than a blend.
+  track.push({ ms: 200, x: 1, p: [], v: 0 }, 1200);
+  assert.deepEqual(track.at(1000 + 175 + 120).p, []);
 });

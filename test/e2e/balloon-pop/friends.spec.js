@@ -114,6 +114,35 @@ test('two friends pop balloons for the same time, see each other\'s scores, and 
   await expect(page.locator('#chip-time-box')).toBeVisible();
   await expect(page.locator('#chip-popped')).toHaveText('0');
 
+  // Ben sees Ana's glove, in grey, where her hand is on her screen.
+  await show(page, null, 'open');
+  await expect.poll(() => ben.page.evaluate(() => window.__game.game.friendsGloves[0]?.glove.visible ?? false), { timeout: 15_000 }).toBe(true);
+  await page.waitForTimeout(1000);
+  const [hers, seen] = await Promise.all([
+    page.evaluate(() => {
+      const { balloons } = window.__game;
+      const glove = balloons.gloves.right;
+      return { x: glove.x / balloons.width, y: glove.y / balloons.height, status: glove.status };
+    }),
+    ben.page.evaluate(() => {
+      const { balloons, game } = window.__game;
+      const { glove, name, fade } = game.friendsGloves[0];
+      return { x: glove.x / balloons.width, y: glove.y / balloons.height, status: glove.status, name, fade };
+    }),
+  ]);
+  expect(seen.name).toBe('Ana');
+  expect(seen.status).toBe(hers.status);
+  expect(Math.hypot(seen.x - hers.x, seen.y - hers.y)).toBeLessThan(0.05);
+  expect(seen.fade).toBeGreaterThan(0.9);
+  await ben.page.screenshot({ path: 'test-results/screens/pop-friends-glove.png' });
+  await show(page, null, null);
+  await expect.poll(() => ben.page.evaluate(() => window.__game.game.friendsGloves[0].glove.visible), { timeout: 10_000 }).toBe(false);
+  await page.evaluate(() => {
+    const { popped } = window.__game.balloons;
+    popped.left = 0;
+    popped.right = 0;
+  });
+
   // Each pops some for real, and the other sees it straight away.
   await popOne(page);
   await popOne(ben.page);

@@ -2,7 +2,9 @@
 // challenge, where the balloons have answers on them and the wrong one burns the glove.
 import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
+import { Track } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
+import { Glove } from '../../core/glove.js';
 import { GameSession } from '../../core/session.js';
 import { Sound } from '../../core/sound.js';
 import { BalloonField } from './balloons.js';
@@ -54,6 +56,11 @@ const POP_WORDS = {
   busy: 'Playing',
   still: 'still playing',
 };
+// A friend's glove between what their game sends: where it is, and its points, which go smoothly from one to
+// the next. Whether it can be seen and is open change half way.
+const HAND_TRACK = { lerp: ['x', 'y'], lists: ['p'], steps: ['v', 'o'] };
+const GLOVE_FADE_RATE = 8; // How quickly a friend's glove fades in and out, as their hand comes and goes.
+const round2 = (value) => Math.round(value * 100) / 100;
 const clock = (seconds) => {
   const whole = Math.max(0, Math.ceil(seconds));
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
@@ -75,6 +82,7 @@ class BalloonGame {
     this.burns = 0;
     this.timed = null; // With friends, how long the game lasts and how long is left: see prepare().
     this.scores = new Map(); // Friends' scores, by their id, as they come in.
+    this.friendsGloves = []; // Each friend's glove, as { id, glove, track, name, fade }: see showFriendsGloves.
     this.sentScore = null;
     this.goAt = 0;
     const { settings, sound } = session;
@@ -124,9 +132,14 @@ class BalloonGame {
       hello: () => ({ driver: settings.fighter ?? '', level: session.levels.current, length: settings.balloons, mode: settings.maths }),
       screen: () => session.screen,
       portraits: () => session.portraits,
-      onMove: (id, message) => this.friendScore(id, message),
+      onMove: (id, message) => {
+        if (message.t === 'hand') this.friendsGloves.find((each) => each.id === id)?.track.push(message, performance.now());
+        else this.friendScore(id, message);
+      },
       onGone: (friend) => {
         this.scores.delete(friend.id);
+        this.friendsGloves = this.friendsGloves.filter((each) => each.id !== friend.id);
+        this.field.friendsGloves = this.friendsGloves;
         this.showScores();
       },
       // Whoever has the most, and equal scores share a place.
@@ -341,6 +354,9 @@ class BalloonGame {
     this.friendsMaths = friendly ? (MATHS_KINDS.includes(friendly.mode) ? friendly.mode : 'off') : null;
     this.scores = new Map();
     this.sentScore = null;
+    // Each friend's glove, in grey, where their hand is on their own screen.
+    this.friendsGloves = (friendly?.friends ?? []).map((friend) => ({ id: friend.id, name: friend.spec.name, glove: new Glove('right'), track: new Track(HAND_TRACK), fade: 0 }));
+    this.field.friendsGloves = this.friendsGloves;
     byId('chip-time-box').hidden = !friendly;
     this.field.setLevel(friendly?.level ?? level);
     this.field.reset({ goal: friendly ? Infinity : balloons, pace, reach, side: hands });
@@ -371,14 +387,55 @@ class BalloonGame {
     });
     const { timed, field } = this;
     if (!timed) return;
-    // Friends see each score as it goes up.
+    // Friends see each score as it goes up, and the glove where the hand is.
     if (field.total !== this.sentScore) {
       this.sentScore = field.total;
       this.friends.sendScore(field.total, this.sinceGo);
     }
+    this.friends.sendMove('hand', this.handState(), this.sinceGo);
+    this.showFriendsGloves(dt);
     timed.left = Math.max(0, timed.left - dt);
     this.showProgress();
     if (timed.left === 0) this.session.finish();
+  }
+
+  /** Where the child's glove is, for friends' games: across and down the screen, and its points in palms. */
+  handState() {
+    const { field } = this;
+    const glove = field.gloves[field.side];
+    if (!glove.visible) return { x: 0, y: 0, v: 0, o: 0, p: [] };
+    const palm = field.palmSize;
+    return {
+      x: round2(glove.x / field.width) || 0,
+      y: round2(glove.y / field.height) || 0,
+      v: 1,
+      o: glove.status === 'open' ? 1 : 0,
+      p: glove.points.flatMap(({ x, y }) => [round2(x / palm), round2(y / palm)]),
+    };
+  }
+
+  /** Each friend's glove where their hand is, a moment ago, fading in and out as it comes and goes. */
+  showFriendsGloves(dt) {
+    const { field } = this;
+    const now = performance.now();
+    for (const each of this.friendsGloves) {
+      const at = each.track.at(now);
+      const seen = Boolean(at?.v && at.p?.length === 42);
+      each.fade += ((seen ? 1 : 0) - each.fade) * (1 - Math.exp(-dt * GLOVE_FADE_RATE));
+      if (!seen) {
+        if (each.fade < 0.02) each.glove.visible = false;
+        continue;
+      }
+      const { glove } = each;
+      glove.visible = true;
+      glove.status = at.o ? 'open' : 'closed';
+      glove.x = at.x * field.width;
+      glove.y = at.y * field.height;
+      glove.points.forEach((point, index) => {
+        point.x = at.p[index * 2] * field.palmSize;
+        point.y = at.p[index * 2 + 1] * field.palmSize;
+      });
+    }
   }
 
   idle(dt, snapshot) {
@@ -403,6 +460,8 @@ class BalloonGame {
   finished() {
     this.field.endPlay();
     if (this.timed) this.friends.finished(this.sinceGo, { n: this.field.total, w: 1 });
+    // Friends' gloves go with the end of the game, rather than staying where they last were.
+    for (const each of this.friendsGloves) each.glove.visible = false;
   }
 
   prompt(snapshot, dt) {

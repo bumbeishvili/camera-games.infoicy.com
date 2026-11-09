@@ -158,9 +158,10 @@ Up to 4 children can play against each other, each on their own computer with th
 - **The time:** everyone plays for the same time instead of to a goal: a minute for the host's 20 balloons, two for 40 and three for 60. A clock shows what's left.
 - **What's the same for everyone:** the host's level and the host's maths challenge, so everyone does the same kind of sums. Each child keeps their own balloon speed and reach help, as a grown-up set them.
 - **Scores:** everyone's score shows as they play, the most first. The finish card says who came where, and equal scores share a place.
+- **Friends' hands:** each friend's glove shows in light grey, with their name over it, where their hand is on their own screen, copying it finger by finger. It's only there to see, and pops nothing.
 - **Levels and settings:** a game with friends doesn't move anyone's own level on, and nobody's settings change.
 
-Only the name typed, the character from the other games and the score go to friends, never anything from the camera.
+Only the name typed, the character from the other games, the score and where the glove is go to friends, never anything from the camera.
 
 ## High Five Racers
 

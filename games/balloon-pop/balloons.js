@@ -1597,6 +1597,34 @@ export class BalloonField {
     }
   }
 
+  /**
+   * Friends' gloves, playing on their own computers, where their hands really are, in light grey under the
+   * child's own, with each friend's name over theirs. They're only there to see: they pop nothing here.
+   * main.js keeps friendsGloves up to date, as [{ glove, name, fade }].
+   */
+  drawFriendsGloves() {
+    const { ctx, palmSize } = this;
+    for (const { glove, name, fade } of this.friendsGloves ?? []) {
+      if (!glove.visible || fade < 0.02) continue;
+      // Solid, as a see-through one shows its outline through itself, and only fading as it comes and goes.
+      glove.draw(ctx, palmSize, { fill: '#e3e8ee', ink: '#9aa8b6', alpha: fade });
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.font = `700 ${Math.round(palmSize * 0.32)}px Fredoka, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      const y = glove.y - palmSize * 1.55;
+      const wide = ctx.measureText(name).width + palmSize * 0.4;
+      ctx.fillStyle = 'rgba(18, 48, 77, 0.72)';
+      ctx.beginPath();
+      ctx.roundRect(glove.x - wide / 2, y - palmSize * 0.42, wide, palmSize * 0.48, palmSize * 0.24);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(name, glove.x, y);
+      ctx.restore();
+    }
+  }
+
   render() {
     const { ctx, width, height, ratio } = this;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -1645,6 +1673,7 @@ export class BalloonField {
     }
     ctx.globalAlpha = 1;
 
+    this.drawFriendsGloves();
     this.gloves.left.draw(ctx, this.palmSize);
     this.gloves.right.draw(ctx, this.palmSize);
     this.drawPower();

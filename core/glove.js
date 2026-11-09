@@ -96,10 +96,12 @@ export class Glove {
     return nearest;
   }
 
-  draw(ctx, palmSize) {
+  /** look is { fill, ink, alpha }, for a glove of another colour, as a friend's is: see Balloon Pop. */
+  draw(ctx, palmSize, look = null) {
     if (!this.visible) return;
     const finger = palmSize * 0.27;
     ctx.save();
+    if (look?.alpha !== undefined) ctx.globalAlpha = look.alpha;
     ctx.translate(this.x, this.y);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -128,8 +130,8 @@ export class Glove {
       ctx.stroke();
       ctx.fill();
     };
-    pass(INK, palmSize * 0.07);
-    const colour = GLOVE_COLOURS[this.status === 'open' ? 'open' : 'closed'];
+    pass(look?.ink ?? INK, palmSize * 0.07);
+    const colour = look?.fill ?? GLOVE_COLOURS[this.status === 'open' ? 'open' : 'closed'];
     pass(this.stain > 0 ? mixColours(colour, this.stainColour, this.stain) : colour, 0);
     if (this.embers) {
       ctx.fillStyle = '#ff8f3f';

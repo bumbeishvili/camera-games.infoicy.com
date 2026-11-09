@@ -40,8 +40,8 @@ const turn = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
  * the last message, going the way they were.
  */
 export class Track {
-  constructor({ lerp = [], angles = [], steps = [], guess = () => ({}) }) {
-    Object.assign(this, { lerp, angles, steps, guess });
+  constructor({ lerp = [], angles = [], lists = [], steps = [], guess = () => ({}) }) {
+    Object.assign(this, { lerp, angles, lists, steps, guess });
     this.clear();
   }
 
@@ -80,6 +80,11 @@ export class Track {
     for (const key of this.lerp) out[key] = before[key] + (next[key] - before[key]) * share;
     for (const key of this.angles) out[key] = before[key] + turn(before[key], next[key]) * share;
     for (const key of this.steps) out[key] = share < 0.5 ? before[key] : next[key];
+    // Lists of numbers, each going smoothly to the next, unless one of them is a different length.
+    for (const key of this.lists) {
+      const [from, to] = [before[key] ?? [], next[key] ?? []];
+      out[key] = from.length === to.length ? from.map((value, index) => value + (to[index] - value) * share) : share < 0.5 ? from : to;
+    }
     return out;
   }
 }
@@ -218,7 +223,7 @@ export class FriendsRoom {
       this.events.onChange?.();
     } else if (message.t === 'go') {
       this.events.onGo?.(message);
-    } else if (message.t === 'car' || message.t === 'plane' || message.t === 'score') {
+    } else if (['car', 'plane', 'score', 'hand'].includes(message.t)) {
       this.events.onMove?.(message.from, message);
     } else if (message.t === 'done') {
       this.events.onDone?.(message.from, message);
