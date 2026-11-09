@@ -1,5 +1,8 @@
 // Balloon Pop: balloons float up, and an open hand pops them. A grown-up can turn on a maths
 // challenge, where the balloons have answers on them and the wrong one burns the glove.
+import { renderPortraits } from '../../core/body/portraits.js';
+import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
+import { FriendsPanel } from '../../core/friends-ui.js';
 import { GameSession } from '../../core/session.js';
 import { Sound } from '../../core/sound.js';
 import { BalloonField } from './balloons.js';
@@ -30,6 +33,32 @@ const COOL_IT = 'Hold your hand open to cool it down!';
 const byId = (id) => document.getElementById(id);
 const PRIZE_MARKS = { sweet: '🍬', star: '⭐', gem: '💎', heart: '💗' };
 
+// Playing with friends, each on their own computer: everyone plays for the same time, and whoever pops the
+// most, or gets the most right, comes first. How long goes by the host's number of balloons. See
+// core/friends-ui.js for what each of the words is.
+const FRIENDS_SECONDS = { 20: 60, 40: 120, 60: 180 };
+const MATHS_KINDS = ['off', 'add', 'addTake', 'times'];
+const POP_WORDS = {
+  toggle: 'Play with a friend',
+  make: 'Make a game',
+  codeLabel: 'Or a friend’s game code',
+  codeName: 'Game code',
+  how: 'Send the link to a friend. Then you both press <b>Let’s pop!</b>',
+  leave: 'Leave this game',
+  privacy: 'Only your name, who you play as and how many you pop go to your friends. The camera picture stays on this computer.',
+  alone: 'Play on your own',
+  full: 'That game already has 4 players.',
+  lost: 'Can’t reach the game. Check the internet, then try again.',
+  left: 'You’ve left the game.',
+  badCode: 'A game code is 6 letters and numbers.',
+  busy: 'Playing',
+  still: 'still playing',
+};
+const clock = (seconds) => {
+  const whole = Math.max(0, Math.ceil(seconds));
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+};
+
 class BalloonGame {
   chimeOnOpen = false; // Hands open and close all the time here, so a chime would be noise.
 
@@ -44,6 +73,10 @@ class BalloonGame {
     this.timesAsked = 0;
     this.saidHint = false;
     this.burns = 0;
+    this.timed = null; // With friends, how long the game lasts and how long is left: see prepare().
+    this.scores = new Map(); // Friends' scores, by their id, as they come in.
+    this.sentScore = null;
+    this.goAt = 0;
     const { settings, sound } = session;
     this.field = new BalloonField(byId('game'), {
       onPop: (total) => {
@@ -83,6 +116,28 @@ class BalloonGame {
     byId('finish-hero')?.closest('.finish-hero')?.insertAdjacentHTML('afterend', '<p id="finish-prizes" class="finish-prizes"></p>');
     this.field.configure({ pace: settings.pace, reach: settings.reach, goal: settings.balloons, side: settings.hands });
     this.field.setLevel(session.level);
+    // Playing with friends, if a grown-up makes or joins a game.
+    this.friends = new FriendsPanel({
+      game: 'balloon-pop',
+      linkKey: 'pop',
+      words: POP_WORDS,
+      hello: () => ({ driver: settings.fighter ?? '', level: session.levels.current, length: settings.balloons, mode: settings.maths }),
+      screen: () => session.screen,
+      portraits: () => session.portraits,
+      onMove: (id, message) => this.friendScore(id, message),
+      onGone: (friend) => {
+        this.scores.delete(friend.id);
+        this.showScores();
+      },
+      // Whoever has the most, and equal scores share a place.
+      rank: (a, b) => b.dropped - a.dropped,
+      resultText: ({ dropped }) => `${dropped} ${this.deck ? 'right' : 'popped'}`,
+      titles: { first: 'You popped the most!', other: 'Great popping!' },
+      startAfter: byId('start'),
+      waitingBefore: byId('screen-finish'),
+      resultsAfter: document.querySelector('#screen-finish .finish-hero'),
+      finishTitle: document.querySelector('#screen-finish h2'),
+    });
     const game = this;
     this.debug = {
       balloons: this.field,
@@ -92,19 +147,26 @@ class BalloonGame {
       get question() {
         return game.question;
       },
+      get game() {
+        return game;
+      },
     };
   }
 
   /* ---------- the maths challenge ---------- */
 
-  /** Starts the maths challenge if a grown-up has turned it on, or stops it if they've turned it off. */
+  /**
+   * Starts the maths challenge if a grown-up has turned it on, or stops it if they've turned it off. With
+   * friends, it's the host's kind of sums, and the game goes on until the time is up rather than to a goal.
+   */
   setUpMaths() {
-    const { maths, balloons } = this.session.settings;
+    const { balloons } = this.session.settings;
+    const maths = this.friendsMaths ?? this.session.settings.maths;
     const on = maths !== 'off';
     // Higher levels have more answers to choose from: see rules.js.
     this.deck = on ? new MathsDeck(maths, Math.random, { extra: this.field.plan.answers, most: MOST_ANSWERS }) : null;
     this.question = null;
-    this.field.configure({ goal: on ? Math.round(balloons * MATHS_GOAL_SHARE) : balloons });
+    this.field.configure({ goal: this.timed ? Infinity : on ? Math.round(balloons * MATHS_GOAL_SHARE) : balloons });
     this.field.numbered = on;
     document.body.dataset.maths = on ? 'on' : 'off';
     byId('chip-popped-label').textContent = on ? 'Right answers' : 'Popped';
@@ -173,8 +235,59 @@ class BalloonGame {
 
   showProgress() {
     const { total, goal, progress } = this.field.info;
-    byId('chip-popped').textContent = `${total} of ${goal}`;
-    byId('race-progress-fill').style.width = `${Math.round(progress * 100)}%`;
+    const { timed } = this;
+    // With friends there's no goal, only the time: the bar shows how much of it has gone.
+    byId('chip-popped').textContent = timed ? String(total) : `${total} of ${goal}`;
+    byId('race-progress-fill').style.width = `${Math.round((timed ? 1 - timed.left / timed.seconds : progress) * 100)}%`;
+    if (timed) byId('chip-time').textContent = clock(timed.left);
+    this.showScores();
+  }
+
+  /** A friend's score, as it changes. */
+  friendScore(id, message) {
+    if (message.t !== 'score' || !this.friends.current?.racers.includes(id)) return;
+    this.scores.set(id, message.n);
+    this.showScores();
+  }
+
+  /** Everyone's score while playing with friends, the most first, with the child's own among them. */
+  showScores() {
+    const list = byId('pop-scores');
+    const { current } = this.friends;
+    list.hidden = !current || !this.timed;
+    if (list.hidden) return;
+    const portraits = this.session.portraits ?? {};
+    const mine = { id: this.friends.room.you, name: 'You', driver: this.session.settings.fighter, n: this.field.total };
+    const theirs = current.friends.filter((friend) => !friend.gone).map((friend) => ({ id: friend.id, name: friend.spec.name, driver: friend.spec.id, n: this.scores.get(friend.id) ?? 0 }));
+    const everyone = [mine, ...theirs].sort((a, b) => b.n - a.n);
+    const key = everyone.map(({ id, n }) => `${id}:${n}`).join(',');
+    if (list.dataset.key === key) return;
+    list.dataset.key = key;
+    list.replaceChildren(...everyone.map((each) => {
+      const row = document.createElement('li');
+      row.classList.toggle('is-you', each === mine);
+      const face = document.createElement('img');
+      face.alt = '';
+      face.src = portraits[(characterWithId(each.driver) ?? ROSTER[0]).id] ?? '';
+      const name = document.createElement('span');
+      name.className = 'pop-score-name';
+      name.textContent = each.name;
+      const score = document.createElement('span');
+      score.className = 'pop-score';
+      score.textContent = String(each.n);
+      row.append(face, name, score);
+      return row;
+    }));
+  }
+
+  /** With friends, the start waits until they're ready too. */
+  holdStart(go) {
+    return this.friends.holdStart(go);
+  }
+
+  /** How long since "GO!", by the clock on the wall, for friends' games. */
+  get sinceGo() {
+    return performance.now() - this.goAt;
   }
 
   /** The prize tally, from level 2, which grows a little for a moment when a prize lands in it. */
@@ -219,12 +332,23 @@ class BalloonGame {
   /** Each level brings more balloons, a little faster, and new kinds of them: see rules.js. */
   prepare(level) {
     const { balloons, pace, reach, hands } = this.session.settings;
-    this.field.setLevel(level);
-    this.field.reset({ goal: balloons, pace, reach, side: hands });
+    // With friends, everyone plays the host's level and kind of sums, for as long as the host's game is, and
+    // that doesn't move anyone's own level on. Each child keeps their own speed and reach help.
+    const friendly = this.friends.current;
+    document.body.toggleAttribute('data-friends-race', Boolean(friendly));
+    const seconds = friendly ? FRIENDS_SECONDS[friendly.length] ?? FRIENDS_SECONDS[20] : 0;
+    this.timed = friendly ? { seconds, left: seconds } : null;
+    this.friendsMaths = friendly ? (MATHS_KINDS.includes(friendly.mode) ? friendly.mode : 'off') : null;
+    this.scores = new Map();
+    this.sentScore = null;
+    byId('chip-time-box').hidden = !friendly;
+    this.field.setLevel(friendly?.level ?? level);
+    this.field.reset({ goal: friendly ? Infinity : balloons, pace, reach, side: hands });
     this.bump = null;
     this.saidHint = false;
     this.burns = 0;
     this.setUpMaths();
+    this.friends.titles = this.deck ? { first: 'You got the most right!', other: 'Great sums!' } : { first: 'You popped the most!', other: 'Great popping!' };
     this.showProgress();
     // Prizes only come from level 2, so there's no tally before then.
     document.body.dataset.prizes = this.field.plan.prizes.length ? 'on' : 'off';
@@ -232,6 +356,7 @@ class BalloonGame {
   }
 
   begin() {
+    this.goAt = performance.now();
     if (this.deck) this.questionIn = FIRST_QUESTION_AFTER;
   }
 
@@ -244,6 +369,16 @@ class BalloonGame {
       spawning: true,
       showHands: true,
     });
+    const { timed, field } = this;
+    if (!timed) return;
+    // Friends see each score as it goes up.
+    if (field.total !== this.sentScore) {
+      this.sentScore = field.total;
+      this.friends.sendScore(field.total, this.sinceGo);
+    }
+    timed.left = Math.max(0, timed.left - dt);
+    this.showProgress();
+    if (timed.left === 0) this.session.finish();
   }
 
   idle(dt, snapshot) {
@@ -267,6 +402,7 @@ class BalloonGame {
   /** Play is over: a power-up stops, and the bluebird flies off rather than waiting by the finish card. */
   finished() {
     this.field.endPlay();
+    if (this.timed) this.friends.finished(this.sinceGo, { n: this.field.total, w: 1 });
   }
 
   prompt(snapshot, dt) {
@@ -296,7 +432,9 @@ class BalloonGame {
       .filter(([, count]) => count > 0)
       .map(([kind, count]) => `${PRIZE_MARKS[kind]} ${count}`)
       .join('   ');
-    return { hero: total, noun: 'game', rows: { popped, wrong, prizes: caught } };
+    this.friends.showResults();
+    // A game with friends is on the host's level, so it doesn't move the child's own level on.
+    return { hero: total, noun: 'game', rows: { popped, wrong, prizes: caught }, countsForLevel: !this.friends.current };
   }
 }
 
@@ -314,8 +452,10 @@ new GameSession({
         <div class="chips">
           <div class="chip"><span id="chip-popped-label" class="chip-label">Popped</span><span id="chip-popped" class="chip-value">0 of 20</span></div>
           <div class="chip chip-prizes"><span class="chip-label">Prizes</span><span id="chip-prizes" class="chip-value">0</span></div>
+          <div id="chip-time-box" class="chip" hidden><span class="chip-label">Time</span><span id="chip-time" class="chip-value">1:00</span></div>
         </div>
         <div class="race-progress" aria-hidden="true"><div id="race-progress-fill" class="race-progress-fill"></div></div>
+        <ol id="pop-scores" class="pop-scores" hidden></ol>
       </div>
       <div id="maths-question" class="maths-question" aria-live="polite"></div>
       <div class="pop-demo" aria-hidden="true">
@@ -368,6 +508,7 @@ new GameSession({
   choices: { balloons: Number, pace: String, reach: String, maths: String },
   tagline: (side) => `Pop the balloons with your open ${side} hand!`,
   finishLine: 'You popped them all!',
+  portraits: () => renderPortraits(ROSTER),
   createSound: (options) => new Sound({
     ...options,
     sounds: { pop: new URL('./audio/pop.ogg', import.meta.url), sizzle: new URL('./audio/sizzle.ogg', import.meta.url) },

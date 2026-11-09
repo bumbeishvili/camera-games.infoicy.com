@@ -124,3 +124,40 @@ body[data-maths='on'] .demo-number { display: inline; }
   .chip-prizes.is-caught { animation: none; }
   .demo-balloon, .demo-burst, .demo-hand, .demo-finger, .demo-thumb { animation-duration: 5s; }
 }
+
+/* ---------- playing with friends: the rest is in core/base.css ---------- */
+/* Everyone's score while playing, the most first, under the chips. */
+.pop-scores {
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  width: max-content;
+}
+
+.pop-scores[hidden] { display: none; }
+
+.pop-scores li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px 3px 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.pop-scores li.is-you { background: var(--sun); }
+
+.pop-scores img {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--surface-soft);
+}
+
+.pop-score-name { min-width: 4em; }
+
+.pop-score { margin-left: auto; font-variant-numeric: tabular-nums; }

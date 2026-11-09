@@ -1,24 +1,27 @@
-// Playing with friends, in High Five Racers and Sky Wings: who's in a room, and what they pass to each other.
+// Playing with friends, in High Five Racers, Sky Wings and Balloon Pop: who's in a room, and what they pass to
+// each other.
 // The same rules run on Cloudflare (server/worker.js) and on this computer for the tests
 // (tools/race-server.mjs). Each game has rooms of its own. Nothing here is kept once everyone has gone, and no
 // camera picture ever comes here: only where each car or plane is, the name a player typed, and which
 // character drives or flies.
 //
 // A player sends JSON messages, each { t, ... }:
-//   hi     { name, driver, level, length, racing }   first, after connecting, and again if any of it changes.
-//                                      length is the race's laps, or a flight's planes to drop. racing says
-//                                      they're in the middle of one, for someone who's come back mid-race
+//   hi     { name, driver, level, length, mode, racing }   first, after connecting, and again if any of it
+//                                      changes. length is the race's laps, a flight's planes to drop, or how
+//                                      many balloons a game of Balloon Pop has, and mode its maths challenge.
+//                                      racing says they're in the middle of one, for someone back mid-race
 //   ready  {}                              they're waiting at the start
 //   go     {}                              the host starts with whoever is ready
 //   car    { ms, d, x, s, l, f, b }        where their car is, about 10 times a second, in a race
 //   plane  { ms, x, y, z, h, p, r, s, f }  where their plane is, in a flight
+//   score  { ms, n }                       how many they've popped, or got right, so far
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
 // The room sends:
 //   room   { you, members: [{ id, name, driver, ready, racing, host }] }   whenever that changes
-//   go     { level, length, laps, racers }   the countdown starts now, on the host's course (laps is length)
-//   car, plane { from, ... } and done { from, ms, n, w }   passed on from the others
+//   go     { level, length, laps, mode, racers }   the countdown starts now, on the host's course (laps is length)
+//   car, plane, score { from, ... } and done { from, ms, n, w }   passed on from the others
 //   full   {}                              there are already MAX_RACERS in the room
 
 export const MAX_RACERS = 4;
@@ -77,6 +80,7 @@ export function cleanName(value) {
 }
 
 const cleanDriver = (value) => (typeof value === 'string' && /^[a-z][a-z-]{0,23}$/.test(value) ? value : '');
+const cleanMode = (value) => (typeof value === 'string' && /^[A-Za-z]{1,12}$/.test(value) ? value : '');
 
 /** Only what a plane message should hold, rounded. h is which way it heads, p and r its pitch and roll. */
 export function cleanPlane(message) {
@@ -151,7 +155,7 @@ export class RaceRoom {
       player.send({ t: 'full' });
       return false;
     }
-    player.setMeta({ id, joined: this.now(), name: '', driver: '', level: 1, length: 2, ready: false, racing: false });
+    player.setMeta({ id, joined: this.now(), name: '', driver: '', level: 1, length: 2, mode: '', ready: false, racing: false });
     this.tellEveryone();
     return true;
   }
@@ -172,10 +176,11 @@ export class RaceRoom {
     const others = players.filter((each) => each !== player);
     switch (message.t) {
       case 'hi': {
-        const length = number(message.length ?? message.laps, 1, 20, 0) || meta.length;
+        // Laps or planes up to 9, or balloons up to 60.
+        const length = number(message.length ?? message.laps, 1, 100, 0) || meta.length;
         // Coming back mid-race, after losing the connection for a moment, they're still racing.
         const racing = meta.racing || (Boolean(message.racing) && !meta.ready);
-        player.setMeta({ ...meta, name: cleanName(message.name), driver: cleanDriver(message.driver), level: number(message.level, 1, 10, 0) || 1, length, racing });
+        player.setMeta({ ...meta, name: cleanName(message.name), driver: cleanDriver(message.driver), level: number(message.level, 1, 10, 0) || 1, length, mode: cleanMode(message.mode), racing });
         this.tellEveryone();
         break;
       }
@@ -188,6 +193,9 @@ export class RaceRoom {
       case 'go':
         if (hostOf(players) === player && meta.ready) this.start();
         break;
+      case 'score':
+        for (const other of others) other.send({ t: 'score', from: meta.id, ms: number(message.ms, 0, 3_600_000, 0), n: number(message.n, 0, 1000, 0) });
+        break;
       case 'car':
       case 'plane': {
         const moved = message.t === 'plane' ? cleanPlane(message) : cleanCar(message);
@@ -197,7 +205,7 @@ export class RaceRoom {
       case 'done':
         if (!meta.racing) return;
         player.setMeta({ ...meta, racing: false });
-        for (const other of others) other.send({ t: 'done', from: meta.id, ms: number(message.ms, 0, 3_600_000, 0), n: number(message.n, 0, 100, 0), w: message.w === 0 ? 0 : 1 });
+        for (const other of others) other.send({ t: 'done', from: meta.id, ms: number(message.ms, 0, 3_600_000, 0), n: number(message.n, 0, 1000, 0), w: message.w === 0 ? 0 : 1 });
         this.tellEveryone();
         break;
       case 'leave':
@@ -232,8 +240,8 @@ export class RaceRoom {
     const racers = players.filter((each) => each.meta.ready).sort(byJoining);
     if (!host || !racers.length) return;
     for (const racer of racers) racer.setMeta({ ...racer.meta, ready: false, racing: true });
-    const { level, length } = host.meta;
-    const go = { t: 'go', level, length, laps: length, racers: racers.map((each) => each.meta.id) };
+    const { level, length, mode } = host.meta;
+    const go = { t: 'go', level, length, laps: length, mode, racers: racers.map((each) => each.meta.id) };
     for (const player of players) player.send(go);
     this.tellEveryone();
   }

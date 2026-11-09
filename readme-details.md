@@ -68,7 +68,7 @@ games/
   smoothie-stand/       its customers and orders, the fair and its sounds
   lighthouse/           its storm and ships, the lamp room and its sounds
 tools/                  the local server, the local race server, and what prepares voices and sounds
-server/                 the server for playing with friends in High Five Racers and Sky Wings: its rules, and the Cloudflare Worker that runs them
+server/                 the server for playing with friends in High Five Racers, Sky Wings and Balloon Pop: its rules, and the Cloudflare Worker that runs them
 vendor/                 libraries, the tracking model and fonts
 test/                   unit tests, and Playwright tests for the hub and each game
 ```
@@ -149,6 +149,19 @@ The right answer pops, and the next question comes. The wrong one goes up in smo
 
 Prizes fall slowly, taking about ten seconds to come down the screen, drift towards a hand that's near them, and are caught just by the glove coming within about a palm and a half, open or closed. One that isn't caught fades on the hills, and missing it costs nothing. They're counted on the screen from level 2, and on the finish card by kind. A power-up's bubble pops like a balloon but doesn't count as one, and a ring round the glove shows its time running out. Its time only runs while the hand is open, so resting never wastes it, and the bluebird only pops balloons while the hand is open. The magnet draws a friend's basket in too. Power-ups and friends in baskets only come during play, never behind the title or finish card, and when a game ends the bluebird flies off. The first time each new thing comes along in a game, it has a small label beside it for two seconds, such as "Pop it for a present!", in the language the voice speaks, and nothing new is said aloud. Even at level 10 each balloon is on the screen for three quarters of the time it was at level 1, and no more than twice as many come along a minute, counting the three a big balloon pops into and a basket's balloons. How many to pop, the speed chosen, reach help and the hand stay as a grown-up set them. With the maths challenge on, the balloons with answers are as before, and levels 4 and 8 each add one more answer to choose from, up to five; the new kinds of balloon, the prizes and the power-ups don't come during it, and switching it on stops the bluebird and a rainbow's spreading pop. The cards then only list what comes with it: one more answer where a level really adds one (levels 4 and 8 for adding up to 10, level 4 for the others, as five is the most), and a new place. Nothing new flashes: the bubble is see-through, prizes turn slowly, and the tally only grows a little and settles when a prize lands in it. Measured at levels 1, 6 and 10, with prizes, power-ups, baskets and rainbows on the screen, brightness changed by less than 3.5 out of 255 from one frame to the next. The numbers are in `balloonLevel` in `rules.js`.
 
+### Playing Balloon Pop with friends
+
+Up to 4 children can play against each other, each on their own computer with their own camera, to see who pops the most, or with the maths challenge, who gets the most right.
+
+- **Making and joining:** under **Play with a friend** on the title card, a grown-up presses **Make a game** and sends the link or the code. A friend opens it, and can type their name there too.
+- **Starting:** everyone presses **Let’s pop!**. After the hand check, each waits until everyone is ready, and then all count down together. Whoever made the game can press **Start now**, and anyone can play on their own.
+- **The time:** everyone plays for the same time instead of to a goal: a minute for the host's 20 balloons, two for 40 and three for 60. A clock shows what's left.
+- **What's the same for everyone:** the host's level and the host's maths challenge, so everyone does the same kind of sums. Each child keeps their own balloon speed and reach help, as a grown-up set them.
+- **Scores:** everyone's score shows as they play, the most first. The finish card says who came where, and equal scores share a place.
+- **Levels and settings:** a game with friends doesn't move anyone's own level on, and nobody's settings change.
+
+Only the name typed, the character from the other games and the score go to friends, never anything from the camera.
+
 ## High Five Racers
 
 A race round a lap with grandstands, a village, a tunnel, a farm, a lake, a forest, Joze's family and the Harvest Fair. Joze drives unless a grown-up picks someone else under **Who drives**, and other characters from the games drive the other cars. They stay close, so there's always someone to pass, and they ease off on the last stretch.
@@ -196,7 +209,7 @@ Coins are counted at the top from level 2, and on the finish card with any gems,
 
 **What's sent, and where.** Nothing is sent unless a grown-up makes or joins a race. Then the game sends the name typed, who drives, the host's level and race length, and where the car is on the road 10 times a second: how far along and across, its speed, and whether it's in the air or on turbo. Nothing from the camera is ever sent. It all goes through a small server on Cloudflare ([server/](server/)), which passes it straight on to the others in the race and keeps nothing once they've gone. The code in a link comes after `#`, which browsers don't send to the web server the games come from.
 
-**How it works.** Each race is one Durable Object on Cloudflare, named by its code, and each player keeps one WebSocket open to it. Each game drives its own car and shows the others' cars 120 ms behind what they last sent, so they move smoothly between messages. A connection that drops comes back by itself as the same player. During a race the game checks it every 2 seconds and starts a new one if nothing has come back for 6, and someone back within 15 seconds keeps their car, their race and hosting. The same rules run on this computer in [tools/race-server.mjs](tools/race-server.mjs) for the tests, and Sky Wings uses the same server, with rooms of its own. To put the server online, run `npx wrangler login` once, then `npx wrangler deploy --config server/wrangler.jsonc`. It's served at `hemi-race.infoicy.com`.
+**How it works.** Each race is one Durable Object on Cloudflare, named by its code, and each player keeps one WebSocket open to it. Each game drives its own car and shows the others' cars 120 ms behind what they last sent, so they move smoothly between messages. A connection that drops comes back by itself as the same player. During a race the game checks it every 2 seconds and starts a new one if nothing has come back for 6, and someone back within 15 seconds keeps their car, their race and hosting. The same rules run on this computer in [tools/race-server.mjs](tools/race-server.mjs) for the tests, and Sky Wings and Balloon Pop use the same server, with rooms of their own. To put the server online, run `npx wrangler login` once, then `npx wrangler deploy --config server/wrangler.jsonc`. It's served at `hemi-race.infoicy.com`.
 
 ## Mighty Moves
 
@@ -520,7 +533,7 @@ Where each sound came from is in [CREDITS.md](CREDITS.md).
 
 ## Privacy
 
-Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, except that High Five Racers and Sky Wings may reach the server for playing with friends, which they only do once a grown-up makes or joins a race or a flight (see [Racing friends](#high-five-racers)), and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
+Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, except that High Five Racers, Sky Wings and Balloon Pop may reach the server for playing with friends, which they only do once a grown-up makes or joins a race, a flight or a game (see [Racing friends](#high-five-racers)), and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
 
 ## Tests
 

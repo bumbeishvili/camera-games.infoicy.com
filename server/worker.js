@@ -3,7 +3,7 @@
 // code, and each player keeps one WebSocket open to it. The sockets hibernate while nothing's being said,
 // and the runtime answers the players' keep-alive pings itself, so a quiet room costs nothing.
 //
-//   wss://<this server>/room/<CODE> for High Five Racers, /room/sky-wings/<CODE> for Sky Wings, with
+//   wss://<this server>/room/<CODE> for High Five Racers, /room/<game>/<CODE> for the others, with
 //   ?was=<id> for a player coming back after losing the connection
 //
 // Deploy with: npx wrangler deploy --config server/wrangler.jsonc
@@ -13,7 +13,7 @@ import { idFor, RaceRoom, takeOver, validCode } from './race-room.js';
 // Only the games' own pages may use it.
 const ALLOWED_ORIGINS = ['https://hemi.infoicy.com', 'http://localhost:8642', 'http://127.0.0.1:8642'];
 // The games with rooms of their own. High Five Racers' are just the code, as they came first.
-const GAMES = ['sky-wings'];
+const GAMES = ['sky-wings', 'balloon-pop'];
 
 export default {
   async fetch(request, env) {

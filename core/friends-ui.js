@@ -1,5 +1,5 @@
-// What playing with friends looks like, in High Five Racers and Sky Wings: a box on the title card for
-// making or joining a race or a flight, the screen for waiting at the start, and how everyone did on the
+// What playing with friends looks like, in High Five Racers, Sky Wings and Balloon Pop: a box on the title card
+// for making or joining a race, a flight or a game, the screen for waiting at the start, and how everyone did on the
 // finish card. Each game gives its own words, and what's sent and shown about each friend. The connection
 // itself is in friends.js.
 import { byId as characterWithId, ROSTER } from './body/roster.js';
@@ -38,8 +38,8 @@ function saveName(name) {
 const box = (words) => `
   <button id="friends-toggle" class="friends-toggle" type="button" aria-expanded="false" aria-controls="friends-box">${words.toggle}</button>
   <div id="friends-box" class="friends-box" hidden>
+    <label class="friends-field">Your name <input id="friends-name" maxlength="16" autocomplete="off" spellcheck="false"></label>
     <div id="friends-out" class="friends-out">
-      <label class="friends-field">Your name <input id="friends-name" maxlength="16" autocomplete="off" spellcheck="false"></label>
       <button id="friends-make" class="friends-button" type="button">${words.make}</button>
       <form id="friends-join" class="friends-join">
         <label class="friends-field">${words.codeLabel} <input id="friends-code" maxlength="6" autocomplete="off" spellcheck="false" autocapitalize="characters"></label>
@@ -74,18 +74,23 @@ export class FriendsPanel {
    *   screen()         which screen it's on, and portraits() the characters' pictures
    *   onGone(friend)   a friend has gone in the middle, and their car or plane with them
    *   resultText(result)   how someone did, from { ms, won, dropped }, for the finish card
+   *   onMove(id, message)  something came from a friend's game: where they are, or their score. Unless
+   *                        said, where they are goes to the track follow() gave for them
+   *   rank(a, b)       which of two results is better, less than 0 for a: unless said, those who won by
+   *                    time, then the rest by how many they dropped. Equal ones share a place
    * titles is { first, other }, the finish card's title for coming first or not, or null to leave it be.
    * startAfter, waitingBefore and resultsAfter are where the box, the waiting screen and the results go.
    */
-  constructor({ game = '', linkKey = 'race', words, hello, screen, portraits, onGone = () => {}, resultText, titles = null, startAfter, waitingBefore, resultsAfter, finishTitle }) {
+  constructor({ game = '', linkKey = 'race', words, hello, screen, portraits, onGone = () => {}, onMove = null, rank = null, resultText, titles = null, startAfter, waitingBefore, resultsAfter, finishTitle }) {
     Object.assign(this, { linkKey, words, helloFor: hello, screen, portraits, onGone, resultText, titles });
+    this.rank = rank ?? ((a, b) => Number(b.won) - Number(a.won) || (a.won ? a.ms - b.ms : b.dropped - a.dropped || a.ms - b.ms));
     this.current = null; // The race or flight with friends being played, once it has started: see start().
     this.results = new Map(); // id: { ms, won, dropped }, how each friend did.
     this.go = null;
     this.room = new FriendsRoom(game, {
       onChange: () => this.changed(),
       onGo: (message) => this.start(message),
-      onMove: (id, message) => this.current?.tracks.get(id)?.push(message, performance.now()),
+      onMove: (id, message) => (onMove ? onMove(id, message) : this.current?.tracks.get(id)?.push(message, performance.now())),
       onDone: (id, message) => this.heardDone(id, message),
     });
 
@@ -198,7 +203,7 @@ export class FriendsPanel {
    * It starts, for those in it, on the host's course. Each friend is { id, key, spec, slot }, spec being the
    * character they chose with their own name, and slot their place in the order everyone has.
    */
-  start({ level, laps, length, racers }) {
+  start({ level, laps, length, mode, racers }) {
     if (!this.go || !racers.includes(this.room.you) || this.screen() !== 'waiting') return;
     const others = racers.filter((id) => id !== this.room.you);
     const friends = others.map((id) => {
@@ -208,7 +213,7 @@ export class FriendsPanel {
       return { id, key: spec.key, spec, slot: racers.indexOf(id) };
     });
     const size = length ?? laps;
-    this.current = { level, length: size, laps: size, friends, mySlot: racers.indexOf(this.room.you), racers, tracks: new Map() };
+    this.current = { level, length: size, laps: size, mode, friends, mySlot: racers.indexOf(this.room.you), racers, tracks: new Map() };
     this.results = new Map();
     this.room.racing = true;
     const { go } = this;
@@ -224,6 +229,11 @@ export class FriendsPanel {
   /** Where the child's car or plane is, as kind car or plane. */
   sendMove(kind, state, ms) {
     if (this.current && this.room.inRoom) this.room.sendMove(kind, state, ms);
+  }
+
+  /** The child's score so far, popped or right, for friends' scoreboards. */
+  sendScore(n, ms) {
+    if (this.current && this.room.inRoom) this.room.sendScore(n, ms);
   }
 
   /** The child has finished, this long after "GO!". extra is { w: 1 if they won, n: how many they dropped }. */
@@ -254,8 +264,10 @@ export class FriendsPanel {
       if (id === this.room.you) return 'You';
       return current.friends.find((friend) => friend.id === id)?.spec.name ?? 'A friend';
     };
-    const finished = [...this.results.entries()].sort(([, a], [, b]) => Number(b.won) - Number(a.won) || (a.won ? a.ms - b.ms : b.dropped - a.dropped || a.ms - b.ms));
-    const rows = finished.map(([id], index) => `<li class="${id === this.room.you ? 'is-you' : ''}"><span class="friends-place">${ordinal(index + 1)}</span> <span class="friends-who"></span> <span class="friends-time"></span></li>`);
+    const finished = [...this.results.entries()].sort(([, a], [, b]) => this.rank(a, b));
+    // Equal results share a place: two on 12 are both 2nd if someone has 15.
+    const placeOf = (result) => 1 + finished.filter(([, other]) => this.rank(other, result) < 0).length;
+    const rows = finished.map(([id, result]) => `<li class="${id === this.room.you ? 'is-you' : ''}"><span class="friends-place">${ordinal(placeOf(result))}</span> <span class="friends-who"></span> <span class="friends-time"></span></li>`);
     // Anyone who has gone before finishing is left off.
     const gone = (id) => current.friends.some((friend) => friend.id === id && friend.gone);
     const still = current.racers.filter((id) => !this.results.has(id) && !gone(id));
@@ -267,7 +279,8 @@ export class FriendsPanel {
       row.querySelector('.friends-who').textContent = nameOf(id);
       if (this.results.has(id)) row.querySelector('.friends-time').textContent = this.resultText(this.results.get(id));
     });
-    const place = finished.findIndex(([id]) => id === this.room.you) + 1;
+    const mine = this.results.get(this.room.you);
+    const place = mine ? placeOf(mine) : 0;
     if (this.finishTitle && this.titles) this.finishTitle.textContent = place === 1 ? this.titles.first : this.titles.other;
   }
 

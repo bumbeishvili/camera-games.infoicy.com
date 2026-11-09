@@ -1,4 +1,4 @@
-// Playing with friends, each on their own computer, in High Five Racers and Sky Wings. One player makes a
+// Playing with friends, each on their own computer, in High Five Racers, Sky Wings and Balloon Pop. One player makes a
 // race or a flight and sends the link, and the others open it. Their games talk through a small server
 // (server/race-room.js), which only passes on where each car or plane is, the name typed and who drives or
 // flies. The camera picture never leaves the computer, and nothing is sent at all unless a grown-up makes or
@@ -218,7 +218,7 @@ export class FriendsRoom {
       this.events.onChange?.();
     } else if (message.t === 'go') {
       this.events.onGo?.(message);
-    } else if (message.t === 'car' || message.t === 'plane') {
+    } else if (message.t === 'car' || message.t === 'plane' || message.t === 'score') {
       this.events.onMove?.(message.from, message);
     } else if (message.t === 'done') {
       this.events.onDone?.(message.from, message);
@@ -254,6 +254,11 @@ export class FriendsRoom {
     if (now - this.sentAt < SEND_EVERY_MS) return;
     this.sentAt = now;
     this.say({ t: kind, ms: Math.round(ms), ...state });
+  }
+
+  /** How many popped, or got right, so far, this long after "GO!". Only sent when it changes. */
+  sendScore(n, ms) {
+    this.say({ t: 'score', ms: Math.round(ms), n });
   }
 
   /** Finished, this long after "GO!". extra is how it went: n, how many were dropped, and w, 1 if all of them. */

@@ -8,7 +8,7 @@ import { idFor, RaceRoom, takeOver, validCode } from '../server/race-room.js';
 
 const PORT = Number(process.env.RACE_PORT ?? 8643);
 const ALLOWED_ORIGINS = ['http://localhost:8642', 'http://127.0.0.1:8642'];
-const GAMES = ['sky-wings']; // As on Cloudflare: High Five Racers' rooms are just the code.
+const GAMES = ['sky-wings', 'balloon-pop']; // As on Cloudflare: High Five Racers' rooms are just the code.
 const MAGIC = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
 const rooms = new Map(); // code: { players: Set, rules }

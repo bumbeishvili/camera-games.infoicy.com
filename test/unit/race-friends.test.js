@@ -65,7 +65,7 @@ test('the first in hosts, everyone hears who\'s here, and the host\'s course is 
   assert.equal(friend.last('go'), undefined, 'not until everyone is ready');
   friend.say({ t: 'ready' });
   for (const player of [host, friend]) {
-    assert.deepEqual(player.last('go'), { t: 'go', level: 7, length: 1, laps: 1, racers: ['aaaaaaaa', 'bbbbbbbb'] });
+    assert.deepEqual(player.last('go'), { t: 'go', level: 7, length: 1, laps: 1, mode: '', racers: ['aaaaaaaa', 'bbbbbbbb'] });
   }
   const after = host.last('room').members;
   assert.ok(after.every(({ ready, racing }) => !ready && racing), 'everyone is racing, and has to be ready again for the next');
@@ -271,4 +271,19 @@ test('the server passes on where a plane is, and how a flight went, with only wh
   assert.deepEqual(two.last('plane'), { t: 'plane', from: 'aaaaaaaa', ms: 2000, x: 12.35, y: 2000, z: -40, h: 3.142, p: 0.2, r: -0.3, s: 55.6, f: 1 });
   one.say({ t: 'done', ms: 90000, n: 4, w: 0 });
   assert.deepEqual(two.last('done'), { t: 'done', from: 'aaaaaaaa', ms: 90000, n: 4, w: 0 }, 'shot down, with 4 dropped');
+});
+
+test('in Balloon Pop, scores go to the others, and the host\'s number of balloons and maths are what everyone plays', () => {
+  const { join } = makeRoom();
+  const host = join('aaaaaaaa');
+  host.say({ t: 'hi', name: 'Ana', level: 3, length: 60, mode: 'times' });
+  const friend = join('bbbbbbbb');
+  friend.say({ t: 'hi', name: 'Ben', level: 1, length: 20, mode: 'add<script>' });
+  host.say({ t: 'ready' });
+  friend.say({ t: 'ready' });
+  assert.deepEqual(friend.last('go'), { t: 'go', level: 3, length: 60, laps: 60, mode: 'times', racers: ['aaaaaaaa', 'bbbbbbbb'] });
+  host.say({ t: 'score', ms: 4000, n: 7, extra: 'not this' });
+  assert.deepEqual(friend.last('score'), { t: 'score', from: 'aaaaaaaa', ms: 4000, n: 7 });
+  friend.say({ t: 'done', ms: 60000, n: 12, w: 1 });
+  assert.deepEqual(host.last('done'), { t: 'done', from: 'bbbbbbbb', ms: 60000, n: 12, w: 1 });
 });
