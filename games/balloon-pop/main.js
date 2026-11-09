@@ -44,7 +44,7 @@ const MATHS_KINDS = ['off', 'add', 'addTake', 'times'];
 const POP_WORDS = {
   toggle: 'Play with a friend',
   make: 'Make a game',
-  codeLabel: 'Or a friend’s game code',
+  codeLabel: 'A friend’s game code',
   codeName: 'Game code',
   how: 'Send the link to a friend. Then you both press <b>Let’s pop!</b>',
   leave: 'Leave this game',

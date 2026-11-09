@@ -89,7 +89,7 @@ const NAME_SHOWN_SECONDS = 3.5;
 const FLY_WORDS = {
   toggle: 'Fly with a friend',
   make: 'Make a flight',
-  codeLabel: 'Or a friend’s flight code',
+  codeLabel: 'A friend’s flight code',
   codeName: 'Flight code',
   how: 'Send the link to a friend. Then you both choose a pilot and press <b>Let’s fly!</b>',
   leave: 'Leave this flight',

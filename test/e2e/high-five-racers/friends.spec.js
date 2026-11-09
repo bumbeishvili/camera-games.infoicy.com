@@ -165,6 +165,56 @@ test('a race with nobody else in it can still be raced alone, against the usual 
   expect(await page.evaluate(() => location.hash)).toBe('');
 });
 
+test('making or joining a race, the title card shows only that, with Let\'s race! under who\'s here', async ({ page, browser }) => {
+  test.setTimeout(120_000);
+  await openGame(page);
+  const usual = ['#tagline', '.title-card > .all-games', '#friends-toggle'];
+  const start = page.locator('#start');
+  const showing = async (each) => Promise.all(usual.map((selector) => each.locator(selector).isVisible()));
+
+  // Opened, only the box: the game's name, what it's for, a name, and making or joining.
+  await page.locator('#friends-toggle').click();
+  expect(await showing(page)).toEqual([false, false, false]);
+  await expect(start).toBeHidden();
+  await expect(page.locator('.friends-title')).toHaveText('Race a friend');
+  await expect(page.locator('#screen-welcome h1')).toBeVisible();
+  await expect(page.locator('#friends-name')).toBeFocused();
+  expect(await page.locator('#screen-welcome').evaluate((node) => getComputedStyle(node).backdropFilter)).toBe('blur(6px)');
+  await page.screenshot({ path: 'test-results/screens/race-friends-box.png' });
+
+  // Back is the usual title card again.
+  await page.locator('#friends-back').click();
+  expect(await showing(page)).toEqual([true, true, true]);
+  await expect(start).toBeVisible();
+  await expect(page.locator('#friends-box')).toBeHidden();
+  await expect(page.locator('#friends-toggle')).toBeFocused();
+
+  // In a race, Let's race! is in the box, under who's here, with a word while nobody else has come.
+  const code = await makeRace(page, 'Ana');
+  await expect(page.locator('#friends-start #start')).toBeVisible();
+  await expect(page.locator('#friends-lonely')).toBeVisible();
+  expect(await showing(page)).toEqual([false, false, false]);
+
+  // A friend who opens the link sees only the race too.
+  const ben = await secondPlayer(browser);
+  await openGame(ben.page, {}, 'high-five-racers', `#race=${code}`);
+  await expect(ben.page.locator('#friends-start #start')).toBeVisible();
+  expect(await showing(ben.page)).toEqual([false, false, false]);
+  await expect(page.locator('#friends-lonely')).toBeHidden();
+  await expect(ben.page.locator('#friends-lonely')).toBeHidden();
+  await page.screenshot({ path: 'test-results/screens/race-friends-in.png' });
+
+  // Leaving is making or joining again, and Back the usual title card, with Let's race! where it was.
+  await page.locator('#friends-leave').click();
+  await expect(page.locator('#friends-out')).toBeVisible();
+  await expect(start).toBeHidden();
+  await page.locator('#friends-back').click();
+  expect(await showing(page)).toEqual([true, true, true]);
+  await expect(page.locator('#screen-welcome .title-card > #start')).toBeVisible();
+  expect(ben.errors).toEqual([]);
+  await ben.context.close();
+});
+
 test('a wrong code is caught before anything is sent, and the race server can be left', async ({ page }) => {
   await openGame(page);
   const sockets = [];

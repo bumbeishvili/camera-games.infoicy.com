@@ -2,6 +2,10 @@
 // for making or joining a race, a flight or a game, the screen for waiting at the start, and how everyone did on the
 // finish card. Each game gives its own words, and what's sent and shown about each friend. The connection
 // itself is in friends.js.
+//
+// Once the box is open, by its button or a friend's link, the title card shows nothing else, over the game
+// dimmed and blurred behind it: a name, then making or joining, then the code, who's here, and the game's own
+// start button, moved in under them. Back, or leaving, goes back to the usual title card.
 import { byId as characterWithId, ROSTER } from './body/roster.js';
 import { validCode } from '../server/race-room.js';
 import { codeInLink, FriendsRoom, linkFor, newCode } from './friends.js';
@@ -38,19 +42,26 @@ function saveName(name) {
 const box = (words) => `
   <button id="friends-toggle" class="friends-toggle" type="button" aria-expanded="false" aria-controls="friends-box">${words.toggle}</button>
   <div id="friends-box" class="friends-box" hidden>
+    <h2 class="friends-title">${words.toggle}</h2>
     <label class="friends-field">Your name <input id="friends-name" maxlength="16" autocomplete="off" spellcheck="false"></label>
     <div id="friends-out" class="friends-out">
       <button id="friends-make" class="friends-button" type="button">${words.make}</button>
+      <p class="friends-or">or</p>
       <form id="friends-join" class="friends-join">
         <label class="friends-field">${words.codeLabel} <input id="friends-code" maxlength="6" autocomplete="off" spellcheck="false" autocapitalize="characters"></label>
         <button class="friends-button" type="submit">Join</button>
       </form>
+      <button id="friends-back" class="friends-link" type="button">Back</button>
     </div>
     <div id="friends-in" class="friends-in" hidden>
-      <p class="friends-code-line">${words.codeName} <strong id="friends-code-shown"></strong></p>
-      <button id="friends-copy" class="friends-button" type="button">Copy the link</button>
+      <div class="friends-code-row">
+        <p class="friends-code-line">${words.codeName} <strong id="friends-code-shown"></strong></p>
+        <button id="friends-copy" class="friends-button" type="button">Copy the link</button>
+      </div>
       <ul id="friends-here" class="friends-here"></ul>
+      <p id="friends-lonely" class="friends-lonely">Waiting for a friend to join…</p>
       <p class="friends-how">${words.how}</p>
+      <div id="friends-start" class="friends-start"></div>
       <button id="friends-leave" class="friends-link" type="button">${words.leave}</button>
     </div>
     <p id="friends-status" class="friends-status" role="status"></p>
@@ -98,6 +109,9 @@ export class FriendsPanel {
     friends.className = 'friends';
     friends.innerHTML = box(words);
     startAfter.after(friends);
+    this.friendsBox = friends;
+    // The game's own start button, which goes into the box while in a race, and back again after.
+    this.startButton = byId('start');
     const waiting = document.createElement('section');
     waiting.id = 'screen-friends';
     waiting.className = 'screen friends-screen';
@@ -116,7 +130,15 @@ export class FriendsPanel {
       // Still connecting, it's kept for when the connection is up, as when it's typed straight after opening a link.
       if (this.room.status !== 'off') this.room.tell(this.hello());
     });
-    byId('friends-toggle').addEventListener('click', () => this.openBox(byId('friends-box').hidden));
+    byId('friends-toggle').addEventListener('click', () => {
+      this.openBox(true);
+      byId('friends-name').focus();
+    });
+    byId('friends-back').addEventListener('click', () => {
+      this.openBox(false);
+      this.status('');
+      byId('friends-toggle').focus();
+    });
     byId('friends-make').addEventListener('click', () => this.join(newCode()));
     byId('friends-join').addEventListener('submit', (event) => {
       event.preventDefault();
@@ -130,6 +152,8 @@ export class FriendsPanel {
     byId('friends-alone').addEventListener('click', () => {
       const { go } = this;
       this.leave();
+      // Back on the title card after, it's the usual one.
+      this.openBox(false);
       go?.();
     });
 
@@ -150,9 +174,20 @@ export class FriendsPanel {
     return { name: this.name, ...this.helloFor() };
   }
 
+  /** Open, the title card shows only the box: see data-friends-box in base.css. */
   openBox(open) {
     byId('friends-box').hidden = !open;
     byId('friends-toggle').setAttribute('aria-expanded', String(open));
+    document.body.toggleAttribute('data-friends-box', open);
+  }
+
+  /** In a race, the game's start button is in the box, under who's here. Out of one, it's back where it was. */
+  placeStart(inRoom) {
+    const slot = byId('friends-start');
+    const { startButton } = this;
+    if (!startButton) return;
+    if (inRoom && startButton.parentElement !== slot) slot.append(startButton);
+    else if (!inRoom && startButton.parentElement === slot) this.friendsBox.before(startButton);
   }
 
   join(code) {
@@ -272,7 +307,9 @@ export class FriendsPanel {
       if (id === this.room.you) return 'You';
       return current.friends.find((friend) => friend.id === id)?.spec.name ?? 'A friend';
     };
-    const finished = [...this.results.entries()].sort(([, a], [, b]) => this.rank(a, b));
+    // On a tie, the child sees themselves first.
+    const you = (id) => Number(id === this.room.you);
+    const finished = [...this.results.entries()].sort(([idA, a], [idB, b]) => this.rank(a, b) || you(idB) - you(idA));
     // Equal results share a place: two on 12 are both 2nd if someone has 15.
     const placeOf = (result) => 1 + finished.filter(([, other]) => this.rank(other, result) < 0).length;
     const rows = finished.map(([id, result]) => `<li class="${id === this.room.you ? 'is-you' : ''}"><span class="friends-place">${ordinal(placeOf(result))}</span> <span class="friends-who"></span> <span class="friends-time"></span></li>`);
@@ -298,6 +335,8 @@ export class FriendsPanel {
     const inRoom = room.inRoom;
     byId('friends-out').hidden = inRoom;
     byId('friends-in').hidden = !inRoom;
+    byId('friends-lonely').hidden = !inRoom || room.members.length > 1;
+    this.placeStart(inRoom);
     byId('friends-code-shown').textContent = room.code ?? '';
     if (room.code) byId('friends-code').value = room.code;
     this.status({ connecting: 'Connecting…', full: words.full, lost: words.lost }[room.status] ?? '');

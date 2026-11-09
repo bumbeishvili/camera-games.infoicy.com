@@ -36,7 +36,8 @@ export async function openGame(page, settings = {}, game = 'high-five-racers', h
     }
   }, { voice: false, sound: false, ...settings });
   await page.goto(`/games/${game}/index.html?debug${hash}`);
-  await expect(page.locator('#start')).toBeVisible();
+  // A link to play with friends opens the friends box, which is all the title card shows.
+  await expect(page.locator('#start:visible, #friends-box:visible').first()).toBeVisible();
 }
 
 /** Sets what the fake camera shows, in screen terms. null means that hand is out of view. */

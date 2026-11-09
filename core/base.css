@@ -1081,7 +1081,7 @@ body:not([data-screen='countdown']) .level-new-now { display: none; }
 /* A chip a game hides, such as a prize count before its level, stays hidden whatever .chip says. */
 .chip[hidden] { display: none; }
 
-/* ---------- playing with friends, in High Five Racers and Sky Wings: core/friends-ui.js ---------- */
+/* ---------- playing with friends, in High Five Racers, Sky Wings and Balloon Pop: core/friends-ui.js ---------- */
 /* "Race a friend" or "Fly with a friend" on the title card, which opens a little box for making or joining. */
 .friends {
   display: grid;
@@ -1173,7 +1173,7 @@ body:not([data-screen='countdown']) .level-new-now { display: none; }
   gap: 12px;
   padding: 6px 14px 6px 6px;
   border-radius: 999px;
-  background: var(--surface);
+  background: var(--surface-soft);
   font-size: 20px;
   font-weight: 600;
   text-align: left;
@@ -1183,7 +1183,7 @@ body:not([data-screen='countdown']) .level-new-now { display: none; }
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: var(--surface-soft);
+  background: var(--surface);
 }
 
 .friends-here .friends-who { flex: 1; }
@@ -1212,6 +1212,95 @@ body:not([data-screen='countdown']) .level-new-now { display: none; }
   color: var(--ink-soft);
   text-decoration: underline;
 }
+
+/* Once the box is open, the title card shows only that, over the game dimmed and blurred behind it. */
+body[data-friends-box] #screen-welcome {
+  background: rgba(18, 48, 77, 0.55);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+body[data-friends-box] #screen-welcome .title-card > :not(h1, .friends) { display: none; }
+body[data-friends-box] #friends-toggle { display: none; }
+
+body[data-friends-box] #screen-welcome .title-card { gap: 4px; }
+
+/* The game's name, small, above what the box is for. */
+body[data-friends-box] #screen-welcome h1 {
+  font-size: 22px;
+  letter-spacing: 0;
+  color: var(--ink-soft);
+}
+
+body[data-friends-box] .friends-box {
+  padding: 0;
+  background: none;
+  gap: 14px;
+}
+
+/* The name on one line with its box, to leave room for who's here. */
+.friends-box > .friends-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 12px;
+}
+
+.friends-box > .friends-field input { width: min(240px, 70vw); }
+
+.friends-title { font-size: clamp(30px, 4vw, 42px); }
+
+.friends-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(320px, 100%);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.friends-or::before,
+.friends-or::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: var(--line);
+}
+
+.friends-join {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: center;
+  gap: 10px;
+}
+
+.friends-join .friends-field input { width: min(200px, 60vw); }
+
+.friends-code-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 24px;
+}
+
+.friends-code-row .friends-code-line strong { font-size: 36px; }
+
+.friends-lonely {
+  width: min(360px, 100%);
+  padding: 12px 16px;
+  border: 2px dashed var(--line);
+  border-radius: 999px;
+  font-size: 18px;
+  color: var(--ink-soft);
+}
+
+.friends-lonely[hidden] { display: none; }
+
+.friends-start .big-button { margin-top: 4px; }
 
 /* Waiting at the start for friends. */
 body[data-screen='waiting'] #screen-friends { display: grid; }

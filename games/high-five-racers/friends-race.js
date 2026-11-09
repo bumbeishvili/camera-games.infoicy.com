@@ -7,7 +7,7 @@ const byId = (id) => document.getElementById(id);
 export const RACE_WORDS = {
   toggle: 'Race a friend', // The button on the title card.
   make: 'Make a race',
-  codeLabel: 'Or a friend’s race code',
+  codeLabel: 'A friend’s race code',
   codeName: 'Race code',
   how: 'Send the link to a friend. Then you both press <b>Let’s race!</b>',
   leave: 'Leave this race',

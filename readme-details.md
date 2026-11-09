@@ -202,7 +202,7 @@ Coins are counted at the top from level 2, and on the finish card with any gems,
 
 **Racing friends.** Up to 4 children can race each other, each on their own computer with their own camera.
 
-- **Making a race:** under **Race a friend** on the title card, a grown-up types a name, presses **Make a race** and sends the link it makes, or its 6-letter code.
+- **Making a race:** a grown-up presses **Race a friend** on the title card, types a name, presses **Make a race** and sends the link it makes, or its 6-letter code. While making or joining a race, the title card shows only that, over the game dimmed and blurred, and **Let’s race!** comes under who's here. **Back** goes back to the usual title card. It's the same in Sky Wings and Balloon Pop.
 - **Joining:** the friend opens the link, or types the code and presses **Join**.
 - **Starting:** everyone presses **Let’s race!**. After the hand check, each waits on the grid until everyone is ready, and then all count down together. Whoever made the race can press **Start now** instead, and anyone can choose to race on their own.
 - **The course** is the host's: their level and race length. Friends' cars take the place of the other cars, with each friend's name over theirs. A friend's car close to the child's is shown a little to one side, as the other cars keep out of the way, so it never sits in front of the camera.
