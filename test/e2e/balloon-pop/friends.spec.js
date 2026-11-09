@@ -42,7 +42,8 @@ async function popOne(page) {
     const glove = balloons.gloves.right;
     balloons.spawnAt(glove.x, glove.y, { still: true });
   });
-  await expect.poll(async () => (await popOf(page)).total, { timeout: 15_000 }).toBe(before + 1);
+  // Reach help draws balloons near an open hand to it, so more than one can pop.
+  await expect.poll(async () => (await popOf(page)).total, { timeout: 15_000 }).toBeGreaterThan(before);
   await show(page, null, null);
   await expect.poll(() => page.evaluate(() => window.__game.balloons.gloves.right.visible)).toBe(false);
 }
@@ -99,9 +100,11 @@ test('two friends pop balloons for the same time, see each other\'s scores, and 
   // The friend has 60 balloons and times tables of their own, but plays the host's game.
   const ben = await secondPlayer(browser);
   await openGame(ben.page, { balloons: 60, maths: 'times' }, GAME, `#pop=${code}`);
+  // Typed straight away, as the link is opened, even before the connection is up.
   await ben.page.locator('#friends-name').fill('Ben');
   await ben.page.locator('#friends-name').dispatchEvent('change');
   for (const each of [page, ben.page]) await expect(each.locator('#friends-here li')).toHaveCount(2);
+  await expect(page.locator('#friends-here')).toContainText('Ben');
 
   await bothPlaying(page, ben.page);
   const ana = await popOf(page);
@@ -111,13 +114,22 @@ test('two friends pop balloons for the same time, see each other\'s scores, and 
   await expect(page.locator('#chip-time-box')).toBeVisible();
   await expect(page.locator('#chip-popped')).toHaveText('0');
 
-  // Ana pops four and Ben one, and each sees the other's score go up. A balloon drifting into an open hand
-  // can pop too, so the scores are read rather than counted here.
-  for (let i = 0; i < 4; i += 1) await popOne(page);
+  // Each pops some for real, and the other sees it straight away.
+  await popOne(page);
   await popOne(ben.page);
-  const anaPopped = (await popOf(page)).total;
-  const benPopped = (await popOf(ben.page)).total;
-  expect(anaPopped).toBeGreaterThan(benPopped);
+  const anaReal = (await popOf(page)).total;
+  const benReal = (await popOf(ben.page)).total;
+  await expect(ben.page.locator('#pop-scores')).toContainText(new RegExp(`Ana\\s*${anaReal}`));
+  await expect(page.locator('#pop-scores')).toContainText(new RegExp(`Ben\\s*${benReal}`));
+  // Then exactly 5 for Ana and 2 for Ben, as drifting balloons can make real pops uneven.
+  for (const [each, right] of [[page, 5], [ben.page, 2]]) {
+    await each.evaluate((count) => {
+      const { popped } = window.__game.balloons;
+      popped.left = 0;
+      popped.right = count;
+    }, right);
+  }
+  const [anaPopped, benPopped] = [5, 2];
   await expect(ben.page.locator('#pop-scores li').nth(0)).toHaveText(new RegExp(`Ana\\s*${anaPopped}$`));
   await expect(ben.page.locator('#pop-scores li').nth(1)).toHaveText(new RegExp(`You\\s*${benPopped}$`));
   await expect(page.locator('#pop-scores li').nth(1)).toHaveText(new RegExp(`Ben\\s*${benPopped}$`));

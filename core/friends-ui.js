@@ -113,7 +113,8 @@ export class FriendsPanel {
     byId('friends-name').value = savedName();
     byId('friends-name').addEventListener('change', () => {
       saveName(this.name);
-      if (this.room.inRoom) this.room.tell(this.hello());
+      // Still connecting, it's kept for when the connection is up, as when it's typed straight after opening a link.
+      if (this.room.status !== 'off') this.room.tell(this.hello());
     });
     byId('friends-toggle').addEventListener('click', () => this.openBox(byId('friends-box').hidden));
     byId('friends-make').addEventListener('click', () => this.join(newCode()));
