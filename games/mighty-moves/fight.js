@@ -4,7 +4,7 @@
 // A fighter is driven only through perform(), setGuard() and setDodge(). Today coach.js makes those
 // calls for both sides. Playing over a network later means sending those same calls across, without
 // changing anything in here.
-import { COMBOS, COMBO_SECONDS, EXERCISES, MOVES, RULES, fightLevel } from './moves.js';
+import { COMBOS, COMBO_SECONDS, EXERCISES, MOVES, PRIZE_ORDER, RULES, fightLevel } from './moves.js';
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const other = (who) => (who === 'player' ? 'npc' : 'player');
@@ -21,6 +21,9 @@ const emptyStats = () => ({
   activeSeconds: 0,
   seconds: 0,
   rounds: [],
+  // Prizes collected, from level 2: see PRIZES in moves.js.
+  prizes: Object.fromEntries(PRIZE_ORDER.map((kind) => [kind, 0])),
+  powerUps: 0,
 });
 
 class Corner {
@@ -36,6 +39,11 @@ class Corner {
     this.roundsWon = 0;
     this.recent = [];
     this.smallHitsDealt = 0;
+    this.duck = false;
+    // Power-ups, from the higher levels. They last until they're used, so resting never loses one.
+    this.shield = false;
+    this.glow = 0;
+    this.helper = false;
   }
 
   freshRound() {
@@ -43,6 +51,7 @@ class Corner {
     this.smallHitsDealt = 0;
     this.guard = false;
     this.dodge = 0;
+    this.duck = false;
     this.pending = [];
     this.warning = null;
     this.recent = [];
@@ -71,6 +80,7 @@ export class Fight {
     this.round = 0;
     this.winner = null;
     this.idleSeconds = 0;
+    this.bigMovesLanded = 0;
   }
 
   corner(who) {
@@ -113,6 +123,51 @@ export class Fight {
   /** dodge is which way a fighter is leaning, from -1 to 1, or 0 for not at all. */
   setDodge(who, dodge) {
     this.corner(who).dodge = dodge;
+  }
+
+  /** Ducking under a high swing gets out of the way of it, like leaning. */
+  setDuck(who, on) {
+    this.corner(who).duck = on;
+  }
+
+  /** A prize for the child, if this level has that kind. Collected by itself. */
+  award(kind, count = 1) {
+    if (!this.levelRules.prizes.includes(kind) || count <= 0) return;
+    this.stats.prizes[kind] += count;
+    this.emit('prize', { kind, count, total: this.stats.prizes[kind] });
+  }
+
+  /**
+   * A big move landed, and every so often that brings a power-up. The newest kind this level has comes
+   * first, so what a level brings comes in a fight at that level, even a short one, and then they take
+   * turns.
+   */
+  countBigMove() {
+    this.bigMovesLanded += 1;
+    const { powerUps } = this.levelRules;
+    if (!powerUps.length || this.bigMovesLanded % RULES.powerUpEvery !== 0) return;
+    const kind = powerUps[(powerUps.length - 1 + this.stats.powerUps) % powerUps.length];
+    this.stats.powerUps += 1;
+    this.givePowerUp(kind);
+  }
+
+  givePowerUp(kind) {
+    const { player } = this;
+    if (kind === 'shield') player.shield = true;
+    if (kind === 'glow') player.glow = RULES.glowMoves;
+    if (kind === 'helper') player.helper = true;
+    this.emit('power-up', { kind });
+  }
+
+  /**
+   * The child caught the computer's ball with a clap, and throws it back. Getting out of the way
+   * earns a gem, as a block or a lean does.
+   */
+  catchBall() {
+    if (this.state !== 'fighting') return null;
+    this.award('gem');
+    this.emit('caught');
+    return this.perform('player', 'ballReturn');
   }
 
   /** A fighter gives notice of what's coming, so a child has time to block or lean. */
@@ -181,6 +236,19 @@ export class Fight {
       corner.recent.push({ exercise, at: this.time });
     }
 
+    // Power-ups: a glow for the next big moves, and a friend joining in for one.
+    let glowing = false;
+    if (corner.glow > 0 && definition.damage > 0) {
+      add('glow', RULES.glow);
+      corner.glow -= 1;
+      glowing = true;
+    }
+    if (corner.helper && definition.damage > 0) {
+      add('team', RULES.team);
+      corner.helper = false;
+      this.emit('team', { move });
+    }
+
     if (corner.charged && definition.damage > 0) {
       add('charged', RULES.charged);
       corner.charged = false;
@@ -198,7 +266,7 @@ export class Fight {
       corner.power = 0;
       this.stats.signatures += 1;
     }
-    this.addPower(corner, RULES.powerPerExercise);
+    this.addPower(corner, RULES.powerPerExercise * (glowing ? 2 : 1));
 
     return { value, reasons, signature };
   }
@@ -236,12 +304,20 @@ export class Fight {
     if (definition.damage === 0) return;
 
     // Doing what the coach asked for always works.
-    if (target.who === 'player' && Math.abs(target.dodge) > 0.5) {
-      this.emit('dodged', { who: target.who, attacker: action.who, move: action.move });
+    if (target.who === 'player' && (Math.abs(target.dodge) > 0.5 || target.duck)) {
+      this.emit('dodged', { who: target.who, attacker: action.who, move: action.move, duck: target.duck });
+      this.award('gem');
       return;
     }
 
     let blocked = target.guard;
+    if (blocked && target.who === 'player') this.award('gem');
+    // A shield bubble catches a hit that would otherwise have landed, and then it's gone.
+    if (!blocked && target.who === 'player' && target.shield && !action.small) {
+      target.shield = false;
+      this.emit('hit', { attacker: action.who, target: target.who, move: action.move, side: action.side, damage: 0, blocked: true, bubble: true, small: false, times: action.times, reasons: ['bubble'], signature: false });
+      return;
+    }
     let damage = blocked ? 0 : (action.small ? RULES.smallHit : definition.damage) * action.times;
     if (action.who === 'npc') damage *= this.level.damage;
 
@@ -262,7 +338,10 @@ export class Fight {
     target.hp = clamp(target.hp - damage, 0, RULES.maxHp);
     if (action.who === 'player') {
       this.stats.damage += damage;
-      if (!action.small) this.addPower(attacker, RULES.powerPerHit);
+      if (!action.small) {
+        this.addPower(attacker, RULES.powerPerHit);
+        this.award('coin', action.signature || action.reasons.includes('team') ? 3 : 1);
+      }
     }
     this.emit('hit', {
       attacker: action.who,
@@ -277,6 +356,7 @@ export class Fight {
       signature: action.signature,
     });
     if (target.hp <= 0) this.endRound(action.who);
+    else if (action.who === 'player' && !action.small) this.countBigMove();
   }
 
   endRound(winner) {
@@ -287,12 +367,15 @@ export class Fight {
     this.player.warning = null;
     this.npc.warning = null;
     this.stats.rounds.push({ winner });
+    if (winner === 'player') this.award('medal');
     const needed = Math.floor(this.totalRounds / 2) + 1;
     const over = this.corner(winner).roundsWon >= needed || this.round >= this.totalRounds;
     this.emit('round-end', { winner, over });
     if (over) {
       this.state = 'over';
       this.winner = this.player.roundsWon >= this.npc.roundsWon ? 'player' : 'npc';
+      // Beating the champion wins the trophy.
+      if (this.winner === 'player' && this.levelRules.champion) this.award('trophy');
       this.emit('fight-end', { winner: this.winner });
     }
   }

@@ -7,7 +7,7 @@ import { BODY_SAY, BodyGame, byElementId } from '../../core/body/game.js';
 import { ROSTER } from '../../core/body/roster.js';
 import { mountBodyShell } from '../../core/body/shell.js';
 import { FlightSound } from './flight-sound.js';
-import { Flight, HEARTS, MOST_AT_ONCE_EVER } from './flight.js';
+import { Flight, HEARTS, MOST_AT_ONCE_EVER, NEW_AT, isOn } from './flight.js';
 import { Lesson } from './lesson.js';
 import { Sky } from './sky.js';
 
@@ -52,6 +52,36 @@ const SEEN_WORDS = {
   dive: ['Down you go!', 'დაბლა მიფრინავ!'],
 };
 const GOT_ONE = { en: 'Got one!', ka: 'ერთი ჩამოაგდე!' };
+
+// The powers in the gift boxes, as they're shown. Nothing new is spoken: the words are only on screen.
+const POWER_LOOK = {
+  triple: { mark: '🔱', en: 'Triple shot', ka: 'სამმაგი სროლა' },
+  bubble: { mark: '🫧', en: 'Bubble shot', ka: 'ბუშტების სროლა' },
+  snow: { mark: '❄️', en: 'Snowflake shot', ka: 'ფიფქების სროლა' },
+  shield: { mark: '🛡️', en: 'Shield bubble', ka: 'დამცავი ბუშტი' },
+  helper: { mark: '🤝', en: 'helps!', ka: 'გეხმარება!' },
+  paper: { mark: '📄', en: 'Paper planes', ka: 'ქაღალდის თვითმფრინავები' },
+};
+// The new kinds of pirate, named the first time one comes in each flight.
+const KIND_NAMES = {
+  scout: { en: 'Scout', ka: 'მზვერავი' },
+  balloon: { en: 'Balloon pirate', ka: 'ბუშტიანი მეკობრე' },
+  lead: { en: 'Pirate pair', ka: 'მეკობრეთა წყვილი' },
+  wing: { en: 'Pirate pair', ka: 'მეკობრეთა წყვილი' },
+  captain: { en: 'Captain', ka: 'კაპიტანი' },
+  airship: { en: 'Treasure airship', ka: 'განძის ხომალდი' },
+};
+// The coin is drawn rather than an emoji, as the coin emoji comes out grey.
+const PRIZE_MARKS = { coin: '', gem: '💎', medal: '🏅', chest: '💰' };
+const prizeIcon = (kind) => {
+  const icon = document.createElement('span');
+  icon.className = 'prize-icon';
+  icon.dataset.kind = kind;
+  icon.textContent = PRIZE_MARKS[kind];
+  return icon;
+};
+const PRIZE_WORDS = { coin: ['gold coin', 'gold coins'], gem: ['gem', 'gems'], medal: ['medal', 'medals'], chest: ['treasure chest', 'treasure chests'] };
+const NAME_SHOWN_SECONDS = 3.5;
 
 class SkyWings extends BodyGame {
   constructor() {
@@ -125,16 +155,53 @@ class SkyWings extends BodyGame {
     };
   }
 
+  /**
+   * What a level brings that's new, for the cards: see NEW_AT in flight.js. Only what really comes with
+   * this many planes to drop: with three, there are never four at once, and the kinds new at a level
+   * come first, so a pair with a captain leaves no room for a scout or a balloon.
+   */
+  newAt(level) {
+    return (NEW_AT[level] ?? []).filter(({ thing }) => isOn(thing, level, this.settings.planes)).map(({ thing, mark, name, nameKa }) => {
+      if (thing !== 'gift:helper') return { mark, name, nameKa };
+      // The friend who helps is Joze, unless the child is flying as Joze.
+      const helper = this.helperSpec();
+      return helper.id === 'joze' ? { mark, name: 'Joze helps', nameKa: 'ჯოზე გეხმარება' } : { mark: '🤝', name: `${helper.name} helps`, nameKa: `${helper.nameKa ?? helper.name} გეხმარება` };
+    });
+  }
+
+  /** The friend who comes to help: Joze first, or someone who isn't a pirate this time. */
+  helperSpec() {
+    const chosen = this.chosen?.id ?? this.settings.fighter;
+    if (chosen !== 'joze') return ROSTER[0];
+    const pirates = new Set(ROSTER.filter(({ id }) => id !== chosen).slice(0, this.settings.planes).map(({ id }) => id));
+    return ROSTER.find(({ id }) => id !== chosen && !pirates.has(id)) ?? ROSTER.at(-1);
+  }
+
+  /**
+   * Who flies the pirate planes: everyone but the child's own character, in the roster's order. On the
+   * levels with a friend who helps, never that friend too, so Joze isn't helping and a pirate at once.
+   * With too few left for the planes, some fly twice.
+   */
+  pirateSpecs(total) {
+    const helping = this.flight.levelRules.gifts.includes('helper');
+    const pool = ROSTER.filter(({ id }) => id !== this.chosen.id && !(helping && id === this.helper.id));
+    return Array.from({ length: total }, (_, index) => pool[index % pool.length]);
+  }
+
   settingChanged(change) {
     if ('moveSize' in change) {
       this.reader.personal.wings = null;
       this.learned = false;
     }
     if ('level' in change) this.sizeAim();
+    // What the cards say is new depends on how many planes there are.
+    if ('planes' in change) this.levelUi.refresh();
   }
 
   showChosen(spec) {
     this.sky.setPilot(spec);
+    // The friend who helps depends on who's flying.
+    this.levelUi?.refresh();
   }
 
   afterBodyCheck(then) {
@@ -245,8 +312,13 @@ class SkyWings extends BodyGame {
       climbing: settings.climbing === 'yes',
       onEvent: (event) => this.onFlightEvent(event),
     });
-    this.pirates = ROSTER.filter(({ id }) => id !== this.chosen.id).slice(0, this.flight.total);
-    sky.setFlight(this.flight, this.pirates);
+    this.helper = this.helperSpec();
+    this.pirates = this.pirateSpecs(this.flight.total);
+    sky.setFlight(this.flight, this.pirates, this.helper);
+    this.namedKinds = new Set();
+    this.namedPowers = new Set();
+    byElementId('treasure-chip').dataset.on = this.flight.levelRules.prizes ? 'yes' : 'no';
+    byElementId('power').dataset.on = 'no';
     sky.setView('fly');
     this.lastNumbers = {};
     this.wingsDownFor = 0;
@@ -307,6 +379,7 @@ class SkyWings extends BodyGame {
     this.updateWingMeter();
     this.updateHud();
     this.updateMarks();
+    this.updateGiftMark();
 
     this.wingsDownFor = wings.out ? 0 : this.wingsDownFor + dt;
     if (this.hintLeft > 0) this.hintLeft -= dt;
@@ -352,11 +425,49 @@ class SkyWings extends BodyGame {
       lastNumbers.hearts = hearts;
       byElementId('hearts').textContent = '♥'.repeat(hearts) + '♡'.repeat(HEARTS - hearts);
     }
+    const treasure = this.treasureWords();
+    if (lastNumbers.treasure !== treasure) {
+      lastNumbers.treasure = treasure;
+      const shown = byElementId('treasure');
+      shown.replaceChildren();
+      for (const [kind, count] of this.treasureShown()) {
+        const item = document.createElement('span');
+        item.className = 'treasure-item';
+        item.dataset.kind = kind;
+        item.append(prizeIcon(kind), String(count));
+        shown.append(item);
+      }
+    }
+    const power = flight.power ? Math.ceil((flight.power.left / flight.power.total) * 20) : 0;
+    if (lastNumbers.power !== power) {
+      lastNumbers.power = power;
+      byElementId('power-fill').style.width = `${power * 5}%`;
+    }
     const locked = flight.locked ? 'yes' : 'no';
     if (lastNumbers.locked !== locked) {
       lastNumbers.locked = locked;
       byElementId('aim').dataset.locked = locked;
     }
+  }
+
+  /** The prizes so far, as little pictures and numbers, with a coin even before there are any. */
+  treasureShown() {
+    return Object.entries(this.flight.stats.prizes).filter(([kind, count]) => count > 0 || kind === 'coin');
+  }
+
+  treasureWords() {
+    return this.treasureShown().map(([kind, count]) => `${kind} ${count}`).join(', ');
+  }
+
+  /** Words in the language chosen, from an { en, ka } pair. */
+  words(pair) {
+    return this.settings.language === 'ka' ? pair.ka : pair.en;
+  }
+
+  powerName(kind) {
+    const look = POWER_LOOK[kind];
+    if (kind === 'helper') return `${this.words({ en: this.helper.name, ka: this.helper.nameKa ?? this.helper.name })} ${this.words(look)}`;
+    return this.words(look);
   }
 
   /* ---------- the ring, and where the other planes are ---------- */
@@ -386,10 +497,42 @@ class SkyWings extends BodyGame {
       bar.append(fill);
       const arrow = document.createElement('span');
       arrow.className = 'mark-arrow';
-      root.append(box, face, bar, arrow);
+      const name = document.createElement('span');
+      name.className = 'mark-name';
+      root.append(box, face, bar, arrow, name);
       holder.append(root);
-      return { root, face, fill, arrow, enemy: null };
+      return { root, face, fill, arrow, name, enemy: null };
     });
+    // The gift box's mark: its power's picture, and the power's name the first time it comes.
+    const gift = document.createElement('div');
+    gift.id = 'gift-mark';
+    gift.className = 'gift-mark';
+    gift.dataset.where = 'none';
+    gift.innerHTML = '<span class="gift-icon"></span><span class="gift-name"></span>';
+    holder.append(gift);
+  }
+
+  updateGiftMark() {
+    const { flight, sky } = this;
+    const mark = byElementId('gift-mark');
+    const { gift } = flight;
+    if (!gift) {
+      if (mark.dataset.where !== 'none') mark.dataset.where = 'none';
+      return;
+    }
+    if (mark.dataset.kind !== gift.kind || mark.gift !== gift) {
+      mark.gift = gift;
+      mark.dataset.kind = gift.kind;
+      mark.querySelector('.gift-icon').textContent = POWER_LOOK[gift.kind].mark;
+      const first = !this.namedPowers.has(gift.kind);
+      this.namedPowers.add(gift.kind);
+      mark.querySelector('.gift-name').textContent = first ? this.powerName(gift.kind) : '';
+      mark.dataset.named = first ? 'yes' : 'no';
+    }
+    const seen = sky.project(gift.x, gift.y, gift.z);
+    const onScreen = !seen.behind && seen.x > 0 && seen.x < sky.width && seen.y > 0 && seen.y < sky.height;
+    mark.dataset.where = onScreen ? 'on' : 'off';
+    if (onScreen) mark.style.transform = `translate(${Math.round(seen.x)}px, ${Math.round(seen.y)}px)`;
   }
 
   /** A mark on each plane that can be seen, and an arrow at the edge of the screen to any that can't. */
@@ -416,6 +559,21 @@ class SkyWings extends BodyGame {
       mark.root.dataset.hunting = enemy.mode === 'hunt' ? 'yes' : 'no';
       mark.root.dataset.locked = enemy === flight.locked ? 'yes' : 'no';
       mark.root.dataset.captain = enemy.captain ? 'yes' : 'no';
+      mark.root.dataset.kind = enemy.kind;
+      mark.root.dataset.slow = enemy.slowLeft > 0 ? 'yes' : 'no';
+      // A new kind of pirate is named the first time one is seen in a flight, for a few seconds.
+      const named = KIND_NAMES[enemy.kind];
+      const group = enemy.kind === 'wing' ? 'lead' : enemy.kind;
+      if (onScreen && named && !this.namedKinds.has(group)) {
+        this.namedKinds.add(group);
+        enemy.nameUntil = flight.time + NAME_SHOWN_SECONDS;
+      }
+      const label = (enemy.nameUntil ?? 0) > flight.time ? this.words(named) : '';
+      if (mark.label !== label) {
+        mark.label = label;
+        mark.name.textContent = label;
+        mark.root.dataset.named = label ? 'yes' : 'no';
+      }
       mark.fill.style.width = `${Math.round((enemy.hitsLeft / enemy.hitsTotal) * 100)}%`;
       if (onScreen) {
         mark.root.dataset.where = 'on';
@@ -444,6 +602,18 @@ class SkyWings extends BodyGame {
       'enemy-shot': () => this.sound.theirShot(),
       hurt: () => this.onHurt(),
       behind: () => this.sound.say(SAY.behind, { ifQuiet: true }),
+      prize: () => this.onPrize(event),
+      power: () => this.onPower(event),
+      bubbled: () => {
+        this.sky.bubbled(event.enemy);
+        this.sound.bubble();
+      },
+      shielded: () => {
+        this.sky.shieldBlocked();
+        this.sound.blocked();
+      },
+      slowed: () => this.sound.slowed(),
+      paper: () => this.sound.paper(),
       resting: () => this.onResting(event),
       won: () => this.onFinished(true),
       lost: () => this.onFinished(false),
@@ -461,6 +631,27 @@ class SkyWings extends BodyGame {
     this.sound.down();
     this.callout(GOT_ONE[this.settings.language] ?? GOT_ONE.en, { kind: 'is-big', x: 0.42, y: 0.26 });
     if (left === 1) this.sound.say(SAY.oneLeft, { ifQuiet: true });
+  }
+
+  onPrize({ prize }) {
+    this.sky.prizeCaught(prize);
+    this.sound.prize(prize.kind);
+    if (this.screen === 'fly') this.callout(prize.kind === 'coin' ? '+1' : `+${PRIZE_MARKS[prize.kind]}`, { kind: 'is-number', x: 0.5, y: 0.66 });
+  }
+
+  onPower({ kind, on }) {
+    const chip = byElementId('power');
+    if (!on) {
+      if (chip.dataset.kind === kind) chip.dataset.on = 'no';
+      return;
+    }
+    chip.dataset.on = 'yes';
+    chip.dataset.kind = kind;
+    byElementId('power-mark').textContent = POWER_LOOK[kind].mark;
+    byElementId('power-name').textContent = this.powerName(kind);
+    this.lastNumbers.power = null;
+    this.sound.gift();
+    this.callout(`${POWER_LOOK[kind].mark} ${this.powerName(kind)}`, { kind: 'is-combo', x: 0.5, y: 0.36 });
   }
 
   onHurt() {
@@ -491,6 +682,8 @@ class SkyWings extends BodyGame {
     this.setCount('');
     this.updateHud();
     for (const mark of this.marks) mark.root.dataset.where = 'none';
+    byElementId('gift-mark').dataset.where = 'none';
+    byElementId('power').dataset.on = 'no';
     sound.stopFlying();
     sound.finish(won ? SAY.won : SAY.lost);
     sky.setLive(null);
@@ -510,6 +703,30 @@ class SkyWings extends BodyGame {
     };
     byElementId('finish-line').textContent = `${this.chosen.name} dropped ${stats.dropped} of ${total} planes.`;
     byElementId('finish-hold').textContent = `Arms out for ${clock(stats.wingsSeconds)} of ${clock(stats.seconds)}.`;
+    // The treasure brought home, on the levels with prizes.
+    const prizes = Object.entries(stats.prizes).filter(([, count]) => count > 0);
+    const treasure = byElementId('finish-treasure');
+    treasure.replaceChildren();
+    if (this.flight.levelRules.prizes) {
+      const lead = document.createElement('span');
+      lead.className = 'finish-treasure-lead';
+      lead.textContent = 'Treasure';
+      treasure.append(lead);
+      for (const [kind, count] of prizes.length ? prizes : [['coin', 0]]) {
+        const item = document.createElement('span');
+        item.className = 'finish-treasure-item';
+        item.dataset.kind = kind;
+        item.append(prizeIcon(kind), `${count} ${PRIZE_WORDS[kind][count === 1 ? 0 : 1]}`);
+        treasure.append(item);
+      }
+      if (stats.gifts) {
+        const gifts = document.createElement('span');
+        gifts.className = 'finish-treasure-item';
+        gifts.dataset.kind = 'gifts';
+        gifts.textContent = `🎁 ${stats.gifts} ${stats.gifts === 1 ? 'gift box' : 'gift boxes'}`;
+        treasure.append(gifts);
+      }
+    }
     this.fillTallyCards(byElementId('finish-tally'), [
       { name: 'dropped', icon: 'shoot', label: 'Planes dropped', value: stats.dropped },
       { name: 'hits', icon: 'ring', label: 'Hits', value: stats.hits },
@@ -581,6 +798,8 @@ mountBodyShell({
       <div class="chip sky-left"><span class="chip-label">Planes left</span><span id="planes-left" class="chip-value">6</span></div>
       <div class="chip"><span class="chip-label">Dropped</span><span id="dropped" class="chip-value">0</span></div>
       <div class="chip sky-hearts"><span class="chip-label">Hearts</span><span id="hearts" class="chip-value">♥♥♥♥♥</span></div>
+      <div id="treasure-chip" class="chip sky-treasure" data-on="no"><span class="chip-label">Treasure</span><span id="treasure" class="chip-value"></span></div>
+      <div id="power" class="chip sky-power" data-on="no"><span id="power-mark" class="power-mark"></span><span class="power-words"><span id="power-name" class="chip-label"></span><span class="power-bar"><span id="power-fill" class="power-fill"></span></span></span></div>
     </div>
   </header>`,
   finishBody: `
@@ -588,6 +807,7 @@ mountBodyShell({
       <p id="finish-place" class="finish-place"></p>
       <p id="finish-line" class="finish-open"></p>
       <div id="finish-tally" class="finish-tally"></div>
+      <p id="finish-treasure" class="finish-treasure"></p>
       <p id="finish-hold" class="finish-open"></p>
       <p class="small-print">These numbers are shown once and not saved.</p>
       <div class="finish-actions">

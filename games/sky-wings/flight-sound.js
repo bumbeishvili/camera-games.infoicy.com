@@ -14,7 +14,12 @@ const SKY_SOUNDS = {
   hurt: other('mighty-moves/audio/hit-2.ogg'),
   down: other('mighty-moves/audio/boom.ogg'),
   sparkle: other('mighty-moves/audio/sparkle.ogg'),
+  // For the prizes and powers of the higher levels, all recordings already used elsewhere.
+  bubble: other('balloon-pop/audio/pop.ogg'),
+  whoosh: other('mighty-moves/audio/whoosh-1.ogg'),
+  block: other('mighty-moves/audio/block.ogg'),
 };
+const PRIZE_RATES = { coin: 1, gem: 1.25, medal: 0.9, chest: 0.8 };
 
 const PROPELLER_LEVEL = 0.32;
 const MUSIC_LEVEL = 0.2;
@@ -60,6 +65,36 @@ export class FlightSound extends Sound {
 
   hurt() {
     this.play('hurt', { gain: 0.42, rate: 0.9 * near(0.14) });
+  }
+
+  /** A prize reaching the plane: the star chime, a little lower for the bigger prizes. */
+  prize(kind) {
+    this.play('star', { gain: 0.42, rate: PRIZE_RATES[kind] ?? 1 });
+  }
+
+  /** A gift box opening. */
+  gift() {
+    this.play('sparkle', { gain: 0.4, rate: 1.15 });
+  }
+
+  /** A pirate wrapped in a bubble: a real balloon pop, quiet and high. */
+  bubble() {
+    this.play('bubble', { gain: 0.2, rate: 1.45 * near(0.1) });
+  }
+
+  /** A paper plane setting off. */
+  paper() {
+    this.play('whoosh', { gain: 0.12, rate: 1.4 * near(0.1) });
+  }
+
+  /** A shot bouncing off the shield. */
+  blocked() {
+    this.play('block', { gain: 0.3, rate: 1.2 * near(0.1) });
+  }
+
+  /** A pirate slowed by a snowflake. */
+  slowed() {
+    this.play('sparkle', { gain: 0.18, rate: 1.6 });
   }
 
   down() {

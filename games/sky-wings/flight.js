@@ -42,6 +42,10 @@ const WEAVE_RATE = 1.3; // How quickly a weaving pirate swings from side to side
  * What a level changes. Level 1 is the game as it always was. What a grown-up chose stays theirs: the
  * ring's size, the help with lining up, how hard the pirates shoot, whether the child can be shot
  * down, the speed and how many planes there are to drop. Being hunted gives as long to turn as ever.
+ *
+ * Every level from 2 brings something new to see and play with, on top of the pirates getting a little
+ * quicker: prizes, gift boxes with new kinds of fire in them, new kinds of pirate, and a new sky. Later
+ * levels keep what came before. NEW_AT lists what arrives where, and the tests check each one is on.
  */
 export function flightLevel(level = 1) {
   return {
@@ -61,8 +65,162 @@ export function flightLevel(level = 1) {
     atOnce: stepsAt(level, { 1: MOST_AT_ONCE, 9: 4 }),
     // From level 8 the last one is the pirate captain: a bigger plane with a flag, which takes more hits.
     captain: stepsAt(level, { 1: false, 8: true }),
+    // From level 2 a pirate that's dropped leaves a prize, which flies to the child's plane by itself.
+    prizes: level >= 2,
+    // From level 3 gift boxes float in the sky, and flying through one gives a power for a few seconds.
+    gifts: stepsAt(level, { 1: [], 3: ['triple'], 5: ['triple', 'bubble'], 7: ['triple', 'bubble', 'snow', 'shield'], 9: ['triple', 'bubble', 'snow', 'shield', 'helper'], 10: ['triple', 'bubble', 'snow', 'shield', 'helper', 'paper'] }),
+    // New kinds of pirate, each with its own way of flying: see planPirates.
+    kinds: stepsAt(level, { 1: [], 4: ['scout'], 6: ['scout', 'balloon'], 8: ['scout', 'pair', 'balloon'] }),
+    // At level 10, the one before the captain is a big slow airship full of treasure.
+    airship: level >= 10,
+    // The sky: day, then a sunset from level 6, and light snow from level 9.
+    sky: stepsAt(level, { 1: 'day', 6: 'sunset', 9: 'snow' }),
   };
 }
+
+/** The kinds of pirate a level brings that the level before didn't. */
+export const freshKinds = (level) => {
+  const before = level > 1 ? flightLevel(level - 1).kinds : [];
+  return flightLevel(level).kinds.filter((kind) => !before.includes(kind));
+};
+
+/**
+ * Which kind of pirate comes in which order. The captain is always last and the airship just before it,
+ * and the rest take turns through the kinds this level has. A pair is a leader and a wingman, who come
+ * together and fly side by side, and there's never half of one. fresh is the kinds new at this level:
+ * with too few planes to drop for every kind, those come first, so what's new at a level always comes,
+ * and the earlier kinds come as there's room.
+ */
+export function planPirates(total, rules, fresh = []) {
+  const plan = Array(total).fill('pirate');
+  if (rules.captain && total > 1) plan[total - 1] = 'captain';
+  if (rules.airship && total >= 3) plan[total - 2] = 'airship';
+  const groups = [];
+  if (rules.kinds.includes('scout')) groups.push(['scout']);
+  if (rules.kinds.includes('pair')) groups.push(['lead', 'wing']);
+  if (rules.kinds.includes('balloon')) groups.push(['balloon']);
+  if (groups.length) groups.push(['pirate']);
+  const fill = (order) => {
+    const filled = [...plan];
+    let turn = 0;
+    for (let i = 0; i < total && order.length; i += 1) {
+      if (filled[i] !== 'pirate') continue;
+      // Takes the next kind there's room for here: a pair needs two places together.
+      for (let tries = 0; tries < order.length; tries += 1) {
+        const group = order[turn % order.length];
+        turn += 1;
+        if (group.every((_, step) => plan[i + step] === 'pirate' && i + step < total)) {
+          group.forEach((kind, step) => {
+            filled[i + step] = kind;
+          });
+          i += group.length - 1;
+          break;
+        }
+      }
+    }
+    return filled;
+  };
+  const named = (kind) => (kind === 'pair' ? 'lead' : kind);
+  const regular = fill(groups);
+  if (fresh.every((kind) => regular.includes(named(kind)))) return regular;
+  const first = groups.filter(([kind]) => fresh.some((one) => named(one) === kind));
+  return fill([...first, ...groups.filter((group) => !first.includes(group))]);
+}
+
+// Each kind of pirate: its hits as a share of the usual, how fast it crosses, whether it ever turns to
+// hunt the child, whether it dodges when hit, and the prize it leaves.
+export const KINDS = {
+  pirate: { hits: 1, hunts: true, dodges: true, prize: 'coin' },
+  lead: { hits: 1, hunts: true, dodges: true, prize: 'coin' },
+  wing: { hits: 1, hunts: true, dodges: true, prize: 'coin' },
+  // A little quick plane that zigzags, and needs fewer hits.
+  scout: { hits: 0.6, faster: 0.07, weave: 0.42, weaveRate: 2.3, hunts: true, dodges: true, prize: 'gem' },
+  // A hot-air balloon that drifts slowly, high up, and never shoots.
+  balloon: { hits: 0.8, share: 0.42, weave: 0, high: [24, 52], hunts: false, dodges: false, prize: 'coin' },
+  captain: { hits: CAPTAIN_HITS, hunts: true, dodges: true, prize: 'medal' },
+  // A big slow airship that never shoots, and takes a lot of hits.
+  airship: { hits: 2, share: 0.5, weave: 0, hunts: false, dodges: false, prize: 'chest' },
+};
+
+// The powers in a gift box, and how many seconds each lasts.
+export const POWERS = {
+  triple: 6, // Three shots at a time, in a fan.
+  bubble: 6, // Bubbles, which wrap a pirate up so it floats gently down.
+  snow: 7, // Snowflakes, which slow a pirate right down for a while.
+  shield: 9, // A bubble round the child's plane, which their shots bounce off.
+  helper: 10, // A friend flies alongside and helps.
+  paper: 6, // Paper planes that find their own way to a pirate.
+};
+
+/**
+ * What's new at each level, for the cards: thing is what it is in the rules, which the tests check is
+ * really on from that level. The names are in English and Georgian.
+ */
+export const NEW_AT = {
+  2: [{ thing: 'prize:coin', mark: '🟡', name: 'Gold coins', nameKa: 'ოქროს მონეტები' }],
+  3: [
+    { thing: 'weave', mark: '〰️', name: 'Weaving pirates', nameKa: 'კლაკნილი ფრენა' },
+    { thing: 'gift:triple', mark: '🎁', name: 'Triple shot', nameKa: 'სამმაგი სროლა' },
+  ],
+  4: [
+    { thing: 'kind:scout', mark: '🛩️', name: 'Scout pirates', nameKa: 'მზვერავი მეკობრეები' },
+    { thing: 'prize:gem', mark: '💎', name: 'Gems', nameKa: 'ძვირფასი ქვები' },
+  ],
+  5: [
+    { thing: 'climbs', mark: '⛰️', name: 'Higher and lower', nameKa: 'მაღლა და დაბლა' },
+    { thing: 'gift:bubble', mark: '🫧', name: 'Bubble shot', nameKa: 'ბუშტების სროლა' },
+  ],
+  6: [
+    { thing: 'kind:balloon', mark: '🎈', name: 'Balloon pirates', nameKa: 'ბუშტიანი მეკობრეები' },
+    { thing: 'sky:sunset', mark: '🌅', name: 'Sunset', nameKa: 'მზის ჩასვლა' },
+  ],
+  7: [
+    { thing: 'gift:snow', mark: '❄️', name: 'Snowflake shot', nameKa: 'ფიფქების სროლა' },
+    { thing: 'gift:shield', mark: '🛡️', name: 'Shield bubble', nameKa: 'დამცავი ბუშტი' },
+  ],
+  8: [
+    { thing: 'kind:captain', mark: '👑', name: 'Pirate captain', nameKa: 'მეკობრე კაპიტანი' },
+    { thing: 'kind:pair', mark: '👥', name: 'Pirate pairs', nameKa: 'მეკობრეთა წყვილები' },
+  ],
+  9: [
+    { thing: 'atOnce:4', mark: '4️⃣', name: 'Four at once', nameKa: 'ოთხი ერთად' },
+    { thing: 'gift:helper', mark: '🦒', name: 'A friend helps', nameKa: 'მეგობარი გეხმარება' },
+    { thing: 'sky:snow', mark: '🌨️', name: 'Light snow', nameKa: 'მსუბუქი თოვლი' },
+  ],
+  10: [
+    { thing: 'kind:airship', mark: '💰', name: 'Treasure airship', nameKa: 'განძის საჰაერო ხომალდი' },
+    { thing: 'gift:paper', mark: '📄', name: 'Paper planes', nameKa: 'ქაღალდის თვითმფრინავები' },
+  ],
+};
+
+/**
+ * Whether one of the things in NEW_AT is on at a level, with this many planes to drop: with only three,
+ * there are never four in the air at once, and not every kind of pirate has room.
+ */
+export function isOn(thing, level, planes = 9) {
+  const rules = flightLevel(level);
+  const [what, which] = thing.split(':');
+  const kinds = planPirates(planes, rules, freshKinds(level));
+  switch (what) {
+    case 'prize':
+      return rules.prizes && Object.entries(KINDS).some(([kind, { prize }]) => prize === which && kinds.includes(kind));
+    case 'gift':
+      return rules.gifts.includes(which);
+    case 'kind':
+      return kinds.includes(which === 'pair' ? 'lead' : which);
+    case 'sky':
+      return rules.sky === which;
+    case 'atOnce':
+      return rules.atOnce === Number(which) && planes >= Number(which);
+    case 'weave':
+      return rules.weave > 0;
+    case 'climbs':
+      return rules.climbs > 1;
+    default:
+      return false;
+  }
+}
+
 // The camera, from the plane: behind and above, looking the way the plane points. The ring is in the
 // middle of its view, so what's in the ring on the screen is what the guns fire at.
 export const CAMERA = { back: 15, up: 4.4 };
@@ -111,6 +269,21 @@ const ENEMY = {
   fallSeconds: 5.5,
   nextIn: 1,
 };
+// What a dropped pirate leaves: it waits a moment, then flies to the child's plane, quicker and quicker.
+const PRIZE = { wait: 0.5, speed: 30, speedUp: 80, most: 260, reach: 9 };
+// Gift boxes: when the first comes, how often more come, where they float, and how close is close enough.
+// Near one, it comes to the plane, so it doesn't take careful flying to get.
+const GIFT = { firstIn: 5, every: [14, 18], ahead: 220, across: [-24, 24], up: [-8, 8], drift: 16, pull: 140, pullSpeed: 45, reach: 20, life: 16 };
+const TRIPLE_FAN = 8; // How far apart the three shots start.
+const BUBBLE = { every: 0.4, speed: 300, life: 2, bigHits: 4 }; // A captain or airship is too big to wrap up.
+const SLOW = { seconds: 4, share: 0.55, turn: 0.6 }; // A pirate hit by a snowflake.
+const PAPER = { every: 0.6, speed: 110, life: 6, hits: 3, cone: degrees(80), reach: 320 };
+// On the left, a little ahead and above, so it's in view and not behind the coach's card on the right.
+const HELPER = { every: 0.22, cone: degrees(30), side: -11, back: -4, up: 3 };
+// Where a wingman flies, from its leader. Further than join from that spot, it flies there like any
+// pirate, and nearer, it eases into it no faster than ease, as a share of the child's speed.
+const PAIR = { side: 22, back: 8, join: 30, ease: 0.25 };
+const DRIFT_ASIDE = 18; // How fast something going down gently moves out of the child's way.
 const BEHIND_EVERY = 14; // Seconds at the least between being told a plane is behind.
 const WON_AFTER = 0.9;
 export const MOST_AT_ONCE_EVER = flightLevel(10).atOnce; // For the marks on the screen.
@@ -151,6 +324,7 @@ export class Flight {
     this.levelNumber = levelNumber;
     this.levelRules = flightLevel(levelNumber);
     this.atOnce = this.levelRules.atOnce;
+    this.plan = planPirates(planes, this.levelRules, freshKinds(levelNumber));
     this.enemyHits = this.level.enemyHits;
     this.climbing = climbing;
     this.random = random;
@@ -186,7 +360,29 @@ export class Flight {
     this.saidBehindAt = -Infinity;
     this.wonIn = null;
 
-    this.stats = { dropped: 0, shots: 0, hits: 0, hurts: 0, seconds: 0, wingsSeconds: 0 };
+    // Prizes on their way to the child's plane, the gift box in the sky, and the power it gave.
+    this.prizes = [];
+    this.gift = null;
+    this.giftIn = GIFT.firstIn;
+    const { gifts } = this.levelRules;
+    const before = levelNumber > 1 ? flightLevel(levelNumber - 1).gifts : [];
+    // The first gift box is this level's new power, and then they take turns.
+    this.giftTurn = Math.max(0, gifts.findIndex((kind) => !before.includes(kind)));
+    this.power = null;
+    this.helper = null;
+    this.paperIn = 0;
+
+    this.stats = {
+      dropped: 0,
+      shots: 0,
+      hits: 0,
+      hurts: 0,
+      seconds: 0,
+      wingsSeconds: 0,
+      prizes: { coin: 0, gem: 0, chest: 0, medal: 0 },
+      gifts: 0,
+      blocked: 0,
+    };
   }
 
   emit(type, details = {}) {
@@ -260,11 +456,13 @@ export class Flight {
     const direction = this.heading + side;
     const x = this.x + Math.sin(direction) * away;
     const z = this.z - Math.cos(direction) * away;
-    const { climbs, captain, weave, enemySpeed } = this.levelRules;
-    const isCaptain = captain && this.waiting === 0 && this.total > 1;
-    const hits = Math.round(this.enemyHits * (isCaptain ? CAPTAIN_HITS : 1));
+    const { climbs, weave, enemySpeed } = this.levelRules;
+    const kind = this.plan[this.nextPilot] ?? 'pirate';
+    const isCaptain = kind === 'captain';
+    const hits = Math.max(1, Math.round(this.enemyHits * KINDS[kind].hits));
     const enemy = {
       index: this.nextPilot,
+      kind,
       x,
       z,
       y: this.y + between(random, ENEMY.upDown.map((height) => height * climbs)),
@@ -286,8 +484,22 @@ export class Flight {
       fireIn: 0.8,
       dodgeLeft: 0,
       fallLeft: 0,
+      slowLeft: 0,
+      bubbled: false,
+      leader: null,
     };
+    if (kind === 'balloon') enemy.y = this.y + between(random, KINDS.balloon.high);
+    if (kind === 'lead') this.lastLead = enemy;
+    // A wingman flies beside its leader, if it's still flying. Coming along with a leader that's still far
+    // off, it comes beside it. With its leader already near, it comes from the distance like any pirate,
+    // and flies over to join it, rather than appearing out of nowhere.
+    if (kind === 'wing' && this.lastLead?.state === 'flying') {
+      const { lastLead: leader } = this;
+      enemy.leader = leader;
+      if (Math.hypot(leader.x - this.x, leader.z - this.z) >= ENEMY.spawnAway[0]) Object.assign(enemy, this.wingSpot(leader), { heading: leader.heading });
+    }
     keepInside(enemy);
+    if (kind === 'balloon') enemy.y = Math.min(enemy.y, WORLD.ceiling - 30);
     this.nextPilot += 1;
     this.enemies.push(enemy);
     this.emit('spawn', { enemy });
@@ -300,11 +512,23 @@ export class Flight {
     const across = between(random, dodging ? ENEMY.dodgeAcross : ENEMY.across) * (random() < 0.5 ? -1 : 1);
     const x = this.x + forward.x * ahead + forward.z * across;
     const z = this.z + forward.z * ahead - forward.x * across;
-    const way = { x, z, y: this.y + forward.y * ahead + between(random, ENEMY.upDown.map((height) => height * this.levelRules.climbs)) };
+    const upDown = enemy.kind === 'balloon' ? KINDS.balloon.high : ENEMY.upDown.map((height) => height * this.levelRules.climbs);
+    const way = { x, z, y: this.y + forward.y * ahead + between(random, upDown) };
     keepInside(way);
     way.y = Math.max(way.y, floorAt(way.x, way.z) + 14);
+    if (enemy.kind === 'balloon') way.y = Math.min(way.y, WORLD.ceiling - 30);
     enemy.way = way;
     enemy.modeLeft = 7;
+  }
+
+  /** Where a wingman flies: beside its leader and a little behind. */
+  wingSpot(leader) {
+    const forward = forwardOf(leader.heading, 0);
+    return {
+      x: leader.x - forward.z * PAIR.side - forward.x * PAIR.back,
+      y: leader.y,
+      z: leader.z + forward.x * PAIR.side - forward.z * PAIR.back,
+    };
   }
 
   /** weave turns it from side to side on the way, by up to that much either way. */
@@ -312,18 +536,23 @@ export class Flight {
     const dx = target.x - enemy.x;
     const dy = target.y - enemy.y;
     const dz = target.z - enemy.z;
-    const wanted = headingTo(dx, dz) + (weave ? Math.sin(this.time * WEAVE_RATE + enemy.weavePhase) * weave : 0);
-    const most = this.levelRules.enemyTurn * dt;
+    const rate = KINDS[enemy.kind]?.weaveRate ?? WEAVE_RATE;
+    const wanted = headingTo(dx, dz) + (weave ? Math.sin(this.time * rate + enemy.weavePhase) * weave : 0);
+    // A pirate hit by a snowflake is slow, and slow to turn, for a while.
+    const slowed = enemy.slowLeft > 0;
+    const most = this.levelRules.enemyTurn * dt * (slowed ? SLOW.turn : 1);
     const turn = clamp(turnBetween(wanted, enemy.heading), -most, most);
     enemy.heading += turn;
     enemy.pitch = damp(enemy.pitch, clamp(Math.atan2(dy, Math.hypot(dx, dz) || 1), -ENEMY.pitch, ENEMY.pitch), 2, dt);
     const sharpness = dt > 0 ? clamp(turn / most, -1, 1) : 0;
     enemy.roll = damp(enemy.roll, sharpness * FLY.roll * 0.85, 4, dt);
     const forward = forwardOf(enemy.heading, enemy.pitch);
-    const speed = this.pace.speed * share;
-    enemy.x += forward.x * speed * dt;
-    enemy.y += forward.y * speed * dt;
-    enemy.z += forward.z * speed * dt;
+    enemy.share = share;
+    const speed = this.pace.speed * share * (slowed ? SLOW.share : 1);
+    enemy.step = { x: forward.x * speed * dt, y: forward.y * speed * dt, z: forward.z * speed * dt };
+    enemy.x += enemy.step.x;
+    enemy.y += enemy.step.y;
+    enemy.z += enemy.step.z;
     keepInside(enemy);
   }
 
@@ -375,6 +604,20 @@ export class Flight {
     for (const enemy of this.enemies) {
       enemy.hitLeft = Math.max(0, enemy.hitLeft - dt);
       enemy.dodgeLeft = Math.max(0, enemy.dodgeLeft - dt);
+      enemy.slowLeft = Math.max(0, enemy.slowLeft - dt);
+      if (enemy.state === 'falling' && (enemy.bubbled || !KINDS[enemy.kind].dodges)) {
+        // Wrapped in a bubble, or a balloon or an airship, it sinks gently rather than falling, and
+        // drifts aside, out of the child's way, so their plane never flies into it.
+        enemy.fallLeft -= dt;
+        enemy.pitch = damp(enemy.pitch, 0, 2, dt);
+        enemy.roll = damp(enemy.roll, 0, 2, dt);
+        enemy.y = Math.max(enemy.y - 7 * dt, 0);
+        const side = Math.sign((enemy.x - this.x) * -forward.z + (enemy.z - this.z) * forward.x) || 1;
+        enemy.x += -forward.z * side * DRIFT_ASIDE * dt;
+        enemy.z += forward.x * side * DRIFT_ASIDE * dt;
+        if (enemy.fallLeft <= 0) enemy.state = 'gone';
+        continue;
+      }
       if (enemy.state === 'falling') {
         enemy.fallLeft -= dt;
         enemy.pitch = damp(enemy.pitch, -1, 1.2, dt);
@@ -407,9 +650,39 @@ export class Flight {
       }
 
       enemy.modeLeft -= dt;
+      const kind = KINDS[enemy.kind];
+      const { leader } = enemy;
+      if (leader && leader.state === 'flying' && enemy.dodgeLeft === 0 && enemy.slowLeft === 0) {
+        const spot = this.wingSpot(leader);
+        if (Math.hypot(spot.x - enemy.x, spot.y - enemy.y, spot.z - enemy.z) > PAIR.join) {
+          // Still on its way to its leader, after a dodge or coming from the distance: it flies there
+          // as a pirate getting out of the ring does, or catching up from behind, turning as it goes.
+          this.flyEnemyTowards(enemy, spot, behindChild && away > 90 ? ENEMY.catchUp : ENEMY.dodgeSpeed, dt);
+          continue;
+        }
+        // A wingman goes where its leader goes, easing into its spot beside it, and never sliding
+        // across faster than a pirate can fly.
+        const step = leader.step ?? { x: 0, y: 0, z: 0 };
+        const pull = 1 - Math.exp(-1.5 * dt);
+        const ease = { x: (spot.x - enemy.x) * pull, y: (spot.y - enemy.y) * pull, z: (spot.z - enemy.z) * pull };
+        const most = this.pace.speed * PAIR.ease * dt;
+        const size = Math.hypot(ease.x, ease.y, ease.z);
+        const share = size > most ? most / size : 1;
+        enemy.x += step.x + ease.x * share;
+        enemy.y += step.y + ease.y * share;
+        enemy.z += step.z + ease.z * share;
+        enemy.heading += turnBetween(leader.heading, enemy.heading) * pull * 2;
+        enemy.pitch = leader.pitch;
+        enemy.roll = damp(enemy.roll, leader.roll, 4, dt);
+        enemy.share = leader.share;
+        keepInside(enemy);
+        continue;
+      }
       if (!enemy.way || enemy.modeLeft <= 0 || Math.hypot(enemy.x - enemy.way.x, enemy.y - enemy.way.y, enemy.z - enemy.way.z) < ENEMY.reached) this.pickWay(enemy);
-      const share = enemy.dodgeLeft > 0 ? ENEMY.dodgeSpeed : behindChild && away > 90 ? ENEMY.catchUp : this.levelRules.enemySpeed;
-      const weave = enemy.dodgeLeft > 0 ? 0 : this.levelRules.weave;
+      const crossing = kind.share ?? Math.min(0.95, this.levelRules.enemySpeed + (kind.faster ?? 0));
+      const catchUp = kind.share ? 0.9 : ENEMY.catchUp; // A balloon or the airship is carried along by the wind.
+      const share = enemy.dodgeLeft > 0 ? ENEMY.dodgeSpeed : behindChild && away > 90 ? catchUp : crossing;
+      const weave = enemy.dodgeLeft > 0 ? 0 : kind.weave ?? this.levelRules.weave;
       this.flyEnemyTowards(enemy, enemy.way, share, dt, weave);
     }
     this.enemies = this.enemies.filter(({ state }) => state !== 'gone');
@@ -423,7 +696,8 @@ export class Flight {
     this.huntIn = between(this.random, this.huntEvery);
     const hunting = this.flying.some(({ mode }) => mode === 'hunt');
     if (hunting) return;
-    const free = this.flying.filter((enemy) => enemy !== this.locked);
+    // Balloons and the airship never hunt.
+    const free = this.flying.filter((enemy) => enemy !== this.locked && KINDS[enemy.kind].hunts);
     if (!free.length) return;
     const hunter = free[Math.floor(this.random() * free.length)];
     hunter.mode = 'hunt';
@@ -465,21 +739,59 @@ export class Flight {
   }
 
   shoot(target) {
+    const kind = this.power && ['triple', 'bubble', 'snow'].includes(this.power.kind) ? this.power.kind : null;
     const side = this.stats.shots % 2 ? 1 : -1;
     const { forward } = this;
-    this.shots.push({
-      mine: true,
-      x: this.x + forward.z * side * -3,
+    const from = (across) => ({
+      x: this.x + forward.z * across * -1,
       y: this.y,
-      z: this.z + forward.x * side * 3,
-      dx: forward.x,
-      dy: forward.y,
-      dz: forward.z,
-      left: SHOT.life,
-      target,
+      z: this.z + forward.x * across,
     });
-    this.stats.shots += 1;
+    const fire = (across, extra = {}) => {
+      this.shots.push({ mine: true, ...from(across), dx: forward.x, dy: forward.y, dz: forward.z, left: SHOT.life, target, ...extra });
+      this.stats.shots += 1;
+    };
+    if (kind === 'bubble') {
+      fire(0, { kind, speed: BUBBLE.speed, left: BUBBLE.life });
+      this.shotIn = BUBBLE.every;
+      return;
+    }
+    if (kind === 'triple') {
+      // Three at once, in a fan, from the middle and from each wing.
+      for (const across of [-TRIPLE_FAN, 0, TRIPLE_FAN]) fire(across, { kind });
+    } else {
+      fire(side * 3, kind ? { kind } : {});
+    }
     this.shotIn = SHOT.every;
+  }
+
+  /** Something that flies after its target and does something when it gets there. */
+  arrives(shot) {
+    const { target, kind } = shot;
+    if (kind === 'bubble') this.wrap(target);
+    else if (kind === 'paper') {
+      for (let i = 0; i < PAPER.hits; i += 1) this.hit(target);
+    } else {
+      this.hit(target);
+      if (kind === 'snow' && target.state === 'flying') {
+        if (!target.slowLeft) this.emit('slowed', { enemy: target });
+        target.slowLeft = SLOW.seconds;
+      }
+    }
+  }
+
+  /** A bubble wraps a pirate up, and it floats gently down. A captain or an airship is too big for that. */
+  wrap(enemy) {
+    if (enemy.state !== 'flying') return;
+    if (enemy.kind === 'captain' || enemy.kind === 'airship') {
+      for (let i = 0; i < BUBBLE.bigHits; i += 1) this.hit(enemy);
+      return;
+    }
+    this.stats.hits += 1;
+    enemy.bubbled = true;
+    enemy.hitsLeft = 0;
+    this.emit('bubbled', { enemy });
+    this.drop(enemy);
   }
 
   drop(enemy) {
@@ -487,6 +799,11 @@ export class Flight {
     enemy.mode = 'falling';
     enemy.fallLeft = ENEMY.fallSeconds;
     this.stats.dropped += 1;
+    if (this.levelRules.prizes) {
+      const prize = { kind: KINDS[enemy.kind].prize, x: enemy.x, y: enemy.y, z: enemy.z, age: 0, from: enemy };
+      this.prizes.push(prize);
+      this.emit('prize-dropped', { prize });
+    }
     this.emit('down', { enemy, dropped: this.stats.dropped, left: this.left });
     if (this.left === 0) this.wonIn = WON_AFTER;
     this.spawnIn = ENEMY.nextIn;
@@ -503,7 +820,7 @@ export class Flight {
       return;
     }
     // Being shot at, it stops hunting and tries to get out of the ring, so it has to be chased.
-    if (enemy.dodgeLeft === 0) {
+    if (enemy.dodgeLeft === 0 && KINDS[enemy.kind].dodges) {
       enemy.mode = 'cross';
       enemy.dodgeLeft = this.levelRules.dodgeSeconds;
       this.pickWay(enemy, { dodging: true });
@@ -522,9 +839,22 @@ export class Flight {
   }
 
   lose() {
-    this.state = 'lost';
-    this.setFiring(false);
+    this.finish('lost');
     this.emit('lost', { dropped: this.stats.dropped });
+  }
+
+  /**
+   * It's all over, won or lost. Prizes still on their way arrive at once, so every one is counted, the
+   * gift box floats off, and a power ends, so a friend doesn't go on firing.
+   */
+  finish(state) {
+    for (const prize of this.prizes) this.collect(prize);
+    this.prizes = [];
+    this.gift = null;
+    if (this.power) this.endPower();
+    this.state = state;
+    this.locked = null;
+    this.setFiring(false);
   }
 
   moveShots(dt) {
@@ -540,20 +870,26 @@ export class Flight {
         shot.dx = dx / away;
         shot.dy = dy / away;
         shot.dz = dz / away;
-        const step = SHOT.speed * dt;
+        const step = (shot.speed ?? SHOT.speed) * dt;
         shot.x += shot.dx * step;
         shot.y += shot.dy * step;
         shot.z += shot.dz * step;
         if (away <= SHOT.reach + step) {
           shot.left = 0;
-          this.hit(target);
+          this.arrives(shot);
         }
       } else {
         const step = ENEMY.shotSpeed * dt;
         shot.x += shot.dx * step;
         shot.y += shot.dy * step;
         shot.z += shot.dz * step;
-        if (shot.left <= 0 && shot.hit && !this.resting && this.state === 'flying') this.hurt();
+        if (shot.left <= 0 && shot.hit && !this.resting && this.state === 'flying') {
+          // The shield bubble: their shots bounce off it.
+          if (this.power?.kind === 'shield') {
+            this.stats.blocked += 1;
+            this.emit('shielded');
+          } else this.hurt();
+        }
       }
     }
     this.shots = this.shots.filter(({ left }) => left > 0);
@@ -563,6 +899,166 @@ export class Flight {
     if (on === this.firing) return;
     this.firing = on;
     this.emit('firing', { on });
+  }
+
+  /* ---------- prizes, gift boxes and powers ---------- */
+
+  /** Prizes wait a moment where a pirate was dropped, then fly to the child's plane by themselves. */
+  movePrizes(dt) {
+    for (const prize of this.prizes) {
+      prize.age += dt;
+      if (prize.age < PRIZE.wait) continue;
+      const dx = this.x - prize.x;
+      const dy = this.y - prize.y;
+      const dz = this.z - prize.z;
+      const away = Math.hypot(dx, dy, dz) || 1;
+      const step = Math.min(PRIZE.most, PRIZE.speed + (prize.age - PRIZE.wait) * PRIZE.speedUp) * dt;
+      if (away <= PRIZE.reach + step) {
+        this.collect(prize);
+        continue;
+      }
+      prize.x += (dx / away) * step;
+      prize.y += (dy / away) * step;
+      prize.z += (dz / away) * step;
+    }
+    this.prizes = this.prizes.filter(({ caught }) => !caught);
+  }
+
+  collect(prize) {
+    prize.caught = true;
+    this.stats.prizes[prize.kind] += 1;
+    this.emit('prize', { prize });
+  }
+
+  /** Every so often a gift box floats out in front, and flying through it gives a power. */
+  moveGift(dt) {
+    const { gifts } = this.levelRules;
+    if (!gifts.length) return;
+    const { gift } = this;
+    if (!gift) {
+      if (this.resting || this.wonIn !== null) return;
+      this.giftIn -= dt;
+      if (this.giftIn <= 0) this.placeGift(gifts[this.giftTurn % gifts.length]);
+      return;
+    }
+    gift.age += dt;
+    const dx = this.x - gift.x;
+    const dy = this.y - gift.y;
+    const dz = this.z - gift.z;
+    const away = Math.hypot(dx, dy, dz) || 1;
+    if (away <= GIFT.reach) {
+      this.gift = null;
+      this.giftIn = between(this.random, GIFT.every);
+      this.giftTurn += 1;
+      this.startPower(gift.kind);
+      return;
+    }
+    // It drifts towards the plane all the time, and near it, comes to it.
+    const step = Math.min(away, (away < GIFT.pull ? GIFT.pullSpeed : GIFT.drift) * dt);
+    gift.x += (dx / away) * step;
+    gift.y += (dy / away) * step;
+    gift.z += (dz / away) * step;
+    if (gift.age > GIFT.life) {
+      // Missed: it floats away, costing nothing, and another comes along.
+      this.gift = null;
+      this.giftIn = between(this.random, GIFT.every);
+      this.giftTurn += 1;
+      this.emit('gift-gone', { gift });
+    }
+  }
+
+  placeGift(kind) {
+    const { random, forward } = this;
+    const across = between(random, GIFT.across);
+    const up = this.climbing ? between(random, GIFT.up) : 0;
+    const gift = {
+      kind,
+      x: this.x + forward.x * GIFT.ahead - forward.z * across,
+      y: this.y + forward.y * GIFT.ahead + up,
+      z: this.z + forward.z * GIFT.ahead + forward.x * across,
+      age: 0,
+    };
+    keepInside(gift);
+    gift.y = Math.max(gift.y, floorAt(gift.x, gift.z) + 20);
+    this.gift = gift;
+    this.emit('gift', { gift });
+  }
+
+  startPower(kind) {
+    if (this.power) this.emit('power', { kind: this.power.kind, on: false });
+    this.power = { kind, left: POWERS[kind], total: POWERS[kind] };
+    this.stats.gifts += 1;
+    // The friend flies in from behind, and stays beside the plane, wherever it goes.
+    this.helper = kind === 'helper' ? { side: HELPER.side * 2, back: 40, x: this.x, y: this.y, z: this.z, shotIn: 0.8 } : null;
+    this.paperIn = 0.3;
+    this.emit('power', { kind, on: true });
+  }
+
+  endPower() {
+    const { kind } = this.power;
+    this.power = null;
+    this.helper = null;
+    this.emit('power', { kind, on: false });
+  }
+
+  /** A power lasts a few seconds of flying. Resting doesn't use it up, and nothing fires while resting. */
+  usePower(dt) {
+    if (!this.power) return;
+    if (!this.resting) this.power.left -= dt;
+    if (this.power.left <= 0) {
+      this.endPower();
+      return;
+    }
+    if (this.power.kind === 'helper') this.flyHelper(dt);
+    if (this.power.kind === 'paper' && !this.resting) {
+      this.paperIn -= dt;
+      if (this.paperIn <= 0) {
+        this.paperIn = PAPER.every;
+        const target = this.nearestWithin(this, PAPER.cone, PAPER.reach);
+        if (target) {
+          const { forward } = this;
+          // From just ahead of the plane, so it isn't right in front of the camera.
+          this.shots.push({ mine: true, kind: 'paper', x: this.x + forward.x * 8, y: this.y + forward.y * 8 + 1, z: this.z + forward.z * 8, dx: forward.x, dy: forward.y, dz: forward.z, left: PAPER.life, speed: PAPER.speed, target });
+          this.emit('paper', { target });
+        }
+      }
+    }
+  }
+
+  /** The flying pirate nearest the way the child's plane points, from somewhere, within a cone. */
+  nearestWithin(from, cone, reach) {
+    const { forward } = this;
+    let found = null;
+    let nearest = Infinity;
+    for (const enemy of this.flying) {
+      const dx = enemy.x - from.x;
+      const dy = enemy.y - from.y;
+      const dz = enemy.z - from.z;
+      const away = Math.hypot(dx, dy, dz) || 1;
+      const angle = Math.acos(clamp((dx * forward.x + dy * forward.y + dz * forward.z) / away, -1, 1));
+      if (away <= reach && angle <= cone && angle < nearest) {
+        found = enemy;
+        nearest = angle;
+      }
+    }
+    return found;
+  }
+
+  /** A friend flies beside the child's plane and fires at a pirate ahead of it. */
+  flyHelper(dt) {
+    const { helper, forward } = this;
+    helper.side = damp(helper.side, HELPER.side, 2, dt);
+    helper.back = damp(helper.back, HELPER.back, 2, dt);
+    helper.x = this.x - forward.z * helper.side - forward.x * helper.back;
+    helper.y = this.y + HELPER.up;
+    helper.z = this.z + forward.x * helper.side - forward.z * helper.back;
+    if (this.resting) return;
+    helper.shotIn -= dt;
+    if (helper.shotIn > 0) return;
+    const target = this.nearestWithin(helper, HELPER.cone, RANGE);
+    if (!target) return;
+    helper.shotIn = HELPER.every;
+    this.shots.push({ mine: true, kind: 'helper', x: helper.x, y: helper.y, z: helper.z, dx: forward.x, dy: forward.y, dz: forward.z, left: SHOT.life, target });
   }
 
   /* ---------- the child's plane ---------- */
@@ -645,6 +1141,7 @@ export class Flight {
       this.moveChild(dt, true);
       this.moveEnemies(dt);
       this.moveShotsAfter(dt);
+      if (this.helper) this.flyHelper(dt);
       return;
     }
 
@@ -676,20 +1173,21 @@ export class Flight {
     this.moveEnemies(dt);
     this.startHunts(dt);
     this.watchBehind();
+    this.moveGift(dt);
+    this.usePower(dt);
 
     this.locked = resting ? null : this.findTarget();
     this.setFiring(Boolean(this.locked));
     this.shotIn = Math.max(0, this.shotIn - dt);
     if (this.locked && this.shotIn === 0) this.shoot(this.locked);
     this.moveShots(dt);
+    this.movePrizes(dt);
     if (this.state !== 'flying') return;
 
     if (this.wonIn !== null) {
       this.wonIn -= dt;
       if (this.wonIn <= 0) {
-        this.state = 'won';
-        this.locked = null;
-        this.setFiring(false);
+        this.finish('won');
         this.emit('won', { dropped: this.stats.dropped });
       }
     }
@@ -699,7 +1197,7 @@ export class Flight {
   moveShotsAfter(dt) {
     for (const shot of this.shots) {
       shot.left -= dt;
-      const step = (shot.mine ? SHOT.speed : ENEMY.shotSpeed) * dt;
+      const step = (shot.mine ? shot.speed ?? SHOT.speed : ENEMY.shotSpeed) * dt;
       shot.x += shot.dx * step;
       shot.y += shot.dy * step;
       shot.z += shot.dz * step;

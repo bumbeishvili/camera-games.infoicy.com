@@ -20,6 +20,7 @@ import {
   toon,
 } from '../../core/body/characters.js';
 import { SHAPES, Sparks, spriteTexture } from '../../core/body/sparks.js';
+import { ROSTER } from '../../core/body/roster.js';
 
 // Three lanes, side by side. The lane in the middle is where the runner starts.
 export const LANE_WIDTH = 1.75;
@@ -48,6 +49,56 @@ const VIEWS = {
   practice: { at: [-2.45, 1.62, 7.5], look: [-2.45, 0.98, 0], fov: 30 },
   win: { at: [1.3, 1.75, 6.5], look: [0, 1.15, 0], fov: 32 },
 };
+
+// Where and when the run is: a summer's day, autumn from level 7, and an autumn sunset at level 10. The
+// picture stays about as bright in each, and it's chosen as a run starts, never changed during one.
+const AUTUMN_TREES = { round: ['#e8923a', '#d9673b', '#f0b847'], pines: ['#3f9a58', '#4aa862'], tufts: ['#f2a54a', '#e07b3c'] };
+const PLACES = {
+  day: {
+    sky: ['#3f9fe8', '#a8def9', '#e4f6ff'],
+    fog: '#d4f0ff',
+    light: ['#ffffff', '#a7c7a0', 1.55],
+    sun: ['#fff3dc', 2.3],
+    hills: ['#7fcf79', '#74c671', '#8ad684', '#6bbd69'],
+    trees: { round: ['#5fb954', '#6cc25e', '#54ad50'], pines: ['#3f9a58', '#4aa862'], tufts: ['#6ec964', '#62bc58'] },
+    leaves: null,
+  },
+  autumn: {
+    sky: ['#4a9de0', '#b2dcf4', '#eef6f6'],
+    fog: '#e2ecea',
+    light: ['#fff8ee', '#b8b48e', 1.55],
+    sun: ['#ffe9c8', 2.3],
+    hills: ['#b5c96c', '#a7c466', '#c4c773', '#9dba62'],
+    trees: AUTUMN_TREES,
+    leaves: ['#e8923a', '#d9673b', '#f0b847', '#c9502f'],
+  },
+  sunset: {
+    sky: ['#7f8ad6', '#f4b08e', '#ffe4c2'],
+    fog: '#fbdcc6',
+    light: ['#fff0e2', '#c9b391', 1.6],
+    sun: ['#ffc995', 2.25],
+    hills: ['#b9b86c', '#acb066', '#c6b671', '#a3a862'],
+    trees: AUTUMN_TREES,
+    leaves: ['#e8923a', '#d9673b', '#f0b847', '#c9502f'],
+  },
+};
+const LEAVES = 34;
+const LEAF_AREA = { across: 10, high: 7, ahead: 46, behind: 6 };
+const PICKUP_SIZE = 1.3;
+const ANNOUNCE_AHEAD = 48; // How near something new is when it's first pointed out.
+const ARCH_THROUGH = [0.18, 0.3, 0.42, 0.58, 0.72]; // Where the arch's stars are along a bounce.
+const CHEST_X = 3.05;
+// Something going past the runner towards the camera fades from this far from it, and is gone by this
+// near. The runner is about 6 metres from the camera, so nothing at the runner fades.
+const NEAR_CAMERA = { full: 4.5, gone: 2 };
+// The friend hops over a chest on its side of the trail, rather than running through it.
+const FRIEND_HOP = { reach: 1.6, high: 1.5 };
+
+/** Which way ducks waddle off out of the runner's way: to the side of the trail their lanes are on. */
+function ducksAway(obstacle) {
+  const lanes = obstacle.lanes ?? [-1, 0, 1];
+  return lanes.reduce((sum, lane) => sum + lane, 0) < 0 ? -1 : 1;
+}
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const damp = (value, target, rate, dt) => value + (target - value) * (1 - Math.exp(-rate * dt));
@@ -168,7 +219,67 @@ const OBSTACLE_BUILDERS = {
     flock.userData.sheep = [...flock.children];
     return flock;
   },
+  // From level 7: a duck and her two ducklings in each lane they fill, who waddle over into it as they come.
+  ducks(lanes = [-1, 0, 1]) {
+    const family = new THREE.Group();
+    const walking = new THREE.Group();
+    family.add(walking);
+    const spots = lanes.flatMap((lane) => [[laneX(lane), -0.35, true], [laneX(lane) - 0.55, 0.15, false], [laneX(lane) + 0.55, 0.2, false]]);
+    spots.forEach(([x, z, mother], index) => {
+      const size = mother ? 1 : 0.6;
+      const body = mother ? '#fbf8f1' : '#ffe066';
+      const parts = [
+        { geometry: ball(0.42 * size, 0.34 * size, 0.32 * size), colour: body, at: [0, 0.4 * size, 0] },
+        { geometry: ball(0.13 * size, 0.1 * size, 0.2 * size), colour: mother ? '#e9e4da' : '#f5cf3d', at: [-0.38 * size, 0.55 * size, 0], turn: [0, 0, 0.6] },
+        { geometry: ball(0.21 * size), colour: body, at: [0.34 * size, 0.78 * size, 0] },
+        { geometry: ball(0.13 * size, 0.05 * size, 0.1 * size), colour: '#ff9f2e', at: [0.56 * size, 0.74 * size, 0] },
+        { geometry: ball(0.035), colour: '#2b2b33', at: [0.46 * size, 0.85 * size, 0.12 * size] },
+        { geometry: ball(0.035), colour: '#2b2b33', at: [0.46 * size, 0.85 * size, -0.12 * size] },
+      ];
+      for (const side of [0.1, -0.1]) parts.push({ geometry: limb(0.03, 0.03, 0.12 * size + 0.04, 5).rotateX(Math.PI), colour: '#ff9f2e', at: [0, 0, side * size] });
+      const duck = solid(parts, INK, 0.012);
+      duck.position.set(x, 0, z);
+      duck.userData.phase = index * 1.7;
+      walking.add(duck);
+    });
+    family.userData.walking = walking;
+    family.userData.ducks = [...walking.children];
+    return family;
+  },
 };
+
+/** A trampoline's mat, a lane wide and the length of the painted stretch, with a red rim and springs. */
+function buildMatRim(length) {
+  const parts = [];
+  for (const x of [-(LANE_WIDTH - 0.15) / 2, (LANE_WIDTH - 0.15) / 2]) {
+    parts.push({ geometry: roundedBox(0.16, 0.16, length, 0.05), colour: '#e8504a', at: [x, 0.08, 0] });
+    for (let z = -length / 2 + 0.8; z < length / 2; z += 1.6) parts.push({ geometry: limb(0.05, 0.05, 0.1, 6).rotateX(Math.PI), colour: '#c9d2da', at: [x, 0, z] });
+  }
+  for (const z of [-length / 2, length / 2]) parts.push({ geometry: roundedBox(LANE_WIDTH - 0.15, 0.16, 0.16, 0.05), colour: '#e8504a', at: [0, 0.08, z] });
+  return solid(parts, INK, 0.012);
+}
+
+/** A treasure chest, with a lid that opens. */
+function buildChest() {
+  const chest = new THREE.Group();
+  const body = solid([
+    { geometry: roundedBox(0.9, 0.55, 0.6, 0.06), colour: '#9a5b2c', at: [0, 0.28, 0] },
+    { geometry: roundedBox(0.94, 0.08, 0.64, 0.03), colour: '#ffcf3f', at: [0, 0.5, 0] },
+    { geometry: roundedBox(0.08, 0.57, 0.64, 0.03), colour: '#ffcf3f', at: [-0.3, 0.28, 0] },
+    { geometry: roundedBox(0.08, 0.57, 0.64, 0.03), colour: '#ffcf3f', at: [0.3, 0.28, 0] },
+    { geometry: roundedBox(0.16, 0.18, 0.06, 0.03), colour: '#ffcf3f', at: [0, 0.42, 0.31] },
+  ]);
+  const lid = new THREE.Group();
+  lid.add(solid([
+    { geometry: new THREE.CylinderGeometry(0.3, 0.3, 0.9, 16, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateX(Math.PI / 2), colour: '#a8632f', at: [0, 0, 0.3] },
+    { geometry: new THREE.CylinderGeometry(0.31, 0.31, 0.08, 16, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateX(Math.PI / 2), colour: '#ffcf3f', at: [-0.3, 0, 0.3] },
+    { geometry: new THREE.CylinderGeometry(0.31, 0.31, 0.08, 16, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateX(Math.PI / 2), colour: '#ffcf3f', at: [0.3, 0, 0.3] },
+  ]));
+  lid.position.set(0, 0.55, -0.3);
+  chest.add(body, lid);
+  chest.userData.lid = lid;
+  return chest;
+}
 
 /* Obstacles that fill only one or two lanes: the same things, a lane wide, in the lanes they fill. */
 const PIECE_WIDTH = LANE_WIDTH + 0.12;
@@ -205,7 +316,7 @@ const PIECES = {
 /** An obstacle filling these lanes: right across is the obstacle as it always was. */
 function buildObstacle(kind, lanes) {
   if (lanes.length === 3 || kind === 'stream') return OBSTACLE_BUILDERS[kind]();
-  if (kind === 'bale' || kind === 'sheep') return OBSTACLE_BUILDERS[kind](lanes);
+  if (kind === 'bale' || kind === 'sheep' || kind === 'ducks') return OBSTACLE_BUILDERS[kind](lanes);
   const ink = kind === 'rocks' ? '#39424a' : INK;
   return solid(lanes.flatMap((lane) => PIECES[kind](laneX(lane))), ink);
 }
@@ -239,6 +350,123 @@ function goldTexture() {
   }, 128);
 }
 
+/** A round badge for something to pick up, so it stands out from the stars: a picture on a white disc. */
+function badgeTexture(ring, draw) {
+  return spriteTexture((ctx) => {
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(0, 0, 47, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = ring;
+    ctx.beginPath();
+    ctx.arc(0, 0, 43, 0, Math.PI * 2);
+    ctx.stroke();
+    draw(ctx);
+  }, 128);
+}
+
+const PICKUP_TEXTURES = {
+  magnet: () => badgeTexture('#e8504a', (ctx) => {
+    ctx.lineCap = 'butt';
+    ctx.lineWidth = 15;
+    ctx.strokeStyle = '#e8504a';
+    ctx.beginPath();
+    ctx.arc(0, -2, 20, Math.PI, 0, true);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-20, -2);
+    ctx.lineTo(-20, -24);
+    ctx.moveTo(20, -2);
+    ctx.lineTo(20, -24);
+    ctx.stroke();
+    ctx.fillStyle = '#c9d2da';
+    ctx.fillRect(-27.5, -34, 15, 11);
+    ctx.fillRect(12.5, -34, 15, 11);
+  }),
+  shield: () => badgeTexture('#4aa8ff', (ctx) => {
+    ctx.fillStyle = 'rgba(120, 200, 255, 0.45)';
+    ctx.beginPath();
+    ctx.arc(0, 0, 28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = '#4aa8ff';
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(-10, -11, 7, 0, Math.PI * 2);
+    ctx.fill();
+  }),
+  key: () => badgeTexture('#e0a21a', (ctx) => {
+    ctx.fillStyle = '#ffc21f';
+    ctx.strokeStyle = '#a8740f';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(-14, 0, 13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(-14, 0, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffc21f';
+    ctx.fillRect(-2, -4, 32, 8);
+    ctx.fillRect(18, 4, 6, 9);
+    ctx.fillRect(26, 4, 5, 6);
+  }),
+};
+
+function coinTexture() {
+  return spriteTexture((ctx) => {
+    ctx.fillStyle = '#c98a12';
+    ctx.beginPath();
+    ctx.arc(0, 0, 46, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffcc2e';
+    ctx.beginPath();
+    ctx.arc(0, 0, 38, 0, Math.PI * 2);
+    ctx.fill();
+    // A giraffe's patches, for Joze.
+    ctx.fillStyle = '#e59b17';
+    for (const [x, y, r] of [[-12, -12, 9], [12, -6, 8], [-4, 14, 10], [18, 16, 6], [-20, 8, 5]]) {
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }, 96);
+}
+
+function gemTexture() {
+  return spriteTexture((ctx) => {
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(-40, -14);
+    ctx.lineTo(-22, -36);
+    ctx.lineTo(22, -36);
+    ctx.lineTo(40, -14);
+    ctx.lineTo(0, 42);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#3fc7d9';
+    ctx.beginPath();
+    ctx.moveTo(-33, -13);
+    ctx.lineTo(-19, -30);
+    ctx.lineTo(19, -30);
+    ctx.lineTo(33, -13);
+    ctx.lineTo(0, 33);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#a6f0f7';
+    ctx.beginPath();
+    ctx.moveTo(-19, -30);
+    ctx.lineTo(19, -30);
+    ctx.lineTo(10, -13);
+    ctx.lineTo(-10, -13);
+    ctx.closePath();
+    ctx.fill();
+  }, 128);
+}
+
 function buildFinish() {
   const parts = [
     { geometry: roundedBox(0.36, 4.2, 0.36, 0.08), colour: '#f7f2e6', at: [-3.9, 2.1, 0] },
@@ -258,7 +486,7 @@ function buildFinish() {
   return solid(parts, '#12304d');
 }
 
-function buildStrip() {
+function buildStrip(trees = PLACES.day.trees) {
   const parts = [];
   const side = () => (Math.random() < 0.5 ? -1 : 1);
   const z = () => -Math.random() * STRIP_LENGTH;
@@ -273,13 +501,13 @@ function buildStrip() {
     if (i % 3 === 0) {
       // A pointed one.
       for (const [y, radius] of [[1.1, 1.3], [2.1, 1.02], [3, 0.72]]) {
-        parts.push({ geometry: new THREE.ConeGeometry(radius * size, 1.7 * size, 12), colour: i % 2 ? '#3f9a58' : '#4aa862', at: [x, (y + 0.7) * size, where] });
+        parts.push({ geometry: new THREE.ConeGeometry(radius * size, 1.7 * size, 12), colour: trees.pines[i % 2], at: [x, (y + 0.7) * size, where] });
       }
     } else {
-      const green = ['#5fb954', '#6cc25e', '#54ad50'][i % 3];
+      const green = trees.round[i % 3];
       parts.push({ geometry: ball(1.2 * size, 1.1 * size, 1.2 * size), colour: green, at: [x, trunkHeight + 0.9 * size, where] });
-      parts.push({ geometry: ball(0.82 * size), colour: '#6ec964', at: [x + 0.7 * size, trunkHeight + 0.45 * size, where + 0.3] });
-      parts.push({ geometry: ball(0.78 * size), colour: '#62bc58', at: [x - 0.72 * size, trunkHeight + 0.5 * size, where - 0.2] });
+      parts.push({ geometry: ball(0.82 * size), colour: trees.tufts[0], at: [x + 0.7 * size, trunkHeight + 0.45 * size, where + 0.3] });
+      parts.push({ geometry: ball(0.78 * size), colour: trees.tufts[1], at: [x - 0.72 * size, trunkHeight + 0.5 * size, where - 0.2] });
     }
   }
   // Bushes and stones nearer in.
@@ -364,6 +592,32 @@ function buildStrip() {
   return mesh;
 }
 
+/**
+ * Gives a strip's trees another set of colours, from the set they have now, in place. No colour in a set
+ * of trees is used for anything else in a strip, so only the trees change.
+ */
+function recolourTrees(strip, from, to) {
+  const swaps = [];
+  for (const key of Object.keys(from)) {
+    from[key].forEach((colour, index) => {
+      if (colour !== to[key][index]) swaps.push([new THREE.Color(colour), new THREE.Color(to[key][index])]);
+    });
+  }
+  const colours = strip.geometry.attributes.color;
+  const values = colours.array;
+  const same = (value, wanted) => Math.abs(value - wanted) < 1e-5;
+  for (let i = 0; i < values.length; i += 3) {
+    for (const [was, now] of swaps) {
+      if (!same(values[i], was.r) || !same(values[i + 1], was.g) || !same(values[i + 2], was.b)) continue;
+      values[i] = now.r;
+      values[i + 1] = now.g;
+      values[i + 2] = now.b;
+      break;
+    }
+  }
+  colours.needsUpdate = true;
+}
+
 function canvasTexture(size, draw) {
   const canvas = document.createElement('canvas');
   canvas.width = size;
@@ -423,15 +677,15 @@ function zoneTexture() {
   });
 }
 
-function skyTexture() {
+function skyTexture(colours = PLACES.day.sky) {
   const canvas = document.createElement('canvas');
   canvas.width = 4;
   canvas.height = 256;
   const ctx = canvas.getContext('2d');
   const sky = ctx.createLinearGradient(0, 0, 0, 256);
-  sky.addColorStop(0, '#3f9fe8');
-  sky.addColorStop(0.52, '#a8def9');
-  sky.addColorStop(0.7, '#e4f6ff');
+  sky.addColorStop(0, colours[0]);
+  sky.addColorStop(0.52, colours[1]);
+  sky.addColorStop(0.7, colours[2]);
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, 4, 256);
   const texture = new THREE.CanvasTexture(canvas);
@@ -651,8 +905,10 @@ export class World {
     this.scene = new THREE.Scene();
     this.scene.background = skyTexture();
     this.scene.fog = new THREE.Fog('#d4f0ff', 62, SEEN_AHEAD + 12);
-    this.scene.add(new THREE.HemisphereLight('#ffffff', '#a7c7a0', 1.55));
+    this.skyLight = new THREE.HemisphereLight('#ffffff', '#a7c7a0', 1.55);
+    this.scene.add(this.skyLight);
     const sun = new THREE.DirectionalLight('#fff3dc', 2.3);
+    this.sun = sun;
     sun.position.set(-7, 16, 7);
     sun.target.position.set(0, 0, -9);
     sun.castShadow = true;
@@ -675,6 +931,7 @@ export class World {
     this.goldMap = goldTexture();
     this.buildStarLines();
     this.buildStreaks();
+    this.buildExtras();
     this.finishGate = buildFinish();
     this.finishGate.visible = false;
     this.scene.add(this.finishGate);
@@ -689,6 +946,7 @@ export class World {
     this.runner = null;
     this.time = 0;
     this.items = new Map(); // What's on the trail, by obstacle.
+    this.place = 'day';
     this.spare = new Map(); // Obstacles ready to use again, by kind.
     this.onStar = null;
     this.frames = 0;
@@ -717,10 +975,12 @@ export class World {
 
     // Hills on the far horizon, which don't move.
     const greens = ['#7fcf79', '#74c671', '#8ad684', '#6bbd69'];
+    this.hills = [];
     for (let i = 0; i < 16; i += 1) {
       const across = (i / 15 - 0.5) * 340;
       const size = 28 + (i % 4) * 11;
       const hill = new THREE.Mesh(new THREE.SphereGeometry(size, 26, 14), new THREE.MeshToonMaterial({ color: greens[i % 4], gradientMap: toon(), fog: false }));
+      this.hills.push(hill);
       hill.scale.y = 0.42 + (i % 3) * 0.08;
       hill.position.set(across, 0, -190 - (i % 3) * 22);
       scene.add(hill);
@@ -742,6 +1002,83 @@ export class World {
       scene.add(cloud);
       this.clouds.push(cloud);
     }
+  }
+
+  /**
+   * What later levels bring: things to pick up, coins flying, chests, a bubble round the runner, a
+   * magnet over its head, falling leaves, and a friend who runs alongside. Most are made as needed.
+   */
+  buildExtras() {
+    const { scene } = this;
+    this.coinMap = coinTexture();
+    this.gemMap = gemTexture();
+    this.pickupMaps = Object.fromEntries(Object.entries(PICKUP_TEXTURES).map(([kind, make]) => [kind, make()]));
+    this.springPaint = null;
+    this.pickupSprites = new Map(); // By pickup.
+    this.chestModels = new Map(); // By chest.
+    this.flyers = [];
+    this.announced = new Set();
+    this.onSeen = null;
+
+    // A bubble round the runner, while the shield lasts. Soft and see-through, so nothing gets brighter.
+    this.bubble = new THREE.Mesh(
+      new THREE.SphereGeometry(1.15, 32, 20),
+      new THREE.MeshBasicMaterial({ color: '#9fdcff', transparent: true, opacity: 0.2, depthWrite: false }),
+    );
+    this.bubbleRing = new THREE.Sprite(new THREE.SpriteMaterial({ map: spriteTexture(SHAPES.bubble, 128), color: '#d8f2ff', transparent: true, opacity: 0.7, depthWrite: false }));
+    this.bubbleRing.scale.setScalar(2.5);
+    this.bubble.add(this.bubbleRing);
+    this.bubble.visible = false;
+    scene.add(this.bubble);
+
+    // A magnet over the runner's head, while it lasts.
+    this.magnetBadge = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.pickupMaps.magnet, transparent: true, depthWrite: false }));
+    this.magnetBadge.scale.setScalar(0.62);
+    this.magnetBadge.visible = false;
+    scene.add(this.magnetBadge);
+
+    // Falling leaves, in autumn.
+    this.leafMap = spriteTexture(SHAPES.leaf, 64);
+    this.leaves = Array.from({ length: LEAVES }, (_, index) => {
+      const leaf = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.leafMap, color: '#e8923a', transparent: true, depthWrite: false }));
+      leaf.scale.setScalar(0.22 + (index % 3) * 0.05);
+      leaf.visible = false;
+      leaf.userData = { x: between(-LEAF_AREA.across, LEAF_AREA.across), y: between(0.3, LEAF_AREA.high), z: between(-LEAF_AREA.ahead, LEAF_AREA.behind), phase: Math.random() * 6 };
+      scene.add(leaf);
+      return leaf;
+    });
+
+    this.friend = null;
+    this.friendIn = 0; // 0 is out of sight behind, 1 is running alongside.
+    this.friendWanted = 0;
+  }
+
+  /**
+   * Where and when the run is, from its level: a summer's day, autumn, or an autumn sunset. It's chosen
+   * as a run starts, and never changes during one. The trees change colour where they stand, rather than
+   * being made again, so it costs no time.
+   */
+  setPlace(name) {
+    const place = PLACES[name] ?? PLACES.day;
+    const before = PLACES[this.place] ?? PLACES.day;
+    this.place = name in PLACES ? name : 'day';
+    if (place.sky !== before.sky) {
+      this.scene.background.dispose();
+      this.scene.background = skyTexture(place.sky);
+    }
+    this.scene.fog.color.set(place.fog);
+    this.skyLight.color.set(place.light[0]);
+    this.skyLight.groundColor.set(place.light[1]);
+    this.skyLight.intensity = place.light[2];
+    this.sun.color.set(place.sun[0]);
+    this.sun.intensity = place.sun[1];
+    this.hills.forEach((hill, index) => hill.material.color.set(place.hills[index % 4]));
+    if (place.trees !== before.trees) {
+      for (const strip of this.strips) recolourTrees(strip, before.trees, place.trees);
+    }
+    this.leaves.forEach((leaf, index) => {
+      if (place.leaves) leaf.material.color.set(place.leaves[index % place.leaves.length]);
+    });
   }
 
   /** The stars lying along the path. There's only so many at once, and they're used again. */
@@ -822,7 +1159,20 @@ export class World {
   /** A new run. Whatever was on the trail goes, and the new one's obstacles arrive as they near. */
   setRun(run) {
     for (const obstacle of [...this.items.keys()]) this.retire(obstacle);
+    for (const pickup of [...this.pickupSprites.keys()]) this.dropPickup(pickup);
+    for (const chest of [...this.chestModels.keys()]) this.dropChest(chest);
+    for (const flyer of this.flyers) this.scene.remove(flyer.sprite);
+    this.flyers = [];
+    this.announced = new Set();
+    this.bubble.visible = false;
+    this.magnetBadge.visible = false;
+    this.friendWanted = 0;
+    this.friendIn = 0;
+    if (this.friend) this.friend.body.root.visible = false;
     this.run = run;
+    // Choosing a runner and practising are on a summer's day, whatever the last run was.
+    this.setPlace(run ? run.levelRules.place : 'day');
+    if (run?.levelRules.powers.includes('friend')) this.makeFriend();
     this.finishGate.visible = false;
     this.cue.visible = false;
     this.won = false;
@@ -847,15 +1197,43 @@ export class World {
     zonePaint.map.repeat.set(1, Math.max(1, Math.round(reach / 1.6)));
     zonePaint.map.needsUpdate = true;
     const zone = new THREE.Group();
-    if (lanes.length === 3) zone.add(new THREE.Mesh(new THREE.PlaneGeometry(PATH_WIDTH - 0.3, reach).rotateX(-Math.PI / 2), zonePaint));
+    const { spring } = obstacle;
+    if (lanes.length === 3 && !spring) zone.add(new THREE.Mesh(new THREE.PlaneGeometry(PATH_WIDTH - 0.3, reach).rotateX(-Math.PI / 2), zonePaint));
     else {
       for (const lane of lanes) {
-        const piece = new THREE.Mesh(new THREE.PlaneGeometry(LANE_WIDTH - 0.15, reach).rotateX(-Math.PI / 2), zonePaint);
+        // A trampoline's lane is a blue mat with a red rim, the same chevrons on it.
+        const onMat = spring?.lane === lane;
+        const piece = new THREE.Mesh(new THREE.PlaneGeometry(LANE_WIDTH - 0.15, reach).rotateX(-Math.PI / 2), onMat ? this.matPaint(reach) : zonePaint);
         piece.position.x = laneX(lane);
+        piece.userData.mat = onMat;
         zone.add(piece);
+        if (onMat) {
+          const rim = buildMatRim(reach);
+          rim.position.x = laneX(lane);
+          rim.userData.mat = true;
+          zone.add(rim);
+        }
       }
     }
     this.scene.add(zone);
+
+    // Over a trampoline, an arch of stars high up in its lane, and at level 10 a gem at its top.
+    let arch = null;
+    if (spring) {
+      const sprites = ARCH_THROUGH.map(() => {
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.starMap, color: '#ffd23f', transparent: true }));
+        sprite.scale.setScalar(0.7);
+        this.scene.add(sprite);
+        return sprite;
+      });
+      let gem = null;
+      if (spring.gem) {
+        gem = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.gemMap, transparent: true }));
+        gem.scale.setScalar(1.25);
+        this.scene.add(gem);
+      }
+      arch = { sprites, gem, taken: ARCH_THROUGH.map(() => false), placed: false, at: null, y: null };
+    }
 
     // Stars to catch, where the child will be if they make the move.
     const stars = [0, 1, 2].map((index) => {
@@ -873,7 +1251,20 @@ export class World {
       gold = { sprite, y: obstacle.height + GOLD_ABOVE, done: false };
     }
 
-    this.items.set(obstacle, { model, zone, zonePaint, stars, gold, knocked: 0 });
+    this.items.set(obstacle, { model, zone, zonePaint, stars, gold, arch, knocked: 0 });
+  }
+
+  /** The painted stretch goes once it's done with. A trampoline's mat stays, as it's really there. */
+  hideZone(item) {
+    for (const piece of item.zone.children) piece.visible = Boolean(piece.userData.mat);
+  }
+
+  /** The paint for a trampoline's mat: blue, with the same chevrons as where a jump counts. */
+  matPaint(reach) {
+    const paint = new THREE.MeshBasicMaterial({ color: '#3d9cf0', map: this.zoneMap.clone(), transparent: true, opacity: 0.85, depthWrite: false });
+    paint.map.repeat.set(1, Math.max(1, Math.round(reach / 1.6)));
+    paint.map.needsUpdate = true;
+    return paint;
   }
 
   /** Obstacles are kept to use again, by kind and the lanes they fill. */
@@ -890,10 +1281,17 @@ export class World {
     pool.push(item.model);
     this.spare.set(name, pool);
     this.scene.remove(item.zone);
-    for (const piece of item.zone.children) piece.geometry.dispose();
+    // A trampoline's mat and rim are made for it, so they go with it.
+    item.zone.traverse((node) => {
+      node.geometry?.dispose();
+      if (!node.isMesh || node.material === item.zonePaint) return;
+      node.material.map?.dispose();
+      node.material.dispose();
+    });
     item.zonePaint.map.dispose();
     item.zonePaint.dispose();
-    for (const { sprite } of [...item.stars, ...(item.gold ? [item.gold] : [])]) {
+    const archSprites = item.arch ? [...item.arch.sprites, ...(item.arch.gem ? [item.arch.gem] : [])] : [];
+    for (const sprite of [...item.stars.map(({ sprite: one }) => one), ...(item.gold ? [item.gold.sprite] : []), ...archSprites]) {
       this.scene.remove(sprite);
       sprite.material.dispose();
     }
@@ -909,7 +1307,13 @@ export class World {
       star.at = move.from + move.travel * through;
       star.y = move.height * 4 * through * (1 - through) + 1;
     });
-    item.zone.visible = false;
+    this.hideZone(item);
+    if (item.arch && move.bounce) {
+      // The arch's stars go along the bounce, a little above the runner, to be run through on the way.
+      item.arch.move = move;
+      item.arch.bouncing = true;
+      this.burst(new THREE.Vector3(this.runnerX, 0.2, -0.3), { shapes: ['ring', 'spark'], colours: ['#3d9cf0', '#ffffff', '#e8504a'], count: 10, speed: 2.2, size: 0.3, life: 0.5, flat: true });
+    }
     // A golden star goes to where the jump will be over the obstacle, so it's caught on the way.
     if (item.gold) {
       const through = Math.min(1, Math.max(0, (obstacle.at + obstacle.length / 2 - move.from) / move.travel));
@@ -938,9 +1342,11 @@ export class World {
     this.dust(new THREE.Vector3(this.runnerX, 0.15, 0), 7);
   }
 
-  cleared(obstacle) {
+  cleared(obstacle, { coin = false } = {}) {
     const item = this.items.get(obstacle);
-    if (item) item.zone.visible = false;
+    if (item) this.hideZone(item);
+    // From level 2, a coin pops up out of it and flies to the runner.
+    if (coin) this.flyCoin(new THREE.Vector3(this.runnerX, obstacle.height + 0.9, -1.2), { lift: 1.2 });
     this.cue.visible = false;
     this.runner.body.setExpression('happy', 1.2);
   }
@@ -966,6 +1372,10 @@ export class World {
   }
 
   celebrate() {
+    // What was on the runner goes, as it turns round to celebrate.
+    this.bubble.visible = false;
+    this.magnetBadge.visible = false;
+    this.friendWanted = 0;
     this.won = true;
     this.runner.presenting = true;
     this.setView('win');
@@ -1049,6 +1459,8 @@ export class World {
     if (this.runner) this.runner.body.root.position.x = this.runnerX;
 
     if (run) this.updateTrail(dt, distance);
+    this.updateOnRunner(dt);
+    this.updateLeaves(dt);
     this.updateStarLines(distance);
     this.updateStreaks(dt);
     this.sparks.update(dt);
@@ -1073,10 +1485,12 @@ export class World {
 
     for (const obstacle of run.course) {
       const ahead = obstacle.at - distance;
-      const item = this.items.get(obstacle);
+      let item = this.items.get(obstacle);
       if (!item) {
-        if (ahead < SEEN_AHEAD && ahead > -SEEN_BEHIND) this.arrive(obstacle);
-        continue;
+        if (ahead >= SEEN_AHEAD || ahead <= -SEEN_BEHIND) continue;
+        // Put in its place before it's drawn, or it would show for a moment where the runner is.
+        this.arrive(obstacle);
+        item = this.items.get(obstacle);
       }
       if (ahead < -SEEN_BEHIND) {
         this.retire(obstacle);
@@ -1086,12 +1500,23 @@ export class World {
       item.model.position.z = -ahead;
       if (obstacle.kind === 'bale') this.rollBale(item, ahead, reach);
       if (obstacle.kind === 'sheep') this.mill(item);
+      if (obstacle.kind === 'ducks') this.waddle(item, obstacle, ahead, reach);
+      // Only once the run is going, as that's when it can be pointed out: not in the countdown.
+      if (ahead < ANNOUNCE_AHEAD && !item.announced && run.state === 'running') {
+        item.announced = true;
+        this.seen(obstacle.kind);
+        if (obstacle.gold) this.seen('gold');
+        if (obstacle.spring) this.seen('spring');
+        if (obstacle.spring?.gem) this.seen('gems');
+      }
+      if (item.arch && obstacle.spring) this.updateArch(item, obstacle, ahead, distance, dt);
       if (item.knocked > 0) {
-        // Knocked aside, and out of the way. Sheep just trot off.
+        // Knocked aside, and out of the way. Sheep trot off and ducks waddle off: nothing knocks them over.
         item.knocked = Math.min(1, item.knocked + dt * 2.2);
         const eased = item.knocked * (2 - item.knocked);
-        item.model.position.x = eased * 7;
-        item.model.rotation.z = obstacle.kind === 'sheep' ? 0 : -eased * 0.5;
+        const animals = obstacle.kind === 'sheep' || obstacle.kind === 'ducks';
+        item.model.position.x = eased * 7 * (obstacle.kind === 'ducks' ? ducksAway(obstacle) : 1);
+        item.model.rotation.z = animals ? 0 : -eased * 0.5;
       }
       if (item.gold && !item.gold.done) {
         const { sprite } = item.gold;
@@ -1101,8 +1526,8 @@ export class World {
         item.gold.placed = true;
         sprite.position.set(laneX(obstacle.gold.lane), y, -ahead);
         sprite.material.rotation = this.reducedMotion ? 0 : Math.sin(this.time * 1.8 + obstacle.index) * 0.2;
-        // Missed costs nothing: it stays where it was, a little paler, and goes by.
-        sprite.material.opacity = obstacle.gold.missed ? 0.45 : 1;
+        // Missed costs nothing: it stays where it was, a little paler, and goes by, fading before the camera.
+        this.fadeNearCamera(sprite, obstacle.gold.missed ? 0.45 : 1);
       }
       item.zone.position.set(0, 0.03, -ahead + reach / 2);
       if (obstacle.state === 'ahead' && ahead <= reach) item.zonePaint.opacity = 0.82;
@@ -1131,6 +1556,9 @@ export class World {
       this.cue.position.set(this.runnerX, next.height + 1.9 + bob, -(next.at - distance));
     }
 
+    this.updatePickups(distance);
+    this.updateChests(distance, dt);
+
     const gateAhead = run.end - distance;
     this.finishGate.visible = gateAhead < SEEN_AHEAD && gateAhead > -SEEN_BEHIND;
     this.finishGate.position.z = -gateAhead;
@@ -1143,6 +1571,316 @@ export class World {
     const further = still ? 0 : Math.max(0, ahead - reach - BALE_STOPS_SHORT) * BALE_ROLLS;
     item.model.position.z = -(ahead + further);
     rolling.rotation.x = -further / BALE_RADIUS;
+  }
+
+  /**
+   * Ducks waddle in from the side as they come, and settle in their lane before the painted stretch. If
+   * the runner comes on without jumping, they waddle off out of the way, rather than being run into.
+   */
+  waddle(item, obstacle, ahead, reach) {
+    const { walking, ducks } = item.model.userData;
+    const leaving = item.knocked > 0;
+    const from = obstacle.index % 2 ? 1 : -1;
+    const left = this.reducedMotion || leaving ? 0 : Math.min(3.2, Math.max(0, ahead - reach - BALE_STOPS_SHORT) * 0.12);
+    walking.position.x = left > 0 ? from * left : 0;
+    // Which way they're going: in from their side, or off out of the way.
+    const towards = leaving ? ducksAway(obstacle) : -from;
+    const going = left > 0 || leaving;
+    const wobble = going && !this.reducedMotion;
+    for (const duck of ducks) {
+      const { phase } = duck.userData;
+      // Facing the way they walk, and then the runner once they've stopped.
+      duck.rotation.y = going ? (towards > 0 ? 0 : Math.PI) : -Math.PI / 2;
+      duck.rotation.z = wobble ? Math.sin(this.time * 9 + phase) * 0.14 : 0;
+      duck.position.y = wobble ? Math.abs(Math.sin(this.time * 9 + phase)) * 0.04 : 0;
+    }
+  }
+
+  /** Something new for this level has come into view, once a run. */
+  seen(id) {
+    // Not in the countdown, when it couldn't be pointed out: it's as the run goes that it counts.
+    if (this.announced.has(id) || this.run?.state !== 'running') return;
+    this.announced.add(id);
+    this.onSeen?.(id);
+  }
+
+  /** The arch of stars over a trampoline: high in its lane until a bounce, then along the bounce. */
+  updateArch(item, obstacle, ahead, distance, dt) {
+    const { arch } = item;
+    const { spring } = obstacle;
+    const all = [...arch.sprites, ...(arch.gem ? [arch.gem] : [])];
+    if (arch.bouncing) {
+      const { move } = arch;
+      ARCH_THROUGH.forEach((through, index) => {
+        const sprite = arch.sprites[index];
+        if (arch.taken[index]) return;
+        const at = move.from + move.travel * through;
+        const y = move.height * 4 * through * (1 - through) + 1.6;
+        sprite.position.set(this.runnerX, damp(sprite.position.y, y, 8, dt), -(at - distance));
+        if (distance >= at) {
+          arch.taken[index] = true;
+          sprite.visible = false;
+          this.burst(new THREE.Vector3(this.runnerX, y, 0), { shapes: ['spark', 'star'], colours: ['#ffd23f', '#ffffff'], count: 5, speed: 1.5, size: 0.2, life: 0.4 });
+          this.onStar?.();
+        }
+      });
+      if (arch.gem && !arch.gemTaken) {
+        const at = move.from + move.travel * 0.5;
+        arch.gem.position.set(this.runnerX, damp(arch.gem.position.y, move.height + 2.3, 8, dt), -(at - distance));
+        if (distance >= at) {
+          arch.gemTaken = true;
+          arch.gem.visible = false;
+          this.burst(new THREE.Vector3(this.runnerX, move.height + 2.3, 0), { shapes: ['spark', 'star'], colours: ['#3fc7d9', '#a6f0f7', '#ffffff'], count: 12, speed: 2.2, size: 0.3, life: 0.55 });
+        }
+      }
+      return;
+    }
+    // Waiting over the obstacle, in the trampoline's lane: an arch higher than any ordinary jump.
+    const x = laneX(spring.lane);
+    const span = obstacle.length + 9;
+    ARCH_THROUGH.forEach((through, index) => {
+      const bob = this.reducedMotion ? 0 : Math.sin(this.time * 3 + index) * 0.08;
+      arch.sprites[index].position.set(x, obstacle.height + 1.4 + 4 * 1.5 * through * (1 - through) + bob, -(ahead - 6 + span * through));
+    });
+    if (arch.gem) arch.gem.position.set(x, obstacle.height + 3.3, -(ahead - 6 + span * 0.5));
+    // Missed costs nothing: they go a little paler, and go by. An arch is as high as the camera, so it
+    // fades as it nears it, rather than sweeping right across the lens.
+    for (const sprite of all) this.fadeNearCamera(sprite, spring.missed ? 0.4 : 1);
+  }
+
+  /**
+   * Shows a sprite at this opacity, less of it the nearer it is to the camera and none of it close by, so
+   * something left behind on the trail never goes right past the lens.
+   */
+  fadeNearCamera(sprite, opacity = 1) {
+    const away = sprite.position.distanceTo(this.camera.position);
+    const shown = clamp((away - NEAR_CAMERA.gone) / (NEAR_CAMERA.full - NEAR_CAMERA.gone), 0, 1);
+    sprite.material.opacity = opacity * shown;
+    sprite.visible = shown > 0.01;
+  }
+
+  /** Power-ups and keys on the line of stars: shown as they come, gone once picked up or gone by. */
+  updatePickups(distance) {
+    const { run } = this;
+    for (const pickup of run.pickups) {
+      const ahead = pickup.at - distance;
+      let sprite = this.pickupSprites.get(pickup);
+      // A friend has no badge: they just come running up.
+      if (pickup.lane === null) continue;
+      if (!sprite) {
+        if (pickup.taken || ahead > STARS_SEEN_AHEAD || ahead < -SEEN_BEHIND) continue;
+        sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.pickupMaps[pickup.kind], transparent: true }));
+        sprite.scale.setScalar(PICKUP_SIZE);
+        this.scene.add(sprite);
+        this.pickupSprites.set(pickup, sprite);
+      }
+      if (pickup.taken || ahead < -SEEN_BEHIND) {
+        this.dropPickup(pickup);
+        continue;
+      }
+      if (ahead < ANNOUNCE_AHEAD) this.seen(pickup.kind);
+      const bob = this.reducedMotion ? 0 : Math.sin(this.time * 3.4 + pickup.at) * 0.12;
+      sprite.position.set(laneX(pickup.lane), 1.5 + bob, -ahead);
+      // One missed in another lane goes by paler, and fades before it reaches the camera.
+      this.fadeNearCamera(sprite, pickup.missed ? 0.4 : 1);
+    }
+  }
+
+  dropPickup(pickup) {
+    const sprite = this.pickupSprites.get(pickup);
+    if (!sprite) return;
+    this.scene.remove(sprite);
+    sprite.material.dispose();
+    this.pickupSprites.delete(pickup);
+  }
+
+  /** Picked up: a little burst where it was, and the runner is pleased. */
+  tookPickup(pickup) {
+    const sprite = this.pickupSprites.get(pickup);
+    const at = sprite ? sprite.position.clone() : new THREE.Vector3(this.runnerX, 1.5, 0);
+    const colours = { magnet: ['#e8504a', '#ffffff'], shield: ['#9fdcff', '#ffffff'], key: ['#ffc21f', '#ffffff'] }[pickup.kind] ?? ['#ffd23f', '#ffffff'];
+    this.burst(at, { shapes: ['spark', 'star'], colours, count: 10, speed: 2, size: 0.26, life: 0.5 });
+    this.dropPickup(pickup);
+    this.runner.body.setExpression('happy', 1.2);
+  }
+
+  /** Chests beside the trail. One with a key to open it opens as it's passed, and coins fly out. */
+  updateChests(distance, dt) {
+    for (const chest of this.run.chests) {
+      const ahead = chest.at - distance;
+      let model = this.chestModels.get(chest);
+      if (!model) {
+        if (ahead > SEEN_AHEAD || ahead < -SEEN_BEHIND) continue;
+        model = buildChest();
+        model.scale.setScalar(1.35);
+        model.rotation.y = -chest.side * Math.PI / 2;
+        model.userData.opening = 0;
+        this.scene.add(model);
+        this.chestModels.set(chest, model);
+      }
+      if (ahead < -SEEN_BEHIND) {
+        this.dropChest(chest);
+        continue;
+      }
+      if (ahead < ANNOUNCE_AHEAD) this.seen('key');
+      model.position.set(chest.side * CHEST_X, 0, -ahead);
+      if (chest.opened) model.userData.opening = Math.min(1, model.userData.opening + dt * 2.5);
+      model.userData.lid.rotation.x = -model.userData.opening * 1.9;
+    }
+  }
+
+  dropChest(chest) {
+    const model = this.chestModels.get(chest);
+    if (!model) return;
+    this.scene.remove(model);
+    model.traverse((node) => {
+      node.geometry?.dispose();
+      if (node.isMesh) node.material.dispose();
+    });
+    this.chestModels.delete(chest);
+  }
+
+  /** A chest opened: coins fly out of it to the runner. */
+  openedChest(chest, coins) {
+    const model = this.chestModels.get(chest);
+    const from = model ? model.position.clone().add(new THREE.Vector3(0, 0.8, 0)) : new THREE.Vector3(chest.side * CHEST_X, 0.8, 0);
+    const shown = Math.min(coins, this.reducedMotion ? 3 : 6);
+    for (let i = 0; i < shown; i += 1) this.flyCoin(from, { delay: i * 0.08, lift: 1.6 + (i % 3) * 0.4 });
+    this.burst(from, { shapes: ['star', 'spark'], colours: ['#ffcc2e', '#ffffff', '#ffb21f'], count: 12, speed: 2.4, size: 0.28, life: 0.6 });
+  }
+
+  /** A coin flies from where it was won to just over the runner, and is gone. */
+  flyCoin(from, { delay = 0, lift = 1.4, map = this.coinMap, size = 0.62 } = {}) {
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthTest: false }));
+    sprite.scale.setScalar(size);
+    sprite.renderOrder = 4;
+    sprite.visible = false;
+    sprite.position.copy(from);
+    this.scene.add(sprite);
+    this.flyers.push({ sprite, from: from.clone(), lift, t: -delay, lasts: 0.6, size });
+  }
+
+  updateFlyers(dt) {
+    const runner = new THREE.Vector3(this.runnerX, 2.4 + (this.run?.air.height ?? 0), 0.2);
+    this.flyers = this.flyers.filter((flyer) => {
+      flyer.t += dt;
+      if (flyer.t < 0) return true;
+      const share = Math.min(1, flyer.t / flyer.lasts);
+      const eased = share * (2 - share);
+      flyer.sprite.visible = true;
+      flyer.sprite.position.lerpVectors(flyer.from, runner, eased);
+      flyer.sprite.position.y += Math.sin(share * Math.PI) * flyer.lift;
+      flyer.sprite.scale.setScalar(flyer.size * (1 - share * 0.35));
+      if (share < 1) return true;
+      this.scene.remove(flyer.sprite);
+      flyer.sprite.material.dispose();
+      return false;
+    });
+  }
+
+  /** A star pulled in from another lane by the magnet. */
+  pulledStar(lane) {
+    this.flyCoin(new THREE.Vector3(laneX(lane), 1.25, -0.4), { map: this.starMap, size: 0.7, lift: 0.4 });
+  }
+
+  /** The runner's friend, who runs alongside on the grass from level 9: Joze, or Truffle if Joze is running. */
+  makeFriend() {
+    const id = this.runner?.spec.id === 'joze' ? 'truffle' : 'joze';
+    if (this.friend?.spec.id === id) return;
+    if (this.friend) {
+      this.scene.remove(this.friend.body.root);
+      this.friend.body.dispose();
+    }
+    this.friend = new Runner(ROSTER.find((spec) => spec.id === id));
+    this.friend.body.root.scale.setScalar(0.85);
+    this.friend.body.root.visible = false;
+    this.scene.add(this.friend.body.root);
+  }
+
+  /** The friend comes running up, or runs on ahead. */
+  setFriend(on) {
+    this.friendWanted = on ? 1 : 0;
+    if (on) this.friend?.body.setExpression('happy', 2);
+  }
+
+  updateFriend(dt) {
+    const { friend, run } = this;
+    if (!friend) return;
+    this.friendIn = damp(this.friendIn, this.friendWanted, 2.2, dt);
+    const shown = this.view === 'run' && run && this.friendIn > 0.01;
+    friend.body.root.visible = Boolean(shown);
+    if (!shown) return;
+    // From behind to alongside, and on ahead when it's time to go.
+    const z = this.friendWanted ? (1 - this.friendIn) * 7 : -(1 - this.friendIn) * 30;
+    // A little ahead, so it's beside the runner on the screen and clear of the child's picture.
+    friend.body.root.position.set(-(OUT + 0.4), 0, z - 3.2);
+    // A chest on the friend's side of the trail is hopped over, rather than run through.
+    let hop = 0;
+    for (const [chest, model] of this.chestModels) {
+      const off = Math.abs(model.position.z - friend.body.root.position.z);
+      if (chest.side < 0 && off < FRIEND_HOP.reach) hop = Math.max(hop, FRIEND_HOP.high * Math.cos((off / FRIEND_HOP.reach) * (Math.PI / 2)));
+    }
+    const jumping = run.move?.kind === 'jump' || hop > 0;
+    const height = Math.max(run.air.height * 0.8, hop);
+    friend.update(dt, { speed: run.speed, top: run.settings.speed, height, through: run.move ? run.air.through : 0.3, jumping }, this.reducedMotion);
+  }
+
+  /** A star the friend caught, alongside. */
+  friendCaught() {
+    if (!this.friend?.body.root.visible) return;
+    const at = this.friend.body.root.position.clone().add(new THREE.Vector3(0, 1.6, 0));
+    this.burst(at, { shapes: ['spark'], colours: ['#ffd23f', '#ffffff'], count: 3, speed: 1.4, size: 0.18, life: 0.3 });
+  }
+
+  /** Power-ups show on the runner while they last: a bubble round it, a magnet over its head. */
+  setPower(kind, on) {
+    if (kind === 'shield') this.bubble.visible = on;
+    if (kind === 'magnet') this.magnetBadge.visible = on;
+    if (kind === 'friend') this.setFriend(on);
+  }
+
+  /** The bubble pops softly as it floats the runner over. */
+  popBubble() {
+    const at = this.bubble.position.clone();
+    this.bubble.visible = false;
+    this.burst(at, { shapes: ['bubble'], colours: ['#d8f2ff', '#9fdcff'], count: 10, speed: 2, size: 0.32, life: 0.55 });
+  }
+
+  updateOnRunner(dt) {
+    const height = this.run?.air.height ?? 0;
+    if (this.bubble.visible) {
+      const wobble = this.reducedMotion ? 1 : 1 + Math.sin(this.time * 3) * 0.03;
+      this.bubble.position.set(this.runnerX, 1.05 + height, 0);
+      this.bubble.scale.set(wobble, 2 - wobble, wobble);
+    }
+    if (this.magnetBadge.visible) {
+      const bob = this.reducedMotion ? 0 : Math.sin(this.time * 4) * 0.08;
+      this.magnetBadge.position.set(this.runnerX, 2.85 + height + bob, 0);
+    }
+    this.updateFlyers(dt);
+    this.updateFriend(dt);
+  }
+
+  /** Leaves drifting down past the runner, in autumn. Few, small and slow, and none with reduced motion. */
+  updateLeaves(dt) {
+    const falling = Boolean(PLACES[this.place].leaves) && this.view === 'run' && !this.reducedMotion;
+    const speed = this.run?.speed ?? 0;
+    for (const leaf of this.leaves) {
+      leaf.visible = falling;
+      if (!falling) continue;
+      const spot = leaf.userData;
+      spot.z += (speed + 0.6) * dt;
+      spot.y -= 0.55 * dt;
+      if (spot.z > LEAF_AREA.behind || spot.y < 0.05) {
+        spot.z = -LEAF_AREA.ahead + Math.random() * 8;
+        spot.y = between(2.5, LEAF_AREA.high);
+        spot.x = between(-LEAF_AREA.across, LEAF_AREA.across);
+      }
+      leaf.position.set(spot.x + Math.sin(this.time * 1.3 + spot.phase) * 0.5, spot.y, spot.z);
+      leaf.material.rotation = Math.sin(this.time * 1.7 + spot.phase) * 0.8;
+      // The ones that come near the camera fade away first, so none goes right past the lens.
+      this.fadeNearCamera(leaf);
+    }
   }
 
   /** Sheep milling about as they cross, nodding as they go. */
@@ -1163,6 +1901,7 @@ export class World {
       for (let i = run.nextStar; i < run.starLines.length && used < lineSprites.length; i += 1) {
         const ahead = run.starLines[i].at - distance;
         if (ahead > STARS_SEEN_AHEAD) break;
+        if (run.starLines[i].crosses && ahead < ANNOUNCE_AHEAD) this.seen('zigzag');
         const bob = this.reducedMotion ? 0 : Math.sin(this.time * 4 + i * 0.7) * 0.1;
         lineSprites[used].position.set(laneX(run.starLines[i].lane ?? 0), 1.25 + bob, -ahead);
         lineSprites[used].visible = true;
@@ -1205,10 +1944,14 @@ export class World {
     // In a run, the camera goes some of the way across with the runner, so all three lanes stay in view.
     const follow = this.view === 'run' ? this.runnerX * CAMERA_FOLLOWS : 0;
     this.cameraAt.x = damp(this.cameraAt.x, view.at[0] + follow, rate, dt);
-    this.cameraAt.y = damp(this.cameraAt.y, view.at[1] + (this.view === 'run' ? (this.run?.air.height ?? 0) * 0.14 : 0), rate, dt);
+    // It rises a little with a jump, and more with a bounce off a trampoline, to keep the runner in view.
+    // With reduced motion, a bounce moves it no more than a jump does, which still keeps the runner in view.
+    const bouncing = this.view === 'run' && Boolean(this.run?.move?.bounce) && !this.reducedMotion;
+    const rising = this.view === 'run' ? (this.run?.air.height ?? 0) * (bouncing ? 0.6 : 0.14) : 0;
+    this.cameraAt.y = damp(this.cameraAt.y, view.at[1] + rising, rate, dt);
     this.cameraAt.z = damp(this.cameraAt.z, view.at[2], rate, dt);
     this.cameraLook.x = damp(this.cameraLook.x, view.look[0] + follow, rate, dt);
-    this.cameraLook.y = damp(this.cameraLook.y, view.look[1], rate, dt);
+    this.cameraLook.y = damp(this.cameraLook.y, view.look[1] + (bouncing ? rising : 0), rate, dt);
     this.cameraLook.z = damp(this.cameraLook.z, view.look[2], rate, dt);
     const fov = damp(this.camera.fov, this.wantedFov(view), rate, dt);
     if (Math.abs(fov - this.camera.fov) > 0.001) {

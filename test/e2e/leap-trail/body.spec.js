@@ -1,6 +1,6 @@
 // How Leap Trail fits a child: what the camera has to see, and raising a hand instead of jumping.
 import { expect, screenName, shot, test, waitForScreen } from '../helpers.js';
-import { footage, nextObstacleIs, openTrail, reachPractice, reachRun, runState, standAcross, standInView, toChoosing } from './helpers.js';
+import { footage, nextObstacleIs, openTrail, reachPractice, reachRun, recordScreens, runState, screensSeen, standAcross, standInView, toChoosing } from './helpers.js';
 
 const prompt = (page) => page.locator('#prompt');
 
@@ -223,9 +223,11 @@ test('raising a hand only asks for the top half of the child, and leaning moves 
   // Feet out of the picture, as they would be sitting down.
   await footage(page, 'strikes', { from: 0.2, playing: false, height: 1.6, shiftY: 0.15 });
   await toChoosing(page);
+  await recordScreens(page);
   await page.locator('#run-start').click();
-  await waitForScreen(page, 'bodycheck');
+  // The body check passes in a moment, as the top half is all it wants, so it's looked for afterwards.
   await waitForScreen(page, 'practice');
+  expect(await screensSeen(page)).toContain('bodycheck');
   await expect(page.locator('#coach-text')).toHaveText('Raise your open hand as high as you can!');
   await expect(page.locator('#practice-count')).toHaveText('1 / 2');
   await page.evaluate(() => window.__game.game.practice.succeed());

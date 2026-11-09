@@ -20,7 +20,8 @@ for (const language of ['en', 'ka']) {
       expect(duration, text).toBeGreaterThan(0.2);
       expect(duration, text).toBeLessThan(6);
     }
-    for (const name of ['step1', 'step2', 'step3', 'jump', 'land', 'slide', 'bump', 'music']) {
+    // The last four are other games' recordings, played for trampolines, power-ups, chests and the bubble.
+    for (const name of ['step1', 'step2', 'step3', 'jump', 'land', 'slide', 'bump', 'music', 'boing', 'sparkle', 'unlock', 'bubble']) {
       expect(loaded.sounds[name], name).toBeGreaterThan(0.05);
     }
   });

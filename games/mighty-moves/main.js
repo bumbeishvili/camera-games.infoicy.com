@@ -11,7 +11,7 @@ import { Arena } from './arena.js';
 import { Coach } from './coach.js';
 import { FightSound } from './fight-sound.js';
 import { Fight } from './fight.js';
-import { DEFENCES, EXERCISES, MOVES, NPC_LEVELS, RULES } from './moves.js';
+import { DEFENCES, EXERCISES, MOVES, NEW_THINGS, NPC_LEVELS, PRIZE_ORDER, RULES, fightLevel as fightLevelOf, levelHas, newThingsAt } from './moves.js';
 
 const INTRO_SECONDS = 1.8;
 const ROUND_WORD_SECONDS = 1;
@@ -20,6 +20,11 @@ const AFTER_ROUND_SECONDS = 1.2;
 const AFTER_FIGHT_SECONDS = 2.4;
 const FEET_PROMPT_SECONDS = 2.5;
 const OPEN_HAND_PROMPT_MS = 2500;
+const NEW_THING_MS = 2400; // How long the label for something new stays up, the first time it's seen.
+const PRIZE_FLIGHT_MS = 750;
+const POWER_UPS = { shield: '🫧', glow: '⚡', helper: '🤝' };
+// The coin emoji is silver and small, so in the fight a coin is drawn as a gold one instead.
+const markHtml = (id) => (id === 'coin' ? '<span class="coin-mark"></span>' : NEW_THINGS[id].mark);
 
 const DEFAULTS = { moveSize: 'small', jumps: 'yes', level: 'gentle', rounds: 3, fighter: 'joze' };
 const CHOICES = { jumps: String, level: String, rounds: Number };
@@ -58,6 +63,19 @@ class MightyMoves extends BodyGame {
     this.openHandUntil = 0;
     this.feetMissing = 0;
     this.closeUpScreens = new Set(['fight', 'countdown']);
+    this.newShown = new Set();
+    this.newQueue = [];
+    this.newUntil = 0;
+  }
+
+  /** What each level brings that's new: see ARRIVES in moves.js. */
+  newAt(level) {
+    return this.newThings(level).map(({ mark, name, nameKa }) => ({ mark, name, nameKa }));
+  }
+
+  /** What's new at a level for this child: leaning isn't, on a strength that asks for it from the start. */
+  newThings(level) {
+    return newThingsAt(level, NPC_LEVELS[this.settings.level] ?? NPC_LEVELS.gentle);
   }
 
   setUp() {
@@ -79,6 +97,9 @@ class MightyMoves extends BodyGame {
       },
       get coach() {
         return game.coach;
+      },
+      get newShown() {
+        return [...game.newShown];
       },
     };
   }
@@ -112,6 +133,8 @@ class MightyMoves extends BodyGame {
 
   settingChanged(change) {
     if ('moveSize' in change) this.reader.personal = { jump: null, squat: null, leg: null, hand: null };
+    // What the cards say is new depends on the computer's strength.
+    if ('level' in change) this.levelUi.refresh();
     if (!this.fight) return;
     if ('hands' in change) {
       this.fight.focusSide = this.settings.hands;
@@ -155,12 +178,16 @@ class MightyMoves extends BodyGame {
     arena.setFighter('player', this.chosen);
     arena.setFighter('npc', this.opponent);
     arena.resetRound();
+    const rules = fightLevelOf(this.levels.current);
+    arena.setTheme(rules.theme);
+    document.body.dataset.place = rules.theme;
+    arena.setChampion(rules.champion);
     arena.player.presenting = false;
     arena.setView('intro');
     arena.player.body.setExpression('happy', 2.5);
     arena.npc.body.setExpression('happy', 2.5);
     byElementId('versus-player').textContent = this.chosen.name;
-    byElementId('versus-npc').textContent = this.opponent.name;
+    byElementId('versus-npc').textContent = rules.champion ? `👑 ${this.opponent.name}` : this.opponent.name;
 
     const levelNumber = this.startLevel();
     this.fight = new Fight({
@@ -179,9 +206,14 @@ class MightyMoves extends BodyGame {
     this.openHandUntil = 0;
     this.feetMissing = 0;
     this.wasResting = false;
+    this.newShown = new Set();
+    this.newQueue = [];
+    this.hideNewThing();
     this.fillHud();
     this.updateTally();
     this.setScreen('intro');
+    // The place is the first new thing to see, if it's new at this level.
+    for (const theme of ['sunset', 'autumn', 'snow']) if (rules.theme === theme) this.firstSight(theme);
     this.timer = INTRO_SECONDS;
     setTimeout(() => {
       if (this.screen === 'intro') this.sound.say(this.chosen.shout);
@@ -193,14 +225,39 @@ class MightyMoves extends BodyGame {
     byElementId('player-portrait').src = portraits[chosen.id];
     byElementId('npc-portrait').src = portraits[opponent.id];
     byElementId('player-name').textContent = chosen.name;
-    byElementId('npc-name').textContent = opponent.name;
+    byElementId('npc-name').textContent = this.fight.levelRules.champion ? `👑 ${opponent.name}` : opponent.name;
     this.lastNumbers = {};
+    const { prizes, powerUps } = this.fight.levelRules;
+    for (const kind of PRIZE_ORDER) {
+      const item = byElementId(`prize-${kind}`);
+      item.hidden = !prizes.includes(kind);
+      item.querySelector('strong').textContent = '0';
+    }
+    byElementId('prizes').hidden = !prizes.length && !powerUps.length;
+    this.showPowerUpBadges();
+  }
+
+  /** The power-ups waiting to be used, as small badges next to the prizes. */
+  showPowerUpBadges() {
+    const { player } = this.fight;
+    const have = { shield: player.shield, glow: player.glow > 0, helper: player.helper };
+    for (const badge of document.querySelectorAll('.powerup')) {
+      badge.hidden = !have[badge.dataset.kind];
+    }
+    byElementId('glow-left').textContent = player.glow > 1 ? String(player.glow) : '';
+    this.arena.showPowerUps(player);
+  }
+
+  /** The friend who helps: Joze, unless the child is Joze, or the opponent is. */
+  helperSpec() {
+    return ROSTER.find((spec) => spec.id !== this.chosen.id && spec.id !== this.opponent.id);
   }
 
   beginRoundCountdown() {
     const { fight } = this;
     this.arena.resetRound();
     this.arena.setView('fight');
+    if (fight.player.helper) this.arena.showHelper(this.helperSpec());
     this.reader.forget();
     this.lastNumbers = {};
     for (const id of ['player-hp', 'npc-hp']) {
@@ -231,6 +288,7 @@ class MightyMoves extends BodyGame {
       this.fight.beginRound();
       this.coach.beginRound();
       this.setScreen('fight');
+      if (this.fight.levelRules.champion) this.firstSight('champion');
     }
   }
 
@@ -257,6 +315,7 @@ class MightyMoves extends BodyGame {
 
     arena.npc.warning = fight.npc.warning ? 1 : 0;
     arena.player.guarding = fight.player.guard;
+    arena.player.ducking = fight.player.duck;
     if (fight.resting !== this.wasResting) {
       this.wasResting = fight.resting;
       arena.npc.hold(fight.resting ? 'wave' : null);
@@ -277,6 +336,94 @@ class MightyMoves extends BodyGame {
     this.prompt.show(prompt, now);
 
     this.updateHud();
+  }
+
+  /* ---------- new things, the first time they're seen ---------- */
+
+  /**
+   * Something this level brought is on the screen for the first time this fight: a small label says
+   * what it is, with its picture, for a moment. Nothing is said.
+   */
+  firstSight(id) {
+    if (!this.fight || this.newShown.has(id) || !levelHas(this.fight.levelNumber, id)) return;
+    if (!this.newThings(this.fight.levelNumber).some((thing) => thing.id === id)) return;
+    this.newShown.add(id);
+    this.newQueue.push(id);
+    if (!this.newTimer) this.showNextNewThing();
+  }
+
+  showNextNewThing() {
+    const id = this.newQueue.shift();
+    const label = byElementId('new-thing');
+    if (!id) {
+      this.hideNewThing();
+      return;
+    }
+    const { name, nameKa } = NEW_THINGS[id];
+    label.dataset.thing = id;
+    label.innerHTML = `<span class="new-thing-mark">${markHtml(id)}</span><span>${this.settings.language === 'ka' ? nameKa : name}</span>`;
+    label.classList.remove('is-shown');
+    void label.offsetWidth;
+    label.classList.add('is-shown');
+    this.newTimer = setTimeout(() => this.showNextNewThing(), NEW_THING_MS);
+  }
+
+  hideNewThing() {
+    clearTimeout(this.newTimer);
+    this.newTimer = null;
+    byElementId('new-thing')?.classList.remove('is-shown');
+  }
+
+  /* ---------- prizes and power-ups ---------- */
+
+  onPrize({ kind, total }) {
+    this.firstSight(kind);
+    const counter = byElementId(`prize-${kind}`);
+    const from = kind === 'coin' ? this.arena.toScreen(this.arena.fighterTop('npc'))
+      : kind === 'gem' ? this.arena.toScreen(this.arena.fighterTop('player'))
+        : { x: 0.5, y: 0.4 };
+    this.sound.prize(kind);
+    const land = () => {
+      counter.querySelector('strong').textContent = String(total);
+      counter.classList.remove('is-bumped');
+      void counter.offsetWidth;
+      counter.classList.add('is-bumped');
+    };
+    if (this.arena.reducedMotion || counter.hidden) {
+      land();
+      return;
+    }
+    // The prize flies over to its counter at the top.
+    const mark = document.createElement('span');
+    mark.className = 'prize-fly';
+    mark.innerHTML = markHtml(kind);
+    mark.style.left = `${Math.round(from.x * innerWidth)}px`;
+    mark.style.top = `${Math.round(from.y * innerHeight)}px`;
+    document.body.append(mark);
+    const box = counter.getBoundingClientRect();
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      mark.style.transform = `translate(${Math.round(box.left + 14 - from.x * innerWidth)}px, ${Math.round(box.top + box.height / 2 - from.y * innerHeight)}px) scale(0.7)`;
+    }));
+    setTimeout(() => {
+      mark.remove();
+      land();
+    }, PRIZE_FLIGHT_MS);
+  }
+
+  onPowerUp({ kind }) {
+    this.firstSight(kind);
+    this.sound.powerUp();
+    if (kind === 'helper') this.arena.showHelper(this.helperSpec());
+    const top = this.arena.toScreen(this.arena.fighterTop('player'));
+    this.callout(`${POWER_UPS[kind]} ${this.settings.language === 'ka' ? NEW_THINGS[kind].nameKa : NEW_THINGS[kind].name}`, { kind: 'is-open', x: top.x, y: top.y });
+    this.showPowerUpBadges();
+  }
+
+  onTeam({ move }) {
+    const feet = this.arena.helperFeet();
+    this.arena.helperStrike(move);
+    this.callout(`🤝 ${this.settings.language === 'ka' ? 'გუნდური დარტყმა!' : 'Team move!'}`, { kind: 'is-combo', x: feet.x, y: Math.min(0.8, feet.y + 0.06) });
+    this.showPowerUpBadges();
   }
 
   updateHud() {
@@ -346,6 +493,9 @@ class MightyMoves extends BodyGame {
       hit: () => this.onHit(event),
       dodged: () => this.onDodged(event),
       combo: () => this.onCombo(event),
+      prize: () => this.onPrize(event),
+      'power-up': () => this.onPowerUp(event),
+      team: () => this.onTeam(event),
       charged: () => this.arena.setCharged(event.who === 'player'),
       'round-end': () => this.onRoundEnd(event),
       'fight-end': () => this.onFightEnd(event),
@@ -364,6 +514,8 @@ class MightyMoves extends BodyGame {
   }
 
   onCall(event) {
+    if (event.times > 1) this.firstSight('twice');
+    this.firstSight('mixed');
     const { demo } = EXERCISES[event.name];
     this.showCoach(demo, this.coachWords(event), { side: event.side ?? this.settings.hands });
     this.sayCall(event);
@@ -409,15 +561,22 @@ class MightyMoves extends BodyGame {
     this.openHandSide = side;
   }
 
-  onDefend({ kind }) {
+  onDefend({ kind, second }) {
     const { demo, ask } = DEFENCES[kind];
     this.showCoach(demo, this.translate(ask), { side: this.settings.hands });
     this.sound.say(ask);
+    if (kind === 'catch') this.arena.ballReady();
+    this.firstSight(kind);
+    if (second) this.firstSight('doubles');
   }
 
   onDefended({ kind }) {
     this.hideCoach();
     this.showSeen(DEFENCES[kind].seen, { x: 0.3, y: 0.55 });
+    if (kind === 'catch') {
+      this.arena.ballCaught();
+      this.sound.caught();
+    }
   }
 
   onMove({ who, move, side, signature, small }) {
@@ -429,20 +588,35 @@ class MightyMoves extends BodyGame {
     }
     if (small) return;
     this.updateTally();
-    // Every move is what the child was asked for, and it gets its name in lights.
-    const word = signature ? this.chosen.signature : MOVES[move].name;
-    const shown = signature && this.settings.language === 'ka' ? this.chosen.signatureKa : this.translate(`${word}!`).replace('!', '');
+    this.showPowerUpBadges();
+    // Every move is what the child was asked for, and it gets its name in lights. The fighter's own
+    // finishing move is shown by its name in either language, as it's said, whatever move it came from.
+    const { name, label, labelKa } = MOVES[move];
+    const ka = this.settings.language === 'ka';
+    let shown;
+    if (signature) shown = ka ? this.chosen.signatureKa : this.chosen.signature;
+    else if (name) shown = this.translate(`${name}!`).replace('!', '');
+    else shown = ka ? labelKa : label;
     this.callout(shown, { kind: 'is-big', x: 0.42, y: 0.36 });
     // Only the fighter's own big move is shouted, so that the next thing to do comes straight away.
-    if (signature) this.sound.say(`${word}!`);
+    if (signature) this.sound.say(`${this.chosen.signature}!`);
   }
 
-  onHit({ attacker, target, move, damage, blocked, reasons, signature, small }) {
+  onHit({ attacker, target, move, damage, blocked, bubble, reasons, signature, small }) {
     this.arena.hitLanded({ attacker, target, move, blocked, signature, small });
-    this.sound.impact(move, { blocked, signature, small });
+    // The bubble has its own soft sound, in place of the block's.
+    if (!bubble) this.sound.impact(move, { blocked, signature, small });
     if (reasons.includes('charged') && attacker === 'player') this.arena.setCharged(false);
 
     const top = this.arena.toScreen(this.arena.fighterTop(target));
+    if (bubble) {
+      // The shield bubble caught it.
+      this.arena.popBubble();
+      this.sound.bubble();
+      this.showPowerUpBadges();
+      this.callout(`🫧 ${this.settings.language === 'ka' ? 'ბუშტმა დაგიცვა!' : 'Bubble!'}`, { kind: 'is-open', x: top.x, y: top.y });
+      return;
+    }
     if (blocked) {
       if (target === 'player') {
         this.callout(this.translate(SAY.goodBlock).replace('!', ''), { x: top.x, y: top.y });
@@ -508,6 +682,8 @@ class MightyMoves extends BodyGame {
     this.sound.stopFightMusic();
     this.prompt.clear();
     this.setCount('');
+    // Power-ups belong to a fight: a bubble or glow that's left fades, and a friend who came to help goes.
+    arena.clearPowerUps();
     arena.setView('win');
     if (winner === 'player') arena.player.presenting = true;
     this.sound.cheer(winner === 'player' ? 0.75 : 0.35);
@@ -524,6 +700,8 @@ class MightyMoves extends BodyGame {
     const minutes = stats.activeSeconds >= 60
       ? `${Math.floor(stats.activeSeconds / 60)} min ${Math.round(stats.activeSeconds % 60)} sec`
       : `${Math.round(stats.activeSeconds)} seconds`;
+    byElementId('finish-prizes').innerHTML = this.prizeWords();
+    byElementId('finish-prizes').hidden = !this.fight.levelRules.prizes.length;
     byElementId('finish-line').textContent = `${this.chosen.name} won ${player.roundsWon} of ${stats.rounds.length} ${stats.rounds.length === 1 ? 'round' : 'rounds'}, with ${minutes} of moving.`;
     this.fillTallyCards(byElementId('finish-tally'), this.exerciseCards());
     byElementId('sum-left-strikes').textContent = String(stats.strikes.left);
@@ -539,6 +717,14 @@ class MightyMoves extends BodyGame {
     this.finishLevel(won);
     if (won) this.confetti.start();
     this.setScreen('finish');
+  }
+
+  /** The prizes collected, for the finish card. */
+  prizeWords() {
+    const { prizes } = this.fight.stats;
+    const names = { coin: ['coin', 'coins'], gem: ['gem', 'gems'], medal: ['medal', 'medals'], trophy: ['trophy', 'trophies'] };
+    const got = this.fight.levelRules.prizes.map((kind) => `<span class="finish-prize">${markHtml(kind)} ${prizes[kind]} ${names[kind][prizes[kind] === 1 ? 0 : 1]}</span>`);
+    return got.length ? `Prizes: ${got.join(' · ')}` : '';
   }
 
   playAgain() {
@@ -605,6 +791,10 @@ mountBodyShell({
         <div class="corner-name"><span id="player-name"></span><span id="player-wins" class="wins" aria-hidden="true"></span></div>
         <div class="hp"><div id="player-hp" class="hp-fill"></div></div>
         <div id="power-bar" class="power" aria-hidden="true"><div id="player-power" class="power-fill"></div><span class="power-word">Super</span></div>
+        <div id="prizes" class="prizes" aria-hidden="true" hidden>
+          ${PRIZE_ORDER.map((kind) => `<span id="prize-${kind}" class="prize" data-kind="${kind}" hidden><span class="prize-mark">${markHtml(kind)}</span><strong>0</strong></span>`).join('')}
+          ${Object.entries(POWER_UPS).map(([kind, mark]) => `<span class="powerup" data-kind="${kind}" hidden>${mark}${kind === 'glow' ? '<strong id="glow-left"></strong>' : ''}</span>`).join('')}
+        </div>
       </div>
     </div>
     <div class="round-box">
@@ -619,6 +809,7 @@ mountBodyShell({
     </div>
   </header>
   <div id="tally" class="tally" aria-hidden="true"></div>
+  <div id="new-thing" class="new-thing" aria-hidden="true"></div>
   <div id="versus-banner" class="versus-banner" aria-live="polite">
     <span id="versus-player"></span>
     <span class="versus-word">VS</span>
@@ -632,6 +823,7 @@ mountBodyShell({
   finishBody: `
       <h2 id="finish-title"></h2>
       <p id="finish-line" class="finish-open"></p>
+      <p id="finish-prizes" class="finish-prizes" hidden></p>
       <div id="finish-tally" class="finish-tally"></div>
       <table class="summary fight-summary">
         <thead>

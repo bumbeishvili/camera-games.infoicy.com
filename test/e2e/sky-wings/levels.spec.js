@@ -36,7 +36,7 @@ test('level 1 is the dogfight as it always was', async ({ page }) => {
   expect(now.level).toBe(1);
   expect(now.atOnce).toBe(3);
   expect(now.captain).toBe(false);
-  expect(now.rules).toEqual({ enemySpeed: 0.84, enemyTurn: 0.82, huntEvery: 1, dodgeSeconds: 2.2, weave: 0, climbs: 1, atOnce: 3, captain: false });
+  expect(now.rules).toEqual({ enemySpeed: 0.84, enemyTurn: 0.82, huntEvery: 1, dodgeSeconds: 2.2, weave: 0, climbs: 1, atOnce: 3, captain: false, prizes: false, gifts: [], kinds: [], airship: false, sky: 'day' });
   await expect(page.locator('.mark:not([data-where="none"])')).toHaveCount(3, { timeout: 5000 });
 });
 

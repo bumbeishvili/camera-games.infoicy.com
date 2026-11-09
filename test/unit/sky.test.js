@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { DEMOS } from '../../core/body/demos.js';
 import { BodyReader, viewProblem } from '../../core/body/reader.js';
-import { CAMERA, Flight, HEARTS, LEVELS, MOST_AT_ONCE, MOST_AT_ONCE_EVER, PACES, RANGE, flightLevel, forwardOf } from '../../games/sky-wings/flight.js';
+import { CAMERA, Flight, HEARTS, KINDS, LEVELS, MOST_AT_ONCE, MOST_AT_ONCE_EVER, NEW_AT, PACES, POWERS, RANGE, flightLevel, forwardOf, freshKinds, isOn, planPirates } from '../../games/sky-wings/flight.js';
 import { PLACES, WORLD, coastAt, floorAt, heightAt } from '../../games/sky-wings/island-map.js';
 import { Lesson } from '../../games/sky-wings/lesson.js';
 
@@ -654,7 +654,10 @@ function aMinuteOf(options) {
 }
 
 test('level 1 is the dogfight as it always was', () => {
-  assert.deepEqual(flightLevel(1), { enemySpeed: 0.84, enemyTurn: 0.82, huntEvery: 1, dodgeSeconds: 2.2, weave: 0, climbs: 1, atOnce: MOST_AT_ONCE, captain: false });
+  assert.deepEqual(flightLevel(1), {
+    enemySpeed: 0.84, enemyTurn: 0.82, huntEvery: 1, dodgeSeconds: 2.2, weave: 0, climbs: 1, atOnce: MOST_AT_ONCE, captain: false,
+    prizes: false, gifts: [], kinds: [], airship: false, sky: 'day',
+  });
   // The same flights, to the millimetre, as before there were levels.
   assert.equal(aMinuteOf({ pace: 'slow', level: 'gentle' }), 'flying,4,78,3,76.702,957.743');
   assert.equal(aMinuteOf({ pace: 'fast', level: 'medium' }), 'flying,1,53,3,-320.143,565.902');
@@ -804,4 +807,410 @@ test('level 10 is still doable: won by steering for the planes, not much longer,
     assert.ok(last.seconds <= first.seconds * 1.33, `${pace}: ${last.seconds} seconds against ${first.seconds}`);
     assert.ok(last.perMinute <= first.perMinute * 2, `${pace}: ${last.perMinute} changes a minute against ${first.perMinute}`);
   }
+});
+
+/* ---------- what each level brings that's new ---------- */
+
+test('every level from 2 brings something new, level 1 brings nothing, and each is really on from then', () => {
+  assert.equal(NEW_AT[1], undefined);
+  for (const level of LEVEL_NUMBERS.slice(1)) {
+    assert.ok(NEW_AT[level]?.length > 0, `${level}: something new`);
+    for (const { thing, mark, name, nameKa } of NEW_AT[level]) {
+      assert.ok(mark && name && nameKa, `${level}: ${thing} has a picture and names`);
+      assert.ok(name.split(' ').length <= 3, `${name}: a few words`);
+      assert.equal(isOn(thing, level), true, `${thing} is on at ${level}`);
+      assert.equal(isOn(thing, level - 1), false, `${thing} isn't on before ${level}`);
+      // It stays, except the sky, which goes from sunset to snow.
+      if (!thing.startsWith('sky:')) for (let later = level; later <= 10; later += 1) assert.equal(isOn(thing, later), true, `${thing} still on at ${later}`);
+    }
+  }
+});
+
+test('the pirates come in kinds, in a set order, with the captain last and the airship before it', () => {
+  assert.deepEqual(planPirates(6, flightLevel(1)), Array(6).fill('pirate'));
+  assert.deepEqual(planPirates(6, flightLevel(4)), ['scout', 'pirate', 'scout', 'pirate', 'scout', 'pirate']);
+  assert.deepEqual(planPirates(6, flightLevel(6)), ['scout', 'balloon', 'pirate', 'scout', 'balloon', 'pirate']);
+  assert.deepEqual(planPirates(6, flightLevel(8)), ['scout', 'lead', 'wing', 'balloon', 'pirate', 'captain']);
+  assert.deepEqual(planPirates(6, flightLevel(10)), ['scout', 'lead', 'wing', 'balloon', 'airship', 'captain']);
+  assert.deepEqual(planPirates(3, flightLevel(10)), ['scout', 'airship', 'captain']);
+  // Never half a pair: one without room goes to the next kind. One plane to drop is never a captain or an airship.
+  assert.deepEqual(planPirates(3, flightLevel(8)), ['scout', 'balloon', 'captain']);
+  assert.deepEqual(planPirates(1, flightLevel(10)), ['scout']);
+  // With too few planes for every kind, what's new at the level comes first.
+  assert.deepEqual(planPirates(3, flightLevel(8), ['pair']), ['lead', 'wing', 'captain']);
+  assert.deepEqual(new Flight({ planes: 3, levelNumber: 8 }).plan, ['lead', 'wing', 'captain']);
+  for (const total of [1, 3, 6, 9]) {
+    for (const level of LEVEL_NUMBERS) {
+      const plan = planPirates(total, flightLevel(level), freshKinds(level));
+      plan.forEach((kind, i) => {
+        if (kind === 'lead') assert.equal(plan[i + 1], 'wing');
+        if (kind === 'wing') assert.equal(plan[i - 1], 'lead');
+      });
+    }
+  }
+});
+
+test('the sky is day, then a sunset from level 6, and light snow from level 9', () => {
+  assert.deepEqual(LEVEL_NUMBERS.map((level) => flightLevel(level).sky), ['day', 'day', 'day', 'day', 'day', 'sunset', 'sunset', 'sunset', 'snow', 'snow']);
+});
+
+/** Drops a pirate where it is. */
+const dropNow = (flight, enemy) => {
+  while (enemy.state === 'flying') flight.hit(enemy);
+};
+
+test('from level 2 a dropped pirate leaves a gold coin, which flies to the plane by itself and is counted', () => {
+  const none = flying({ levelNumber: 1 }).flight;
+  dropNow(none, none.flying[0]);
+  assert.equal(none.prizes.length, 0, 'no prizes at level 1');
+
+  const { flight, events } = flying({ levelNumber: 2 });
+  const [enemy] = flight.flying;
+  flight.huntIn = 1000;
+  holdInFront(flight, enemy, { ahead: 200, across: 60 });
+  dropNow(flight, enemy);
+  assert.deepEqual(flight.prizes.map(({ kind }) => kind), ['coin']);
+  // Whatever the child does, even resting, it gets to the plane in a few seconds.
+  fly(flight, 4, { out: false });
+  assert.equal(flight.prizes.length, 0);
+  assert.equal(flight.stats.prizes.coin, 1);
+  assert.equal(named(events, 'prize').length, 1);
+});
+
+test('each kind of pirate leaves its own prize, and prizes still on their way at the end are counted', () => {
+  assert.deepEqual(Object.fromEntries(Object.entries(KINDS).map(([kind, { prize }]) => [kind, prize])), {
+    pirate: 'coin', lead: 'coin', wing: 'coin', scout: 'gem', balloon: 'coin', captain: 'medal', airship: 'chest',
+  });
+  const { flight } = flying({ levelNumber: 10, planes: 6 });
+  let guard = 0;
+  while (flight.state === 'flying' && guard < 400) {
+    guard += 1;
+    const [enemy] = flight.flying;
+    if (enemy) dropNow(flight, enemy);
+    fly(flight, 0.4, { out: true });
+  }
+  assert.equal(flight.state, 'won');
+  assert.deepEqual(flight.stats.prizes, { coin: 3, gem: 1, medal: 1, chest: 1 });
+  assert.equal(flight.prizes.length, 0);
+});
+
+test('from level 3 a gift box floats out in front, with this level\'s new power first, and flying through it gives that power', () => {
+  assert.deepEqual(flightLevel(2).gifts, []);
+  const never = flying({ levelNumber: 2 }).flight;
+  fly(never, 30, { out: true });
+  assert.equal(never.gift, null);
+  assert.equal(never.stats.gifts, 0);
+
+  const { flight, events } = flying({ levelNumber: 7, planes: 9 });
+  flight.huntIn = 1000;
+  fly(flight, 5.2, { out: true });
+  assert.equal(flight.gift?.kind, 'snow', 'the first of level 7\'s new powers');
+  // Flying straight on, it's caught.
+  fly(flight, 6, { out: true });
+  assert.equal(flight.power?.kind, 'snow');
+  assert.equal(flight.stats.gifts, 1);
+  assert.equal(named(events, 'power').at(-1).on, true);
+  // It lasts as long as it should, then goes.
+  fly(flight, POWERS.snow + 0.2, { out: true });
+  assert.notEqual(flight.power?.kind, 'snow');
+  // The next gift box is the next power.
+  const { gifts } = flight.levelRules;
+  assert.equal(flight.gift?.kind ?? gifts[flight.giftTurn % gifts.length], 'shield');
+});
+
+test('a missed gift box costs nothing, and no gift box comes while resting', () => {
+  const { flight, events } = flying({ levelNumber: 3 });
+  flight.huntIn = 1000;
+  fly(flight, 5.1, { out: true });
+  assert.ok(flight.gift);
+  // Put it far away behind, so it's missed.
+  Object.assign(flight.gift, { x: flight.x - flight.forward.x * 900, z: flight.z - flight.forward.z * 900 });
+  const before = { hearts: flight.hearts, dropped: flight.dropped, prizes: { ...flight.stats.prizes } };
+  fly(flight, 17, { out: true });
+  assert.equal(named(events, 'gift-gone').length, 1);
+  assert.deepEqual({ hearts: flight.hearts, dropped: flight.dropped, prizes: flight.stats.prizes }, before);
+
+  const resting = flying({ levelNumber: 10 }).flight;
+  fly(resting, 60, { out: false });
+  assert.equal(resting.gift, null);
+  assert.equal(resting.stats.gifts, 0);
+});
+
+/** A flight with a power on, and one pirate held in front of the ring. */
+function withPower(kind, options = {}) {
+  const { flight, events } = flying({ levelNumber: 10, planes: 6, ...options });
+  flight.huntIn = 1000;
+  flight.giftIn = 1000;
+  const enemy = flight.flying.find((one) => one.kind === (options.kind ?? 'scout'));
+  clearTheRest(flight, enemy);
+  flight.startPower(kind);
+  return { flight, events, enemy };
+}
+
+test('the triple shot fires three at a time, so a pirate drops three times as fast', () => {
+  const hitsAfter = (power) => {
+    const { flight, enemy } = power ? withPower(power, { kind: 'lead' }) : withPower('shield', { kind: 'lead' });
+    if (!power) flight.endPower();
+    enemy.hitsLeft = 1000;
+    fly(flight, 1, () => {
+      holdInFront(flight, enemy, { ahead: 100 });
+      return { out: true };
+    });
+    return { hits: flight.stats.hits, triples: flight.shots.filter(({ kind }) => kind === 'triple').length };
+  };
+  const plain = hitsAfter(null);
+  const triple = hitsAfter('triple');
+  assert.ok(triple.hits >= plain.hits * 2.5, `${triple.hits} against ${plain.hits}`);
+  assert.equal(triple.triples % 3, 0);
+});
+
+test('the bubble shot wraps a pirate up, and it floats gently down, but a captain or an airship is too big', () => {
+  const { flight, events, enemy } = withPower('bubble', { kind: 'lead' });
+  fly(flight, 2, () => {
+    if (enemy.state === 'flying') holdInFront(flight, enemy, { ahead: 90 });
+    return { out: true };
+  });
+  assert.equal(enemy.bubbled, true);
+  assert.equal(named(events, 'bubbled').length, 1);
+  assert.equal(enemy.state, 'falling');
+  const from = enemy.y;
+  fly(flight, 1, { out: true });
+  assert.ok(from - enemy.y > 3 && from - enemy.y < 10, `sinks gently: ${from - enemy.y}`);
+
+  const big = withPower('bubble', { kind: 'airship', planes: 3 });
+  big.flight.wrap(big.enemy);
+  assert.equal(big.enemy.bubbled, false);
+  assert.equal(big.enemy.state, 'flying');
+  assert.equal(big.enemy.hitsTotal - big.enemy.hitsLeft, 4);
+});
+
+test('the snowflake shot slows a pirate right down for a while', () => {
+  const { flight, enemy } = withPower('snow', { kind: 'lead' });
+  enemy.hitsLeft = 1000;
+  fly(flight, 0.6, () => {
+    holdInFront(flight, enemy, { ahead: 90 });
+    return { out: true };
+  });
+  assert.ok(enemy.slowLeft > 0);
+  // How far it goes in a second, slowed and not.
+  const step = () => {
+    const from = { x: enemy.x, z: enemy.z };
+    fly(flight, 0.5, { out: true });
+    return Math.hypot(enemy.x - from.x, enemy.z - from.z);
+  };
+  flight.endPower();
+  enemy.slowLeft = 3;
+  enemy.dodgeLeft = 0;
+  const slowed = step();
+  enemy.slowLeft = 0;
+  const usual = step();
+  assert.ok(slowed < usual * 0.7, `${slowed} against ${usual}`);
+});
+
+test('the shield bubble stops a pirate\'s shots from costing hearts', () => {
+  const { flight, events } = withPower('shield', { level: 'tough' });
+  for (let i = 0; i < 8; i += 1) flight.shots.push({ mine: false, x: flight.x, y: flight.y, z: flight.z, dx: 0, dy: 0, dz: 1, left: 0.01, hit: true });
+  fly(flight, 0.1, { out: true });
+  assert.equal(flight.hearts, HEARTS);
+  assert.equal(flight.stats.blocked, 8);
+  assert.equal(named(events, 'shielded').length, 8);
+  flight.endPower();
+  flight.shots.push({ mine: false, x: flight.x, y: flight.y, z: flight.z, dx: 0, dy: 0, dz: 1, left: 0.01, hit: true });
+  fly(flight, 0.1, { out: true });
+  assert.equal(flight.hearts, HEARTS - 1, 'and without it, they do as before');
+});
+
+test('a friend flies alongside and helps, and paper planes find their own way, but neither fires while resting', () => {
+  for (const power of ['helper', 'paper']) {
+    const { flight, enemy } = withPower(power, { kind: 'lead' });
+    enemy.hitsLeft = 1000;
+    // Off to the side of the ring, where the guns don't fire, but in front.
+    fly(flight, 3, () => {
+      holdInFront(flight, enemy, { ahead: 140, across: power === 'paper' ? 90 : 45 });
+      return { out: true };
+    });
+    assert.equal(flight.locked, null, `${power}: not in the ring`);
+    assert.ok(flight.stats.hits > 0, `${power}: hits all the same`);
+    if (power === 'helper') assert.ok(Math.hypot(flight.helper.x - flight.x, flight.helper.z - flight.z) < 20, 'right beside');
+
+    flight.power.left = 6;
+    fly(flight, 4.5, { out: false });
+    assert.equal(flight.resting, true);
+    const left = flight.power.left;
+    // Anything already on its way lands, and then nothing more is sent.
+    fly(flight, 5.5, { out: false });
+    const { hits } = flight.stats;
+    fly(flight, 4, () => {
+      holdInFront(flight, enemy, { ahead: 140, across: 45 });
+      assert.equal(flight.shots.filter(({ mine }) => mine).length, 0, `${power}: nothing fired while resting`);
+      return { out: false };
+    });
+    assert.equal(flight.stats.hits, hits);
+    assert.ok(flight.power.left > left - 1.2, `${power}: and resting doesn't use the power up`);
+  }
+});
+
+test('scouts need fewer hits and zigzag, but are never as fast as the child', () => {
+  const { flight } = flying({ levelNumber: 4, planes: 3 });
+  const [scout, pirate] = flight.flying;
+  assert.equal(scout.kind, 'scout');
+  assert.ok(scout.hitsTotal < pirate.hitsTotal);
+  assert.ok(KINDS.scout.weave > flightLevel(10).weave);
+  assert.ok(flightLevel(10).enemySpeed + KINDS.scout.faster < 0.96);
+});
+
+test('balloon pirates drift slowly, high up, and never hunt or shoot', () => {
+  const { flight } = flying({ levelNumber: 6, planes: 3, level: 'tough' });
+  const balloon = flight.flying.find(({ kind }) => kind === 'balloon');
+  assert.ok(balloon.y > flight.y + 10, 'higher up');
+  for (let i = 0; i < 400; i += 1) {
+    flight.huntIn = 0;
+    fly(flight, 0.1, huntingWell(flight));
+    if (balloon.state !== 'flying') break;
+    assert.notEqual(balloon.mode, 'hunt');
+    assert.equal(balloon.burstLeft, 0);
+  }
+  assert.equal(KINDS.balloon.dodges, false);
+});
+
+test('a wingman keeps beside its leader', () => {
+  const { flight } = flying({ levelNumber: 8, planes: 6 });
+  const lead = flight.flying.find(({ kind }) => kind === 'lead');
+  const wing = flight.flying.find(({ kind }) => kind === 'wing');
+  assert.equal(wing.leader, lead);
+  flight.huntIn = 1000;
+  let furthest = 0;
+  fly(flight, 20, () => {
+    if (lead.state === 'flying' && wing.state === 'flying' && lead.mode === 'cross' && flight.time > 3) furthest = Math.max(furthest, Math.hypot(lead.x - wing.x, lead.z - wing.z));
+    return { out: false };
+  });
+  assert.ok(furthest > 0 && furthest < 70, `furthest apart ${furthest}`);
+});
+
+test('a wingman whose leader is already near comes in from the distance, like any pirate, and flies over to join it', () => {
+  // Nine planes at level 8: the second pair's leader comes first, and its wingman later.
+  const { flight } = flying({ levelNumber: 8, planes: 9 });
+  flight.huntIn = 1000;
+  assert.deepEqual(flight.plan.slice(6, 8), ['lead', 'wing']);
+  // Drop all but one, until the second leader is in the air, near the child.
+  let lead = null;
+  for (let i = 0; i < 40 && !lead; i += 1) {
+    lead = flight.flying.find(({ kind, index }) => kind === 'lead' && index === 6) ?? null;
+    if (!lead) {
+      dropNow(flight, flight.flying[0]);
+      fly(flight, 1.2, { out: true });
+    }
+  }
+  assert.ok(lead, 'the second leader came');
+  holdInFront(flight, lead, { ahead: 80, across: 30 });
+  for (const other of flight.flying.filter((one) => one !== lead)) dropNow(flight, other);
+  fly(flight, 1.2, () => {
+    holdInFront(flight, lead, { ahead: 80, across: 30 });
+    return { out: true };
+  });
+  const wing = flight.enemies.find(({ kind, index }) => kind === 'wing' && index === 7);
+  assert.ok(wing, 'its wingman came');
+  assert.equal(wing.leader, lead);
+  const fromChild = Math.hypot(wing.x - flight.x, wing.z - flight.z);
+  assert.ok(fromChild > 200, `it came from the distance: ${fromChild}`);
+  // And it comes to fly beside its leader.
+  lead.mode = 'cross';
+  let nearest = Infinity;
+  fly(flight, 40, () => {
+    if (lead.state === 'flying' && wing.state === 'flying') nearest = Math.min(nearest, Math.hypot(lead.x - wing.x, lead.z - wing.z));
+    flight.huntIn = 1000;
+    return { out: false };
+  });
+  assert.ok(nearest < 40, `beside its leader at last: ${nearest}`);
+});
+
+test('a wingman getting back to its leader is never quicker than a pirate can fly, so it never seems to jump', () => {
+  for (const off of [25, 60, 200]) {
+    const { flight } = flying({ levelNumber: 8, planes: 6 });
+    flight.huntIn = 1000;
+    const lead = flight.flying.find(({ kind }) => kind === 'lead');
+    const wing = flight.flying.find(({ kind }) => kind === 'wing');
+    // Away to one side, as after dodging.
+    const spot = flight.wingSpot(lead);
+    Object.assign(wing, { x: spot.x + off, z: spot.z + off / 2, dodgeLeft: 0, slowLeft: 0, mode: 'cross' });
+    let fastest = 0;
+    for (let i = 0; i < 60 * 6; i += 1) {
+      const { x, y, z } = wing;
+      flight.update(1 / 60, { out: false });
+      if (wing.state !== 'flying' || wing.mode !== 'cross') break;
+      fastest = Math.max(fastest, Math.hypot(wing.x - x, wing.y - y, wing.z - z) * 60);
+    }
+    assert.ok(fastest > 0 && fastest <= flight.pace.speed * 1.35, `${off} away: ${fastest / flight.pace.speed} times the child's speed`);
+  }
+});
+
+test('with fewer planes to drop, what\'s new at a level still comes, and the cards only promise what does', () => {
+  for (const planes of [1, 3, 6, 9]) {
+    for (const level of LEVEL_NUMBERS.slice(1)) {
+      const flight = new Flight({ planes, levelNumber: level });
+      for (const { thing } of NEW_AT[level]) {
+        if (!isOn(thing, level, planes)) continue;
+        const [what, which] = thing.split(':');
+        if (what === 'kind') assert.ok(flight.plan.includes(which === 'pair' ? 'lead' : which), `${planes} planes at ${level}: ${thing}`);
+        if (what === 'atOnce') assert.ok(planes >= Number(which), `${planes} planes at ${level}: ${thing}`);
+      }
+    }
+  }
+  // Three planes: a pair and the captain at level 8, but never four in the air at once.
+  assert.equal(isOn('kind:pair', 8, 3), true);
+  assert.equal(isOn('atOnce:4', 9, 3), false);
+  assert.equal(isOn('atOnce:4', 9, 6), true);
+  // And every level still brings something, with three as with nine.
+  for (const level of LEVEL_NUMBERS.slice(1)) assert.ok(NEW_AT[level].some(({ thing }) => isOn(thing, level, 3)), `${level}`);
+});
+
+test('losing tidies up as winning does: prizes on their way are counted, and the power, the friend and the gift box go', () => {
+  const { flight, events } = flying({ levelNumber: 9, planes: 6, level: 'medium' });
+  flight.startPower('helper');
+  flight.placeGift('triple');
+  dropNow(flight, flight.flying[0]);
+  assert.equal(flight.prizes.length, 1, 'a prize on its way');
+  flight.hearts = 1;
+  flight.shots.push({ mine: false, x: flight.x, y: flight.y, z: flight.z, dx: 0, dy: 0, dz: 1, left: 0.01, hit: true });
+  flight.update(1 / 30, { out: true });
+  assert.equal(flight.state, 'lost');
+  assert.deepEqual([flight.power, flight.helper, flight.gift, flight.prizes.length], [null, null, null, 0]);
+  assert.equal(Object.values(flight.stats.prizes).reduce((sum, count) => sum + count, 0), 1, 'the prize on its way is counted');
+  assert.ok(events.some(({ type, kind, on }) => type === 'power' && kind === 'helper' && on === false));
+  // Nothing fires while it carries on round, and nothing stays hanging in the sky.
+  const shots = flight.shots.length;
+  fly(flight, 3, { out: true });
+  assert.ok(flight.shots.length <= shots);
+  assert.ok(!flight.shots.some(({ kind }) => kind === 'helper'));
+});
+
+test('the treasure airship takes twice the hits, never hunts, and goes down gently', () => {
+  const { flight } = flying({ levelNumber: 10, planes: 3 });
+  const airship = flight.flying.find(({ kind }) => kind === 'airship');
+  assert.equal(airship.hitsTotal, LEVELS.gentle.enemyHits * 2);
+  for (let i = 0; i < 100; i += 1) {
+    flight.huntIn = 0;
+    fly(flight, 0.1, { out: true });
+    assert.notEqual(airship.mode, 'hunt');
+  }
+  dropNow(flight, airship);
+  const from = airship.y;
+  fly(flight, 1, { out: true });
+  assert.ok(from - airship.y < 10);
+});
+
+test('nothing new can make a child lose who couldn\'t before: on Gentle at level 10, with every power, nobody is shot down', () => {
+  const { flight } = flying({ levelNumber: 10, planes: 9 });
+  for (const power of Object.keys(POWERS)) {
+    flight.startPower(power);
+    for (let i = 0; i < 12; i += 1) flight.hurt();
+    fly(flight, 2, huntingWell(flight));
+  }
+  assert.notEqual(flight.state, 'lost');
+  assert.ok(flight.hearts >= 1);
+});
+
+test('level 10 still gives at least 70% of the time to react: hunts come no more than a quarter more often, and last as long', () => {
+  assert.ok(flightLevel(10).huntEvery >= 0.7);
+  assert.ok(flightLevel(10).dodgeSeconds <= 2.4);
 });

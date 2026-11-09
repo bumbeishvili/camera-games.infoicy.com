@@ -215,7 +215,21 @@ Saying the moves in this order makes two combos come up by themselves, a squat t
 
 **Playing over a network** isn't built yet, but it's been kept in mind. The rules in [fight.js](games/mighty-moves/fight.js) have no screen or camera in them, and a fighter is only driven through `perform()`, `setGuard()` and `setDodge()`. [coach.js](games/mighty-moves/coach.js) makes those calls for both sides today, so another player's moves can arrive over a connection in the computer's place. Only moves would need sending, never camera pictures.
 
-**Levels.** Levels go from 1 to 10, one fight each, and winning a fight moves on a level, while losing one stays. The computer's strength stays the grown-ups' choice: a level never makes it hit harder, and on Gentle it still can't knock a child out. Higher levels bring its turns a little more often, with a warning down to 80% as long, and a shorter pause between moves. From level 3 leaning out of the way joins blocking, and from level 4 the computer has more moves. From level 5 some turns are two hits in a row, one to block and one to lean from, and from level 6 the coach's moves come in a mixed-up order. From level 7 some moves are asked for twice, with a dot on the coach's card for each, and the fighter's move is stronger for it. Jumps, high knees and reaching up are never asked for twice, and a child standing still is never hit at any level. The numbers are in `fightLevel` in `moves.js`.
+**Levels.** Levels go from 1 to 10, one fight each, and winning a fight moves on a level, while losing one stays. The computer's strength stays the grown-ups' choice: a level never makes it hit harder, and on Gentle it still can't knock a child out. Higher levels bring its turns a little more often, with a warning down to 80% as long, and a shorter pause between moves, and from levels 4 and 7 it has more moves. Every level from 2 also brings something new, which stays for the levels after it:
+
+| Level | What's new |
+|---|---|
+| 2 | **Coins:** one for each big move that lands, and three for the fighter's own finishing move or a team move. |
+| 3 | **Leaning** out of the way joins blocking, a **gem** for each time the child gets out of the way, and a **sunset**. On Medium and Tough the computer asks for leaning from level 1, so for them it isn't new. |
+| 4 | **The shield bubble**, a power-up after every four big moves that land, which catches the computer's next hit that would have landed. |
+| 5 | Some of the computer's turns are **two hits** in a row, one to block and one to lean from, each with its own warning, and a **medal** for each round won. |
+| 6 | The computer **swings high**, to duck under with a squat, the coach's moves come in a **mixed-up order** with the two parts of a combo still together, and it's **autumn**. |
+| 7 | Some moves are asked for **twice**, with a dot on the coach's card for each, and the fighter's move is stronger for it. Jumps, high knees and reaching up never are. **The super glow** makes the next two big moves stronger and fills the power bar twice as fast. |
+| 8 | The computer throws **a soft ball**, caught with a clap and thrown back. |
+| 9 | **A helper friend** joins in with one big move, a team move worth three coins, and it **snows**. |
+| 10 | The opponent is **the champion**, crowned and a little bigger, whose turns can be any way out rather than taking turns, and beating it wins **the trophy**. |
+
+The way out of the way a level brings is the computer's first turn in a fight at that level, and the newest power-up the first to come, so a short fight, or a quick child, still meets them. A duck or a catch missed while the child is moving is put aside for the rest of that fight, so a child who can't do it isn't hit for it again and again, and neither the high swing nor the ball hits harder than the computer's lightest move. Ducking eases as the squat that's asked for does: over the ducks in a fight, what counts comes down to just below the child's best. A ball caught at the last moment is still held a moment before it's thrown back. Power-ups last until they're used, so resting never loses one, and any left at the end of a fight fade away. Prizes are collected by themselves, and missing one costs nothing. The first time each new thing turns up in a fight, a small label names it for a moment, and nothing new is said aloud. A child standing still is never hit at any level. The numbers are in `fightLevel` in `moves.js`.
 
 ## Leap Trail
 
@@ -237,9 +251,23 @@ The character runs fast down the trail by itself, through a village, past fences
 - **Resting is always fine.** After 9 seconds without moving, the runner stops and waits, even when set to stumble.
 - **Speed** and **length of the trail** can be set. Even *Fast* is forgiving.
 - **A missed move is only a stumble,** so that the run keeps its pace. For a child who needs longer, **When a move is missed** can make the runner stop and wait for as long as it takes.
-- **Nothing flashes.** Measured through jumps, landings and a long dash, at level 1 and level 10, brightness changed by less than 3% from one frame to the next.
+- **Nothing flashes.** Measured through jumps, landings and a long dash, at level 1 and level 10, brightness changed by less than 3% from one frame to the next. At levels 6 and 10 with every new thing on screen, through a bounce, a bubble popping and a chest, it changed by at most 4.7 out of 255, and things missed and left behind never come within 2 metres of the camera.
 
-**Levels.** Each level is a little harder than the last, always from the pace a grown-up chose: a little faster, obstacles a little closer, and the stretch where a jump counts down to 85% of what it was. Higher levels also have more obstacles that fill one or two lanes, with the free lane switching sides, and lines of stars change lanes more often. From level 3 a golden star hangs over some obstacles in one lane, caught by jumping over in that lane. A fence comes in at level 4, lines of stars that cross a lane halfway at 5, round hay bales that roll in and stop before the painted stretch at 6, and a flock of sheep at 8. Finishing a run moves on a level, as nobody loses one. The numbers are in `trailLevel` in `run.js`.
+**Levels.** Each level is a little harder than the last, always from the pace a grown-up chose: a little faster, obstacles a little closer, and the stretch where a jump counts down to 85% of what it was. Higher levels also have more obstacles that fill one or two lanes, with the free lane switching sides, and lines of stars change lanes more often. Every level from 2 also brings something new, which stays for the levels after it:
+
+| Level | What's new |
+|---|---|
+| 2 | **Coins.** Clearing an obstacle, by jumping it or by stepping round it, drops a coin, which flies to the runner by itself. |
+| 3 | **Golden stars** hang over some obstacles in one lane, caught by jumping over in that lane. |
+| 4 | **Fences**, and **trampolines**: in front of some obstacles one lane is a blue mat, and jumping from it bounces high, through an arch of stars. From another lane it's an ordinary jump. |
+| 5 | **The magnet**, a power-up that pulls stars in from every lane for 6 seconds of running, and **lines of stars that cross a lane** halfway along. |
+| 6 | **Round bales** that roll in and stop before the painted stretch, and **the bubble shield**: for 15 seconds of running, the next obstacle the runner would run into, it floats over instead, keeping the streak. A jump just as it starts to float still counts as the child's own, and the bubble is kept. |
+| 7 | **Ducks:** a duck and her ducklings waddle over into their lane and settle before the painted stretch, and waddle off out of the way if the runner comes on without jumping. It's **autumn**, with a few leaves falling. |
+| 8 | **Sheep**, a flock crossing the trail, and **a key** on the line of stars, which opens **a chest** of coins beside the trail a few obstacles later. |
+| 9 | **A running friend**, a power-up: Joze, or Truffle when Joze is running, runs alongside for 10 seconds and catches a star for every star caught. |
+| 10 | **An autumn sunset**, and **a gem** at the top of each trampoline's arch. |
+
+What a level brings comes at least once on every trail, however short. Power-ups only run down while the runner is going, so resting, or waiting for a move, never uses them up, and a missed star, coin, power-up, key or chest costs nothing. The first time each new thing comes into view in a run, a small label at the top names it for a moment, in the language the voice speaks, and it waits while the grown-ups' panel is open; nothing new is said aloud. With **Moving from side to side** turned off there's no magnet and no lines crossing lanes, as both are about the lanes, so level 5 brings nothing new, and with the runner set to stop and wait there's no bubble shield, as it never runs into anything. The title card only says what the settings really bring. Anything left behind on the trail, such as a missed trampoline's arch, a golden star or a power-up, and the falling leaves, fades before it gets near the camera. Choosing a runner and practising are always on a summer's day. With reduced motion, no leaves fall, the ducks don't waddle, and a bounce lifts the camera no more than a jump does. Finishing a run moves on a level, as nobody loses one. The numbers are in `trailLevel` in `run.js`.
 
 ## Sky Wings
 
@@ -260,11 +288,25 @@ The child's two arms are the wings of a toy plane, sitting or standing, and it's
 - **Flying up and down can be left to the plane,** under **Flying up and down**, for a child who can't raise both arms: it follows the height of the other planes, and only turning is left to do.
 - **On Gentle, the default,** the ring is big and the child can't be shot down: hearts stop at one, and they come back.
 - **Resting is always fine.** With arms down the plane glides and the film asks for them back. After 4 seconds it flies itself in a gentle circle and nobody shoots at all, however long the rest goes on.
-- **Nothing flashes,** and the picture's brightness is tested through firing, drops and flying right through a cloud, which fades as the plane reaches it. There's no muzzle flash and no explosion, only small sparks and soft grey smoke.
+- **Nothing flashes,** and the picture's brightness is tested through firing, drops and flying right through a cloud, which fades as the plane reaches it. A shot stopped by the shield changes the brightness by under 0.1 out of 255, and flying straight through snow, no part of the picture changes by more than 1.6. There's no muzzle flash and no explosion, only small sparks and soft grey smoke.
 
 This game doesn't read the hand at all, as the guns fire by themselves, so it doesn't practise opening the hand. It's all about the shoulders and both arms.
 
-**Levels.** Dropping every plane moves on a level, and being shot down, on Medium or Tough, stays. A level never changes the ring's size, the help with lining up, how hard the pirates shoot, Gentle's hearts or flying up and down by itself. Higher levels make the pirates a little faster and sharper in the turn, but never as fast as the child's plane. They also hunt the child a little more often and dodge for longer when hit. From level 3 they weave from side to side as they cross, and from level 5 they climb and dive more. From level 8 the last one is the pirate captain, a bigger plane with a flag that takes more hits, and from level 9 there can be four in the air at once. Being hunted gives as long to turn as ever. The numbers are in `flightLevel` in `flight.js`.
+**Levels.** Dropping every plane moves on a level, and being shot down, on Medium or Tough, stays. A level never changes the ring's size, the help with lining up, how hard the pirates shoot, Gentle's hearts or flying up and down by itself. Higher levels make the pirates a little faster and sharper in the turn, but never as fast as the child's plane, and they hunt the child a little more often and dodge for longer when hit. Being hunted gives as long to turn as ever. Every level from 2 also brings something new, which stays for the levels after it:
+
+| Level | What's new |
+|---|---|
+| 2 | **Gold coins:** every pirate dropped leaves a prize, which flies to the child's plane by itself. |
+| 3 | The pirates **weave** from side to side as they cross, and **gift boxes** float out in front: flying through one gives a power for a few seconds, the first being **the triple shot**, three at a time in a fan. |
+| 4 | **Scouts:** small quick planes that zigzag, take fewer hits and leave a **gem**. |
+| 5 | The pirates climb and dive more, **higher and lower**, and **the bubble shot** wraps a pirate up, so it floats gently down. |
+| 6 | **Balloon pirates**, which drift slowly, high up, and never hunt or shoot, and a **sunset**. |
+| 7 | **The snowflake shot**, which slows a pirate right down for a while, and **the shield bubble**, which the pirates' shots bounce off. |
+| 8 | The last pirate is **the captain**, a bigger plane with a flag that takes more hits and leaves a medal, and pirates come in **pairs**, a leader and a wingman flying side by side. |
+| 9 | **Four in the air at once**, with 6 or 9 planes to drop, **a friend who helps**, flying alongside and firing at the pirates ahead (Joze, or someone who isn't one of the pirates when the child flies as Joze), and **light snow**. |
+| 10 | **The treasure airship**, just before the captain: big and slow, it takes twice the hits, never shoots and leaves a treasure chest. And **paper planes**, which find their own way to a pirate. |
+
+The first gift box at a level holds its new power, and then they take turns. With fewer planes to drop, the kinds of pirate a level brings come first, so they still come: with three at level 8, it's a pair and the captain. The title card only says what the number of planes chosen really brings, so with three there's no "four at once". A wingman whose leader is already near comes from the distance, like any pirate, and flies over to join it. A power lasts a few seconds of flying: resting doesn't use it up, and nothing fires while resting. However a flight ends, won or lost, prizes still on their way are counted, and a power, the friend and any gift box end with it. Missing a gift box costs nothing. A balloon or the airship that's dropped comes down gently with its pilot aboard; only a plane's pilot comes down by parachute. Nothing new flashes: a shot stopped by the shield is a few small sparkles that go along with the plane, and snowflakes are soft dots a few pixels across, however near the plane flies. The numbers are in `flightLevel` in `flight.js`.
 
 ## Robot Rescue
 

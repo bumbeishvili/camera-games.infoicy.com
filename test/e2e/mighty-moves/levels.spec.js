@@ -110,7 +110,7 @@ test('level 10: the computer can hit twice in a row, once to block and once to l
   await page.evaluate(() => clearInterval(window.__moving));
 });
 
-test('level 10: the moves come in a mixed-up order, and leaning comes in even on Gentle', async ({ page }) => {
+test('level 10: the moves come in a mixed-up order, and leaning, ducking and catching come in even on Gentle', async ({ page }) => {
   await reachFight(page, at(10));
   const order = await page.evaluate(() => {
     const { coach } = window.__game;
@@ -120,7 +120,7 @@ test('level 10: the moves come in a mixed-up order, and leaning comes in even on
   const { ORDER } = await import('../../../games/mighty-moves/moves.js');
   expect([...order.asked.slice(0, 11)].sort()).toEqual([...ORDER].sort());
   expect(order.asked.slice(0, 11).join() === ORDER.join() && order.asked.slice(11).join() === ORDER.join()).toBe(false);
-  expect(order.defences).toEqual(['block', 'lean']);
+  expect(order.defences).toEqual(['block', 'lean', 'duck', 'catch']);
   expect(order.moves).toEqual(expect.arrayContaining(['palm', 'kick', 'uppercut', 'knee', 'chop', 'stomp', 'flying']));
 });
 

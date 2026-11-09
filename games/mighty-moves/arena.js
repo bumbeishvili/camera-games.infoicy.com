@@ -52,6 +52,10 @@ class Stander {
     this.guardMix = 0;
     this.warning = 0;
     this.warningMix = 0;
+    this.warningPose = 'lookOut'; // Or 'ballUp', holding the soft ball ready to throw.
+    this.ducking = false;
+    this.duckMix = 0;
+    this.z = 0;
     this.time = Math.random() * 10;
 
     this.base = makePose();
@@ -101,10 +105,13 @@ class Stander {
     }
 
     this.warningMix = damp(this.warningMix, this.warning > 0 ? 1 : 0, 9, dt);
-    if (this.warningMix > 0.01) mixPose(base, { ...base }, HELD.lookOut, this.warningMix);
+    if (this.warningMix > 0.01) mixPose(base, { ...base }, HELD[this.warningPose], this.warningMix);
 
     this.guardMix = damp(this.guardMix, this.guarding ? 1 : 0, 18, dt);
     if (this.guardMix > 0.01) mixPose(base, { ...base }, HELD.guard, this.guardMix);
+
+    this.duckMix = damp(this.duckMix, this.ducking ? 1 : 0, 14, dt);
+    if (this.duckMix > 0.01) mixPose(base, { ...base }, HELD.duck, this.duckMix);
 
     this.heldMix = damp(this.heldMix, this.held ? 1 : 0, 7, dt);
     if (this.held) this.fading = this.held;
@@ -156,7 +163,7 @@ class Stander {
 
     // A little settling back to where this fighter stands.
     this.body.root.position.x = this.x - this.side * forward;
-    this.body.root.position.z = 0;
+    this.body.root.position.z = this.z;
   }
 
   /** How far a strike has to travel from here to reach someone. */
@@ -181,15 +188,24 @@ const toonRamp = (() => {
 })();
 const paint = (colour) => new THREE.MeshToonMaterial({ color: colour, gradientMap: toonRamp() });
 
-function skyTexture() {
+// Where the fight is, by level: see theme in fightLevel. Each is about as bright as the day, and none
+// of it changes during a fight.
+const THEMES = {
+  day: { sky: ['#3f9fe8', '#8fd2fa', '#d9f2ff'], ground: '#79cf72', hills: ['#65c26a', '#58b868', '#74cc78', '#50ad65'], light: ['#ffffff', '#a7c7a0'], sun: '#fff3dc', weather: null },
+  sunset: { sky: ['#e9845f', '#ffb27a', '#ffe0b5'], ground: '#86c86c', hills: ['#78b266', '#6aa760', '#86bd70', '#5f9c5c'], light: ['#fff0dc', '#c4ad8c'], sun: '#ffd6a0', weather: null },
+  autumn: { sky: ['#5aa6de', '#a0d2f0', '#e2f1fa'], ground: '#b7c46a', hills: ['#e09d3c', '#d27e34', '#e8bd4c', '#c56e30'], light: ['#ffffff', '#c8b07c'], sun: '#fff0d6', weather: 'leaves' },
+  snow: { sky: ['#82b2de', '#b6d4ee', '#e3effa'], ground: '#e4ecf4', hills: ['#eef4fa', '#dce7f2', '#f4f8fc', '#d3e0ee'], light: ['#ffffff', '#b9c8d8'], sun: '#f2f6ff', weather: 'snow' },
+};
+
+function skyTexture(colours = THEMES.day.sky) {
   const canvas = document.createElement('canvas');
   canvas.width = 4;
   canvas.height = 256;
   const ctx = canvas.getContext('2d');
   const sky = ctx.createLinearGradient(0, 0, 0, 256);
-  sky.addColorStop(0, '#3f9fe8');
-  sky.addColorStop(0.5, '#8fd2fa');
-  sky.addColorStop(0.72, '#d9f2ff');
+  sky.addColorStop(0, colours[0]);
+  sky.addColorStop(0.5, colours[1]);
+  sky.addColorStop(0.72, colours[2]);
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, 4, 256);
   const texture = new THREE.CanvasTexture(canvas);
@@ -200,7 +216,9 @@ function skyTexture() {
 function buildPlace(scene) {
   scene.background = skyTexture();
 
+  const place = { ground: null, hills: [] };
   const ground = new THREE.Mesh(new THREE.CircleGeometry(70, 48).rotateX(-Math.PI / 2), paint('#79cf72'));
+  place.ground = ground;
   ground.position.y = -0.02;
   ground.receiveShadow = true;
   scene.add(ground);
@@ -215,6 +233,7 @@ function buildPlace(scene) {
     hill.scale.y = 0.55;
     hill.position.set(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
     scene.add(hill);
+    place.hills.push(hill);
   }
 
   // A round, soft mat for the fighters, with rings on it.
@@ -282,6 +301,36 @@ function buildPlace(scene) {
     cloud.position.set(-30 + i * 10, 11 + (i % 3) * 3, -32 - (i % 2) * 6);
     scene.add(cloud);
   }
+  return place;
+}
+
+/** A small autumn leaf, for falling slowly through the air. */
+const LEAF = (ctx) => {
+  ctx.beginPath();
+  ctx.moveTo(0, -44);
+  ctx.quadraticCurveTo(38, -10, 0, 44);
+  ctx.quadraticCurveTo(-38, -10, 0, -44);
+  ctx.fill();
+};
+const FLAKE = (ctx) => {
+  ctx.beginPath();
+  ctx.arc(0, 0, 40, 0, Math.PI * 2);
+  ctx.fill();
+};
+
+/** A beach ball, soft and stripy. */
+function ballTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ['#ff5a4f', '#ffffff', '#ffd23f', '#ffffff', '#3b82f6', '#ffffff'].forEach((colour, index) => {
+    ctx.fillStyle = colour;
+    ctx.fillRect(index * (128 / 6), 0, 128 / 6 + 1, 64);
+  });
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
 /* ------------------------------- the arena ------------------------------- */
@@ -296,8 +345,10 @@ export class Arena {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.scene = new THREE.Scene();
-    this.scene.add(new THREE.HemisphereLight('#ffffff', '#a7c7a0', 1.55));
+    this.hemisphere = new THREE.HemisphereLight('#ffffff', '#a7c7a0', 1.55);
+    this.scene.add(this.hemisphere);
     const sun = new THREE.DirectionalLight('#fff3dc', 2.3);
+    this.sun = sun;
     sun.position.set(-4, 11, 8);
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);
@@ -305,7 +356,9 @@ export class Arena {
     sun.shadow.radius = 4;
     this.scene.add(sun);
 
-    buildPlace(this.scene);
+    this.place = buildPlace(this.scene);
+    this.theme = 'day';
+    this.weather = [];
     this.sparks = new Sparks(this.scene);
     this.camera = new THREE.PerspectiveCamera(VIEWS.choose.fov, 1, 0.1, 200);
     this.cameraAt = new THREE.Vector3(...VIEWS.choose.at);
@@ -323,6 +376,12 @@ export class Arena {
     this.warningMark = this.buildWarningMark();
     this.halo = this.buildChargeHalo();
     this.dizzyStars = this.buildDizzyStars();
+    this.bubble = this.buildBubble();
+    this.glowRing = this.buildGlowRing();
+    this.crown = this.buildCrown();
+    this.ball = this.buildBall();
+    this.helper = null;
+    this.champion = false;
 
     this.onResize = () => this.resize();
     window.addEventListener('resize', this.onResize);
@@ -371,6 +430,295 @@ export class Arena {
     return group;
   }
 
+  /** A see-through bubble around the child's fighter, which catches the computer's next hit. */
+  buildBubble() {
+    // Drawn as a soap bubble: nearly clear in the middle, with a pale blue rim and a shine on it.
+    const texture = spriteTexture((ctx) => {
+      const fill = ctx.createRadialGradient(0, 0, 16, 0, 0, 48);
+      fill.addColorStop(0, 'rgba(190, 235, 255, 0.06)');
+      fill.addColorStop(0.78, 'rgba(170, 225, 255, 0.16)');
+      fill.addColorStop(0.93, 'rgba(140, 210, 255, 0.62)');
+      fill.addColorStop(1, 'rgba(140, 210, 255, 0)');
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      ctx.arc(0, 0, 48, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(0, 0, 36, Math.PI * 1.08, Math.PI * 1.42);
+      ctx.stroke();
+    }, 128);
+    const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0, depthWrite: false }));
+    bubble.visible = false;
+    bubble.userData = { on: false, mix: 0 };
+    this.scene.add(bubble);
+    return bubble;
+  }
+
+  /** A soft golden ring round the child's fighter's feet while a glow lasts. */
+  buildGlowRing() {
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.62, 0.86, 48).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }),
+    );
+    ring.visible = false;
+    ring.userData = { on: false, mix: 0, sparkleIn: 0 };
+    this.scene.add(ring);
+    return ring;
+  }
+
+  /** The champion's crown, at level 10. */
+  buildCrown() {
+    const crown = new THREE.Group();
+    const gold = paint('#ffc93c');
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.24, 0.13, 24, 1, true), gold);
+    band.material.side = THREE.DoubleSide;
+    crown.add(band);
+    for (let i = 0; i < 5; i += 1) {
+      const angle = (i / 5) * Math.PI * 2;
+      const point = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.17, 10), gold);
+      point.position.set(Math.cos(angle) * 0.24, 0.14, Math.sin(angle) * 0.24);
+      crown.add(point);
+      const gem = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), paint(['#ff5a4f', '#3b82f6', '#27c96b', '#a855f7', '#ff7eb6'][i]));
+      gem.position.set(Math.cos(angle) * 0.25, 0.01, Math.sin(angle) * 0.25);
+      crown.add(gem);
+    }
+    crown.scale.setScalar(1.35);
+    crown.visible = false;
+    this.scene.add(crown);
+    return crown;
+  }
+
+  buildBall() {
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.26, 24, 16), new THREE.MeshToonMaterial({ map: ballTexture(), gradientMap: toonRamp() }));
+    ball.castShadow = true;
+    ball.visible = false;
+    ball.userData = { state: 'away', flight: null };
+    this.scene.add(ball);
+    return ball;
+  }
+
+  /** The time of day and the weather, for a level: see THEMES. */
+  setTheme(name) {
+    const theme = THEMES[name] ?? THEMES.day;
+    if (this.theme === name && this.scene.background) return;
+    this.theme = name;
+    this.scene.background?.dispose?.();
+    this.scene.background = skyTexture(theme.sky);
+    this.place.ground.material.color.set(theme.ground);
+    this.place.hills.forEach((hill, index) => hill.material.color.set(theme.hills[index % theme.hills.length]));
+    this.hemisphere.color.set(theme.light[0]);
+    this.hemisphere.groundColor.set(theme.light[1]);
+    this.sun.color.set(theme.sun);
+
+    for (const bit of this.weather) this.scene.remove(bit.sprite);
+    this.weather = [];
+    if (!theme.weather) return;
+    const snow = theme.weather === 'snow';
+    const material = new THREE.SpriteMaterial({ map: spriteTexture(snow ? FLAKE : LEAF, 64), transparent: true, depthWrite: false });
+    const colours = snow ? ['#ffffff'] : ['#e8862e', '#d9622b', '#f2b33d', '#c9542a'];
+    const count = this.reducedMotion ? 18 : 40;
+    for (let i = 0; i < count; i += 1) {
+      const sprite = new THREE.Sprite(material.clone());
+      sprite.material.color.set(colours[i % colours.length]);
+      sprite.material.opacity = snow ? 0.9 : 1;
+      const size = snow ? between(0.05, 0.09) : between(0.11, 0.17);
+      sprite.scale.set(size, snow ? size : size * 1.3, 1);
+      sprite.position.set(between(-6, 6), between(0, 7), between(-5, 2.2));
+      this.scene.add(sprite);
+      this.weather.push({ sprite, fall: snow ? between(0.35, 0.6) : between(0.45, 0.75), sway: between(0.2, 0.5), phase: Math.random() * 10 });
+    }
+  }
+
+  /** Slow falling snow or leaves, gone round again from the top. Slower still with reduced motion. */
+  updateWeather(dt) {
+    const pace = this.reducedMotion ? 0.35 : 1;
+    for (const bit of this.weather) {
+      bit.phase += dt * pace;
+      bit.sprite.position.y -= bit.fall * dt * pace;
+      bit.sprite.position.x += Math.sin(bit.phase * 1.3) * bit.sway * dt * pace;
+      bit.sprite.material.rotation = Math.sin(bit.phase) * 0.6;
+      if (bit.sprite.position.y < 0.05) bit.sprite.position.set(between(-6, 6), 7, between(-5, 2.2));
+    }
+  }
+
+  /** At level 10 the opponent is the champion: a crown, and a little bigger. */
+  setChampion(on) {
+    this.champion = on;
+    this.crown.visible = on && Boolean(this.npc);
+    this.npc?.body.root.scale.setScalar(on ? 1.14 : 1);
+  }
+
+  /** The power-ups the child's fighter has now, shown on it. */
+  showPowerUps({ shield = false, glow = 0 } = {}) {
+    this.bubble.userData.on = shield;
+    this.glowRing.userData.on = glow > 0;
+  }
+
+  /** At the end of a fight, a bubble or glow that's left fades away, and a friend who came to help goes. */
+  clearPowerUps() {
+    this.showPowerUps();
+    if (this.helper) this.helper.leaving = true;
+  }
+
+  /** The bubble caught a hit, and goes in a soft puff. */
+  popBubble() {
+    if (!this.player) return;
+    this.bubble.userData.on = false;
+    this.bubble.userData.mix = 0;
+    this.bubble.visible = false;
+    const at = this.player.body.torso.getWorldPosition(new THREE.Vector3());
+    this.burst(at, { shape: 'puff', colours: ['#d8f3ff', '#ffffff'], count: 10, speed: 1.6, size: 0.3, life: 0.5, opacity: 0.6 });
+  }
+
+  /**
+   * A friend comes to help, standing a little behind, until the next big move. The same friend is kept
+   * for next time, rather than made again each time they come.
+   */
+  showHelper(spec) {
+    this.hideHelper();
+    if (!spec) return;
+    if (this.keptHelper?.spec.id !== spec.id) {
+      this.keptHelper?.body.dispose();
+      this.keptHelper = new Stander(spec, -1);
+    }
+    const helper = this.keptHelper;
+    // In the gap between the two fighters, a little further back, where the camera sees it, turned
+    // towards the opponent so its face shows.
+    helper.x = 0.6;
+    helper.z = -1.75;
+    helper.fightFacing = Math.atan2(START_GAP / 2 - helper.x, -helper.z);
+    helper.facing = helper.fightFacing;
+    helper.action = null;
+    helper.reaction = null;
+    helper.leaveIn = undefined;
+    helper.hold('wave');
+    helper.body.root.scale.setScalar(0.01);
+    helper.grow = 0;
+    helper.leaving = false;
+    this.helper = helper;
+    this.scene.add(helper.body.root);
+    this.dust(new THREE.Vector3(helper.x, 0, helper.z), 6);
+  }
+
+  /** The friend joins in with the child's big move, and then goes. */
+  helperStrike(move) {
+    const { helper, npc } = this;
+    if (!helper || !npc) return;
+    helper.hold(null);
+    helper.play(CLIPS[move] ? move : 'palm', { gap: helper.gapTo(npc) });
+    helper.leaveIn = 1.6;
+  }
+
+  /** Where the friend's feet are, as a share of the screen, for words over the mat below it. */
+  helperFeet() {
+    if (!this.helper) return { x: 0.45, y: 0.7 };
+    return this.toScreen(this.helper.body.root.position.clone());
+  }
+
+  /** The friend goes from the stage, and is kept for coming again. */
+  hideHelper() {
+    if (!this.helper) return;
+    this.scene.remove(this.helper.body.root);
+    this.helper = null;
+  }
+
+  updateHelper(dt) {
+    const { helper } = this;
+    if (!helper) return;
+    helper.update(dt, this.reducedMotion);
+    if (helper.leaveIn !== undefined) {
+      helper.leaveIn -= dt;
+      if (helper.leaveIn <= 0.6 && helper.held !== 'wave') helper.hold('wave');
+      if (helper.leaveIn <= 0) helper.leaving = true;
+    }
+    helper.grow = clamp(helper.grow + (helper.leaving ? -dt : dt) * 3, 0, 1);
+    helper.body.root.scale.setScalar(Math.max(0.01, helper.grow));
+    if (helper.leaving && helper.grow <= 0) {
+      this.dust(new THREE.Vector3(helper.x, 0, helper.z), 5);
+      this.hideHelper();
+    }
+  }
+
+  /* ---------- the soft ball ---------- */
+
+  /** The opponent holds the ball up, ready to throw. */
+  ballReady() {
+    if (!this.npc) return;
+    this.npc.warningPose = 'ballUp';
+    this.ball.userData.state = 'held';
+    this.ball.visible = true;
+  }
+
+  /** The ball flies from one fighter to the other, over this many seconds. */
+  throwBall(from, to, seconds, then = 'away') {
+    if (!this[from] || !this[to]) return;
+    const start = this.ballSpot(from);
+    this.ball.visible = true;
+    this.ball.userData.state = 'flying';
+    this.ball.userData.flight = { from, to, start, t: 0, seconds, then };
+  }
+
+  /**
+   * Where the ball is held: over the opponent's head, between its hands, and in front of the child's
+   * fighter, where the camera behind it can see it.
+   */
+  ballSpot(who) {
+    const stander = this[who];
+    if (who === 'player') {
+      const at = stander.body.torso.getWorldPosition(new THREE.Vector3());
+      at.x += 0.62;
+      at.y += 0.28;
+      return at;
+    }
+    const at = stander.body.head.getWorldPosition(new THREE.Vector3());
+    at.y += (this.champion ? 0.85 : 0.42) * stander.body.root.scale.y;
+    at.x -= stander.side * 0.12;
+    return at;
+  }
+
+  updateBall(dt) {
+    const { ball } = this;
+    const { state, flight } = ball.userData;
+    if (!ball.visible) return;
+    if (state === 'held' && this.npc) ball.position.copy(this.ballSpot('npc'));
+    if (state === 'caught' && this.player) ball.position.copy(this.ballSpot('player'));
+    if (state === 'dropping') {
+      flight.t += dt;
+      ball.position.y = Math.max(0.2, ball.position.y + flight.vy * dt);
+      flight.vy -= 9 * dt;
+      ball.position.x += flight.vx * dt;
+      if (flight.t > 0.9) this.hideBall();
+    }
+    if (state === 'flying') {
+      flight.t += dt;
+      const share = clamp(flight.t / flight.seconds, 0, 1);
+      const end = flight.then === 'bounce' ? this[flight.to].body.torso.getWorldPosition(new THREE.Vector3()) : this.ballSpot(flight.to);
+      ball.position.lerpVectors(flight.start, end, share);
+      ball.position.y += Math.sin(share * Math.PI) * 0.8;
+      ball.rotation.z += dt * 6;
+      if (share >= 1) {
+        if (flight.then === 'caught') {
+          ball.userData.state = 'caught';
+        } else if (flight.then === 'bounce') {
+          ball.userData.state = 'dropping';
+          ball.userData.flight = { t: 0, vy: 2.2, vx: -this[flight.to].side * 1.2 };
+        } else {
+          this.hideBall();
+        }
+      }
+    }
+  }
+
+  hideBall() {
+    this.ball.visible = false;
+    this.ball.userData.state = 'away';
+    this.ball.userData.flight = null;
+    if (this.npc) this.npc.warningPose = 'lookOut';
+  }
+
   resize() {
     const width = window.innerWidth;
     const height = window.innerHeight;
@@ -398,6 +746,7 @@ export class Arena {
     }
     this[which] = spec ? new Stander(spec, which === 'player' ? -1 : 1) : null;
     if (spec) this.scene.add(this[which].body.root);
+    if (which === 'npc') this.setChampion(false);
   }
 
   /** Back to the start of a round. */
@@ -411,6 +760,9 @@ export class Arena {
     }
     this.halo.visible = false;
     this.dizzyStars.visible = false;
+    this.hideBall();
+    this.hideHelper();
+    if (this.player) this.player.ducking = false;
   }
 
   /** Where a body part is, as a share of the screen, for putting words next to it. */
@@ -438,6 +790,19 @@ export class Arena {
     const at = self.body.root.position.clone();
     if (BIG_MOVES.has(move)) this.dust(at, 4);
     if (move === 'skyCharge') this.skyColumn(self);
+    // The soft ball: thrown at the child when it wasn't caught, and back at the opponent when it was.
+    // Once it's thrown, the opponent's hands come down from holding it up.
+    if (move === 'ball') {
+      this.throwBall('npc', 'player', 0.45, 'bounce');
+      self.warningPose = 'lookOut';
+    }
+    if (move === 'ballReturn') this.throwBall('player', 'npc', 0.45, 'away');
+  }
+
+  /** The child caught the ball: it comes over into their fighter's hands. */
+  ballCaught() {
+    this.throwBall('npc', 'player', 0.3, 'caught');
+    if (this.npc) this.npc.warningPose = 'lookOut';
   }
 
   /** The move connected: what the target does, and everything that flies about. */
@@ -655,6 +1020,10 @@ export class Arena {
     this.watchSpeed(dt);
     this.player?.update(dt, this.reducedMotion);
     this.npc?.update(dt, this.reducedMotion);
+    this.updateHelper(dt);
+    this.updateBall(dt);
+    this.updateWeather(dt);
+    this.updatePowerUps(dt);
     this.sparks.update(dt);
 
     this.rings = this.rings.filter((ring) => {
@@ -681,6 +1050,11 @@ export class Arena {
     this.warningMark.visible = Boolean(showWarning);
     if (showWarning) {
       const top = this.fighterTop('npc');
+      // Beside a ball held over the head, rather than hidden behind it.
+      if (this.ball.userData.state === 'held') {
+        top.x += 0.8;
+        top.y -= 0.3;
+      }
       this.warningMark.position.copy(top);
       this.warningMark.scale.setScalar(0.62 + (this.reducedMotion ? 0 : Math.sin(this.time * 12) * 0.05));
     }
@@ -696,6 +1070,38 @@ export class Arena {
     }
 
     this.updateCamera(dt);
+  }
+
+  /** The bubble and the glow fade in and out gently, rather than appearing all at once. */
+  updatePowerUps(dt) {
+    const { bubble, glowRing, player } = this;
+    for (const [mesh, most] of [[bubble, 1], [glowRing, 0.75]]) {
+      const data = mesh.userData;
+      data.mix = damp(data.mix, data.on && player ? 1 : 0, 5, dt);
+      mesh.visible = data.mix > 0.02;
+      mesh.material.opacity = most * data.mix;
+    }
+    if (player && bubble.visible) {
+      const at = player.body.torso.getWorldPosition(new THREE.Vector3());
+      bubble.position.copy(at);
+      bubble.position.y += 0.1;
+      bubble.scale.setScalar(2.5 + (this.reducedMotion ? 0 : Math.sin(this.time * 2.2) * 0.05));
+    }
+    if (player && glowRing.visible) {
+      const at = player.body.root.position;
+      glowRing.position.set(at.x, 0.13, at.z);
+      glowRing.rotation.y += dt * (this.reducedMotion ? 0.3 : 1.2);
+      glowRing.userData.sparkleIn -= dt;
+      if (glowRing.userData.sparkleIn <= 0 && glowRing.userData.on) {
+        glowRing.userData.sparkleIn = this.reducedMotion ? 0.7 : 0.25;
+        const angle = Math.random() * Math.PI * 2;
+        this.sparks.emit({ shape: 'spark', colour: '#ffd23f', at: new THREE.Vector3(at.x + Math.cos(angle) * 0.7, 0.2, at.z + Math.sin(angle) * 0.7), velocity: [0, between(0.8, 1.4), 0], life: 0.8, size: 0.14, spin: 2 });
+      }
+    }
+    if (this.crown.visible && this.npc) {
+      const at = this.npc.body.head.getWorldPosition(new THREE.Vector3());
+      this.crown.position.set(at.x, at.y + 0.56 * this.npc.body.root.scale.y, at.z);
+    }
   }
 
   updateCamera(dt) {

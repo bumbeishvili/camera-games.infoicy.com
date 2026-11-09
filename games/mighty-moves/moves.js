@@ -25,6 +25,12 @@ export const MOVES = {
   punch: { damage: 7, hitAt: 0.1, kind: 'arm' },
   uppercut: { damage: 11, hitAt: 0.14, kind: 'arm' },
   chop: { damage: 10, hitAt: 0.12, kind: 'arm' },
+  // From the higher levels. These have no spoken name, so they're shown in words only: label and
+  // labelKa. The computer's high swing is ducked under, and its soft ball is caught with a clap and
+  // thrown back. Neither hits harder than its lightest move.
+  highSwing: { damage: 9, hitAt: 0.3, kind: 'arm' },
+  ball: { damage: 6, hitAt: 0.45, kind: 'body' },
+  ballReturn: { label: 'Ball Return', labelKa: 'ბურთის დაბრუნება', damage: 10, hitAt: 0.45, kind: 'body' },
 };
 
 // What the body reader sees, and the small hit it makes when it isn't what the coach asked for.
@@ -142,6 +148,9 @@ export const ORDER = Object.keys(EXERCISES);
 export const DEFENCES = {
   block: { demo: 'block', ask: 'Hands up! Block!', seen: ['You blocked!', 'დაიცავი თავი!'] },
   lean: { demo: 'lean', ask: 'Lean to the side!', seen: ['You leaned!', 'გადაიხარე!'] },
+  // These two say what the coach already says for a squat and a clap, so they need no new voice.
+  duck: { demo: 'squat', ask: 'Squat down!', seen: ['You ducked!', 'შენ ჩაცუცქდი!'], move: 'highSwing' },
+  catch: { demo: 'clap', ask: 'Clap your hands!', seen: ['You caught it!', 'დაიჭირე!'], move: 'ball' },
 };
 
 // Doing these one after the other, in time, adds to the last. The coach asks for them in this
@@ -184,9 +193,70 @@ export const RULES = {
   nudgeEvery: 6, // How often it says so, when the child is doing something else.
   giveUpAfter: 14, // Seconds of moving without doing it, before trying something else.
   swingAfterDefence: 0.35,
+  holdCaughtBall: 0.8,
   stillForWarning: 0.8, // Still for this share of a warning counts as resting through it.
   afterSwing: 0.6,
+  // From the higher levels: a power-up comes along after this many big moves have landed.
+  powerUpEvery: 4,
+  // A glow makes this many big moves stronger, and fills the power bar faster.
+  glowMoves: 2,
+  glow: 1.4,
+  // A helper friend joining in for one big move.
+  team: 1.6,
 };
+
+// Prizes are collected by themselves, and missing one costs nothing. A coin for each big move that
+// lands, and three for the fighter's own or a team move. A gem for each time the child gets out of
+// the way. A medal for each round won, and a trophy for beating the champion.
+export const PRIZES = {
+  coin: { mark: '🪙', name: 'Coins', nameKa: 'მონეტები' },
+  gem: { mark: '💎', name: 'Gems', nameKa: 'ძვირფასი ქვები' },
+  medal: { mark: '🏅', name: 'Medals', nameKa: 'მედლები' },
+  trophy: { mark: '🏆', name: 'Trophy', nameKa: 'თასი' },
+};
+export const PRIZE_ORDER = Object.keys(PRIZES);
+
+// Everything a level can bring that's new, with a small picture and a name in English and Georgian.
+// They show on the title card and countdown (see newAt in main.js), and in the fight the first time
+// each one turns up.
+export const NEW_THINGS = {
+  ...PRIZES,
+  lean: { mark: '↔️', name: 'Lean away', nameKa: 'გადახრა' },
+  sunset: { mark: '🌇', name: 'Sunset', nameKa: 'მზის ჩასვლა' },
+  shield: { mark: '🫧', name: 'Shield bubble', nameKa: 'დამცავი ბუშტი' },
+  doubles: { mark: '👊', name: 'Two hits', nameKa: 'ორი დარტყმა' },
+  duck: { mark: '⬇️', name: 'Duck down', nameKa: 'ჩაცუცქება' },
+  mixed: { mark: '🔀', name: 'Mixed order', nameKa: 'არეული რიგი' },
+  autumn: { mark: '🍂', name: 'Autumn', nameKa: 'შემოდგომა' },
+  twice: { mark: '✌️', name: 'Do it twice', nameKa: 'ორჯერ' },
+  glow: { mark: '⚡', name: 'Super glow', nameKa: 'სუპერ ნათება' },
+  catch: { mark: '🏐', name: 'Catch the ball', nameKa: 'დაიჭირე ბურთი' },
+  helper: { mark: '🤝', name: 'Helper friend', nameKa: 'დამხმარე მეგობარი' },
+  snow: { mark: '❄️', name: 'Snow', nameKa: 'თოვლი' },
+  champion: { mark: '👑', name: 'Champion', nameKa: 'ჩემპიონი' },
+};
+
+// Which level each of those arrives at. Every level from 2 to 10 brings at least one.
+export const ARRIVES = {
+  2: ['coin'],
+  3: ['lean', 'gem', 'sunset'],
+  4: ['shield'],
+  5: ['doubles', 'medal'],
+  6: ['duck', 'mixed', 'autumn'],
+  7: ['twice', 'glow'],
+  8: ['catch'],
+  9: ['helper', 'snow'],
+  10: ['champion', 'trophy'],
+};
+
+/**
+ * What a level brings that's new, as { id, mark, name, nameKa }. Nothing at level 1. strength is the
+ * computer's, from NPC_LEVELS: a way out of the way that it asks for from level 1, as Medium and Tough do
+ * with leaning, isn't new at any level.
+ */
+export const newThingsAt = (level, strength = NPC_LEVELS.gentle) => (ARRIVES[level] ?? [])
+  .filter((id) => !strength.defences.includes(id))
+  .map((id) => ({ id, ...NEW_THINGS[id] }));
 
 // How often the computer has a turn while the child is moving, how much warning it gives, and how
 // hard it hits. It's much stronger than a small hit, so doing as the coach says is the way to win.
@@ -213,8 +283,10 @@ export function fightLevel(level = 1) {
     warning: ramp(level, 1, 0.8),
     // A shorter pause after a big move before the next thing is asked for.
     afterMove: ramp(level, RULES.afterMove, 0.45),
-    // From level 3, leaning out of the way joins blocking, on every strength.
-    defences: stepsAt(level, { 1: [], 3: ['lean'] }),
+    // From level 3, leaning out of the way joins blocking, on every strength. From level 6 the
+    // computer also swings high, to duck under with a squat, and from level 8 it throws a soft ball,
+    // to catch with a clap and throw back.
+    defences: stepsAt(level, { 1: [], 3: ['lean'], 6: ['lean', 'duck'], 8: ['lean', 'duck', 'catch'] }),
     // The computer's moves to get out of the way of, more of them from levels 4 and 7.
     npcMoves: stepsAt(level, { 1: [], 4: ['uppercut', 'knee'], 7: ['uppercut', 'knee', 'chop', 'stomp', 'flying'] }),
     // From level 5 some of its turns are two hits, one after the other: one to block and one to lean
@@ -225,5 +297,35 @@ export function fightLevel(level = 1) {
     mixed: stepsAt(level, { 1: false, 6: true }),
     // From level 7 some moves have to be done twice before the fighter makes its big move.
     twice: stepsAt(level, { 1: 0, 7: 0.2, 9: 0.3 }),
+    // Prizes, collected by themselves: see PRIZES.
+    prizes: stepsAt(level, { 1: [], 2: ['coin'], 3: ['coin', 'gem'], 5: ['coin', 'gem', 'medal'], 10: ['coin', 'gem', 'medal', 'trophy'] }),
+    // Power-ups, one after every few big moves, taking turns: a bubble that catches the computer's
+    // next hit, a glow that makes the next two big moves stronger, and a friend who joins in for one.
+    powerUps: stepsAt(level, { 1: [], 4: ['shield'], 7: ['shield', 'glow'], 9: ['shield', 'glow', 'helper'] }),
+    // Where the fight is: the time of day and the weather. Nothing in it changes how bright it is.
+    theme: stepsAt(level, { 1: 'day', 3: 'sunset', 6: 'autumn', 9: 'snow' }),
+    // At level 10 the opponent is the champion: crowned, bigger, and its turns can be any of the ways
+    // out of the way, rather than taking turns, so they can't be guessed.
+    champion: level >= 10,
   };
+}
+
+/** Whether something in NEW_THINGS is switched on at a level, straight from fightLevel. */
+export function levelHas(level, id) {
+  const rules = fightLevel(level);
+  const checks = {
+    lean: () => rules.defences.includes('lean'),
+    duck: () => rules.defences.includes('duck'),
+    catch: () => rules.defences.includes('catch'),
+    sunset: () => rules.theme === 'sunset',
+    autumn: () => rules.theme === 'autumn',
+    snow: () => rules.theme === 'snow',
+    doubles: () => rules.doubles > 0,
+    mixed: () => rules.mixed,
+    twice: () => rules.twice > 0,
+    champion: () => rules.champion,
+  };
+  if (id in PRIZES) return rules.prizes.includes(id);
+  if (rules.powerUps.includes(id)) return true;
+  return checks[id]?.() ?? false;
 }

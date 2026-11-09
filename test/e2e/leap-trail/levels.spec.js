@@ -85,7 +85,7 @@ test('level 10 brings fences, rolling bales, sheep and golden stars, and each ca
     return { level: run.levelNumber, kinds: run.levelRules.kinds, gold: run.course.filter(({ gold }) => gold).length, crossing, early: run.settings.early };
   });
   expect(laid.level).toBe(10);
-  expect(laid.kinds).toEqual(['log', 'hay', 'rocks', 'stream', 'fence', 'bale', 'sheep']);
+  expect(laid.kinds).toEqual(['log', 'hay', 'rocks', 'stream', 'fence', 'bale', 'ducks', 'sheep']);
   expect(laid.gold).toBeGreaterThan(0);
   expect(laid.crossing).toBeGreaterThan(0);
   expect(laid.early).toBeCloseTo(1.7, 5);

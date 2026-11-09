@@ -7,7 +7,7 @@
 // No screen or camera in this file: reader is a BodyReader, or anything with the same few fields,
 // so all of it runs in the unit tests.
 import { Easing } from '../../core/body/easing.js';
-import { CAN_BE_TWICE, COMBOS, DEFENCES, EXERCISES, MOVES, ORDER, RULES, SMALL_HITS } from './moves.js';
+import { CAN_BE_TWICE, COMBOS, DEFENCES, EXERCISES, MOVES, ORDER, RULES, SMALL_HITS, fightLevel } from './moves.js';
 
 // Moves big enough to be sure the child is doing something else, rather than just getting ready.
 const CLEARLY_SOMETHING_ELSE = new Set(['stomp', 'flying', 'starBurst', 'sweep']);
@@ -49,6 +49,17 @@ export class Coach {
     this.computerMoves = 0;
     this.defences = 0;
     this.gaveUpOn = new Set();
+    // Ducking and catching come in on the higher levels. One that gets missed while the child is
+    // moving is put aside for the rest of the fight, so a child who can't do it isn't hit for it
+    // again and again.
+    this.putAside = new Set();
+    // The way out of the way this level brings that's new, if it brings one: it's the computer's first
+    // turn, so it comes early in a fight at that level, however quickly the child wins.
+    const before = fight.levelNumber > 1 ? fightLevel(fight.levelNumber - 1).defences : [];
+    this.newWay = this.rules.defences.filter((way) => !before.includes(way) && !defences.includes(way)).at(-1) ?? null;
+    // What counts for a squat comes down for a child who's trying, when ducking as when asked. It's one
+    // for every duck in a fight, as a single warning is too short for it to come down in.
+    this.duckEasing = new Easing(reader, 'squat', { side });
     this.lastNudge = -Infinity;
     this.lastSmallHit = -Infinity;
     this.wasResting = false;
@@ -63,6 +74,7 @@ export class Coach {
     this.computerIn = this.level.every;
     this.fight.setGuard('player', false);
     this.fight.setDodge('player', 0);
+    this.fight.setDuck('player', false);
     this.wait(RULES.firstCallAfter);
   }
 
@@ -136,6 +148,12 @@ export class Coach {
 
   /** The child did something. It only matters if it's what was asked for. */
   onMoves(moves) {
+    // Ducking and catching are read from moves as they're seen, as a squat and a clap.
+    if (this.phase === 'defending' && !this.defence.done) {
+      const wanted = { duck: 'stomp', catch: 'clap' }[this.defence.kind];
+      if (wanted && moves.some(({ move }) => move === wanted)) this.defence.seen = true;
+      return;
+    }
     if (this.phase !== 'asking' || !moves.length) return;
     const { exercise, side } = this.call;
     const done = moves.find(({ move, side: used }) => exercise.reads.includes(move) && (!side || used === side));
@@ -225,13 +243,19 @@ export class Coach {
   startDefence(kind = null) {
     const { level, fight } = this;
     const second = Boolean(kind);
-    kind ??= level.defences[this.defences % level.defences.length];
-    const move = level.moves[this.computerMoves % level.moves.length];
+    const ways = level.defences.filter((way) => !this.putAside.has(way));
+    // The champion, at level 10, picks any way out, so its turns can't be guessed. Otherwise they take
+    // turns, starting with the one this level brings.
+    const first = Math.max(0, ways.indexOf(this.newWay));
+    kind ??= this.rules.champion ? ways[Math.floor(this.random() * ways.length)] : ways[(first + this.defences) % ways.length];
+    // Ducking is under a high swing and catching is a ball; the others are any of its moves.
+    const move = DEFENCES[kind].move ?? level.moves[this.computerMoves % level.moves.length];
     if (!second) this.defences += 1;
     this.computerMoves += 1;
-    const other = level.defences.find((one) => one !== kind);
+    const other = ['block', 'lean'].find((one) => one !== kind && level.defences.includes(one));
     const then = !second && other && this.rules.doubles > 0 && this.random() < this.rules.doubles ? other : null;
     this.defence = { kind, move, left: level.warning, done: false, waited: false, then, second };
+    this.defence.easing = kind === 'duck' ? this.duckEasing : null;
     this.phase = 'defending';
     fight.warn('npc', move);
     fight.emit('defend', { kind, second });
@@ -250,13 +274,22 @@ export class Coach {
         }
         return;
       }
-      const seen = defence.kind === 'block' ? reader.guard : Math.abs(reader.dodge) > 0.5;
+      defence.easing?.update(dt);
+      const seen = {
+        block: () => reader.guard,
+        lean: () => Math.abs(reader.dodge) > 0.5,
+        duck: () => defence.seen || reader.squatting,
+        catch: () => defence.seen,
+      }[defence.kind]();
       if (seen) {
         defence.done = true;
-        defence.left = Math.min(defence.left, RULES.swingAfterDefence);
+        // A ball that's caught stays in the hands a moment, so it's seen, before it's thrown back. That's
+        // however late the clap was, so the ball always gets to the hands before it goes back.
+        defence.left = defence.kind === 'catch' ? RULES.holdCaughtBall : Math.min(defence.left, RULES.swingAfterDefence);
         // It stays that way until the move has landed, so a child doesn't have to hold it.
         fight.setGuard('player', defence.kind === 'block');
         fight.setDodge('player', defence.kind === 'lean' ? 1 : 0);
+        fight.setDuck('player', defence.kind === 'duck');
         fight.noteActivity(0);
         fight.emit('defended', { kind: defence.kind });
       }
@@ -264,7 +297,13 @@ export class Coach {
     defence.left -= dt;
     if (defence.left > 0) return;
     fight.clearWarning('npc');
-    fight.perform('npc', defence.move);
+    if (defence.kind === 'catch' && defence.done) {
+      // Caught: the computer doesn't throw, and the child's fighter throws the ball back.
+      fight.catchBall();
+    } else {
+      fight.perform('npc', defence.move);
+      if (!defence.done && (defence.kind === 'duck' || defence.kind === 'catch')) this.putAside.add(defence.kind);
+    }
     this.computerIn = level.every;
     this.followUp = defence.then;
     this.wait(MOVES[defence.move].hitAt + RULES.afterSwing);
@@ -275,6 +314,7 @@ export class Coach {
   advance() {
     this.fight.setGuard('player', false);
     this.fight.setDodge('player', 0);
+    this.fight.setDuck('player', false);
     if (this.followUp) {
       const kind = this.followUp;
       this.followUp = null;

@@ -2,6 +2,8 @@
 import { Sound } from '../../core/sound.js';
 
 const here = (file) => new URL(`./audio/${file}`, import.meta.url);
+// Real recordings the other games already have, used here as they are: see CREDITS.md.
+const borrowed = (file) => new URL(`../${file}`, import.meta.url);
 
 const TRAIL_SOUNDS = {
   step1: here('step-1.ogg'),
@@ -12,6 +14,11 @@ const TRAIL_SOUNDS = {
   slide: here('slide.ogg'),
   bump: here('bump.ogg'),
   music: here('music.ogg'),
+  // What later levels bring.
+  boing: borrowed('robot-rescue/audio/boing.ogg'), // A trampoline.
+  sparkle: borrowed('mighty-moves/audio/sparkle.ogg'), // A power-up or a key.
+  unlock: borrowed('robot-rescue/audio/unlock.ogg'), // A chest opening.
+  bubble: borrowed('robot-rescue/audio/goo-pop.ogg'), // The bubble shield popping.
 };
 
 const MUSIC_LEVEL = 0.3;
@@ -76,6 +83,32 @@ export class TrailSound extends Sound {
   gold() {
     this.play('star', { gain: 0.75, rate: 1.5 });
     this.play('win', { gain: 0.14, rate: 1.7 });
+  }
+
+  /** A coin from clearing something: a star's chime, higher and quieter. */
+  coin() {
+    this.play('star', { gain: 0.3, rate: 1.9 });
+  }
+
+  /** Bouncing off a trampoline. */
+  bounce() {
+    this.play('boing', { gain: 0.5, rate: near(0.06) });
+  }
+
+  /** A power-up or a key picked up. */
+  pickedUp() {
+    this.play('sparkle', { gain: 0.45, rate: 1.1 });
+  }
+
+  /** A chest opening, and coins. */
+  chest() {
+    this.play('unlock', { gain: 0.55 });
+    this.play('win', { gain: 0.16, rate: 1.6 });
+  }
+
+  /** The bubble shield popping softly as it floats the runner over. */
+  bubblePop() {
+    this.play('bubble', { gain: 0.5, rate: 1.1 });
   }
 
   bump() {

@@ -178,3 +178,105 @@ body[data-screen='practice'] .move-meter {
   .trail-top { flex-wrap: wrap; right: 10px; }
   .trail-track { flex-basis: 100%; }
 }
+
+/* ---------- what later levels bring ---------- */
+
+/* Coins only from level 2, so level 1 looks as it always has. */
+body[data-coins='no'] .coins-chip,
+body[data-coins='no'] .finish-coins { display: none; }
+
+/* A gold coin, like the ones on the trail. */
+.coin-mark {
+  display: inline-block;
+  width: 0.72em;
+  height: 0.72em;
+  margin-right: 0.18em;
+  vertical-align: -0.04em;
+  background: radial-gradient(circle at 40% 38%, #ffe27a 0 30%, #ffcc2e 31% 62%, #c98a12 63%);
+  border-radius: 50%;
+}
+
+.finish-coins { margin-left: 0.5em; }
+
+.finish-prizes {
+  font-size: clamp(16px, 1.8vw, 21px);
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.finish-prizes:empty { display: none; }
+
+/* The power-ups going, under the chips, each with a bar running down. */
+.power-row {
+  position: fixed;
+  z-index: 3;
+  top: calc(8px + clamp(58px, 6.4vw, 78px));
+  left: 10px;
+  display: none;
+  gap: 8px;
+  pointer-events: none;
+}
+
+body[data-screen='run'] .power-row { display: flex; }
+
+.power-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 8px;
+  background: var(--surface);
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(18, 48, 77, 0.18);
+}
+
+.power-mark { font-size: clamp(22px, 2.6vw, 32px); line-height: 1; }
+
+.power-bar {
+  width: clamp(48px, 6vw, 80px);
+  height: 10px;
+  background: var(--accent-track, #dfe8f0);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.power-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--sun);
+  border-radius: 999px;
+}
+
+/* Something new for this level, pointed out the first time it comes into view. */
+.trail-new {
+  position: fixed;
+  z-index: 3;
+  top: calc(16px + clamp(58px, 6.4vw, 78px));
+  left: 50%;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 18px 7px 12px;
+  font-size: clamp(18px, 2.2vw, 26px);
+  font-weight: 700;
+  background: var(--surface);
+  border: 3px solid var(--sun);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+}
+
+body[data-screen='run'] .trail-new { display: inline-flex; }
+
+.trail-new.is-showing { opacity: 1; transform: translateX(-50%) translateY(4px); }
+
+.trail-new-lead { color: var(--ink-soft); }
+
+.trail-new-mark { font-size: 1.3em; line-height: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .trail-new, .trail-new.is-showing { transform: translateX(-50%); }
+}

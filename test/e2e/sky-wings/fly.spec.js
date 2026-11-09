@@ -216,6 +216,14 @@ test('being hunted: a plane behind turns its mark red, and being hit costs a hea
   await shot(page, 's14-hunted');
   await expect.poll(async () => page.evaluate(() => window.__game.flight.shots.some(({ mine }) => !mine)), { timeout: 8000 }).toBe(true);
 
+  // From here the test does the hitting. On a slow computer one of the pirate's real shots can land
+  // first, so its shots are cleared, it stops firing, and the hearts start full.
+  await page.evaluate(() => {
+    const { flight } = window.__game;
+    flight.shots = flight.shots.filter(({ mine }) => mine);
+    for (const enemy of flight.flying) enemy.fireIn = 999;
+    flight.hearts = 5;
+  });
   await page.evaluate(() => window.__game.flight.hurt());
   await expect(page.locator('#hearts')).toHaveText('♥♥♥♥♡');
   await page.evaluate(() => {

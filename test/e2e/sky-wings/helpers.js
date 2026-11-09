@@ -59,14 +59,16 @@ export const flightState = (page) => page.evaluate(() => {
 
 /**
  * Keeps one plane in front of the child's, this far ahead and this far off the middle of the ring, and
- * the others a long way behind, so a test can be about one thing. Runs until it's let go.
+ * the others a long way behind, so a test can be about one thing. Runs until it's let go. kind holds the
+ * first of that kind of pirate instead, and others: false leaves the rest where they are.
  */
-export const holdPlaneInFront = (page, { ahead = 120, across = 0, up = 0 } = {}) => page.evaluate(([far, side, high]) => {
+export const holdPlaneInFront = (page, { ahead = 120, across = 0, up = 0, kind = null, others: moveOthers = true } = {}) => page.evaluate(([far, side, high, wanted, away]) => {
   clearInterval(window.__holding);
   window.__holding = setInterval(() => {
     const { flight } = window.__game;
     if (!flight) return;
-    const [first, ...others] = flight.flying;
+    const first = flight.flying.find((enemy) => !wanted || enemy.kind === wanted);
+    const others = away ? flight.flying.filter((enemy) => enemy !== first) : [];
     if (!first) return;
     const { view, forward } = flight;
     first.x = view.eye.x + forward.x * far - forward.z * side;
@@ -85,7 +87,7 @@ export const holdPlaneInFront = (page, { ahead = 120, across = 0, up = 0 } = {})
     }
     flight.huntIn = 100;
   }, 16);
-}, [ahead, across, up]);
+}, [ahead, across, up, kind, moveOthers]);
 
 export const letPlaneGo = (page) => page.evaluate(() => clearInterval(window.__holding));
 
@@ -114,3 +116,30 @@ export const dropPlanes = (page, count = 1) => page.evaluate((how) => {
     while (enemy.state === 'flying') flight.hit(enemy);
   });
 }, count);
+
+/**
+ * Gives the page window.__blocks(canvas): the picture's brightness in 32 by 18 blocks, each averaged
+ * over every one of its pixels, so a small bright dot counts for only as much of a block as it covers.
+ */
+export const measureBlocks = (page) => page.evaluate(() => {
+  const full = document.createElement('canvas');
+  const context = full.getContext('2d', { willReadFrequently: true });
+  window.__blocks = (canvas) => {
+    full.width = canvas.width;
+    full.height = canvas.height;
+    context.drawImage(canvas, 0, 0);
+    const { data, width, height } = context.getImageData(0, 0, full.width, full.height);
+    const totals = new Float64Array(32 * 18);
+    const counts = new Float64Array(32 * 18);
+    for (let y = 0; y < height; y += 1) {
+      const row = Math.min(17, Math.floor((y / height) * 18));
+      for (let x = 0; x < width; x += 1) {
+        const at = (y * width + x) * 4;
+        const block = row * 32 + Math.min(31, Math.floor((x / width) * 32));
+        totals[block] += (data[at] + data[at + 1] + data[at + 2]) / 3;
+        counts[block] += 1;
+      }
+    }
+    return [...totals].map((total, index) => total / counts[index]);
+  };
+});

@@ -20,7 +20,7 @@ for (const language of ['en', 'ka']) {
       expect(duration, text).toBeGreaterThan(0.15);
       expect(duration, text).toBeLessThan(6);
     }
-    for (const name of ['propeller', 'guns', 'pop', 'music', 'hit', 'hurt', 'down', 'sparkle']) expect(loaded.sounds[name], name).toBeGreaterThan(0.05);
+    for (const name of ['propeller', 'guns', 'pop', 'music', 'hit', 'hurt', 'down', 'sparkle', 'bubble', 'whoosh', 'block', 'star']) expect(loaded.sounds[name], name).toBeGreaterThan(0.05);
     expect(loaded.sounds.propeller).toBeGreaterThan(3);
   });
 }

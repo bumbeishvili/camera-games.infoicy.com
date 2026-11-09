@@ -95,25 +95,38 @@ function rippleTexture() {
   return texture;
 }
 
-/** The sky all round, which goes with the camera, so that it tilts as the plane does. */
-function buildSkyDome() {
-  const geometry = new THREE.SphereGeometry(2700, 32, 18);
+// The sky's colours, from the top down, for each time of day the levels bring. They're no darker than
+// the day's overall, and the sky only ever changes between flights, never during one.
+export const SKIES = {
+  day: { top: '#2f86dc', middle: '#8fd0f7', horizon: '#dff4ff' },
+  sunset: { top: '#5c7fd6', middle: '#ffb38a', horizon: '#ffe3b5' },
+  snow: { top: '#7ea9d6', middle: '#c3dbef', horizon: '#eef4fa' },
+};
+
+function paintDome(geometry, { top, middle, horizon }) {
   const positions = geometry.attributes.position;
-  const colours = new Float32Array(positions.count * 3);
-  const top = new THREE.Color('#2f86dc');
-  const middle = new THREE.Color('#8fd0f7');
-  const horizon = new THREE.Color('#dff4ff');
+  const colours = geometry.attributes.color?.array ?? new Float32Array(positions.count * 3);
+  const high = new THREE.Color(top);
+  const mid = new THREE.Color(middle);
+  const low = new THREE.Color(horizon);
   const colour = new THREE.Color();
   for (let i = 0; i < positions.count; i += 1) {
     const up = positions.getY(i) / 2700;
-    if (up < 0.04) colour.copy(horizon);
-    else if (up < 0.32) colour.copy(horizon).lerp(middle, (up - 0.04) / 0.28);
-    else colour.copy(middle).lerp(top, Math.min(1, (up - 0.32) / 0.5));
+    if (up < 0.04) colour.copy(low);
+    else if (up < 0.32) colour.copy(low).lerp(mid, (up - 0.04) / 0.28);
+    else colour.copy(mid).lerp(high, Math.min(1, (up - 0.32) / 0.5));
     colours[i * 3] = colour.r;
     colours[i * 3 + 1] = colour.g;
     colours[i * 3 + 2] = colour.b;
   }
-  geometry.setAttribute('color', new THREE.BufferAttribute(colours, 3));
+  if (geometry.attributes.color) geometry.attributes.color.needsUpdate = true;
+  else geometry.setAttribute('color', new THREE.BufferAttribute(colours, 3));
+}
+
+/** The sky all round, which goes with the camera, so that it tilts as the plane does. */
+function buildSkyDome() {
+  const geometry = new THREE.SphereGeometry(2700, 32, 18);
+  paintDome(geometry, SKIES.day);
   return new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false }));
 }
 
@@ -433,6 +446,7 @@ export class Island {
     deep.position.y = -36;
     scene.add(deep);
     this.dome = buildSkyDome();
+    this.skyName = 'day';
     scene.add(this.dome);
 
     scene.add(buildRibbon(RIVER, 15, '#46b3e8', 0.7));
@@ -669,6 +683,13 @@ export class Island {
       this.scene.add(sprite);
       return { sprite, share: index / 12, base: heightAt(x, z) + 8 };
     });
+  }
+
+  /** The sky for a time of day: see SKIES. */
+  paintSky(name) {
+    if (this.skyName === name) return;
+    this.skyName = name;
+    paintDome(this.dome.geometry, SKIES[name] ?? SKIES.day);
   }
 
   /** A slow computer shows half the trees and rocks, as there are plenty left. */

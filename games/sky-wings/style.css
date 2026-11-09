@@ -182,10 +182,14 @@ body[data-screen='fly'] .marks { display: block; }
 .mark[data-hunting='yes'] .mark-box { border-color: #ff5a4f; }
 .mark[data-locked='yes'] .mark-box { border-color: #4dff8f; }
 
-/* The pirate captain, on the higher levels: a bigger mark, and a longer bar for its extra hits. */
-.mark[data-captain='yes'] .mark-box { left: -38px; top: -38px; width: 76px; height: 76px; border-width: 5px; }
-.mark[data-captain='yes'] .mark-bar { left: -38px; top: -54px; width: 76px; height: 10px; }
-.mark[data-captain='yes'] .mark-face { left: 42px; }
+/* The pirate captain and the treasure airship, on the higher levels: a bigger mark, and a longer bar
+   for their extra hits. */
+.mark[data-captain='yes'] .mark-box,
+.mark[data-kind='airship'] .mark-box { left: -38px; top: -38px; width: 76px; height: 76px; border-width: 5px; }
+.mark[data-captain='yes'] .mark-bar,
+.mark[data-kind='airship'] .mark-bar { left: -38px; top: -54px; width: 76px; height: 10px; }
+.mark[data-captain='yes'] .mark-face,
+.mark[data-kind='airship'] .mark-face { left: 42px; }
 
 .mark-bar {
   position: absolute;
@@ -250,6 +254,127 @@ body[data-screen='fly'] .marks { display: block; }
 }
 
 .mark[data-where='off'][data-hunting='yes'] .mark-arrow::after { border-left-color: #ff5a4f; }
+
+/* A pirate slowed by a snowflake: an icy mark. */
+.mark[data-slow='yes'] .mark-box { border-color: #9fe2ff; border-style: dashed; }
+.mark[data-slow='yes'] .mark-fill { background: #9fe2ff; }
+
+/* A new kind of pirate is named, the first time one comes in a flight. */
+.mark-name {
+  display: none;
+  position: absolute;
+  left: 50%;
+  top: 34px;
+  transform: translateX(-50%);
+  padding: 3px 12px;
+  white-space: nowrap;
+  font-size: clamp(15px, 1.5vw, 20px);
+  font-weight: 700;
+  color: var(--ink);
+  background: #fff;
+  border: 3px solid #ffd23f;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(18, 48, 77, 0.35);
+}
+
+.mark[data-where='on'][data-named='yes'] .mark-name { display: block; animation: name-in 0.35s ease-out; }
+.mark[data-captain='yes'] .mark-name,
+.mark[data-kind='airship'] .mark-name { top: 44px; }
+
+@keyframes name-in {
+  from { opacity: 0; transform: translate(-50%, 6px); }
+}
+
+/* The gift box: its power's picture, in a round badge, and the power's name the first time. */
+.gift-mark {
+  position: fixed;
+  z-index: 2;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.gift-mark[data-where='none'],
+.gift-mark[data-where='off'] { display: none; }
+
+body:not([data-screen='fly']) .gift-mark { display: none; }
+
+.gift-icon {
+  position: absolute;
+  left: -24px;
+  top: -78px;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  line-height: 1;
+  background: #fff;
+  border: 3px solid #ffd23f;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(18, 48, 77, 0.35);
+}
+
+.gift-name {
+  position: absolute;
+  left: 0;
+  top: -112px;
+  transform: translateX(-50%);
+  padding: 3px 12px;
+  white-space: nowrap;
+  font-size: clamp(15px, 1.5vw, 20px);
+  font-weight: 700;
+  color: var(--ink);
+  background: #fff;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(18, 48, 77, 0.35);
+}
+
+.gift-mark[data-named='no'] .gift-name { display: none; }
+
+/* Along the top: the treasure so far, and the power being used, with how long it has left. */
+.sky-treasure[data-on='no'],
+.sky-power[data-on='no'] { display: none; }
+
+.sky-treasure .chip-value { display: flex; gap: 10px; align-items: center; white-space: nowrap; }
+.treasure-item { display: inline-flex; gap: 4px; align-items: center; }
+
+/* A gold coin, drawn, for the treasure. */
+.prize-icon { display: inline-block; line-height: 1; }
+.prize-icon[data-kind='coin'] {
+  width: 0.9em;
+  height: 0.9em;
+  background: radial-gradient(circle, #ffe27a 0 42%, #ffc531 46% 100%);
+  border: 2px solid #c98a12;
+  border-radius: 50%;
+}
+
+.sky-power { display: flex; align-items: center; gap: 8px; border: 3px solid #ffd23f; }
+.power-mark { font-size: clamp(24px, 2.4vw, 32px); line-height: 1; }
+.power-words { display: flex; flex-direction: column; gap: 4px; min-width: 96px; }
+.power-bar { display: block; height: 8px; background: rgba(18, 48, 77, 0.2); border-radius: 999px; overflow: hidden; }
+.power-fill { display: block; height: 100%; width: 100%; background: #ffb020; border-radius: 999px; transition: width 0.3s linear; }
+
+/* The treasure on the finish card. */
+.finish-treasure { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; margin: 0; }
+.finish-treasure:empty { display: none; }
+.finish-treasure-lead { font-weight: 700; color: var(--ink-soft); }
+.finish-treasure-item .prize-icon { margin-right: 6px; vertical-align: -0.12em; }
+
+.finish-treasure-item {
+  padding: 4px 12px;
+  font-weight: 700;
+  background: var(--surface, #fff);
+  border: 2px solid #ffd23f;
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mark[data-where='on'][data-named='yes'] .mark-name { animation: none; }
+  .power-fill { transition: none; }
+}
 
 /* There's no hand to choose here, as both arms do the flying. */
 fieldset:has(input[name='hands']) { display: none; }

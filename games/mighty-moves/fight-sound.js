@@ -76,6 +76,26 @@ export class FightSound extends Sound {
     if (move === 'starBurst' || signature) this.play('sparkle', { gain: 0.4, rate: near(0.08) });
   }
 
+  /** A prize collected: a little sparkle, lighter for coins, which come most often. */
+  prize(kind) {
+    this.play('sparkle', { gain: kind === 'coin' ? 0.2 : 0.32, rate: kind === 'coin' ? 1.35 * near(0.08) : 1.15 });
+  }
+
+  /** A power-up arriving. */
+  powerUp() {
+    this.play('sparkle', { gain: 0.4, rate: 0.9 });
+  }
+
+  /** The shield bubble catching a hit: soft, like a block. */
+  bubble() {
+    this.play('block', { gain: 0.35, rate: 1.3 });
+  }
+
+  /** The soft ball caught: the child's clap. */
+  caught() {
+    this.play('clap', { gain: 0.6, rate: near(0.06) });
+  }
+
   bell() {
     this.play('bell', { gain: 0.55 });
   }

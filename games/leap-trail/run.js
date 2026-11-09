@@ -29,11 +29,63 @@ export const OBSTACLES = {
   hay: { needs: 'jump', length: 1.2, height: 1.05 },
   rocks: { needs: 'jump', length: 1.4, height: 0.7 },
   stream: { needs: 'jump', length: 2.4, height: 0.1 },
-  // Later levels bring new things to jump, from the level given. Each still goes right across.
+  // Later levels bring new things to jump, from the level given.
   fence: { needs: 'jump', length: 0.5, height: 1.1, from: 4 },
   bale: { needs: 'jump', length: 1.25, height: 1.2, from: 6 }, // Round bales, which roll in and stop.
+  ducks: { needs: 'jump', length: 0.8, height: 0.75, from: 7 }, // A duck and her ducklings, waddling over into their lane.
   sheep: { needs: 'jump', length: 0.8, height: 0.95, from: 8 }, // A flock crossing the trail.
 };
+
+// Power-ups, which hang over a lane on the line of stars and are picked up by running through them
+// in that lane, from the level given. They last this many seconds of running: standing still to rest
+// or to wait never uses them up. A friend doesn't need a lane: they just come running up alongside.
+export const POWERS = {
+  magnet: { seconds: 6, from: 5 }, // Pulls in the stars from every lane.
+  shield: { seconds: 15, from: 6 }, // A bubble: the next obstacle run into is floated over instead.
+  friend: { seconds: 10, from: 9, anyLane: true }, // Runs alongside, and catches a star for every one caught.
+};
+
+export const ARCH_STARS = 5; // What the arch of stars over a trampoline is worth, bounced through.
+export const CHEST_COINS = 8; // What's in a chest opened with a key.
+export const GEM_COINS = 5; // What a gem at the top of a trampoline's arch is worth, from level 10.
+
+/**
+ * What each level brings that's new, which the cards show and the run marks the first time it comes
+ * into view. Every level from 2 brings something. id is what the run and the world call it.
+ */
+export const NEW_THINGS = {
+  2: [{ id: 'coins', mark: '🟡', name: 'Coins', nameKa: 'მონეტები' }],
+  3: [{ id: 'gold', mark: '🌟', name: 'Golden stars', nameKa: 'ოქროს ვარსკვლავები' }],
+  4: [{ id: 'fence', mark: '🪵', name: 'Fences', nameKa: 'ღობეები' }, { id: 'spring', mark: '🤸', name: 'Trampolines', nameKa: 'ბატუტები' }],
+  5: [{ id: 'magnet', mark: '🧲', name: 'Magnet', nameKa: 'მაგნიტი' }, { id: 'zigzag', mark: '↔️', name: 'Stars change lanes', nameKa: 'ვარსკვლავები ზოლს იცვლის' }],
+  6: [{ id: 'bale', mark: '🌾', name: 'Rolling bales', nameKa: 'მგორავი თივა' }, { id: 'shield', mark: '🫧', name: 'Bubble shield', nameKa: 'ბუშტის ფარი' }],
+  7: [{ id: 'ducks', mark: '🦆', name: 'Ducks', nameKa: 'იხვები' }, { id: 'autumn', mark: '🍂', name: 'Autumn', nameKa: 'შემოდგომა' }],
+  8: [{ id: 'sheep', mark: '🐑', name: 'Sheep', nameKa: 'ცხვრები' }, { id: 'key', mark: '🔑', name: 'Key and chest', nameKa: 'გასაღები და სკივრი' }],
+  9: [{ id: 'friend', mark: '🤝', name: 'Running friend', nameKa: 'მეგობარი გვერდით' }],
+  10: [{ id: 'sunset', mark: '🌅', name: 'Sunset', nameKa: 'მზის ჩასვლა' }, { id: 'gems', mark: '💎', name: 'Gems', nameKa: 'ძვირფასი ქვები' }],
+};
+
+/**
+ * What these settings leave a power-up to do. A magnet pulls stars in from the other lanes, so it needs
+ * the lanes, and a bubble floats the runner over what it would run into, which a runner set to stop and
+ * wait never does. Ones with nothing to do aren't laid on the trail.
+ */
+export const powersFor = (rules, { lanes = true, whenMissed = 'stumble' } = {}) =>
+  rules.powers.filter((kind) => (kind !== 'magnet' || lanes) && (kind !== 'shield' || whenMissed === 'stumble'));
+
+/** Whether something new really comes with these settings: stars changing lanes need the lanes too. */
+const comesWith = (id, settings) => {
+  if (id === 'zigzag') return settings.lanes !== false;
+  if (id in POWERS) return powersFor({ powers: [id] }, settings).length > 0;
+  return true;
+};
+
+/**
+ * What's new at a level, for the cards: nothing at level 1. settings are the run's lanes and whenMissed,
+ * as the cards only promise what those settings really bring.
+ */
+export const newThingsAt = (level, settings = {}) => (NEW_THINGS[clampLevel(level)] ?? []).filter(({ id }) => comesWith(id, settings));
+export const newAt = (level, settings = {}) => newThingsAt(level, settings).map(({ mark, name, nameKa }) => ({ mark, name, nameKa }));
 
 // The lanes, from the child's left to their right as seen in the mirror. 0 is the middle.
 export const LANES = [-1, 0, 1];
@@ -67,8 +119,24 @@ export function trailLevel(level = 1) {
     freeSwitch: ramp(level, 0.3, 0.85),
     // How often stars wait in the free lane beside an obstacle, for stepping round it.
     freeStars: ramp(level, 0.5, 0.9),
-    // New obstacles: a fence from level 4, round bales rolling in from 6, and sheep from 8.
+    // New obstacles: a fence from level 4, round bales rolling in from 6, ducks from 7 and sheep from 8.
     kinds: Object.keys(OBSTACLES).filter((kind) => (OBSTACLES[kind].from ?? 1) <= clampLevel(level)),
+    // From level 2, clearing an obstacle, by jumping it or by stepping round, drops a coin, caught by itself.
+    coins: clampLevel(level) >= 2,
+    // From level 4, a trampoline in one lane in front of some obstacles. Jumping from its lane bounces
+    // high, through an arch of stars. It's on the way the stars go, so it's never more than a step.
+    spring: stepsAt(level, { 1: 0, 4: 0.25, 6: 0.3, 8: 0.35 }),
+    // From level 10, a gem at the top of each trampoline's arch.
+    gems: clampLevel(level) >= 10,
+    // Power-ups: a magnet from level 5, a bubble shield from 6 and a friend from 9, one after every
+    // so many obstacles, on the line of stars. Only those with something to do with the run's settings
+    // are laid: see powersFor.
+    powers: Object.keys(POWERS).filter((kind) => POWERS[kind].from <= clampLevel(level)),
+    powerEvery: stepsAt(level, { 1: 0, 5: 6, 7: 5, 9: 4 }),
+    // From level 8, a key on the line of stars, and a chest beside the trail a few obstacles later.
+    keyEvery: stepsAt(level, { 1: 0, 8: 7 }),
+    // Where and when: a summer's day, then autumn from level 7, and an autumn sunset at level 10.
+    place: stepsAt(level, { 1: 'day', 7: 'autumn', 10: 'sunset' }),
   };
 }
 
@@ -93,10 +161,20 @@ const STUMBLE_SECONDS = 0.7;
 const STUMBLE_SPEED = 0.5;
 const STARS_FOR_CLEARING = 3;
 const REST_AFTER = 9; // A child who hasn't moved for this long is resting, and the fighter waits.
+const BOUNCE = 1.35; // How much higher a jump from a trampoline goes, and at least a metre higher,
+const BOUNCE_TOP = 4.2; // up to this high.
+const SHIELD_SECONDS_BEFORE = 0.3; // A bubble floats the runner over what it would run into, this long before.
+const CHEST_OPENS_BEFORE = 8; // Metres before a chest, so it's still in view as it opens.
 // Lines of stars on the path, picked up just by running through them.
 const STAR_LINE = { count: 6, spacing: 2.6, firstAfter: 0.5, afterObstacle: 0.45 };
 
 const between = (random, [low, high]) => low + random() * (high - low);
+
+/**
+ * Which obstacle carries a level's new thing if chance hasn't brought it: the second, so a short trail
+ * still has it, and it comes after the first has been seen.
+ */
+const sureIndex = (course) => Math.min(1, course.length - 1);
 
 /**
  * A jump is an arc across the distance it travels. This makes the arc high enough to be well over
@@ -161,16 +239,20 @@ function layWidths(course, lanes, random, rules) {
 function layStarLines(course, speed, lanes, random, rules) {
   const lines = [];
   let lane = 0;
+  let crossed = false;
+  let golden = false;
   const nextTo = () => {
     const options = LANES.filter((other) => Math.abs(other - lane) === 1);
     return options[Math.floor(random() * options.length)];
   };
   const lineFrom = (from, straight = false) => {
-    const crosses = !straight && lanes && rules.zigzag > 0 && random() < rules.zigzag;
+    // Once a level has lines that cross a lane, the first that can always does, so a short trail has one.
+    const crosses = !straight && lanes && rules.zigzag > 0 && (random() < rules.zigzag || !crossed);
+    if (crosses) crossed = true;
     const half = Math.ceil(STAR_LINE.count / 2);
     for (let i = 0; i < STAR_LINE.count; i += 1) {
       if (crosses && i === half) lane = nextTo();
-      lines.push({ at: from + i * STAR_LINE.spacing, lane, taken: false });
+      lines.push({ at: from + i * STAR_LINE.spacing, lane, taken: false, ...(crosses ? { crosses: true } : {}) });
     }
   };
   /** Before an obstacle that leaves a lane free: a step towards the nearest free lane. */
@@ -185,12 +267,14 @@ function layStarLines(course, speed, lanes, random, rules) {
   };
   lineFrom(speed * STAR_LINE.firstAfter, leadTowards(course[0]));
   course.forEach((obstacle, index) => {
-    if (rules.gold > 0 && random() < rules.gold) {
+    // Golden stars come by chance, and if chance hasn't brought one by the second obstacle, it has one.
+    if (rules.gold > 0 && (random() < rules.gold || (!golden && index >= sureIndex(course)))) {
       // Over a lane the obstacle fills, in the lane the stars were in or one step from it.
       const near = lanes ? obstacle.lanes.filter((other) => Math.abs(other - lane) <= 1) : obstacle.lanes.filter((other) => other === 0);
       if (near.length) {
         lane = near[Math.floor(random() * near.length)];
         obstacle.gold = { lane, taken: false, missed: false };
+        golden = true;
       }
     }
     const open = freeLanes(obstacle);
@@ -206,8 +290,91 @@ function layStarLines(course, speed, lanes, random, rules) {
   return lines.sort((a, b) => a.at - b.at);
 }
 
-/** Lays out a trail, at a level. Exported so the tests can look at one. */
-export function layCourse({ obstacles, pace, lanes = true, random = Math.random, levelNumber = 1 }) {
+/**
+ * What later levels add to a trail that's already laid out: trampolines, power-ups, keys and chests.
+ * It's done afterwards, so the obstacles and the stars are just where they'd be without them. Each goes
+ * on the way the stars go, so following the stars never asks for more than a step at a time.
+ */
+function layExtras(course, starLines, lanes, random, rules) {
+  const lined = starLines.filter(({ beside }) => !beside);
+  const starBefore = (at) => lined.filter((star) => star.at < at).at(-1) ?? null;
+  const starAfter = (at) => lined.find((star) => star.at > at) ?? null;
+  // The line of stars after an obstacle, up to the next one.
+  const lineAfter = (index) => {
+    const from = course[index].at + course[index].length;
+    const to = course[index + 1]?.at ?? Infinity;
+    return lined.filter(({ at }) => at > from && at < to);
+  };
+
+  if (rules.spring > 0) {
+    // Not where stars wait beside it in a free lane, as those are for going round.
+    const besideStars = (obstacle) => !obstacle.gold && starLines.some(({ beside, at }) => beside && at >= obstacle.at - 6 && at <= obstacle.at + obstacle.length + 5);
+    const putSpring = (obstacle) => {
+      // Under a golden star, it's in that star's lane, so one bounce catches both.
+      if (obstacle.gold) {
+        obstacle.spring = { lane: obstacle.gold.lane, used: false, missed: false, gem: rules.gems };
+        return;
+      }
+      const before = starBefore(obstacle.at)?.lane ?? 0;
+      const after = starAfter(obstacle.at + obstacle.length)?.lane ?? before;
+      const options = obstacle.lanes.filter((lane) => (lanes || lane === 0) && Math.abs(lane - before) <= 1 && Math.abs(lane - after) <= 1);
+      if (!options.length) return;
+      const lane = options.includes(before) ? before : options[0];
+      obstacle.spring = { lane, used: false, missed: false, gem: rules.gems };
+    };
+    for (const obstacle of course) {
+      if (besideStars(obstacle) || random() >= rules.spring) continue;
+      putSpring(obstacle);
+    }
+    // Chance may not bring one on a short trail, and then the first from the second obstacle on that can have one does.
+    for (const obstacle of course.slice(sureIndex(course))) {
+      if (course.some(({ spring }) => spring)) break;
+      if (!besideStars(obstacle)) putSpring(obstacle);
+    }
+  }
+
+  const pickups = [];
+  const chests = [];
+  const used = new Set();
+  /** Halfway between the second and third stars of a line, in the second one's lane. */
+  const onLine = (index) => {
+    const line = lineAfter(index);
+    if (line.length < 3) return null;
+    return { at: (line[1].at + line[2].at) / 2, lane: line[1].lane };
+  };
+  if (rules.keyEvery > 0) {
+    for (let index = 3; index < course.length; index += rules.keyEvery) {
+      const chestAt = index + 3;
+      const spot = onLine(index);
+      const chestLine = chestAt < course.length ? lineAfter(chestAt) : [];
+      if (!spot || chestLine.length < 4) continue;
+      pickups.push({ kind: 'key', ...spot, taken: false, missed: false });
+      // Beside the trail, on the other side from the stars, so it never gets in the way.
+      const side = chestLine[3].lane > 0 ? -1 : chestLine[3].lane < 0 ? 1 : random() < 0.5 ? -1 : 1;
+      chests.push({ at: chestLine[3].at, side, opened: false, missed: false });
+      used.add(index);
+    }
+  }
+  if (rules.powerEvery > 0 && rules.powers.length) {
+    // The newest kind comes first, so a new level shows what it brings early on, then they take turns.
+    let turn = rules.powers.length - 1;
+    for (let index = 2; index < course.length; index += rules.powerEvery) {
+      const at = used.has(index) ? index + 1 : index;
+      const spot = at < course.length ? onLine(at) : null;
+      if (!spot) continue;
+      const kind = rules.powers[turn % rules.powers.length];
+      turn += 1;
+      pickups.push({ kind, ...spot, lane: POWERS[kind].anyLane ? null : spot.lane, taken: false, missed: false });
+    }
+  }
+  return { pickups: pickups.sort((a, b) => a.at - b.at), chests };
+}
+
+/**
+ * Lays out a trail, at a level. Exported so the tests can look at one. whenMissed is the runner's, as a
+ * power-up with nothing to do with these settings isn't laid: see powersFor.
+ */
+export function layCourse({ obstacles, pace, lanes = true, whenMissed = 'stumble', random = Math.random, levelNumber = 1 }) {
   const rules = trailLevel(levelNumber);
   const { speed, every } = paceAt(pace, levelNumber);
   const course = [];
@@ -218,9 +385,21 @@ export function layCourse({ obstacles, pace, lanes = true, random = Math.random,
     course.push({ index: i, kind, needs, length, height, at, state: 'ahead' });
     at += length + speed * between(random, every);
   }
+  // A new kind of obstacle always comes at its level: if chance hasn't brought one, the second obstacle
+  // is one, and everything after it moves along by the difference in length.
+  for (const kind of rules.kinds.filter((one) => OBSTACLES[one].from === clampLevel(levelNumber))) {
+    if (!course.length || course.some((obstacle) => obstacle.kind === kind)) continue;
+    const swapped = course[sureIndex(course)];
+    const { needs, length, height } = OBSTACLES[kind];
+    const longer = length - swapped.length;
+    Object.assign(swapped, { kind, needs, length, height });
+    for (const later of course.slice(swapped.index + 1)) later.at += longer;
+    at += longer;
+  }
   const end = at - speed * between(random, every) + speed * AFTER_LAST_SECONDS;
   layWidths(course, lanes, random, rules);
-  return { course, starLines: layStarLines(course, speed, lanes, random, rules), end };
+  const starLines = layStarLines(course, speed, lanes, random, rules);
+  return { course, starLines, end, ...layExtras(course, starLines, lanes, random, { ...rules, powers: powersFor(rules, { lanes, whenMissed }) }) };
 }
 
 const emptyStats = () => ({
@@ -231,6 +410,14 @@ const emptyStats = () => ({
   linedStars: 0,
   gold: 0,
   stepped: 0, // Obstacles passed by stepping into a free lane, which counts as clearing them.
+  coins: 0, // From level 2: one for each obstacle cleared, and more from chests and gems.
+  bounces: 0, // Jumps from a trampoline, through its arch of stars.
+  gems: 0,
+  keys: 0,
+  chests: 0,
+  powers: 0, // Power-ups picked up.
+  floated: 0, // Obstacles a bubble shield floated the runner over.
+  friendStars: 0, // Stars a friend caught, alongside.
   laneMoves: 0,
   streak: 0,
   bestStreak: 0,
@@ -259,9 +446,14 @@ export class Run {
     this.settings = paceAt(pace, levelNumber);
     this.whenMissed = whenMissed;
     this.onEvent = onEvent;
-    const { course, starLines, end } = layCourse({ obstacles, pace, lanes, random, levelNumber });
+    const { course, starLines, end, pickups, chests } = layCourse({ obstacles, pace, lanes, whenMissed, random, levelNumber });
     this.course = course;
     this.starLines = starLines;
+    this.pickups = pickups; // Power-ups and keys, on the line of stars.
+    this.chests = chests; // Beside the trail: one opens if there's a key to open it.
+    this.nextPickup = 0;
+    this.power = Object.fromEntries(Object.keys(POWERS).map((kind) => [kind, 0])); // Seconds left of each.
+    this.keys = 0; // Keys carried, for the next chest.
     this.nextStar = 0;
     this.lane = 0; // Which of LANES the runner is in.
     this.end = end;
@@ -331,10 +523,29 @@ export class Run {
   jump({ hand = null } = {}) {
     if (this.state !== 'running') return false;
     this.noteActivity();
+    if (this.floating) return this.ownJump(hand);
     if (this.move?.obstacle) return false; // Already on the way over something.
     this.stats.jumps += 1;
     if (hand === 'open') this.stats.hands.open += 1;
     return this.startMove('jump');
+  }
+
+  /** Whether a bubble has started to float the runner over something, and hasn't reached it yet. */
+  get floating() {
+    return Boolean(this.move?.float && !this.move.popped);
+  }
+
+  /**
+   * A jump just as the bubble starts to float the runner over: it was still in time, so it's the child's
+   * own jump that clears it, and the bubble is kept for the next thing.
+   */
+  ownJump(hand) {
+    const { move } = this;
+    move.float = false;
+    this.stats.jumps += 1;
+    if (hand === 'open') this.stats.hands.open += 1;
+    this.emit('move', { kind: 'jump', counts: true, lasts: move.lasts, height: move.height, bounce: false, float: false });
+    return true;
   }
 
   /** The child moved across into a lane, which is one of LANES. That's always allowed, even mid-jump. */
@@ -354,18 +565,28 @@ export class Run {
    * Otherwise it's a short one for the fun of it, and costs nothing. Doing a move while one's
    * going starts it over.
    */
-  startMove(kind) {
+  startMove(kind, { float = false } = {}) {
     const obstacle = this.next;
     const counts = obstacle && obstacle.needs === kind && this.inReach(obstacle);
     const move = { kind, startedAt: this.time, from: this.distance, lasts: SHORTEST_HOP, travel: null, height: LOWEST_JUMP, obstacle: null };
     if (counts) {
-      const gap = this.gapTo(obstacle);
+      // Never from past its near edge, as a bubble can start to float the runner over from just there:
+      // the move always goes forward, and always lands.
+      const gap = Math.max(0, this.gapTo(obstacle));
       const reach = gap + obstacle.length;
       move.travel = reach * FLIGHT_PAST + 0.3;
       move.height = jumpHeight(obstacle, gap, move.travel);
       move.obstacle = obstacle;
       move.pace = Math.max(this.settings.speed, move.travel / LONGEST_MOVE);
       move.lasts = move.travel / move.pace;
+      const { spring } = obstacle;
+      if (spring && kind === 'jump' && !float && spring.lane === this.lane) {
+        // From the trampoline: the same jump, only higher, through the arch of stars.
+        spring.used = true;
+        move.bounce = true;
+        move.height = Math.min(BOUNCE_TOP, Math.max(move.height * BOUNCE, move.height + 1));
+      } else if (spring) spring.missed = true;
+      if (float) move.float = true;
       // Everything's now decided, so a slow moment on this computer can't turn it into a bump.
       obstacle.state = 'passing';
       this.speed = Math.max(this.speed, move.pace * 0.9);
@@ -374,7 +595,7 @@ export class Run {
     }
     this.move = move;
     if (counts) this.waiting = false;
-    this.emit('move', { kind, counts: Boolean(counts), lasts: move.lasts, height: move.height });
+    this.emit('move', { kind, counts: Boolean(counts), lasts: move.lasts, height: move.height, bounce: Boolean(move.bounce), float });
     return Boolean(counts);
   }
 
@@ -385,8 +606,23 @@ export class Run {
     stats.streak += 1;
     stats.bestStreak = Math.max(stats.bestStreak, stats.streak);
     stats.stars += STARS_FOR_CLEARING;
-    this.emit('cleared', { obstacle, streak: stats.streak, stars: stats.stars });
+    const coin = this.levelRules.coins;
+    if (coin) stats.coins += 1;
+    this.emit('cleared', { obstacle, streak: stats.streak, stars: stats.stars, coin });
     if (obstacle.gold) this.reachGold(obstacle);
+    if (obstacle.spring?.used) this.bounced(obstacle);
+  }
+
+  /** Over the middle of an obstacle, bounced from its trampoline: the arch of stars, and a gem at its top. */
+  bounced(obstacle) {
+    const { stats } = this;
+    stats.bounces += 1;
+    stats.stars += ARCH_STARS;
+    if (obstacle.spring.gem) {
+      stats.gems += 1;
+      stats.coins += GEM_COINS;
+    }
+    this.emit('bounce', { obstacle, gem: obstacle.spring.gem });
   }
 
   /** Over the middle of an obstacle with a golden star: it's caught in its own lane, and only there. */
@@ -405,6 +641,7 @@ export class Run {
   /** Gone round, in a free lane: that clears it, as a jump would. */
   passBy(obstacle) {
     obstacle.state = 'passing';
+    if (obstacle.spring) obstacle.spring.missed = true;
     obstacle.steppedRound = true;
     this.stats.stepped += 1;
     this.emit('passed-by', { obstacle });
@@ -414,6 +651,7 @@ export class Run {
     const { stats } = this;
     obstacle.state = 'bumped';
     if (obstacle.gold) obstacle.gold.missed = true;
+    if (obstacle.spring) obstacle.spring.missed = true;
     stats.bumps += 1;
     stats.streak = 0;
     this.stumbleLeft = STUMBLE_SECONDS;
@@ -457,14 +695,87 @@ export class Run {
     while (this.nextStar < starLines.length && this.distance >= starLines[this.nextStar].at) {
       const star = starLines[this.nextStar];
       this.nextStar += 1;
-      if (star.lane !== this.lane) {
+      // A magnet pulls them in from the other lanes.
+      if (star.lane !== this.lane && !(this.power.magnet > 0)) {
         star.missed = true;
         continue;
       }
       star.taken = true;
+      star.pulled = star.lane !== this.lane;
       stats.linedStars += 1;
-      this.emit('star-line', { star });
+      const friend = this.power.friend > 0;
+      if (friend) stats.friendStars += 1;
+      this.emit('star-line', { star, pulled: star.pulled, friend });
     }
+  }
+
+  /** Running through a power-up or a key in its lane picks it up. A friend just joins. */
+  collectPickups() {
+    const { pickups, stats } = this;
+    while (this.nextPickup < pickups.length && this.distance >= pickups[this.nextPickup].at) {
+      const pickup = pickups[this.nextPickup];
+      this.nextPickup += 1;
+      if (pickup.lane !== null && pickup.lane !== this.lane) {
+        pickup.missed = true;
+        continue;
+      }
+      pickup.taken = true;
+      if (pickup.kind === 'key') {
+        this.keys += 1;
+        stats.keys += 1;
+        this.emit('key', { pickup });
+        continue;
+      }
+      this.power[pickup.kind] = POWERS[pickup.kind].seconds;
+      stats.powers += 1;
+      this.emit('power', { kind: pickup.kind, pickup, seconds: POWERS[pickup.kind].seconds });
+    }
+    for (const chest of this.chests) {
+      if (chest.opened || chest.missed || this.distance < chest.at - CHEST_OPENS_BEFORE) continue;
+      if (this.keys > 0) {
+        this.keys -= 1;
+        chest.opened = true;
+        stats.chests += 1;
+        stats.coins += CHEST_COINS;
+        this.emit('chest', { chest, coins: CHEST_COINS });
+      } else chest.missed = true;
+    }
+  }
+
+  /**
+   * Power-ups only run down while the runner is going, so stopping to rest, or to wait for a move,
+   * never uses them up.
+   */
+  runDownPowers(dt) {
+    if (this.speed <= 0.05) return;
+    for (const kind of Object.keys(this.power)) {
+      // A bubble on its way over something is kept until it gets there.
+      if (this.power[kind] <= 0 || (kind === 'shield' && this.floating)) continue;
+      this.power[kind] = Math.max(0, this.power[kind] - dt);
+      if (this.power[kind] === 0) this.emit('power-end', { kind });
+    }
+  }
+
+  /**
+   * A bubble shield starts to float the runner over what it was about to run into, keeping the streak.
+   * It isn't used up until the runner gets there, so a jump in that moment is still the child's own.
+   */
+  floatOver() {
+    this.startMove('jump', { float: true });
+  }
+
+  /** The bubble reaches what it's floating the runner over, and pops. */
+  popBubble() {
+    this.move.popped = true;
+    this.power.shield = 0;
+    this.stats.floated += 1;
+    this.emit('power-end', { kind: 'shield', used: true });
+  }
+
+  /** The total of stars, every kind, as the top of the screen shows it. */
+  get starTotal() {
+    const { stats } = this;
+    return stats.stars + stats.linedStars + stats.friendStars;
   }
 
   update(dt) {
@@ -488,6 +799,9 @@ export class Run {
     if (wanted === 0 && this.speed < 0.08) this.speed = 0;
     this.distance += this.speed * dt;
     this.collectStars();
+    this.collectPickups();
+    this.runDownPowers(dt);
+    if (this.floating && this.distance >= this.move.obstacle.at) this.popBubble();
 
     if (this.move && this.through >= 1) {
       const finished = this.move;
@@ -510,7 +824,9 @@ export class Run {
         this.waiting = isWaiting;
         if (isWaiting) this.emit('waiting', { needs: next.needs, obstacle: next });
       }
-      if (this.gapTo(next) <= 0) {
+      if (this.power.shield > 0 && this.whenMissed === 'stumble' && !this.move?.obstacle && this.blocks(next)
+        && this.gapTo(next) <= this.settings.speed * SHIELD_SECONDS_BEFORE) this.floatOver();
+      if (next.state === 'ahead' && this.gapTo(next) <= 0) {
         if (!this.blocks(next)) this.passBy(next);
         else if (this.whenMissed === 'wait') {
           // Stepped into its lane at the last moment: it waits right here, rather than running into it.

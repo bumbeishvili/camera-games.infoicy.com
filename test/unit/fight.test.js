@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { CLIPS } from '../../games/mighty-moves/clips.js';
 import { Coach } from '../../games/mighty-moves/coach.js';
 import { Fight } from '../../games/mighty-moves/fight.js';
-import { CAN_BE_TWICE, COMBOS, DEFENCES, EXERCISES, MOVES, NPC_LEVELS, ORDER, RULES, fightLevel } from '../../games/mighty-moves/moves.js';
+import { ARRIVES, CAN_BE_TWICE, COMBOS, DEFENCES, EXERCISES, MOVES, NEW_THINGS, NPC_LEVELS, ORDER, PRIZES, RULES, fightLevel, levelHas, newThingsAt } from '../../games/mighty-moves/moves.js';
 import { DEMOS } from '../../core/body/demos.js';
 import { ICONS } from '../../core/body/icons.js';
 import { ROSTER } from '../../core/body/roster.js';
@@ -638,7 +638,7 @@ const seeded = (seed = 1) => {
 const atLevel = (levelNumber, options = {}, coachOptions = {}) => coached({ levelNumber, ...options }, { random: seeded(3), ...coachOptions });
 
 test('level 1 is the fight as it always was, at every strength', () => {
-  assert.deepEqual(fightLevel(1), { turnEvery: 1, warning: 1, afterMove: RULES.afterMove, defences: [], npcMoves: [], doubles: 0, mixed: false, twice: 0 });
+  assert.deepEqual(fightLevel(1), { turnEvery: 1, warning: 1, afterMove: RULES.afterMove, defences: [], npcMoves: [], doubles: 0, mixed: false, twice: 0, prizes: [], powerUps: [], theme: 'day', champion: false });
   for (const strength of Object.values(NPC_LEVELS)) {
     const { coach, fight } = coached({ level: strength });
     assert.equal(fight.levelNumber, 1);
@@ -686,14 +686,291 @@ test('each level is the same as the one before or harder, in every way, and alwa
     assert.ok(now.turnEvery <= before.turnEvery && now.warning <= before.warning && now.afterMove <= before.afterMove, `${level}: pace`);
     assert.ok(before.defences.every((kind) => now.defences.includes(kind)) && before.npcMoves.every((move) => now.npcMoves.includes(move)), `${level}: nothing taken away`);
     assert.ok(now.doubles >= before.doubles && now.twice >= before.twice && (now.mixed || !before.mixed), `${level}: new things stay`);
+    assert.ok(before.prizes.every((kind) => now.prizes.includes(kind)) && before.powerUps.every((kind) => now.powerUps.includes(kind)), `${level}: prizes and power-ups stay`);
     const harder = [now.turnEvery < before.turnEvery, now.warning < before.warning, now.defences.length > before.defences.length, now.npcMoves.length > before.npcMoves.length, now.doubles > before.doubles, now.mixed && !before.mixed, now.twice > before.twice];
     assert.ok(harder.some(Boolean), `${level}: something is harder`);
   }
-  // New kinds of things, from level 3.
-  assert.deepEqual([3, 4, 5, 6, 7].map((level) => {
+  // New kinds of things to get out of the way of, and more of what the computer does.
+  assert.deepEqual([3, 4, 5, 6, 7, 8].map((level) => {
     const now = fightLevel(level);
-    return [now.defences.length, now.npcMoves.length, now.doubles > 0, now.mixed, now.twice > 0];
-  }), [[1, 0, false, false, false], [1, 2, false, false, false], [1, 2, true, false, false], [1, 2, true, true, false], [1, 5, true, true, true]]);
+    return [now.defences.join(), now.npcMoves.length, now.doubles > 0, now.mixed, now.twice > 0];
+  }), [['lean', 0, false, false, false], ['lean', 2, false, false, false], ['lean', 2, true, false, false], ['lean,duck', 2, true, true, false], ['lean,duck', 5, true, true, true], ['lean,duck,catch', 5, true, true, true]]);
+});
+
+test('every level from 2 to 10 brings something new, and level 1 nothing', () => {
+  assert.deepEqual(newThingsAt(1), []);
+  for (const level of LEVELS.slice(1)) {
+    const news = newThingsAt(level);
+    assert.ok(news.length >= 1 && news.length <= 3, `${level}: ${news.length} new things`);
+    for (const { id, mark, name, nameKa } of news) {
+      assert.ok(mark && name && nameKa, `${level}: ${id} has a picture and both names`);
+      assert.ok(name.split(' ').length <= 3, `${id}: a short name`);
+      assert.match(nameKa, /[\u10A0-\u10FF]/, `${id}: Georgian`);
+      // Really switched on from that level, and not before.
+      assert.equal(levelHas(level, id), true, `${id} is on at level ${level}`);
+      assert.equal(levelHas(level - 1, id), false, `${id} isn't on at level ${level - 1}`);
+      // And it stays on, apart from the places, which each give way to the next.
+      if (!['sunset', 'autumn'].includes(id)) for (let later = level; later <= 10; later += 1) assert.equal(levelHas(later, id), true, `${id} stays on at ${later}`);
+    }
+  }
+  // Every thing listed arrives once, and every one there is arrives somewhere.
+  const listed = Object.values(ARRIVES).flat();
+  assert.deepEqual([...listed].sort(), Object.keys(NEW_THINGS).sort());
+  for (const level of LEVELS) for (const id of Object.keys(NEW_THINGS)) if (!listed.includes(id)) assert.fail(id);
+});
+
+test('prizes: a coin for each big move that lands, a gem for each way out, a medal for each round, and a trophy for the champion', () => {
+  const prizes = (fight) => ({ ...fight.stats.prizes });
+  // Not at level 1, where the fight is as it always was.
+  const first = setup({ levelNumber: 1 });
+  first.fight.perform('player', 'stomp', { exercise: 'squat' });
+  run(first.fight, 1);
+  assert.deepEqual(prizes(first.fight), { coin: 0, gem: 0, medal: 0, trophy: 0 });
+  assert.equal(named(first.events, 'prize').length, 0);
+
+  // Level 2: coins only, by themselves, and none for a small hit.
+  const two = setup({ levelNumber: 2 });
+  two.fight.perform('player', 'stomp', { exercise: 'squat' });
+  two.fight.perform('player', 'punch', { small: true });
+  run(two.fight, 1);
+  assert.deepEqual(prizes(two.fight), { coin: 1, gem: 0, medal: 0, trophy: 0 });
+  assert.deepEqual(named(two.events, 'prize').map(({ kind, total }) => [kind, total]), [['coin', 1]]);
+  two.fight.setGuard('player', true);
+  two.fight.perform('npc', 'kick');
+  run(two.fight, 1);
+  assert.equal(two.fight.stats.prizes.gem, 0, 'no gems yet at level 2');
+
+  // Level 3: a gem for a block and for a lean, none for a hit that lands.
+  const three = setup({ levelNumber: 3 });
+  three.fight.setGuard('player', true);
+  three.fight.perform('npc', 'kick');
+  run(three.fight, 1);
+  three.fight.setGuard('player', false);
+  three.fight.setDodge('player', 1);
+  three.fight.perform('npc', 'kick');
+  run(three.fight, 1);
+  three.fight.setDodge('player', 0);
+  three.fight.perform('npc', 'kick');
+  run(three.fight, 1);
+  assert.equal(three.fight.stats.prizes.gem, 2);
+
+  // The fighter's own move is worth three coins.
+  const signature = setup({ levelNumber: 2 });
+  signature.fight.player.power = 100;
+  signature.fight.perform('player', 'stomp', { exercise: 'squat' });
+  run(signature.fight, 1);
+  assert.equal(signature.fight.stats.prizes.coin, 3);
+
+  // Level 5: a medal for a round won. Level 10: the champion's trophy for the fight.
+  for (const [levelNumber, medal, trophy] of [[4, 0, 0], [5, 1, 0], [10, 1, 1]]) {
+    const { fight } = setup({ levelNumber, rounds: 1 });
+    fight.npc.hp = 5;
+    fight.perform('player', 'stomp', { exercise: 'squat' });
+    run(fight, 1);
+    assert.equal(fight.winner, 'player');
+    assert.equal(fight.stats.prizes.medal, medal, `level ${levelNumber} medal`);
+    assert.equal(fight.stats.prizes.trophy, trophy, `level ${levelNumber} trophy`);
+  }
+  // Losing a round gives no medal, and costs nothing that was collected.
+  const lost = setup({ levelNumber: 5, rounds: 1 });
+  lost.fight.perform('player', 'stomp', { exercise: 'squat' });
+  run(lost.fight, 1);
+  lost.fight.player.hp = 1;
+  lost.fight.perform('npc', 'kick');
+  run(lost.fight, 1);
+  assert.equal(lost.fight.winner, 'npc');
+  assert.deepEqual(prizes(lost.fight), { coin: 1, gem: 0, medal: 0, trophy: 0 });
+  assert.equal(Object.keys(PRIZES).length, 4);
+});
+
+/** Lands big moves one after the other, and says what came of them. */
+function landBigMoves(fight, count) {
+  for (let i = 0; i < count; i += 1) {
+    fight.npc.hp = RULES.maxHp; // So the round goes on.
+    fight.perform('player', 'thunderClap', { exercise: 'clap' });
+    run(fight, 0.5);
+  }
+}
+
+test('power-ups come after every few big moves, each kind in turn, from level 4', () => {
+  const none = setup({ levelNumber: 3 });
+  landBigMoves(none.fight, 6);
+  assert.equal(named(none.events, 'power-up').length, 0);
+
+  const four = setup({ levelNumber: 4 });
+  landBigMoves(four.fight, RULES.powerUpEvery - 1);
+  assert.equal(named(four.events, 'power-up').length, 0);
+  landBigMoves(four.fight, 1);
+  assert.deepEqual(named(four.events, 'power-up').map(({ kind }) => kind), ['shield']);
+  assert.equal(four.fight.player.shield, true);
+
+  // The newest a level has comes first, so a short fight at that level still has it, and then they take turns.
+  const nine = setup({ levelNumber: 9 });
+  landBigMoves(nine.fight, RULES.powerUpEvery * 4);
+  assert.deepEqual(named(nine.events, 'power-up').map(({ kind }) => kind), ['helper', 'shield', 'glow', 'helper']);
+  const seven = setup({ levelNumber: 7 });
+  landBigMoves(seven.fight, RULES.powerUpEvery);
+  assert.deepEqual(named(seven.events, 'power-up').map(({ kind }) => kind), ['glow']);
+});
+
+test('the shield bubble catches the computer\'s next hit that would have landed, and then it\'s gone', () => {
+  const { fight, events } = setup({ levelNumber: 4 });
+  fight.givePowerUp('shield');
+  // A block doesn't use it up.
+  fight.setGuard('player', true);
+  fight.perform('npc', 'kick');
+  run(fight, 1);
+  assert.equal(fight.player.shield, true);
+  fight.setGuard('player', false);
+  fight.perform('npc', 'kick');
+  run(fight, 1);
+  assert.equal(fight.player.hp, RULES.maxHp, 'caught by the bubble');
+  assert.equal(fight.player.shield, false);
+  assert.equal(lastHit(events).bubble, true);
+  fight.perform('npc', 'kick');
+  run(fight, 1);
+  assert.ok(fight.player.hp < RULES.maxHp, 'and the next one lands');
+  // Resting doesn't use it up: it lasts until it's needed.
+  const resting = setup({ levelNumber: 4 });
+  resting.fight.givePowerUp('shield');
+  run(resting.fight, 120);
+  assert.equal(resting.fight.player.shield, true);
+});
+
+test('a glow makes the next two big moves stronger and fills the power bar faster', () => {
+  const plain = damageOf('thunderClap', { exercise: 'clap' }, { levelNumber: 7 });
+  const { fight, events } = setup({ levelNumber: 7 });
+  fight.givePowerUp('glow');
+  const hits = [];
+  for (let i = 0; i < 3; i += 1) {
+    fight.perform('player', 'thunderClap', { exercise: 'clap' });
+    run(fight, 0.5);
+    hits.push(lastHit(events).damage);
+  }
+  assert.deepEqual(hits.map((damage) => Math.round(damage * 100) / 100), [plain * RULES.glow, plain * RULES.glow, plain].map((damage) => Math.round(damage * 100) / 100));
+  assert.equal(fight.player.glow, 0);
+  // Two glowing moves filled twice as much power as plain ones would, plus what the hits added.
+  assert.equal(fight.player.power, RULES.powerPerExercise * 2 * 2 + RULES.powerPerExercise + RULES.powerPerHit * 3);
+  // A small hit doesn't use a glow up.
+  const small = setup({ levelNumber: 7 });
+  small.fight.givePowerUp('glow');
+  small.fight.perform('player', 'punch', { small: true });
+  run(small.fight, 1);
+  assert.equal(small.fight.player.glow, RULES.glowMoves);
+});
+
+test('a helper friend joins in for one big move, which is a team move worth three coins', () => {
+  const plain = damageOf('stomp', { exercise: 'squat' }, { levelNumber: 9 });
+  const { fight, events } = setup({ levelNumber: 9 });
+  fight.givePowerUp('helper');
+  fight.perform('player', 'skyCharge', { exercise: 'skyReach' });
+  run(fight, 1);
+  assert.equal(fight.player.helper, true, 'reaching up does no damage, so the friend waits');
+  fight.player.charged = false;
+  fight.perform('player', 'stomp', { exercise: 'squat' });
+  run(fight, 1);
+  assert.equal(named(events, 'team').length, 1);
+  assert.equal(lastHit(events).damage, plain * RULES.team);
+  assert.equal(fight.player.helper, false);
+  assert.equal(fight.stats.prizes.coin, 3);
+});
+
+test('from level 6 the computer swings high, and squatting ducks under it, earning a gem', () => {
+  const { coach, events, fight, reader, pass } = atLevel(6, { level: { ...MEDIUM, every: 2 } }, { random: () => 0.99 });
+  reader.moving = true;
+  // Ducking is what this level brings, so it's the computer's first turn.
+  pass(2.1);
+  assert.equal(coach.phase, 'defending');
+  assert.equal(coach.defence.kind, 'duck');
+  assert.equal(coach.defence.move, 'highSwing');
+  assert.equal(named(events, 'defend').at(-1).kind, 'duck');
+  // Hands up isn't ducking.
+  reader.guard = true;
+  pass(0.3);
+  assert.equal(coach.defence.done, false);
+  reader.guard = false;
+  coach.onMoves([{ move: 'stomp' }]);
+  pass(0.1);
+  assert.equal(named(events, 'defended').at(-1).kind, 'duck');
+  assert.equal(fight.player.duck, true);
+  pass(1.5);
+  assert.equal(fight.player.hp, RULES.maxHp, 'ducked under it');
+  assert.equal(named(events, 'dodged').at(-1).duck, true);
+  assert.equal(fight.stats.prizes.gem, 1);
+  assert.equal(fight.player.duck, false, 'and up again after');
+  // Being down in a squat counts too, as it does for the squat that's asked for.
+  const held = atLevel(6, { level: { ...MEDIUM, every: 2 } });
+  held.reader.moving = true;
+  held.pass(2.1);
+  held.reader.squatting = true;
+  held.pass(0.1);
+  assert.equal(held.coach.defence?.done ?? named(held.events, 'defended').length > 0, true);
+});
+
+test('from level 8 the computer throws a soft ball, and a clap catches it and throws it back', () => {
+  const { coach, events, fight, reader, pass } = atLevel(8, { level: { ...MEDIUM, every: 2 } }, { random: () => 0.99 });
+  reader.moving = true;
+  // Catching is what this level brings, so it's the computer's first turn.
+  pass(2.1);
+  assert.equal(coach.defence.kind, 'catch');
+  assert.equal(coach.defence.move, 'ball');
+  // Leaning isn't catching.
+  reader.dodge = 0.9;
+  pass(0.3);
+  assert.equal(coach.defence.done, false);
+  reader.dodge = 0;
+  coach.onMoves([{ move: 'clap' }]);
+  pass(0.1);
+  assert.equal(named(events, 'defended').at(-1).kind, 'catch');
+  pass(1.5);
+  assert.equal(named(events, 'caught').length, 1);
+  assert.equal(fight.player.hp, RULES.maxHp, 'caught, so nothing hit the child');
+  assert.ok(named(events, 'move').some(({ who, move }) => who === 'player' && move === 'ballReturn'), 'thrown back');
+  assert.equal(fight.npc.hp, RULES.maxHp - MOVES.ballReturn.damage);
+  assert.equal(fight.stats.prizes.gem, 1);
+  assert.ok(fight.stats.prizes.coin >= 1);
+});
+
+test('a duck or a catch that\'s missed is put aside for the rest of the fight, and neither hits harder than the lightest move', () => {
+  const { coach, fight, reader, pass } = atLevel(8, { level: { ...MEDIUM, every: 2 } }, { random: () => 0.99 });
+  reader.moving = true;
+  coach.defences = 3; // Catch, block, lean, then duck.
+  pass(2.1);
+  assert.equal(coach.defence.kind, 'duck');
+  pass(coach.level.warning + 1.5);
+  assert.ok(fight.player.hp < RULES.maxHp, 'missed');
+  assert.deepEqual([...coach.putAside], ['duck']);
+  for (let i = 0; i < 8; i += 1) {
+    pass(2.2);
+    if (coach.phase === 'defending') {
+      assert.notEqual(coach.defence.kind, 'duck');
+      if (coach.defence.kind === 'block') reader.guard = true;
+      if (coach.defence.kind === 'lean') reader.dodge = 0.9;
+      if (coach.defence.kind === 'catch') coach.onMoves([{ move: 'clap' }]);
+      pass(1.5);
+      reader.guard = false;
+      reader.dodge = 0;
+    }
+  }
+  for (const move of ['highSwing', 'ball']) assert.ok(MOVES[move].damage <= MOVES.palm.damage, move);
+  // Block and lean are never put aside.
+  assert.ok(!coach.putAside.has('block') && !coach.putAside.has('lean'));
+});
+
+test('the champion, at level 10, picks any way out for its turns, so they can\'t be guessed', () => {
+  const picks = new Set();
+  for (let seed = 1; seed < 40; seed += 1) {
+    const { coach, reader, pass } = atLevel(10, { level: { ...MEDIUM, every: 2 } }, { random: seeded(seed) });
+    reader.moving = true;
+    pass(2.1);
+    if (coach.defence) picks.add(coach.defence.kind);
+  }
+  assert.deepEqual([...picks].sort(), ['block', 'catch', 'duck', 'lean']);
+  // Below level 10 they still take turns.
+  const nine = atLevel(9, { level: { ...MEDIUM, every: 2 } });
+  nine.reader.moving = true;
+  nine.pass(2.1);
+  assert.equal(nine.coach.defence.kind, 'block');
 });
 
 test('on the higher levels the computer comes more often and with more moves, but never takes away its warning', () => {
@@ -701,7 +978,7 @@ test('on the higher levels the computer comes more often and with more moves, bu
     const { coach } = atLevel(10, { level: strength });
     assert.ok(coach.level.warning >= strength.warning * 0.7, `${strength.name}: ${coach.level.warning} seconds of warning`);
     assert.ok(coach.level.every < strength.every);
-    assert.deepEqual(new Set(coach.level.defences), new Set(['block', 'lean']));
+    assert.deepEqual(new Set(coach.level.defences), new Set(['block', 'lean', 'duck', 'catch']));
     assert.ok(coach.level.moves.length > strength.moves.length || strength.moves.length >= 7);
     assert.equal(coach.level.damage, strength.damage, 'how hard it hits is still the grown-ups\' choice');
     assert.equal(coach.level.mercy, strength.mercy);
@@ -797,8 +1074,8 @@ test('at level 10 a child standing still is still left alone, and Gentle still c
  * A child doing what's asked: react seconds after each thing is asked for, and defend seconds after
  * each warning. Plays a whole fight, and says how long it took and how many moves it asked for.
  */
-function playFight({ levelNumber, strength = NPC_LEVELS.gentle, rounds = 3, seed = 1, react = 2.5, defend = 1.2 }) {
-  const fight = new Fight({ rounds, level: strength, levelNumber, onEvent: () => {} });
+function playFight({ levelNumber, strength = NPC_LEVELS.gentle, rounds = 3, seed = 1, react = 2.5, defend = 1.2, onEvent = () => {} }) {
+  const fight = new Fight({ rounds, level: strength, levelNumber, onEvent });
   const reader = fakeReader({ moving: true });
   const coach = new Coach({ fight, reader, random: seeded(seed) });
   let seconds = 0;
@@ -831,9 +1108,12 @@ function playFight({ levelNumber, strength = NPC_LEVELS.gentle, rounds = 3, seed
       if (warned && !warned.done && seconds - warnedAt >= defend) {
         reader.guard = warned.kind === 'block';
         reader.dodge = warned.kind === 'lean' ? 0.8 : 0;
+        reader.squatting = warned.kind === 'duck';
+        if (warned.kind === 'catch') coach.onMoves([{ move: 'clap' }]);
         if (!warned.counted) moves += 1;
         warned.counted = true;
       }
+      if (!coach.defence) reader.squatting = false;
       fight.noteActivity(0.02);
       coach.update(0.02);
       fight.update(0.02);
@@ -844,7 +1124,7 @@ function playFight({ levelNumber, strength = NPC_LEVELS.gentle, rounds = 3, seed
   return { seconds, perMinute: moves / (seconds / 60), winner: fight.winner };
 }
 
-test('level 10 is still doable: as long to react, no more than double the moves, and not much longer', () => {
+test('level 10 is still doable: as long to react, not many more moves a minute, and not much longer', () => {
   for (const strength of Object.values(NPC_LEVELS)) {
     for (const react of [1.5, 3]) {
       const mean = (levelNumber) => {
@@ -855,8 +1135,77 @@ test('level 10 is still doable: as long to react, no more than double the moves,
       const first = mean(1);
       const last = mean(10);
       const name = `${strength.name}, ${react} seconds to each move`;
-      assert.ok(last.seconds <= first.seconds * 1.33, `${name}: ${last.seconds} seconds against ${first.seconds}`);
-      assert.ok(last.perMinute <= first.perMinute * 2, `${name}: ${last.perMinute} moves a minute against ${first.perMinute}`);
+      // Stricter than the limits for every game, of a third longer and twice the moves: big whole-body
+      // moves are tiring. With the new things at level 10, it measured at most 1.15 and 1.17.
+      assert.ok(last.seconds <= first.seconds * 1.25, `${name}: ${last.seconds} seconds against ${first.seconds}`);
+      assert.ok(last.perMinute <= first.perMinute * 1.4, `${name}: ${last.perMinute} moves a minute against ${first.perMinute}`);
     }
   }
+});
+
+test('what each level brings comes in a fight at that level, even a one-round fight won quickly', () => {
+  // A quick child, a second and a half to each move. The new way out of the way is the computer's first
+  // turn, and the newest power-up the first to come.
+  const comes = (what, options) => {
+    let fights = 0;
+    for (let seed = 1; seed <= 8; seed += 1) {
+      const seen = new Set();
+      playFight({ react: 1.5, seed, ...options, onEvent: ({ type, kind }) => seen.add(`${type}:${kind}`) });
+      if (seen.has(what)) fights += 1;
+    }
+    return fights;
+  };
+  for (const strength of [NPC_LEVELS.gentle, NPC_LEVELS.medium]) {
+    const name = strength.name;
+    assert.equal(comes('defend:duck', { levelNumber: 6, strength, rounds: 1 }), 8, `${name}: ducking at level 6`);
+    assert.equal(comes('defend:catch', { levelNumber: 8, strength, rounds: 1 }), 8, `${name}: catching at level 8`);
+    assert.equal(comes('power-up:helper', { levelNumber: 9, strength }), 8, `${name}: the helper at level 9`);
+    assert.equal(comes('power-up:glow', { levelNumber: 7, strength }), 8, `${name}: the glow at level 7`);
+    assert.ok(comes('power-up:glow', { levelNumber: 7, strength, rounds: 1 }) >= 7, `${name}: the glow at level 7, in one round`);
+  }
+  assert.equal(comes('defend:lean', { levelNumber: 3, strength: NPC_LEVELS.gentle, rounds: 1 }), 8, 'leaning at level 3');
+});
+
+test('leaning isn\'t new at level 3 on Medium or Tough, which ask for it from level 1', () => {
+  const ids = (strength) => newThingsAt(3, strength).map(({ id }) => id);
+  assert.deepEqual(ids(NPC_LEVELS.gentle), ['lean', 'gem', 'sunset']);
+  assert.deepEqual(ids(NPC_LEVELS.medium), ['gem', 'sunset']);
+  assert.deepEqual(ids(NPC_LEVELS.tough), ['gem', 'sunset']);
+  // And on those, the computer's first turn at level 3 is a block, as it always was.
+  const { coach, reader, pass } = atLevel(3, { level: { ...MEDIUM, every: 2 } });
+  reader.moving = true;
+  pass(2.1);
+  assert.equal(coach.defence.kind, 'block');
+});
+
+test('what counts for ducking comes down for a child who\'s trying, over the ducks in a fight', () => {
+  // Going down, but not as far as counts, every time the computer swings high. One warning is shorter
+  // than it takes for what counts to come down, so it's the ducks in a fight together that do it.
+  const { coach, reader, pass } = atLevel(6, { level: NPC_LEVELS.gentle });
+  reader.moving = true;
+  reader.sink = 0.12;
+  assert.ok(coach.level.warning < 5);
+  for (let duck = 0; duck < 3 && reader.personal.squat === null; duck += 1) {
+    coach.startDefence('duck');
+    pass(coach.level.warning + 0.2);
+    pass(1.5);
+  }
+  assert.ok(reader.personal.squat !== null && reader.personal.squat < reader.squatNeeded, `came down to ${reader.personal.squat}`);
+  assert.ok(reader.personal.squat > 0.07, 'but never as far as standing still');
+});
+
+test('a ball caught at the very last moment is still held a moment before it\'s thrown back', () => {
+  const { coach, events, pass } = atLevel(8, { level: { ...MEDIUM, every: 2 } }, { random: () => 0.99 });
+  coach.fight.noteActivity(0);
+  pass(2.1, () => coach.fight.noteActivity(0.02));
+  assert.equal(coach.defence.kind, 'catch');
+  pass(coach.defence.left - 0.04, () => coach.fight.noteActivity(0.02));
+  coach.onMoves([{ move: 'clap' }]);
+  const caughtAt = coach.time;
+  let thrownAt = null;
+  pass(1.5, () => {
+    coach.fight.noteActivity(0.02);
+    if (thrownAt === null && named(events, 'caught').length) thrownAt = coach.time;
+  });
+  assert.ok(thrownAt - caughtAt >= RULES.holdCaughtBall - 0.05, `held for ${thrownAt - caughtAt} seconds`);
 });

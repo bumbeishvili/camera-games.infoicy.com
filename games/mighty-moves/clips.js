@@ -155,6 +155,16 @@ const CLIP_SOURCES = {
       [0.95, STANCE],
     ],
   },
+  // A two-handed throw from over the head, for the soft ball, either way.
+  throw: {
+    frames: [
+      [0.0, stance({ hipDrop: 0.08, pitch: -0.12, handLX: 0.22, handLY: 0.95, handLZ: -0.05, handRX: -0.22, handRY: 0.95, handRZ: -0.05, wristL: 0.2, wristR: 0.2 })],
+      [0.22, stance({ hipDrop: 0.1, pitch: -0.2, handLX: 0.2, handLY: 1, handLZ: -0.2, handRX: -0.2, handRY: 1, handRZ: -0.2, wristL: 0.3, wristR: 0.3 })],
+      [0.4, stance({ pitch: 0.3, handLX: 0.18, handLY: 0.3, handLZ: 0.95, handRX: -0.18, handRY: 0.3, handRZ: 0.95, wristL: -1.2, wristR: -1.2, footRZ: -0.3 })],
+      [0.55, stance({ pitch: 0.26, handLX: 0.18, handLY: 0.2, handLZ: 0.95, handRX: -0.18, handRY: 0.2, handRZ: 0.95, wristL: -1.3, wristR: -1.3, footRZ: -0.3 })],
+      [0.85, STANCE],
+    ],
+  },
   hit: {
     frames: [
       [0.0, stance({ forward: -0.1, pitch: -0.38, twist: -0.3, headPitch: -0.3, handLX: 0.4, handLY: -0.2, handLZ: 0.5, handRX: -0.4, handRY: -0.1, handRZ: 0.5 })],
@@ -187,6 +197,10 @@ function build(source, mirrored) {
 export const CLIPS = Object.fromEntries(
   Object.entries(CLIP_SOURCES).map(([name, source]) => [name, { right: build(source, false), left: build(source, true) }]),
 );
+// The computer's high swing is its big arm swing, and both ways of throwing the ball are the throw.
+CLIPS.highSwing = CLIPS.whirlwind;
+CLIPS.ball = CLIPS.throw;
+CLIPS.ballReturn = CLIPS.throw;
 
 /** Poses held for as long as something lasts, rather than played through once. */
 export const HELD = {
@@ -195,4 +209,8 @@ export const HELD = {
   dizzy: pose({ hipDrop: 0.44, pitch: -0.2, roll: 0.1, footLX: 0.34, footLZ: 0.42, footLPitch: -1, footRX: -0.34, footRZ: 0.42, footRPitch: -1, handLX: 0.55, handLY: -0.85, handLZ: 0.1, handRX: -0.55, handRY: -0.85, handRZ: 0.1 }),
   win: pose({ headPitch: -0.2, handLX: 0.36, handLY: 0.92, handLZ: 0.1, handRX: -0.36, handRY: 0.92, handRZ: 0.1, footLX: 0.22, footRX: -0.22 }),
   wave: stance({ pitch: 0, hipDrop: 0.02, handRX: -0.46, handRY: 0.84, handRZ: 0.2, wristR: 0.12 }),
+  // Down low under a high swing, with the hands over the head.
+  duck: stance({ hipDrop: 0.34, squash: 0.14, pitch: 0.36, handLX: 0.3, handLY: 0.25, handLZ: 0.35, handRX: -0.3, handRY: 0.25, handRZ: 0.35, wristL: -0.4, wristR: -0.4, footLX: 0.32, footRX: -0.32, footLZ: 0, footRZ: 0 }),
+  // Holding the soft ball up, ready to throw it.
+  ballUp: stance({ hipDrop: 0.08, pitch: -0.12, handLX: 0.22, handLY: 0.95, handLZ: -0.05, handRX: -0.22, handRY: 0.95, handRZ: -0.05, wristL: 0.2, wristR: 0.2 }),
 };

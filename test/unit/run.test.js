@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { Practice } from '../../games/leap-trail/practice.js';
 import { LANE_STEP, LaneReader, bodyAcross } from '../../games/leap-trail/lanes.js';
-import { GOLD_STARS, LANES, OBSTACLES, PACES, Run, fills, layCourse, paceAt, trailLevel } from '../../games/leap-trail/run.js';
+import { ARCH_STARS, CHEST_COINS, GEM_COINS, GOLD_STARS, LANES, NEW_THINGS, OBSTACLES, PACES, POWERS, Run, fills, layCourse, newAt, newThingsAt, paceAt, powersFor, trailLevel } from '../../games/leap-trail/run.js';
 
 function seeded(seed = 7) {
   let state = seed;
@@ -564,6 +564,16 @@ test('level 1 keeps the trail\'s pace and obstacles as they always were', () => 
   const run = new Run({ pace: 'medium', random: seeded() });
   assert.equal(run.levelNumber, 1);
   assert.deepEqual(run.settings, PACES.medium);
+  // Nothing from the later levels: no coins, trampolines, power-ups, keys or chests, and a summer's day.
+  assert.deepEqual(
+    { coins: rules.coins, spring: rules.spring, gems: rules.gems, powers: rules.powers, powerEvery: rules.powerEvery, keyEvery: rules.keyEvery, place: rules.place },
+    { coins: false, spring: 0, gems: false, powers: [], powerEvery: 0, keyEvery: 0, place: 'day' },
+  );
+  for (const pace of Object.keys(PACES)) {
+    const laid = layCourse({ obstacles: 40, pace, random: seeded(5), levelNumber: 1 });
+    assert.deepEqual([laid.pickups, laid.chests], [[], []]);
+    assert.ok(laid.course.every(({ spring }) => !spring));
+  }
 });
 
 test('each level is the same as the one before or harder, in every way, and always harder in something', () => {
@@ -575,6 +585,7 @@ test('each level is the same as the one before or harder, in every way, and alwa
     assert.ok(now.laneMoves >= before.laneMoves && now.gold >= before.gold && now.zigzag >= before.zigzag, `${level}: stars`);
     assert.ok(now.full <= before.full && now.single >= before.single && now.freeSwitch >= before.freeSwitch && now.freeStars >= before.freeStars, `${level}: lanes to choose between`);
     assert.ok(before.kinds.every((kind) => now.kinds.includes(kind)), `${level}: nothing taken away`);
+    assert.ok(now.spring >= before.spring && before.powers.every((kind) => now.powers.includes(kind)) && (now.coins || !before.coins) && (now.gems || !before.gems), `${level}: prizes and power-ups stay`);
     assert.ok(harder.some(Boolean), `${level}: something is harder`);
   }
   // New kinds of thing from level 3 on.
@@ -671,13 +682,21 @@ function followEverything({ levelNumber, pace, lanes = true, seed, delay = 0 }) 
   let laneChanges = 0;
   let asked = 0;
   while (run.state === 'running') {
+    // The next thing to be in a lane for: a star, a power-up or key, or a golden star or trampoline.
     const star = run.starLines[run.nextStar];
-    const golden = run.course.find(({ gold, state }) => gold && (state === 'ahead' || state === 'passing'));
-    const goldAt = golden ? golden.at + golden.length / 2 : Infinity;
-    let wanted = golden && goldAt < (star?.at ?? Infinity) ? golden.gold.lane : star?.lane ?? run.lane;
+    const pickup = run.pickups[run.nextPickup];
+    const special = run.course.find(({ gold, spring, state }) => (gold || spring) && state === 'ahead');
+    const targets = [
+      star && { at: star.at, lane: star.lane },
+      pickup && pickup.lane !== null && { at: pickup.at, lane: pickup.lane },
+      special && { at: special.at - 2, lane: (special.spring ?? special.gold).lane },
+      ...run.course.filter(({ gold, state }) => gold && state === 'passing').map(({ at, length, gold }) => ({ at: at + length / 2, lane: gold.lane })),
+    ].filter(Boolean).sort((a, b) => a.at - b.at);
+    let wanted = targets[0]?.lane ?? run.lane;
     // Going round what's coming, when it leaves a lane free: the free lane nearest where it was going.
     const { next } = run;
-    if (lanes && next && next.state === 'ahead' && run.gapTo(next) < 30 && fills(next, wanted) && next.lanes.length < 3 && !(golden === next && wanted === next.gold.lane)) {
+    const nextSpecial = next?.spring?.lane ?? next?.gold?.lane;
+    if (lanes && next && next.state === 'ahead' && run.gapTo(next) < 30 && fills(next, wanted) && next.lanes.length < 3 && wanted !== nextSpecial) {
       wanted = LANES.filter((lane) => !fills(next, lane)).sort((a, b) => Math.abs(a - wanted) - Math.abs(b - wanted))[0];
     }
     if (wanted !== run.lane) {
@@ -692,12 +711,16 @@ function followEverything({ levelNumber, pace, lanes = true, seed, delay = 0 }) 
     run.update(1 / 30);
   }
   const minutes = run.stats.seconds / 60;
-  return { seconds: run.stats.seconds, jumps: run.stats.jumps / minutes, moves: (run.stats.jumps + laneChanges) / minutes, gold: run.stats.gold, lined: run.stats.linedStars, all: run.starLines.length, cleared: run.stats.cleared, bumps: run.stats.bumps };
+  const { stats } = run;
+  return {
+    seconds: stats.seconds, jumps: stats.jumps / minutes, moves: (stats.jumps + laneChanges) / minutes, gold: stats.gold, lined: stats.linedStars, all: run.starLines.length, cleared: stats.cleared, bumps: stats.bumps,
+    bounces: stats.bounces, springs: run.course.filter(({ spring }) => spring).length, powers: stats.powers, chests: stats.chests, coins: stats.coins,
+  };
 }
 
 test('level 10 is still doable: as much time to move, no more than double the moves, and not much longer', () => {
   for (const pace of Object.keys(PACES)) {
-    assert.ok(paceAt(pace, 10).early >= PACES[pace].early * 0.7, `${pace}: time to jump`);
+    assert.ok(paceAt(pace, 10).early >= PACES[pace].early * 0.8, `${pace}: time to jump`);
     for (const [lanes, delay] of [[true, 0], [true, 0.9], [false, 0.9]]) {
       const total = (levelNumber) => {
         const runs = [1, 2, 3, 4, 5].map((seed) => followEverything({ levelNumber, pace, lanes, seed, delay }));
@@ -709,9 +732,12 @@ test('level 10 is still doable: as much time to move, no more than double the mo
       const name = `${pace}, lanes ${lanes ? 'on' : 'off'}, jumping after ${delay}s`;
       assert.ok(first.caught && last.caught, `${name}: nearly every star can be caught`);
       assert.ok(first.clean && last.clean, `${name}: every obstacle cleared, none run into`);
-      assert.ok(last.moves <= first.moves * 2, `${name}: ${last.moves} moves a minute against ${first.moves}`);
-      assert.ok(last.jumps <= first.jumps * 1.5, `${name}: ${last.jumps} jumps a minute against ${first.jumps}`);
-      assert.ok(last.seconds <= first.seconds * 1.33, `${name}: ${last.seconds} seconds against ${first.seconds}`);
+      // Stricter than the limits every game keeps (twice the moves, a third longer), as these are big
+      // whole-body moves: trampolines, power-ups and keys are on the way the stars go, and add no jumps.
+      assert.ok(last.moves <= first.moves * 1.6, `${name}: ${last.moves} moves a minute against ${first.moves}`);
+      assert.ok(last.jumps <= first.jumps * 1.25, `${name}: ${last.jumps} jumps a minute against ${first.jumps}`);
+      assert.ok(last.seconds <= first.seconds * 1.1, `${name}: ${last.seconds} seconds against ${first.seconds}`);
+      if (lanes && delay === 0.9) console.log(`${name}: level 10 against level 1: ${(last.moves / first.moves).toFixed(2)}x the moves a minute, ${(last.jumps / first.jumps).toFixed(2)}x the jumps, ${(last.seconds / first.seconds).toFixed(2)}x as long`);
     }
   }
 });
@@ -853,4 +879,388 @@ test('set to wait, the runner only waits at an obstacle in its own lane, and nev
   assert.equal(late.run.stats.bumps, 0);
   assert.equal(late.run.speed, 0);
   assert.ok(late.run.gapTo(late.obstacle) >= 0);
+});
+
+/* ---------- what each level brings that's new ---------- */
+
+test('every level from 2 brings something new, and level 1 nothing', () => {
+  assert.deepEqual(newAt(1), []);
+  for (const level of LEVELS.slice(1)) {
+    const news = newAt(level);
+    assert.ok(news.length >= 1, `${level}`);
+    for (const { mark, name, nameKa } of news) {
+      assert.ok(mark && mark.length <= 4, `${level}: one picture`);
+      assert.ok(name.split(' ').length <= 3, `${level}: ${name} is a few words`);
+      assert.match(nameKa, /[Ⴀ-ჿ]/, `${level}: ${name} has Georgian`);
+    }
+  }
+  // Nothing is new twice.
+  const ids = Object.values(NEW_THINGS).flat().map(({ id }) => id);
+  assert.equal(new Set(ids).size, ids.length);
+});
+
+/** Whether each new thing is on in a level's rules, or in a long trail laid out at that level. */
+function hasThing(id, level) {
+  return hasThingIn(id, level, layCourse({ obstacles: 120, pace: 'slow', random: seeded(level + 40), levelNumber: level }));
+}
+
+/** Whether a new thing is on in a level's rules, or in this trail laid out at that level. */
+function hasThingIn(id, level, { course, starLines, pickups, chests }) {
+  const rules = trailLevel(level);
+  const has = {
+    coins: rules.coins,
+    gold: course.some(({ gold }) => gold),
+    fence: course.some(({ kind }) => kind === 'fence'),
+    spring: course.some(({ spring }) => spring),
+    magnet: pickups.some(({ kind }) => kind === 'magnet'),
+    zigzag: starLines.some(({ crosses }) => crosses),
+    bale: course.some(({ kind }) => kind === 'bale'),
+    shield: pickups.some(({ kind }) => kind === 'shield'),
+    ducks: course.some(({ kind }) => kind === 'ducks'),
+    autumn: rules.place === 'autumn' || rules.place === 'sunset',
+    sheep: course.some(({ kind }) => kind === 'sheep'),
+    key: pickups.some(({ kind }) => kind === 'key') && chests.length > 0,
+    friend: pickups.some(({ kind }) => kind === 'friend'),
+    sunset: rules.place === 'sunset',
+    gems: course.some(({ spring }) => spring?.gem),
+  };
+  assert.ok(id in has, id);
+  return has[id];
+}
+
+test('each new thing is really there from its level, and not before', () => {
+  for (const [from, things] of Object.entries(NEW_THINGS)) {
+    for (const { id } of things) {
+      for (const level of LEVELS) assert.equal(hasThing(id, level), level >= Number(from), `${id} at level ${level}`);
+    }
+  }
+  assert.deepEqual(trailLevel(6).place, 'day');
+  assert.deepEqual([trailLevel(7).place, trailLevel(9).place, trailLevel(10).place], ['autumn', 'autumn', 'sunset']);
+});
+
+test('trampolines, power-ups and keys are on the way the stars go: never more than a step at a time', () => {
+  for (const level of LEVELS.slice(3)) {
+    for (const lanes of [true, false]) {
+      const { course, starLines, pickups } = layCourse({ obstacles: 150, pace: 'medium', lanes, random: seeded(level), levelNumber: level });
+      for (const { spring, lanes: filled } of course.filter(({ spring: one }) => one)) {
+        assert.ok(filled.includes(spring.lane), `${level}: a trampoline is where a jump is needed`);
+      }
+      const path = [
+        ...starLines.map(({ at, lane }) => ({ at, lane })),
+        ...course.filter(({ gold }) => gold).map(({ at, length, gold }) => ({ at: at + length / 2, lane: gold.lane })),
+        ...course.filter(({ spring }) => spring).map(({ at, spring }) => ({ at: at - 1, lane: spring.lane })),
+        ...pickups.filter(({ lane }) => lane !== null).map(({ at, lane }) => ({ at, lane })),
+      ].sort((a, b) => a.at - b.at);
+      path.forEach((point, i) => assert.ok(i === 0 || Math.abs(point.lane - path[i - 1].lane) <= 1, `${level} lanes ${lanes} at ${i}`));
+      if (!lanes) assert.ok(path.every(({ lane }) => lane === 0), `${level}: with the lanes off, everything is in the middle`);
+    }
+  }
+});
+
+test('from level 2, clearing an obstacle drops a coin, by jumping or stepping round, and running into one doesn\'t', () => {
+  const coinsFor = (level, lanes, how) => {
+    const { run, obstacle } = oneObstacle(lanes, { levelNumber: level, whenMissed: 'stumble' });
+    delete obstacle.spring;
+    if (how === 'round') run.setLane(1);
+    if (how === 'jump') {
+      untilInReach(run);
+      run.jump();
+    }
+    step(run, 4, () => {
+      run.noteActivity();
+      if (obstacle.state === 'cleared' || obstacle.state === 'bumped') run.state = 'finished';
+    });
+    return run.stats.coins;
+  };
+  assert.equal(coinsFor(1, [...LANES], 'jump'), 0, 'not at level 1');
+  assert.equal(coinsFor(2, [...LANES], 'jump'), 1);
+  assert.equal(coinsFor(2, [-1, 0], 'round'), 1);
+  assert.equal(coinsFor(2, [...LANES], 'stand'), 0, 'running into it costs nothing, but wins nothing');
+});
+
+/** A run whose first obstacle has a trampoline in this lane. */
+function withSpring(level, springLane, runnerLane) {
+  const events = [];
+  const run = new Run({ obstacles: 3, random: seeded(), levelNumber: level, onEvent: (event) => events.push(event) });
+  run.begin();
+  const [obstacle] = run.course;
+  delete obstacle.gold;
+  obstacle.lanes = [...LANES];
+  obstacle.spring = { lane: springLane, used: false, missed: false, gem: trailLevel(level).gems };
+  run.setLane(runnerLane);
+  untilInReach(run);
+  run.jump();
+  const height = run.move.height;
+  step(run, 3, () => {
+    run.noteActivity();
+    if (obstacle.state === 'cleared') run.state = 'finished';
+  });
+  return { run, obstacle, events, height };
+}
+
+test('a jump from a trampoline\'s lane bounces higher, through an arch of stars, and from another lane is an ordinary jump', () => {
+  const bounced = withSpring(4, 1, 1);
+  const plain = withSpring(4, 1, 0);
+  assert.equal(bounced.run.stats.bounces, 1);
+  assert.equal(bounced.obstacle.spring.used, true);
+  assert.ok(bounced.height >= plain.height + 0.9 && bounced.height <= 4.2, `${bounced.height} against ${plain.height}`);
+  // However early the jump, and so however high it already is.
+  for (let early = 0; early < 1; early += 0.25) {
+    const run = new Run({ obstacles: 2, random: seeded(), levelNumber: 4 });
+    run.begin();
+    run.course[0].spring = { lane: 0, used: false, missed: false, gem: false };
+    delete run.course[0].gold;
+    run.course[0].lanes = [...LANES];
+    untilInReach(run);
+    step(run, early, () => run.noteActivity());
+    run.jump();
+    assert.ok(run.move.bounce && run.move.height > 2.3, `${early}: ${run.move.height}`);
+  }
+  assert.equal(bounced.run.stats.stars, 3 + ARCH_STARS);
+  assert.equal(bounced.events.filter(({ type }) => type === 'bounce').length, 1);
+  // Missing it costs nothing: the jump, its stars and the streak all count.
+  assert.deepEqual([plain.run.stats.bounces, plain.run.stats.stars, plain.run.stats.streak, plain.run.stats.bumps], [0, 3, 1, 0]);
+  assert.equal(plain.obstacle.spring.missed, true);
+  // From level 10 there's a gem at the top of the arch, worth coins.
+  const top = withSpring(10, 0, 0);
+  assert.deepEqual([top.run.stats.gems, top.run.stats.coins], [1, 1 + GEM_COINS]);
+  assert.equal(withSpring(9, 0, 0).run.stats.gems, 0);
+});
+
+/** A run at a level with nothing ahead for a long way, and a pickup put down this far ahead. */
+function withPickup(kind, { lane = 0, runnerLane = 0, level = 10, whenMissed = 'stumble', ahead = 10 } = {}) {
+  const events = [];
+  const run = new Run({ obstacles: 2, random: seeded(), levelNumber: level, whenMissed, onEvent: (event) => events.push(event) });
+  run.begin();
+  for (const obstacle of run.course) {
+    delete obstacle.spring;
+    delete obstacle.gold;
+  }
+  run.course[0].at = 400;
+  run.course[1].at = 500;
+  run.end = 520;
+  run.pickups = [{ kind, at: ahead, lane, taken: false, missed: false }];
+  run.chests = [];
+  run.setLane(runnerLane);
+  return { run, events };
+}
+
+test('a power-up is picked up in its own lane only, and missing it costs nothing', () => {
+  const taken = withPickup('magnet');
+  step(taken.run, 2, () => taken.run.noteActivity());
+  assert.equal(taken.run.stats.powers, 1);
+  assert.ok(taken.run.power.magnet > 0);
+  const missed = withPickup('magnet', { lane: 1 });
+  step(missed.run, 2, () => missed.run.noteActivity());
+  assert.deepEqual([missed.run.stats.powers, missed.run.power.magnet, missed.run.pickups[0].missed], [0, 0, true]);
+});
+
+test('a magnet pulls in stars from every lane for six seconds of running', () => {
+  const { run, events } = withPickup('magnet');
+  run.starLines = [...[20, 23, 26].map((at) => ({ at, lane: 1, taken: false })), { at: 200, lane: -1, taken: false }];
+  run.nextStar = 0;
+  step(run, 3, () => run.noteActivity());
+  assert.equal(run.stats.linedStars, 3, 'from the next lane, while it lasts');
+  assert.ok(events.filter(({ type, pulled }) => type === 'star-line' && pulled).length === 3);
+  step(run, 12, () => run.noteActivity());
+  assert.equal(run.power.magnet, 0);
+  assert.equal(run.stats.linedStars, 3, 'and once it runs out, a star in another lane goes by');
+  assert.ok(events.some(({ type, kind }) => type === 'power-end' && kind === 'magnet'));
+  assert.equal(POWERS.magnet.seconds, 6);
+});
+
+test('power-ups never run down while the runner is stopped to rest or to wait', () => {
+  // Waiting at an obstacle for the jump, moving about but not jumping.
+  const waiting = withPickup('magnet', { whenMissed: 'wait' });
+  waiting.run.course[0].at = 45;
+  waiting.run.course[0].lanes = [...LANES];
+  step(waiting.run, 7, () => waiting.run.noteActivity());
+  assert.equal(waiting.run.waiting, true);
+  assert.equal(waiting.run.speed, 0);
+  const left = waiting.run.power.magnet;
+  assert.ok(left > 0);
+  step(waiting.run, 30, () => waiting.run.noteActivity());
+  assert.equal(waiting.run.power.magnet, left, 'not a moment used up while waiting');
+
+  // Resting: nothing moves for a while, and the runner stops.
+  const { run } = withPickup('shield', { level: 6, whenMissed: 'wait' });
+  step(run, 1.5, () => run.noteActivity());
+  step(run, 12);
+  assert.ok(run.resting);
+  assert.equal(run.speed, 0);
+  const afterResting = run.power.shield;
+  assert.ok(afterResting > 0);
+  step(run, 30);
+  assert.equal(run.power.shield, afterResting, 'not a moment used up while resting');
+});
+
+test('a bubble shield floats the runner over the next thing it would run into, keeping the streak', () => {
+  const { run, events } = withPickup('shield', { level: 6 });
+  run.course[0].at = 60;
+  run.course[0].lanes = [...LANES];
+  step(run, 8, () => {
+    run.noteActivity();
+    if (run.course[0].state === 'cleared') run.state = 'finished';
+  });
+  assert.equal(run.course[0].state, 'cleared');
+  assert.deepEqual([run.stats.floated, run.stats.bumps, run.stats.jumps, run.stats.streak, run.power.shield], [1, 0, 0, 1, 0]);
+  assert.ok(events.some(({ type, used }) => type === 'power-end' && used));
+  assert.ok(events.some(({ type, float }) => type === 'move' && float));
+
+  // Set to wait, it never floats anyone over: the runner waits for the jump, as it always does.
+  const waiting = withPickup('shield', { level: 6, whenMissed: 'wait' });
+  waiting.run.course[0].at = 60;
+  waiting.run.course[0].lanes = [...LANES];
+  step(waiting.run, 8, () => waiting.run.noteActivity());
+  assert.deepEqual([waiting.run.course[0].state, waiting.run.stats.floated, waiting.run.stats.bumps], ['ahead', 0, 0]);
+  assert.equal(waiting.run.speed, 0);
+});
+
+test('a bubble that starts to float the runner over from past an obstacle\'s near edge still lands, and the run goes on', () => {
+  // Stepping into an obstacle's lane in the last frame before it, on a slow computer, so the bubble only
+  // starts once the runner is already past its near edge.
+  let tried = 0;
+  for (const fps of [20, 25, 30]) {
+    const dt = 1 / fps;
+    for (let offset = 0; offset < 1; offset += 0.05) {
+      const events = [];
+      const run = new Run({ obstacles: 3, pace: 'fast', whenMissed: 'stumble', levelNumber: 10, random: seeded(3), onEvent: (event) => events.push(event) });
+      run.begin();
+      run.pickups = [];
+      run.chests = [];
+      for (const obstacle of run.course) {
+        delete obstacle.spring;
+        delete obstacle.gold;
+      }
+      const [first, second] = run.course;
+      Object.assign(first, OBSTACLES.fence, { kind: 'fence', lanes: [0], at: 60 + offset * run.settings.speed * dt });
+      Object.assign(second, { lanes: [...LANES], at: 160 });
+      run.course[2].at = 260;
+      run.end = 290;
+      run.setLane(1);
+      run.power.shield = 15;
+      while (run.gapTo(first) > run.settings.speed * 1.2 * dt) {
+        run.noteActivity();
+        run.update(dt);
+      }
+      run.speed = run.settings.speed * 1.15;
+      run.setLane(0);
+      let lowest = 0;
+      while (run.state === 'running') {
+        run.noteActivity();
+        if (run.mustJump && run.next !== first) run.jump();
+        run.update(dt);
+        lowest = Math.min(lowest, run.air.height);
+      }
+      tried += 1;
+      assert.ok(lowest >= 0, `${fps} fps, ${offset}: never below the ground (${lowest})`);
+      assert.equal(first.state, 'cleared', `${fps} fps, ${offset}: floated over`);
+      assert.deepEqual([run.stats.cleared, run.stats.bumps, run.stats.floated], [3, 0, 1], `${fps} fps, ${offset}: the rest jumped`);
+      assert.ok(events.filter(({ type, counts }) => type === 'move' && counts).length >= 3);
+    }
+  }
+  assert.equal(tried, 60);
+});
+
+test('a jump just as the bubble starts to float the runner over is the child\'s own, and the bubble is kept for the next thing', () => {
+  const { run, events } = withPickup('shield', { level: 6 });
+  run.course[0].at = 60;
+  run.course[0].lanes = [...LANES];
+  run.course[1].lanes = [...LANES];
+  run.course[1].at = 120;
+  run.end = 140;
+  step(run, 8, () => {
+    run.noteActivity();
+    if (run.move?.float) run.state = 'finished';
+  });
+  run.state = 'running';
+  assert.ok(run.floating, 'the bubble has started to float the runner over');
+  assert.equal(run.jump(), true, 'and a jump now still counts');
+  step(run, 3, () => {
+    run.noteActivity();
+    if (run.course[0].state === 'cleared') run.state = 'finished';
+  });
+  run.state = 'running';
+  assert.equal(run.course[0].state, 'cleared');
+  assert.deepEqual([run.stats.jumps, run.stats.floated, run.stats.bumps, run.stats.streak], [1, 0, 0, 1]);
+  assert.ok(run.power.shield > 0, 'the bubble is kept');
+  assert.ok(!events.some(({ type, used }) => type === 'power-end' && used));
+  assert.ok(events.some(({ type, counts, float }) => type === 'move' && counts && !float), 'the child is told they jumped');
+  // The next one is floated over by the bubble, which is used up as it gets there.
+  step(run, 8, () => {
+    run.noteActivity();
+    if (run.course[1].state === 'cleared') run.state = 'finished';
+  });
+  assert.equal(run.course[1].state, 'cleared');
+  assert.deepEqual([run.stats.floated, run.stats.bumps, run.power.shield], [1, 0, 0]);
+});
+
+const SETTINGS = [
+  { lanes: true, whenMissed: 'stumble' },
+  { lanes: false, whenMissed: 'stumble' },
+  { lanes: true, whenMissed: 'wait' },
+  { lanes: false, whenMissed: 'wait' },
+];
+
+test('the cards only say what the settings really bring: a magnet and stars changing lanes need the lanes, and a bubble a runner that runs on', () => {
+  const ids = (level, settings) => newThingsAt(level, settings).map(({ id }) => id);
+  assert.deepEqual(ids(5, { lanes: true }), ['magnet', 'zigzag']);
+  assert.deepEqual(ids(5, { lanes: false }), []);
+  assert.deepEqual(ids(6, { whenMissed: 'stumble' }), ['bale', 'shield']);
+  assert.deepEqual(ids(6, { whenMissed: 'wait' }), ['bale']);
+  assert.deepEqual(newAt(6, { whenMissed: 'wait' }).map(({ name }) => name), ['Rolling bales']);
+  // And what does nothing with them isn't laid on the trail at all.
+  for (const level of LEVELS) {
+    for (const settings of SETTINGS) {
+      const { pickups } = layCourse({ obstacles: 60, pace: 'medium', random: seeded(level), levelNumber: level, ...settings });
+      const kinds = new Set(pickups.map(({ kind }) => kind));
+      assert.deepEqual([...kinds].filter((kind) => kind in POWERS).sort(), powersFor(trailLevel(level), settings).sort(), `${level} ${JSON.stringify(settings)}`);
+    }
+  }
+});
+
+test('whatever a level brings that\'s new comes at least once, even on the shortest trail', () => {
+  for (const level of LEVELS.slice(1)) {
+    for (const settings of SETTINGS) {
+      for (const pace of Object.keys(PACES)) {
+        for (let seed = 1; seed <= 40; seed += 1) {
+          const laid = layCourse({ obstacles: 10, pace, random: seeded(seed * 31 + level), levelNumber: level, ...settings });
+          for (const { id } of newThingsAt(level, settings)) {
+            assert.ok(hasThingIn(id, level, laid), `${id} at level ${level}, ${pace}, ${JSON.stringify(settings)}, seed ${seed}`);
+          }
+        }
+      }
+    }
+  }
+});
+
+test('a friend joins in any lane, and catches a star for every star caught while they run alongside', () => {
+  const { run } = withPickup('friend', { lane: null, runnerLane: 1, level: 9 });
+  run.starLines = [20, 23, 26, 29].map((at) => ({ at, lane: 1, taken: false }));
+  run.nextStar = 0;
+  step(run, 3, () => run.noteActivity());
+  assert.deepEqual([run.stats.powers, run.stats.linedStars, run.stats.friendStars], [1, 4, 4]);
+  assert.equal(run.starTotal, run.stats.stars + 4 + 4);
+  assert.equal(POWERS.friend.anyLane, true);
+});
+
+test('a key picked up opens the next chest, full of coins; without one the chest stays shut, and that costs nothing', () => {
+  const { run, events } = withPickup('key', { level: 8 });
+  run.chests = [{ at: 40, side: 1, opened: false, missed: false }, { at: 70, side: -1, opened: false, missed: false }];
+  step(run, 6, () => run.noteActivity());
+  assert.deepEqual([run.stats.keys, run.stats.chests, run.stats.coins, run.keys], [1, 1, CHEST_COINS, 0]);
+  assert.equal(run.chests[0].opened, true);
+  assert.equal(run.chests[1].missed, true, 'one key, one chest');
+  assert.equal(events.filter(({ type }) => type === 'chest').length, 1);
+  assert.equal(run.stats.bumps, 0);
+});
+
+test('a perfect run at level 10 can catch every prize the trail has', () => {
+  for (const seed of [1, 2, 3]) {
+    const result = followEverything({ levelNumber: 10, pace: 'slow', seed, delay: 0 });
+    assert.equal(result.bounces, result.springs, `${seed}: every trampoline bounced`);
+    assert.ok(result.powers >= 3, `${seed}: ${result.powers} power-ups`);
+    assert.ok(result.chests >= 1, `${seed}: a chest opened`);
+    assert.ok(result.coins >= 20, `${seed}: ${result.coins} coins`);
+  }
 });

@@ -7,7 +7,7 @@ import { BODY_SAY, BodyGame, byElementId } from '../../core/body/game.js';
 import { mountBodyShell } from '../../core/body/shell.js';
 import { bodyAcross, LaneReader } from './lanes.js';
 import { Practice } from './practice.js';
-import { GOLD_STARS, Run } from './run.js';
+import { ARCH_STARS, GEM_COINS, GOLD_STARS, POWERS, Run, newAt as newAtLevel, newThingsAt } from './run.js';
 import { TrailSound } from './trail-sound.js';
 import { World } from './world.js';
 
@@ -20,6 +20,10 @@ const REST_LOW = -0.9; // Where a resting hand hangs, in torso lengths above the
 const STREAKS = { 5: 'Five in a row!', 10: 'Ten in a row!' };
 const NEARLY_THERE = 0.85;
 const METER_MOST = 1.12; // The meter's top, as a share of a jump that counts.
+const NEW_SHOWN_SECONDS = 2.6; // How long something new is pointed out, the first time it comes into view.
+const NEW_GAP_SECONDS = 0.35; // Between one thing pointed out and the next.
+const POWER_MARKS = { magnet: '🧲', shield: '🫧', friend: '🤝' };
+const COIN = '🟡'; // A gold coin in words, as the coin emoji isn't gold everywhere.
 
 const DEFAULTS = {
   moveSize: 'small',
@@ -85,6 +89,22 @@ class LeapTrail extends BodyGame {
     this.practice = null;
     this.practised = false;
     this.lanes = null;
+    this.newLeft = 0; // How long the label for something new has still to show.
+    this.newGap = 0;
+  }
+
+  /**
+   * What a level brings that's new, for the cards: see NEW_THINGS in run.js. Only what these settings
+   * really bring: a magnet and stars changing lanes need the lanes, and the bubble needs a runner that
+   * runs on when a move is missed.
+   */
+  newAt(level) {
+    return newAtLevel(level, this.trailSettings);
+  }
+
+  /** What the run is set to, as far as what's new at a level goes. */
+  get trailSettings() {
+    return { lanes: this.hasLanes, whenMissed: this.settings.onMissed };
   }
 
   /** Whether this child jumps for real, or raises an open hand instead. */
@@ -98,6 +118,7 @@ class LeapTrail extends BodyGame {
     this.world.setView('choose', { snap: true });
     this.world.onStep = () => this.sound.step();
     this.world.onStar = () => this.sound.star();
+    this.world.onSeen = (id) => this.pointOutNew(id);
     this.applyJumpWith();
 
     byElementId('start').addEventListener('click', () => {
@@ -176,6 +197,8 @@ class LeapTrail extends BodyGame {
     }
     if ('moveSize' in change) this.reader.personal = { jump: null, squat: null, leg: null, hand: null };
     if ('jumpWith' in change || 'hands' in change) this.handUsed = false;
+    // What the cards say is new depends on these.
+    if ('trailLanes' in change || 'onMissed' in change) this.levelUi.refresh();
   }
 
   showChosen(spec) {
@@ -364,6 +387,12 @@ class LeapTrail extends BodyGame {
     world.setRun(this.run);
     world.setLane(0);
     this.lanes = null;
+    document.body.dataset.coins = this.run.levelRules.coins ? 'yes' : 'no';
+    this.newShown = new Set();
+    this.newQueue = [];
+    this.newLeft = 0;
+    this.newGap = 0;
+    byElementId('trail-new').classList.remove('is-showing');
     world.runner.presenting = false;
     world.setLive(null);
     world.setView('run');
@@ -401,6 +430,49 @@ class LeapTrail extends BodyGame {
     if (this.hasLanes) this.startLanes();
     this.run.begin();
     this.setScreen('run');
+    // A new time of year, or of day, is pointed out as the run starts.
+    this.pointOutNew(this.run.levelRules.place);
+  }
+
+  /**
+   * The first time something this level brings comes into view, it's pointed out with a small label
+   * at the top, for a moment, with no talking. Several at once take turns.
+   */
+  pointOutNew(id) {
+    if (!this.run) return;
+    const thing = newThingsAt(this.run.levelNumber, this.trailSettings).find((one) => one.id === id);
+    if (!thing || this.newShown?.has(id)) return;
+    this.newShown.add(id);
+    this.newQueue.push(thing);
+    if (this.newLeft <= 0 && this.newGap <= 0) this.showNextNew();
+  }
+
+  showNextNew() {
+    const label = byElementId('trail-new');
+    const thing = this.newQueue.shift();
+    if (!thing) return;
+    const georgian = this.settings.language === 'ka';
+    label.innerHTML = `<span class="trail-new-lead">${georgian ? 'ახალი:' : 'New:'}</span><span class="trail-new-mark">${thing.mark}</span>${georgian ? thing.nameKa : thing.name}`;
+    label.dataset.thing = thing.id;
+    label.classList.add('is-showing');
+    this.newLeft = NEW_SHOWN_SECONDS;
+  }
+
+  /**
+   * The label's time goes with the game's, so it waits while the grown-ups' panel is open, rather than
+   * running out behind it unseen.
+   */
+  updateNew(dt) {
+    if (this.newLeft > 0) {
+      this.newLeft -= dt;
+      if (this.newLeft > 0) return;
+      byElementId('trail-new').classList.remove('is-showing');
+      this.newGap = NEW_GAP_SECONDS;
+      return;
+    }
+    if (this.newGap <= 0) return;
+    this.newGap -= dt;
+    if (this.newGap <= 0) this.showNextNew();
   }
 
   updateRun(dt, now) {
@@ -485,8 +557,13 @@ class LeapTrail extends BodyGame {
       byElementId('trail-fill').style.width = `${percent}%`;
       byElementId('runner-portrait').style.left = `${percent}%`;
     }
-    const { streak } = run.stats;
-    const stars = run.stats.stars + run.stats.linedStars;
+    const { streak, coins } = run.stats;
+    const stars = run.starTotal;
+    if (lastNumbers.coins !== coins) {
+      lastNumbers.coins = coins;
+      byElementId('coins').textContent = String(coins);
+    }
+    this.updatePowersShown();
     if (lastNumbers.stars !== stars) {
       lastNumbers.stars = stars;
       byElementId('stars').textContent = String(stars);
@@ -502,13 +579,41 @@ class LeapTrail extends BodyGame {
     }
   }
 
+  /** The power-ups going, each with a bar running down, and a key if one's being carried. */
+  updatePowersShown() {
+    const { run, lastNumbers } = this;
+    const going = Object.keys(POWERS).filter((kind) => run.power[kind] > 0);
+    if (run.keys > 0) going.push('key');
+    const names = going.join(',');
+    const row = byElementId('power-row');
+    if (lastNumbers.powers !== names) {
+      lastNumbers.powers = names;
+      row.replaceChildren(...going.map((kind) => {
+        const pill = document.createElement('span');
+        pill.className = 'power-pill';
+        pill.dataset.kind = kind;
+        pill.innerHTML = `<span class="power-mark">${kind === 'key' ? '🔑' : POWER_MARKS[kind]}</span>${kind === 'key' ? '' : '<span class="power-bar"><span class="power-fill"></span></span>'}`;
+        return pill;
+      }));
+    }
+    for (const fill of row.querySelectorAll('.power-fill')) {
+      const kind = fill.closest('.power-pill').dataset.kind;
+      fill.style.width = `${Math.round((run.power[kind] / POWERS[kind].seconds) * 100)}%`;
+    }
+  }
+
   /* ---------- what happened ---------- */
 
   onRunEvent(event) {
     const handlers = {
       ask: () => this.onAsk(event),
-      'star-line': () => this.onStarLine(),
+      'star-line': () => this.onStarLine(event),
       gold: () => this.onGold(event),
+      bounce: () => this.onBounce(event),
+      power: () => this.onPower(event),
+      'power-end': () => this.onPowerEnd(event),
+      key: () => this.onKey(event),
+      chest: () => this.onChest(event),
       lane: () => this.sound.across(),
       move: () => this.onMove(event),
       cleared: () => this.onCleared(event),
@@ -542,7 +647,14 @@ class LeapTrail extends BodyGame {
     this.sound.say(this.askFor(needs).text);
   }
 
-  onMove({ kind, counts }) {
+  onMove({ kind, counts, float, bounce }) {
+    if (float) {
+      // The bubble shield floating the runner over: that wasn't the child, so nothing says they jumped.
+      this.hideCoach();
+      this.world.moveCounted({ kind, obstacle: this.run.move.obstacle, move: this.run.move });
+      return;
+    }
+    if (bounce) this.sound.bounce();
     this.world.moved(kind, counts);
     this.sound.moved(kind);
     this.sawMove(this.overMove);
@@ -551,15 +663,55 @@ class LeapTrail extends BodyGame {
     this.world.moveCounted({ kind, obstacle: this.run.move.obstacle, move: this.run.move });
   }
 
-  onCleared({ obstacle, streak }) {
-    this.world.cleared(obstacle);
+  onCleared({ obstacle, streak, coin }) {
+    this.world.cleared(obstacle, { coin });
     this.sound.cleared();
+    if (coin) {
+      this.sound.coin();
+      this.pointOutNew('coins');
+    }
     const word = STREAKS[streak];
     if (word) {
       this.callout(this.translate(word).replace('!', ''), { kind: 'is-big', x: 0.5, y: 0.3 });
       this.sound.say(word, { ifQuiet: true });
     }
-    this.callout('+3 ★', { kind: 'is-number', x: 0.46, y: 0.42 });
+    this.callout(coin ? `+3 ★ +1 ${COIN}` : '+3 ★', { kind: 'is-number', x: 0.46, y: 0.42 });
+  }
+
+  /** Over an obstacle from a trampoline: the arch of stars, and a gem at level 10. */
+  onBounce({ gem }) {
+    this.callout(gem ? `+${ARCH_STARS} ★ 💎 +${GEM_COINS} ${COIN}` : `+${ARCH_STARS} ★`, { kind: 'is-number', x: 0.54, y: 0.26 });
+    if (gem) this.sound.gold();
+  }
+
+  /** A power-up picked up: the runner shows it while it lasts, and it's on the top of the screen. */
+  onPower({ kind, pickup }) {
+    if (kind === 'friend') this.pointOutNew('friend');
+    else this.world.tookPickup(pickup);
+    this.world.setPower(kind, true);
+    this.sound.pickedUp();
+    this.callout(POWER_MARKS[kind], { kind: 'is-number', x: 0.42, y: 0.4 });
+  }
+
+  onPowerEnd({ kind, used }) {
+    this.world.setPower(kind, false);
+    if (kind === 'shield' && used) {
+      this.world.popBubble();
+      this.sound.bubblePop();
+    }
+  }
+
+  onKey({ pickup }) {
+    this.world.tookPickup(pickup);
+    this.sound.pickedUp();
+    this.callout('🔑', { kind: 'is-number', x: 0.42, y: 0.4 });
+  }
+
+  /** A chest beside the trail, opened with a key as it's passed. */
+  onChest({ chest, coins }) {
+    this.world.openedChest(chest, coins);
+    this.sound.chest();
+    this.callout(`+${coins} ${COIN}`, { kind: 'is-number', x: chest.side < 0 ? 0.3 : 0.62, y: 0.36 });
   }
 
   onBump({ obstacle }) {
@@ -575,8 +727,10 @@ class LeapTrail extends BodyGame {
     this.callout(`+${GOLD_STARS} ★`, { kind: 'is-number', x: 0.52, y: 0.32 });
   }
 
-  onStarLine() {
+  onStarLine({ star, pulled, friend }) {
     this.world.tookStar();
+    if (pulled) this.world.pulledStar(star.lane);
+    if (friend) this.world.friendCaught();
     this.sound.star();
   }
 
@@ -605,7 +759,9 @@ class LeapTrail extends BodyGame {
 
   showFinish() {
     const { stats, course } = this.run;
-    byElementId('finish-stars').textContent = String(stats.stars + stats.linedStars);
+    byElementId('finish-stars').textContent = String(this.run.starTotal);
+    byElementId('finish-coins').textContent = String(stats.coins);
+    byElementId('finish-prizes').textContent = this.prizeWords();
     const seconds = Math.round(stats.movingSeconds);
     const moving = seconds >= 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} sec` : `${seconds} seconds`;
     const movingWords = seconds > 0 ? `, with ${moving} of moving` : '';
@@ -631,6 +787,24 @@ class LeapTrail extends BodyGame {
     this.setScreen('finish');
   }
 
+  /** What else was won on this run, in words, from what this level has. Nothing at level 1. */
+  prizeWords() {
+    const { stats, levelRules, course, chests } = this.run;
+    const plural = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
+    const parts = [];
+    const springs = course.filter(({ spring }) => spring).length;
+    if (springs) parts.push(`bounced on ${plural(stats.bounces, 'trampoline')} of ${springs}`);
+    if (levelRules.gems && springs) parts.push(`found ${plural(stats.gems, 'gem')}`);
+    if (chests.length) parts.push(`opened ${plural(stats.chests, 'chest')} of ${chests.length}`);
+    if (levelRules.powers.length) parts.push(`picked up ${plural(stats.powers, 'power-up')}`);
+    if (stats.floated) parts.push(`floated over ${plural(stats.floated, 'thing')} in a bubble`);
+    if (stats.friendStars) parts.push(`a friend caught ${plural(stats.friendStars, 'star')}`);
+    if (!parts.length) return '';
+    const last = parts.pop();
+    const words = parts.length ? `${parts.join(', ')} and ${last}` : last;
+    return `${words[0].toUpperCase()}${words.slice(1)}.`;
+  }
+
   runAgain() {
     this.confetti.stop();
     this.reader.forget();
@@ -640,6 +814,7 @@ class LeapTrail extends BodyGame {
   /* ---------- every frame ---------- */
 
   frame(dt, now) {
+    if (this.run) this.updateNew(dt);
     switch (this.screen) {
       case 'practice':
         this.updatePractice(dt, now);
@@ -683,17 +858,21 @@ mountBodyShell({
       <div class="chip"><span class="chip-label">Stars</span><span id="stars" class="chip-value">0</span></div>
       <div class="chip"><span class="chip-label">In a row</span><span id="streak" class="chip-value">0</span></div>
       <div class="chip"><span class="chip-label">Still to go</span><span id="obstacles-left" class="chip-value">0</span></div>
+      <div class="chip coins-chip"><span class="chip-label">Coins</span><span class="chip-value"><span class="coin-mark" aria-hidden="true"></span><span id="coins">0</span></span></div>
     </div>
     <div class="trail-track" aria-hidden="true">
       <div id="trail-fill" class="trail-fill"></div>
       <img id="runner-portrait" class="trail-runner" alt="">
       <span class="trail-flag">🏁</span>
     </div>
-  </header>`,
+  </header>
+  <div id="power-row" class="power-row" aria-hidden="true"></div>
+  <div id="trail-new" class="trail-new" aria-hidden="true"></div>`,
   finishBody: `
       <h2 id="finish-title">You made it!</h2>
-      <p class="finish-hero"><span class="hero-mark" aria-hidden="true">★</span> <span id="finish-stars">0</span> stars</p>
+      <p class="finish-hero"><span class="hero-mark" aria-hidden="true">★</span> <span id="finish-stars">0</span> stars<span class="finish-coins"> <span class="coin-mark" aria-hidden="true"></span><span id="finish-coins">0</span> coins</span></p>
       <p id="finish-line" class="finish-open"></p>
+      <p id="finish-prizes" class="finish-prizes"></p>
       <div id="finish-tally" class="finish-tally"></div>
       <p class="small-print">These numbers are shown once and not saved.</p>
       <div class="finish-actions">
