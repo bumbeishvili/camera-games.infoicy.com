@@ -1,0 +1,224 @@
+/* Bounce Back: the court fills the screen. The score is big at the top in the middle, the mirror is in the top
+   corner over the other player's half, and the hand meter is down in the corner of the child's own half. */
+:root {
+  --meter-size: clamp(72px, 8.5vw, 108px);
+  --camera-small: clamp(140px, 15vw, 230px);
+}
+
+.hands-bar {
+  left: 0;
+  right: 0;
+  transform: none;
+  justify-content: space-between;
+  padding: 0 12px;
+  pointer-events: none;
+}
+
+body[data-hands='right'] .hands-bar { justify-content: flex-end; }
+body[data-hands='left'] .hands-bar { justify-content: flex-start; }
+.meter-caption { font-size: clamp(11px, 1vw, 13px); }
+
+/* The mirror, over the other player's half, out of the way of the child's own glove. */
+body:not([data-screen='check']) .camera-frame { left: 12px; transform: none; }
+body[data-side='left']:not([data-screen='check']) .camera-frame { left: auto; right: 70px; }
+
+/* ---------- the score, big ---------- */
+.score-board {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  left: 50%;
+  top: 10px;
+  transform: translateX(-50%);
+  grid-template-columns: auto auto auto;
+  align-items: center;
+  column-gap: clamp(8px, 1.4vw, 18px);
+  padding: 6px clamp(12px, 1.6vw, 22px) 6px;
+  background: rgb(255 255 255 / 0.94);
+  border-radius: 28px;
+  box-shadow: var(--shadow);
+}
+
+body[data-screen='playing'] .score-board,
+body[data-screen='countdown'] .score-board { display: grid; }
+
+.score-player {
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 0.9vw, 12px);
+}
+
+.score-face {
+  width: clamp(36px, 4.4vw, 56px);
+  height: clamp(36px, 4.4vw, 56px);
+  border-radius: 50%;
+  background: var(--surface-soft);
+  object-fit: cover;
+}
+
+.score-name {
+  font-size: clamp(14px, 1.5vw, 19px);
+  font-weight: 600;
+  color: var(--ink-soft);
+  max-width: 9em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.score-value {
+  min-width: 1.1em;
+  font-size: clamp(42px, 6.2vw, 80px);
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-player.is-mine .score-value { color: #1d63c4; }
+
+/* A point won: the number grows a little and settles, a move rather than a flash. */
+.score-player.is-up .score-value { animation: score-up 0.7s ease-out; }
+@keyframes score-up {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+
+.score-dash {
+  font-size: clamp(34px, 5vw, 64px);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink-soft);
+}
+
+.score-goal {
+  grid-column: 1 / -1;
+  justify-self: center;
+  margin-top: -2px;
+  font-size: clamp(12px, 1.2vw, 15px);
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+/* The prize tally, from level 2, under the score. A prize landing makes it grow a little and settle. */
+.score-board .chip-prizes {
+  display: none;
+  grid-column: 1 / -1;
+  justify-self: center;
+  grid-auto-flow: column;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+  margin-top: 2px;
+  padding: 2px 14px 4px;
+  box-shadow: none;
+  background: var(--surface-soft);
+}
+body[data-prizes='on'] .score-board .chip-prizes { display: grid; }
+.chip-prizes .chip-label::before { content: '⭐ '; }
+.chip-prizes .chip-value { font-size: clamp(17px, 1.9vw, 24px); }
+.chip-prizes.is-caught { animation: prize-landed 0.6s ease-out; }
+@keyframes prize-landed {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+
+/* The prompt goes under the score, rather than under the mirror. */
+body[data-screen='playing'] .prompt { top: calc(10px + clamp(120px, 15vw, 150px)); }
+body[data-screen='playing'][data-prizes='on'] .prompt { top: calc(10px + clamp(150px, 18vw, 182px)); }
+
+/* ---------- the finish card ---------- */
+.finish-card .hero-mark { color: inherit; }
+.finish-score {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 0;
+  font-size: clamp(30px, 4vw, 48px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.finish-score img {
+  width: clamp(40px, 4.6vw, 58px);
+  height: clamp(40px, 4.6vw, 58px);
+  border-radius: 50%;
+  background: var(--surface-soft);
+}
+.finish-score:empty { display: none; }
+.finish-prizes { margin: 0; font-size: clamp(20px, 2.4vw, 28px); font-weight: 600; }
+.finish-prizes:empty { display: none; }
+body:not([data-prizes='on']) tr:has(#sum-left-prizes) { display: none; }
+
+/* ---------- a little film: the ball comes over the net, and an open hand sends it back ---------- */
+.bounce-film {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  left: 16px;
+  bottom: 16px;
+  width: min(24vw, 40vh);
+  min-width: 150px;
+  background: linear-gradient(#cfeeff, #f4fbff);
+  border: 5px solid var(--sun);
+  border-radius: 26px;
+  box-shadow: var(--shadow);
+}
+
+/* Over the other player's half, away from the child's own glove, and turned round for the left hand. */
+body[data-side='left'] .bounce-film { left: auto; right: 16px; }
+body[data-side='left'] .bounce-film svg { transform: scaleX(-1); }
+body[data-film='on'][data-screen='playing'] .bounce-film { display: block; }
+.bounce-film svg { display: block; width: 100%; height: auto; }
+
+.film-court { fill: none; stroke: #5cb874; stroke-width: 8; stroke-linecap: round; }
+.film-net { fill: none; stroke: var(--ink); stroke-width: 5; stroke-linecap: round; stroke-dasharray: 4 3; }
+.film-hand rect { fill: #3ddc84; stroke: var(--ink); stroke-width: 3; }
+.film-finger { fill: none; stroke: #3ddc84; stroke-width: 7; stroke-linecap: round; }
+.film-ball circle { fill: #ff5a4f; stroke: var(--ink); stroke-width: 3; }
+.film-ball path { fill: none; stroke: #ffffff; stroke-width: 4; }
+
+.film-hand, .film-finger, .film-ball { transform-box: fill-box; }
+.film-hand { transform-origin: center; animation: film-hand 3.6s ease-in-out infinite; }
+.film-finger { transform-origin: bottom center; animation: film-finger 3.6s ease-in-out infinite; }
+.film-thumb { transform-origin: right center; }
+.film-ball { animation: film-ball 3.6s linear infinite; }
+
+/* The ball floats over the net to the hand, which opens as it comes, and goes back over. */
+@keyframes film-ball {
+  0% { transform: translate(40px, 82px); }
+  12% { transform: translate(64px, 48px); }
+  25% { transform: translate(98px, 30px); }
+  38% { transform: translate(132px, 38px); }
+  52% { transform: translate(162px, 64px); }
+  56% { transform: translate(164px, 66px); }
+  70% { transform: translate(120px, 34px); }
+  84% { transform: translate(76px, 40px); }
+  100% { transform: translate(40px, 82px); }
+}
+
+@keyframes film-finger {
+  0%, 30% { transform: scaleY(0.45); }
+  44%, 66% { transform: scaleY(1); }
+  82%, 100% { transform: scaleY(0.45); }
+}
+
+@keyframes film-hand {
+  0%, 40% { transform: translate(0, 0); }
+  52% { transform: translate(-8px, -14px); }
+  60% { transform: translate(-3px, -6px); }
+  100% { transform: translate(0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .score-player.is-up .score-value,
+  .chip-prizes.is-caught { animation: none; }
+  .film-hand, .film-finger, .film-ball { animation-duration: 5.4s; }
+}
+
+/* On a small screen the score board gets out of the way of the mirror. */
+@media (max-width: 720px) {
+  .score-name { display: none; }
+}

@@ -2,7 +2,7 @@
 // is moved smoothly from what their game sends.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanCar, cleanHand, cleanName, idFor, makeCode, MAX_RACERS, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
+import { cleanBall, cleanCar, cleanHand, cleanName, cleanRacket, cleanShot, idFor, makeCode, MAX_RACERS, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
 import { BODY_KEYS } from '../../games/mighty-moves/clips.js';
 import { Track } from '../../core/friends.js';
 import { CarTrack, codeInLink } from '../../games/high-five-racers/friends.js';
@@ -386,4 +386,64 @@ test('in Mighty Moves, each fighter\'s body goes to the other, as only its numbe
   assert.deepEqual(ben.last('pose').p, [], 'a body that isn\'t one is passed on as none');
   ana.say({ t: 'pose', ms: 2200, p: [] });
   assert.deepEqual(ben.last('pose').p, [], 'and none, when the camera can\'t see them, is none');
+});
+
+test('a Bounce Back game has room for two, one on each side of the net, and the other games\' still have room for four', () => {
+  assert.equal(mostIn('bounce-back'), 2);
+  for (const game of ['', 'sky-wings', 'balloon-pop']) assert.equal(mostIn(game), MAX_RACERS);
+  const { join, leave } = makeRoom(mostIn('bounce-back'));
+  const host = join('aaaaaaaa');
+  const friend = join('bbbbbbbb');
+  assert.ok(host && friend);
+  assert.equal(join('cccccccc'), null, 'a third is told the game is full');
+  assert.equal(host.last('room').members.length, 2);
+  // Someone going makes room again.
+  leave(friend);
+  assert.ok(join('dddddddd'));
+  host.say({ t: 'ready' });
+  host.last('room').members.forEach(({ id }) => assert.notEqual(id, 'cccccccc'));
+});
+
+test('in Bounce Back, each racket goes to the other player, only the host\'s ball does, and a shot goes only to the host', () => {
+  const { join } = makeRoom(mostIn('bounce-back'));
+  const host = join('aaaaaaaa');
+  const friend = join('bbbbbbbb');
+  // A shot before the game has started counts for nothing.
+  friend.say({ t: 'shot', ms: 10, k: 1, x: 0.5, y: 0.5, vx: -0.5, vy: 0.3 });
+  assert.equal(host.last('shot'), undefined);
+  host.say({ t: 'ready' });
+  friend.say({ t: 'ready' });
+  const points = Array.from({ length: 42 }, (_, index) => (index % 2 ? 0.123456 : -9));
+  friend.say({ t: 'racket', ms: 1500.4, x: 0.61234, y: 9, v: 1, o: 1, r: 0.2099, g: 0.704, p: points, picture: 'not this' });
+  const racket = host.last('racket');
+  assert.deepEqual(Object.keys(racket), ['t', 'from', 'ms', 'x', 'y', 'v', 'o', 'r', 'g', 'p']);
+  assert.equal(racket.from, 'bbbbbbbb');
+  assert.equal(racket.ms, 1500);
+  assert.equal(racket.x, 0.612);
+  assert.equal(racket.y, 3, 'no further off the court than it can be');
+  assert.equal(racket.r, 0.21);
+  assert.deepEqual(racket.p.slice(0, 2), [-4, 0.12]);
+  assert.equal(friend.last('racket'), undefined, 'nobody hears their own');
+
+  host.say({ t: 'ball', ms: 2000, x: -0.4, y: 0.55, vx: 0.71234, vy: -0.2, s: 1, k: 7, a: 2, b: 1, n: 3, f: 0, l: 1, sv: 1, g: 0, r: 0, w: 0, extra: 'not this' });
+  assert.deepEqual(friend.last('ball'), { t: 'ball', from: 'aaaaaaaa', ms: 2000, x: -0.4, y: 0.55, vx: 0.712, vy: -0.2, s: 1, k: 7, a: 2, b: 1, n: 3, f: 0, l: 1, sv: 1, g: 0, r: 0, w: 0 });
+  friend.say({ t: 'ball', ms: 2100, x: 0, y: 0, vx: 0, vy: 0, s: 3, k: 99, a: 0, b: 5, n: 0, f: 0, l: 0, sv: 0, g: 2, r: 0, w: 1 });
+  assert.equal(host.last('ball'), undefined, 'a friend\'s ball goes nowhere');
+
+  friend.say({ t: 'shot', ms: 2200, k: 7, x: 0.5, y: 0.512345, vx: -0.6, vy: 0.31, picture: 'not this' });
+  assert.deepEqual(host.last('shot'), { t: 'shot', from: 'bbbbbbbb', ms: 2200, k: 7, x: 0.5, y: 0.512, vx: -0.6, vy: 0.31 });
+  host.say({ t: 'shot', ms: 2300, k: 8, x: -0.5, y: 0.5, vx: 0.6, vy: 0.3 });
+  assert.equal(friend.last('shot'), undefined, 'the host\'s own game runs the ball, so its shots go nowhere');
+});
+
+test('the Bounce Back messages hold only what they should, rounded, and well under the most a message can be', () => {
+  assert.deepEqual(cleanRacket({ ms: -5, x: 'x', y: -9, v: 0, o: 1, r: 9, g: -1, p: [1, 2] }), { ms: 0, x: 0, y: -0.5, v: 0, o: 0, r: 0.6, g: 0, p: [] });
+  assert.equal(cleanRacket({ v: 1, o: 1 }).o, 1, 'open without its points, which are only for drawing it');
+  assert.deepEqual(Object.keys(cleanBall({})), ['ms', 'x', 'y', 'vx', 'vy', 's', 'k', 'a', 'b', 'n', 'f', 'l', 'sv', 'g', 'r', 'w']);
+  const ball = cleanBall({ s: 9, a: 500, f: 99, l: -3, sv: 7, g: 1.6, vx: 100, r: 'yes', w: 0 });
+  assert.deepEqual([ball.s, ball.a, ball.f, ball.l, ball.sv, ball.g, ball.vx, ball.r, ball.w], [3, 99, 7, 0, 2, 2, 6, 1, 0]);
+  assert.deepEqual(cleanShot({ k: -2, x: 3, y: 0.1234, vx: -99, vy: 'up' }), { ms: 0, k: 0, x: 2, y: 0.123, vx: -6, vy: 0 });
+  const biggest = JSON.stringify({ t: 'racket', from: 'abcdefghijkl', ...cleanRacket({ ms: 3_599_999, x: -1.999, y: 2.999, v: 1, o: 1, r: 0.599, g: 1.99, p: Array(42).fill(-3.99) }) });
+  assert.ok(biggest.length < 700, `${biggest.length}`);
+  assert.ok(JSON.stringify({ t: 'ball', from: 'abcdefghijkl', ...cleanBall({ ms: 3_599_999, x: -1.999, y: 2.999, vx: -5.999, vy: -5.999, s: 3, k: 999_999, a: 99, b: 99, n: 999, f: 7, l: 2, sv: 2, g: 2, r: 1, w: 1 }) }).length < 300);
 });

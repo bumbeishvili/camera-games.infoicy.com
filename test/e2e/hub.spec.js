@@ -14,6 +14,7 @@ const GAMES = [
   { name: 'Spider Catcher', folder: 'spider-catcher', start: 'Catch the spiders' },
   { name: 'Giraffe’s Smoothie Stand', folder: 'smoothie-stand', start: 'Open the stand' },
   { name: 'The Lighthouse Keeper', folder: 'lighthouse', start: 'Climb the lighthouse' },
+  { name: 'Bounce Back', folder: 'bounce-back', start: 'Let’s play!' },
 ];
 
 test('the hub offers every game, and each one opens and comes back', async ({ page }) => {

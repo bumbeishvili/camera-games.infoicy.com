@@ -16,6 +16,7 @@ They're played at <https://hemi.infoicy.com> in Google Chrome, on a computer wit
 - **Spider Catcher:** Giraffe's little spider friends have run off all over the garden, scuttling about and swinging on their threads. The child opens a hand by one and closes it to pick it up, carries it across to its web and opens the hand to put it home. See [below](#spider-catcher).
 - **Giraffe's Smoothie Stand:** at the Harvest Fair, each customer orders a smoothie, and the child slices what they ordered with a swipe of the open hand. Bad fruit makes the glove sticky until it has been held open.
 - **The Lighthouse Keeper:** mud from a storm has covered the windows and ships are lost at sea. Wiping a window clean with an open hand lets the light out, and brings a ship home.
+- **Bounce Back:** tennis with a big, slow, floaty ball, against the computer or a friend. The open hand is the racket, and only an open hand sends the ball back over the net. Resting never loses a point. See [below](#bounce-back).
 
 Every game's grown-ups' panel, under the gear icon, has a way back to all the games. On the page for choosing a game, each game's card plays a film of it being played, with just its name, and pointing at a card shows a line about the game. With reduced motion turned on in the computer's settings, a film only plays while its card is pointed at.
 
@@ -67,8 +68,9 @@ games/
   spider-catcher/       its rules and levels, the garden, the spiders and webs, and its sounds
   smoothie-stand/       its customers and orders, the fair and its sounds
   lighthouse/           its storm and ships, the lamp room and its sounds
+  bounce-back/          its rules and levels, the court, the players' pictures, and the ball on a friend's computer
 tools/                  the local server, the local race server, and what prepares voices and sounds
-server/                 the server for playing with friends in High Five Racers, Sky Wings, Balloon Pop and Mighty Moves: its rules, and the Cloudflare Worker that runs them
+server/                 the server for playing with friends in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves and Bounce Back: its rules, and the Cloudflare Worker that runs them
 vendor/                 libraries, the tracking model and fonts
 test/                   unit tests, and Playwright tests for the hub and each game
 ```
@@ -110,7 +112,7 @@ Choose **Hand to play with** under the gear icon. It's remembered across the gam
 
 ## Levels
 
-Every game has ten levels, and each is a little harder than the one before. Winning a game moves it on to the next level, up to level 10. A game that's lost comes round again at the same level. Sky Wings and Mighty Moves can be lost, and so can Robot Rescue, Tank Patrol and Cannon Bay on Medium or Tough, but never on Gentle. Each game remembers its own level. It's on the title card, under the countdown's numbers and on the finish card, with a dot for each level. A grown-up can choose any level under the gear icon, and the new level starts with the next game.
+Every game has ten levels, and each is a little harder than the one before. Winning a game moves it on to the next level, up to level 10. A game that's lost comes round again at the same level. Sky Wings and Mighty Moves can be lost, and so can Robot Rescue, Tank Patrol, Cannon Bay and Bounce Back on Medium or Tough, but never on Gentle. Each game remembers its own level. It's on the title card, under the countdown's numbers and on the finish card, with a dot for each level. A grown-up can choose any level under the gear icon, and the new level starts with the next game.
 
 Level 1 plays the way each game always has. After that, levels bring more going on at once and a quicker pace, and every level from 2 brings something new to see and play with, such as a new kind of enemy or obstacle, a new kind of fire, or prizes to pick up. What's new is named on the title card and under the countdown, and the finish card shows what the next level brings. Missing a prize never costs anything. What each game changes is in its own section below, and its numbers are in its rules file.
 
@@ -508,6 +510,51 @@ Berries roll towards a hand that's near them, smoothly, even one held above them
 - **The summary counts spiders brought home with each hand.**
 - **Nothing flashes.** Colours stay steady, a web fills in slowly, places fade into each other, and legs patter no more than about one and a half times a second. Measured through spiders moving, landing in webs, Giraffe clapping and moving between places, at levels 1, 6 and 10, with berries, the butterfly, the basket, a chest and a glowing web at the higher levels, brightness changed by no more than 1.7 out of 255 from one frame to the next. Every place is bright, with an average brightness of over 190 out of 255.
 
+## Bounce Back
+
+Tennis on a sunny court by the sea, seen from the side, with a big, slow ball that floats like a beach ball. The child's open hand is the racket: moving the hand moves it, and an open hand shows a racket with strings round the glove, which sends the ball back over the net. A hand that isn't open shows only a dashed ring, and the ball goes straight through it. Each player is a character from the other games, standing on their half with a long cartoon arm up to their racket, and running along under it. The child is Giraffe unless a grown-up picks someone else under **Who plays**, and the computer is one of the other friends, a new one at each level. It uses the same hand tracking as Balloon Pop, so it starts with the hand check and can be played sitting close to the camera.
+
+**How it's played.** The child serves first: the ball floats up just out of reach of their hand and waits there, and after a moment drifts over to an open hand. After that, serves take turns. Every shot is worked out to go over the net, so all there is to do is get an open hand to the ball, and the computer aims right at the child's hand. A point is over when the ball bounces twice on one side, or goes off the end, and the score is big at the top of the screen, with each player's face. The first to 5, 7 or 11 points wins, as a grown-up chooses under **Points to win**. How many hits in a row shows under the net once a rally gets going, and the finish card counts the child's hits, the score and the longest rally. A little film of an open hand sending the ball back over the net shows until the child has hit it.
+
+**For children with hemiplegia:**
+
+- **Only an open hand hits, and it fails closed.** A hand that's missing, at the edge of the picture, too far away, overlapping the other one or that the tracker isn't sure of never hits. The strings come and go at a steady rate, so a hand opening and closing quickly can't make them flicker.
+- **Resting never costs a point.** If the hand wasn't open at any time while the ball was coming, the ball floats back up and waits for it, for as long as it takes. The computer doesn't serve until it can see the child's hand. After the ball has waited 15 seconds, the voice says resting is fine.
+- **On Gentle, the default, the game can't be lost.** The ball always waits, even for a child who tried and missed, and the computer misses one of the child's shots after one to three of them at level 1. On Medium the computer aims a little way off the hand, and a ball the child tried for and missed is the computer's point. On Tough it aims further off, and misses fewer. A game lost on Medium or Tough says "So close!", and the same level comes round again.
+- **Reach help** makes the racket bigger, and draws the ball towards an open hand as it comes. Even the least of it is generous. A ball waiting for the child drifts over to their open hand after a second.
+- **It's slow.** At level 1 the ball takes 2.7 seconds to cross the court on Slow, 2.25 on Medium and 1.85 on Fast. Shots stay below the score at the top of the screen, unless the hand hit it from up there.
+- **With the left hand,** the child's half of the court is on the left, and the mirror, the meter and the film move to keep out of its way.
+- **Nothing flashes.** A hit is a small burst of short lines, a bounce a little puff of sand, and things that come and go fade or grow. Measured through serves, hits, bounces and points, at level 1 and at level 10 with stars, a power-up, flags, sandcastles and a special ball about, brightness changed by at most 2.2 out of 255 from one frame to the next, and less than 1% of the picture flickered. With a hand opening and closing four times a second, quicker than any child, about 2% did, all of it the glove copying the hand. A character doesn't take a step for every little move of the hand.
+
+**Levels** ([games/bounce-back/rules.js](games/bounce-back/rules.js)). Each level makes the ball a little quicker, up to 1.3 times as fast at level 10, which still leaves 77% of the time to reach it, and the computer plays a little longer before it misses one, so rallies grow. On top of that, every level from 2 brings something new, which stays for the levels after it:
+
+| Level | What's new |
+|---|---|
+| 2 | **Stars to catch.** Now and then a star floats down on the child's side, and the glove catches it just by coming near it, open or closed. |
+| 3 | **The bubble ball,** a big soap bubble that floats even more slowly, on every third point. |
+| 4 | **A flag for each hit.** A row of eight flags hangs behind the court, and each of the child's hits colours one in. A full row gives a trophy, and they start again. |
+| 5 | **The big racket,** a power-up that floats up in a bubble. Touching it makes the racket bigger for 8 seconds of the hand being open. |
+| 6 | **Sandcastles** on the computer's side. The child's shots often go for one, and a ball landing on a sandcastle knocks it gently over, for a shell. It's built again after a while. |
+| 7 | **The rainbow ball,** which leaves a soft trail behind it, and gives a star for each hit. |
+| 8 | **A breeze,** which pushes the ball gently one way and then the other, with a windsock over the net to show which. Every shot still goes over. |
+| 9 | **The bluebird,** a power-up that stays by the hand for 12 seconds of it being open, and bops a ball that would bounce twice on the child's side back up to their hand. |
+| 10 | **The golden ball,** on the child's last point and now and then, which gives a gem for each hit. |
+
+Prizes fly up to their tally under the score, and they're on the finish card by kind. Missing one never costs anything, a power-up's time only runs while the hand is open, and they only come during play. The first time each new thing comes along in a game, it has a small label beside it for two seconds, in the language the voice speaks, and nothing new is said out loud. The special balls take turns on every third point, the newest first. How hard, the ball speed, reach help, the points to win and who plays stay as a grown-up set them. The numbers are in `courtLevel` and `NEWS` in `rules.js`.
+
+### Playing Bounce Back with a friend
+
+Two children can play each other, each on their own computer with their own camera.
+
+- **Making and joining:** under **Play with a friend** on the title card, a grown-up presses **Make a game** and sends the link or the code. A friend opens it, and can type their name there too. A third is told the game already has two players.
+- **Starting:** both press **Let’s play!**. After the hand check, each waits until the other is ready, and then both count down together. Whoever made the game can press **Start now**, and either can play on their own instead.
+- **One court:** the game of whoever made it runs the ball, and sends where it is about 10 times a second. Each game decides when its own child's racket hits the ball, as that child sees it, shows the hit at once, and sends it, so hitting feels immediate for both.
+- **Each on their own side:** each child sees themselves on the side of the hand they play with, so the court is turned round for one of them. The friend's character and racket are where the friend's hand really is, with their name over the racket, and their glove copies their hand finger by finger.
+- **The host's game:** both play the host's level, points to win, how hard and ball speed, in the plain game without the levels' new things, and each child keeps their own reach help. Shots go to the other child's hand, and in a long rally each one drifts a little further off it, so that it ends sometime. A miss is the other child's point even on Gentle, but resting still waits.
+- **The end:** both games finish together, and the finish card says who won. A game with a friend doesn't move anyone's own level on, and if either child goes, the game is over for the other.
+
+Only the name typed, the character from the other games, where the racket is and whether it's open, and from the host's game where the ball is and the score go to the friend. Never anything from the camera.
+
 ## Sound
 
 **A line is never cut off,** in any of the games, as nothing sounds more robotic. If something is being said, a new line waits for it to finish, after a short pause, and only the newest one waits, so a queue can't build up. A line that has waited more than 4 seconds is out of date and goes unsaid, and small remarks are simply dropped if anything's being said. Lines only stop mid-way if everything is stopping, such as when the panel opens.
@@ -544,11 +591,13 @@ Each recording is trimmed and set to the same level as the rest. Any lines not r
 
 **The garden** in Spider Catcher is a real wood full of birds, kept quiet underneath. A spider landing in its web is a real harp playing a cartoon bounce, and one let go scurries off through real long grass.
 
+**The court** in Bounce Back has The Lighthouse Keeper's real waves on a beach, kept quiet underneath. Nothing new was recorded for it. A hit is High Five Racers' slap, a bounce Leap Trail's hand drum, a point won Mighty Moves' cheering, kept quiet, and a prize its sparkle. The bubble ball and the bluebird boing with Robot Rescue's cartoon boing, and the computer swinging at a ball it misses is a soft whoosh. The only words said are ones the other games already say: "Open your right hand!", "Resting is OK" and now and then "Nice one!".
+
 Where each sound came from is in [CREDITS.md](CREDITS.md).
 
 ## Privacy
 
-Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, except that High Five Racers, Sky Wings, Balloon Pop and Mighty Moves may reach the server for playing with friends, which they only do once a grown-up makes or joins a race, a flight, a game or a fight (see [Racing friends](#high-five-racers)), and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
+Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, except that High Five Racers, Sky Wings, Balloon Pop, Mighty Moves and Bounce Back may reach the server for playing with friends, which they only do once a grown-up makes or joins a race, a flight, a game or a fight (see [Racing friends](#high-five-racers)), and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
 
 ## Tests
 
@@ -575,6 +624,7 @@ There's no free footage of a person clapping, circling a hand or holding their a
 - **How Cannon Bay feels.** Whether the zones read clearly to a child, how long a hand can stay open, and whether the shanty gets tiring.
 - **How far the big hands should be, and how long turbo should take to fill, on a real hand.**
 - **How Spider Catcher feels.** Whether the spiders are slow enough to catch with a real affected hand, whether closing within about a second of opening is long enough for a hand that closes slowly, how big the catching circle should be, and whether a child finds the spiders cute. It was only played with photos of an adult hand, moved about by the tests, and nobody has listened to its sound.
+- **How Bounce Back feels.** Whether the ball is slow enough for a real affected hand, how far from the hand a waiting ball should float, whether a child can tell the racket with strings from the dashed ring, and whether the long cartoon arms are funny or strange. It was only played with photos of an adult hand, moved about by the tests, nobody has listened to its sound, and playing with a friend was only tried with two browsers on one computer, not two computers far apart.
 - **Flying with the other hand, on a real child.** It was tested with photos of a fist and an open hand. A hand with hemiplegia might not read as a clear fist, and nobody has checked whether reaching out the second hand pulls the hand in play out of view.
 - **Kicks seen from the front.** The only kick footage available was filmed from the side, which confuses the tracker's left and right legs, so kicks were tested with a real standing body that had its legs moved by the test.
 - **A real webcam.** Only simulated camera feeds have been used. Real lighting, backgrounds and motion may need some tuning. That goes double for Balloon Pop: how hard balloons are to reach, and how it feels to chase them, can only be judged with a real hand moving.
