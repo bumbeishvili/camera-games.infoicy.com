@@ -9,7 +9,7 @@ import { canvasTexture, clamp, handPath, lerp, starPath, TAU } from './kit.js';
 const ATLAS_CELLS = 4;
 const CELL = 96;
 const LARGEST_SHARE = 0.085; // Of the height of the picture. Nothing small may ever be big.
-const SHAPE_INDEX = { star: 0, spark: 1, puff: 2, flame: 3, ring: 4, hand: 5, paper: 6, dot: 7 };
+const SHAPE_INDEX = { star: 0, spark: 1, puff: 2, flame: 3, ring: 4, hand: 5, paper: 6, dot: 7, drop: 8, coin: 9, gem: 10 };
 
 function shapeAtlas() {
   const texture = canvasTexture(ATLAS_CELLS * CELL, ATLAS_CELLS * CELL, (ctx) => {
@@ -65,6 +65,42 @@ function shapeAtlas() {
       ctx.arc(0, 0, 30, 0, TAU);
       ctx.fill();
     });
+    // A long thin raindrop, pointing down, soft at the top.
+    draw(SHAPE_INDEX.drop, () => {
+      const fade = ctx.createLinearGradient(0, -44, 0, 40);
+      fade.addColorStop(0, 'rgba(255,255,255,0)');
+      fade.addColorStop(1, 'rgba(255,255,255,1)');
+      ctx.fillStyle = fade;
+      ctx.beginPath();
+      ctx.moveTo(0, -44);
+      ctx.quadraticCurveTo(7, 20, 6, 32);
+      ctx.arc(0, 32, 6, 0, Math.PI);
+      ctx.quadraticCurveTo(-7, 20, 0, -44);
+      ctx.fill();
+    });
+    // A coin: a disc with a ring stamped in it.
+    draw(SHAPE_INDEX.coin, () => {
+      ctx.beginPath();
+      ctx.arc(0, 0, 40, 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = 0.45;
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(0, 0, 27, 0, TAU);
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.stroke();
+    });
+    // A gem, cut like a diamond.
+    draw(SHAPE_INDEX.gem, () => {
+      ctx.beginPath();
+      ctx.moveTo(-34, -12);
+      ctx.lineTo(-18, -34);
+      ctx.lineTo(18, -34);
+      ctx.lineTo(34, -12);
+      ctx.lineTo(0, 40);
+      ctx.closePath();
+      ctx.fill();
+    });
   }, { anisotropy: 1 });
   texture.generateMipmaps = false;
   texture.minFilter = THREE.LinearFilter;
@@ -73,7 +109,7 @@ function shapeAtlas() {
 
 /** A pool of little shapes, all drawn together as one draw call, however many are in the air. */
 export class Particles {
-  constructor(scene, count = 420) {
+  constructor(scene, count = 560) {
     this.count = count;
     this.next = 0;
     this.items = Array.from({ length: count }, () => ({ life: 0, total: 1, vx: 0, vy: 0, vz: 0, gravity: 0, drag: 0, grow: 0, spin: 0, opacity: 1 }));
@@ -142,7 +178,8 @@ export class Particles {
     this.colour = new THREE.Color();
   }
 
-  emit({ shape = 'star', colour = '#ffffff', x, y, z, vx = 0, vy = 0, vz = 0, life = 0.7, size = 0.5, grow = 0, gravity = 0, drag = 0, spin = 0, opacity = 1 }) {
+  /** turn is which way up the shape is drawn, at random unless it's given, as for rain. */
+  emit({ shape = 'star', colour = '#ffffff', x, y, z, vx = 0, vy = 0, vz = 0, life = 0.7, size = 0.5, grow = 0, gravity = 0, drag = 0, spin = 0, opacity = 1, turn = null }) {
     const slot = this.next;
     this.next = (this.next + 1) % this.count;
     const item = this.items[slot];
@@ -156,7 +193,7 @@ export class Particles {
     this.colours[slot * 4 + 2] = this.colour.b;
     this.colours[slot * 4 + 3] = opacity;
     this.sizes[slot] = size;
-    this.turns[slot] = Math.random() * TAU;
+    this.turns[slot] = turn ?? Math.random() * TAU;
     this.shapes[slot] = SHAPE_INDEX[shape];
   }
 

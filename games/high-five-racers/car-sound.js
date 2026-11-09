@@ -39,6 +39,8 @@ const ENGINE_UPDATE_SECONDS = 0.03;
 const PASS_BY_SPACING_SECONDS = 1.5; // Rivals can be passed in a bunch. One sound is enough.
 const BUMP_SPACING_SECONDS = 0.5;
 const TURBO_SPACING_SECONDS = 2.5; // A hand that hovers at its widest shouldn't keep setting this off.
+const COIN_SPACING_SECONDS = 0.09; // Coins can come in a bunch. Each still gets its own little ring.
+const BOUNCE_SPACING_SECONDS = 0.6;
 
 const IDLE_LEVEL = 0.3;
 const ROAD_LEVEL = 0.3;
@@ -67,6 +69,12 @@ export class CarSound extends Sound {
         landed: fromGame('mighty-moves/audio/thump.ogg'),
         sparkle: fromGame('mighty-moves/audio/sparkle.ogg'),
         cheer: fromGame('mighty-moves/audio/cheer.ogg'),
+        // For what the later levels bring. All of these are real recordings already in the other games.
+        clap: fromGame('mighty-moves/audio/clap.ogg'),
+        harp: fromGame('spider-catcher/audio/home.ogg'),
+        boing: fromGame('robot-rescue/audio/boing.ogg'),
+        unlock: fromGame('robot-rescue/audio/unlock.ogg'),
+        bell: fromGame('robot-rescue/audio/bell.ogg'),
       },
     });
     this.backgroundLevel = CAR_LEVEL;
@@ -76,6 +84,9 @@ export class CarSound extends Sound {
     this.lastPassByAt = -Infinity;
     this.lastBumpAt = -Infinity;
     this.lastTurboAt = -Infinity;
+    this.lastCoinAt = -Infinity;
+    this.lastBounceAt = -Infinity;
+    this.coinStep = 0;
     this.lastEngineUpdate = 0;
   }
 
@@ -296,6 +307,64 @@ export class CarSound extends Sound {
 
   landed() {
     this.play('landed', { gain: 0.4 });
+  }
+
+  /**
+   * A coin picked up: the star's chime, higher, climbing a little for a row of them. A gem rings lower and
+   * fuller, and treasure from a chest or the high ten is the sparkle.
+   */
+  coin(kind = 'coin') {
+    if (!this.context) return;
+    const now = this.context.currentTime;
+    if (kind === 'gem') {
+      this.play('sparkle', { gain: 0.42, rate: 0.9 });
+      this.play('star', { gain: 0.4, rate: 1.25 });
+      return;
+    }
+    if (kind !== 'coin') {
+      this.play('sparkle', { gain: 0.36, rate: 1.1 });
+      return;
+    }
+    if (now - this.lastCoinAt < COIN_SPACING_SECONDS) return;
+    this.coinStep = now - this.lastCoinAt < 0.9 ? Math.min(this.coinStep + 1, 3) : 0;
+    this.lastCoinAt = now;
+    this.play('star', { gain: 0.4, rate: 1.5 + this.coinStep * 0.08 });
+  }
+
+  /** A power-up driven through: a harp. */
+  powerUp() {
+    this.play('harp', { gain: 0.5 });
+  }
+
+  /** Something bounces off the bubble. */
+  bounce() {
+    if (!this.context) return;
+    const now = this.context.currentTime;
+    if (now - this.lastBounceAt < BOUNCE_SPACING_SECONDS) return;
+    this.lastBounceAt = now;
+    this.play('boing', { gain: 0.32, rate: 1.1 });
+  }
+
+  /** A treasure chest opening. */
+  chest() {
+    this.play('unlock', { gain: 0.42 });
+    this.play('sparkle', { gain: 0.3, rate: 1.1 });
+  }
+
+  /** The farmer rings the tractor's bell as the car goes past. */
+  tractor() {
+    this.play('bell', { gain: 0.28 });
+  }
+
+  /** The giant high ten: a big clap of both hands, and the crowd. A closed hand gets only a pat. */
+  highTen(hard) {
+    if (!hard) {
+      this.pat();
+      return;
+    }
+    this.play('slap', { gain: 0.72, rate: 0.9 });
+    this.play('clap', { gain: 0.5 });
+    this.play('cheer', { gain: 0.36 });
   }
 
   /** The crowd, as the car goes by the grandstand. */

@@ -71,7 +71,7 @@ Shared sounds are in `core/audio/sfx/`, and each game's own are in its `audio/` 
 | `rustle.ogg` (Spider Catcher) | [Miscanthus sinensis #3](https://bigsoundbank.com/miscanthus-sinensis-3-s1813.html), long grass | Joseph Sardin, BigSoundBank | CC0 | 1.3 seconds, softened at each end |
 | `birds.ogg` (Spider Catcher) | [Forest](https://bigsoundbank.com/forest-s0100.html) | Joseph Sardin, BigSoundBank | CC0 | 24 seconds from the quietest part, looped |
 
-Some games play sounds that live in another game's folder, credited above under the game they're in. Leap Trail plays Robot Rescue's `boing.ogg`, `unlock.ogg` and `goo-pop.ogg` and Mighty Moves' `sparkle.ogg`. Sky Wings plays Balloon Pop's `pop.ogg` and Mighty Moves' music, `whoosh-1.ogg`, `hit-1.ogg`, `hit-2.ogg`, `boom.ogg`, `block.ogg` and `sparkle.ogg`. Renaming one of these files means changing the games that play it.
+Some games play sounds that live in another game's folder, credited above under the game they're in. Leap Trail plays Robot Rescue's `boing.ogg`, `unlock.ogg` and `goo-pop.ogg` and Mighty Moves' `sparkle.ogg`. Sky Wings plays Balloon Pop's `pop.ogg` and Mighty Moves' music, `whoosh-1.ogg`, `hit-1.ogg`, `hit-2.ogg`, `boom.ogg`, `block.ogg` and `sparkle.ogg`. High Five Racers plays Mighty Moves' `whoosh-2.ogg`, `block.ogg`, `thump.ogg`, `sparkle.ogg`, `cheer.ogg` and `clap.ogg`, Spider Catcher's `home.ogg` and Robot Rescue's `boing.ogg`, `unlock.ogg` and `bell.ogg`. Renaming one of these files means changing the games that play it.
 
 The engine loop's CC-BY licence requires this credit to stay with the game: **"Car Engine Loop 96kHz, 4s" by qubodup, CC-BY 3.0, resampled and level adjusted.**
 

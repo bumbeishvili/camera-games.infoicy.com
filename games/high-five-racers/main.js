@@ -5,8 +5,9 @@ import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
 import { GameSession, SPOKEN as SPOKEN_EVERYWHERE } from '../../core/session.js';
 import { CarSound } from './car-sound.js';
+import { drawPowerIcon } from './extras.js';
 import { Race } from './game.js';
-import { racePlan, TOP_SPEED } from './rules.js';
+import { newAt, POWER_KINDS, racePlan, TOP_SPEED } from './rules.js';
 
 const MOST_RIVALS = racePlan(10).rivals;
 
@@ -40,6 +41,8 @@ const WORDS = {
     fly: 'Fly!',
     keepOpen: 'Keep your hand open!',
     otherHand: 'Other hand: fist, then open!',
+    highTen: 'High ten!',
+    newTag: 'New!',
   },
   ka: {
     five: 'ყოჩაღ!',
@@ -49,10 +52,28 @@ const WORDS = {
     fly: 'გაფრინდი!',
     keepOpen: 'ხელი გაშლილი გეჭიროს!',
     otherHand: 'მეორე ხელი: მუშტი, მერე გაშალე!',
+    highTen: 'ორმაგი ხუთი!',
+    newTag: 'ახალი!',
   },
 };
 
 const byId = (id) => document.getElementById(id);
+const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+// Where a new thing's label goes, kept clear of the edges of the screen, in pixels. The bottom keeps it above the
+// meters. One that isn't over anything, like the sunset's, goes this far under where the little words come up.
+const LABEL_MARGIN = { side: 10, top: 70, bottom: 150, gap: 6 };
+const FIXED_LABEL_BELOW_WORDS = 64;
+
+/** The power-ups' own pictures, for the badges on the screen. */
+function powerPictures() {
+  return Object.fromEntries(POWER_KINDS.map((kind) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 96;
+    canvas.height = 96;
+    drawPowerIcon(canvas.getContext('2d'), kind, 96);
+    return [kind, canvas.toDataURL()];
+  }));
+}
 const ordinal = (place) => ['1st', '2nd', '3rd', '4th'][place - 1] ?? `${place}th`;
 
 /**
@@ -87,8 +108,9 @@ class RaceGame {
         }
       },
       // In the air, "Fly!" stays up rather than being replaced by everyone flown past.
+      // And while something new has its label up, that's what there is to see.
       onOvertake: (spec) => {
-        if (!this.race.soaring) this.toast(this.words.passed(spec), spec);
+        if (!this.race.soaring && !this.race.callout) this.toast(this.words.passed(spec), spec);
       },
       onLap: (lap) => {
         sound.lap();
@@ -104,6 +126,17 @@ class RaceGame {
         if (outcome === 'closed') sound.pat();
       },
       onBump: () => sound.bump(),
+      // What the later levels bring: prizes, power-ups, the tractor and the high ten. See NEW_THINGS in rules.js.
+      onCoin: (total, kind) => (kind === 'chest' ? sound.chest() : sound.coin(kind)),
+      onPower: (kind, on) => {
+        if (on) sound.powerUp();
+      },
+      onBounce: () => sound.bounce(),
+      onTractor: () => sound.tractor(),
+      onHighTen: (hard) => {
+        sound.highTen(hard);
+        if (hard) this.toast(this.words.highTen);
+      },
       onTurbo: (on) => {
         if (!on) {
           this.turboRanOut();
@@ -139,6 +172,17 @@ class RaceGame {
     this.toastBox = byId('toast');
     this.toastFace = byId('toast-face');
     this.toastText = byId('toast-text');
+    this.coinsBox = byId('chip-coins-box');
+    this.coinsValue = byId('chip-coins');
+    this.buildPowers();
+    this.newLabel = byId('new-label');
+    this.cameraFrame = byId('camera-frame');
+    this.promptBox = byId('prompt');
+    // What was picked up, on the finish card under the stars.
+    this.finishPrizes = document.createElement('p');
+    this.finishPrizes.id = 'finish-prizes';
+    this.finishPrizes.className = 'finish-prizes';
+    document.querySelector('#screen-finish .finish-hero')?.after(this.finishPrizes);
     // Otherwise it would play again whenever the race's screen comes back.
     this.toastBox.addEventListener('animationend', () => this.toastBox.classList.remove('is-showing'));
     const game = this;
@@ -152,6 +196,117 @@ class RaceGame {
 
   get words() {
     return WORDS[this.session.settings.language] ?? WORDS.en;
+  }
+
+  /** What a level brings that's new, for the title card, the countdown and the finish card. */
+  newAt(level) {
+    return newAt(level);
+  }
+
+  /** A badge for each power-up, which shows while it's on, with a ring that goes down as it runs out. */
+  buildPowers() {
+    const pictures = powerPictures();
+    const box = byId('powers');
+    this.powerBadges = new Map(POWER_KINDS.map((kind) => {
+      const badge = document.createElement('div');
+      badge.className = 'power';
+      badge.dataset.kind = kind;
+      const picture = document.createElement('img');
+      picture.alt = '';
+      picture.src = pictures[kind];
+      badge.append(picture);
+      box.append(badge);
+      return [kind, badge];
+    }));
+  }
+
+  showPowers() {
+    const { powers } = this.race;
+    for (const [kind, badge] of this.powerBadges) {
+      const on = powers.has(kind);
+      if (badge.classList.contains('is-on') !== on) badge.classList.toggle('is-on', on);
+      if (on) badge.style.setProperty('--left', powers.share(kind).toFixed(3));
+    }
+  }
+
+  /**
+   * The first time something new comes into sight, a little label over it, or near the top for the sunset or
+   * rain. It's kept on the screen and clear of the camera's picture, the prompt and the little words, so nothing
+   * covers it, and the race is told while it's up, as a label only counts as shown once it has been seen.
+   */
+  showNewLabel() {
+    const { callout, camera } = this.race;
+    const label = this.newLabel;
+    if (!callout || this.session.screen !== 'playing') {
+      if (callout) callout.visible = false;
+      if (label.classList.contains('is-showing')) label.classList.remove('is-showing');
+      return;
+    }
+    // In the language the voice speaks, even if that changes while it's up.
+    const { language } = this.session.settings;
+    const key = `${callout.id} ${language}`;
+    if (label.dataset.key !== key) {
+      label.dataset.key = key;
+      byId('new-label-tag').textContent = this.words.newTag;
+      byId('new-label-mark').textContent = callout.mark;
+      byId('new-label-name').textContent = language === 'ka' ? callout.nameKa : callout.name;
+    }
+    // Anything in one place has it over itself, and it fades if that goes out of the picture. Something that
+    // isn't, like the sunset, has it in the middle, under where the little words come up.
+    let inView = true;
+    let x = innerWidth / 2;
+    let y = this.toastBox.offsetTop + FIXED_LABEL_BELOW_WORDS + label.offsetHeight;
+    if (callout.follow) {
+      const point = callout.at?.clone().project(camera);
+      inView = Boolean(point) && point.z < 1 && Math.abs(point.x) < 1.1 && Math.abs(point.y) < 1.1;
+      if (inView) {
+        x = ((point.x + 1) / 2) * innerWidth;
+        y = ((1 - point.y) / 2) * innerHeight;
+      }
+    }
+    if (inView) {
+      const spot = this.labelSpot(x, y, label.offsetWidth, label.offsetHeight);
+      label.style.setProperty('--x', `${spot.x.toFixed(1)}px`);
+      label.style.setProperty('--y', `${spot.y.toFixed(1)}px`);
+    }
+    const up = inView && !callout.ending;
+    if (label.classList.contains('is-showing') !== up) label.classList.toggle('is-showing', up);
+    callout.visible = up;
+  }
+
+  /**
+   * Where a label goes, as its middle and its bottom edge: on the screen, and moved down under the camera's
+   * picture, which is the child's own hand, the prompt and the little words, wherever it would touch them.
+   */
+  labelSpot(x, y, width, height) {
+    const { side, top, bottom, gap } = LABEL_MARGIN;
+    const spot = {
+      x: Math.min(innerWidth - side - width / 2, Math.max(side + width / 2, x)),
+      y: Math.min(innerHeight - bottom, Math.max(top + height, y)),
+    };
+    const inTheWay = [
+      this.cameraFrame,
+      this.promptBox.classList.contains('is-visible') ? this.promptBox : null,
+      this.toastBox.classList.contains('is-showing') ? this.toastBox : null,
+    ].filter(Boolean).map((element) => element.getBoundingClientRect()).sort((a, b) => a.top - b.top);
+    for (const box of inTheWay) {
+      const touches = spot.x - width / 2 < box.right + gap && spot.x + width / 2 > box.left - gap
+        && spot.y - height < box.bottom + gap && spot.y > box.top - gap;
+      if (touches) spot.y = box.bottom + gap + height;
+    }
+    return spot;
+  }
+
+  /** Coins, gems and treasure, on the finish card. Nothing at level 1, which has none. */
+  prizesWords() {
+    const { race } = this;
+    if (!race.plan.coins) return '';
+    const { gems, chests, highTens } = race.prizes;
+    const parts = [`🪙 ${plural(race.coinTotal, 'coin', 'coins')}`];
+    if (gems) parts.push(`💎 ${plural(gems, 'gem', 'gems')}`);
+    if (chests) parts.push(`🎁 ${plural(chests, 'treasure chest', 'treasure chests')}`);
+    if (highTens) parts.push('🙌 High ten!');
+    return parts.join(' · ');
   }
 
   /** At the start of each race: nothing hinted, said or flown yet. */
@@ -205,6 +360,14 @@ class RaceGame {
     }
   }
 
+  /**
+   * Takes the little words away. The finish card hides them part way through, which stops their animation
+   * without it ending, so they would otherwise come up again at the start of the next race.
+   */
+  clearToast() {
+    this.toastBox.classList.remove('is-showing');
+  }
+
   toast(text, spec = null) {
     this.toastText.textContent = text;
     if (spec) this.toastFace.src = this.session.portraits?.[spec.id] ?? '';
@@ -225,6 +388,9 @@ class RaceGame {
     byId('chip-lap').textContent = `${lap} of ${laps}`;
     byId('chip-stars').textContent = String(stars);
     byId('chip-fives').textContent = String(fives);
+    const coinsText = String(race.coinTotal);
+    if (this.coinsValue.textContent !== coinsText) this.coinsValue.textContent = coinsText;
+    this.showPowers();
     byId('race-progress-fill').style.width = `${Math.round(progress * 100)}%`;
 
     this.turboFill.style.transform = `scaleX(${turbo.toFixed(3)})`;
@@ -272,6 +438,9 @@ class RaceGame {
   /** Higher levels have more cars, more big hands and ramps, and keener racing: see racePlan in rules.js. */
   prepare(level) {
     this.race.setLevel(level);
+    // Coins are counted from level 2, where they come in.
+    this.coinsBox.hidden = !this.race.plan.coins;
+    this.clearToast();
     this.buildOrder();
     this.race.reset(this.session.settings.laps);
     this.race.setMode('grid');
@@ -319,6 +488,8 @@ class RaceGame {
   }
 
   render() {
+    // The label for something new goes up last of all, once this frame's prompt and words are where they'll be.
+    this.showNewLabel();
     this.race.render();
   }
 
@@ -366,6 +537,7 @@ class RaceGame {
   }
 
   finished() {
+    this.clearToast();
     this.flyFilmLeft = 0;
     this.showFlyFilm(0);
     this.session.sound.stopEngine();
@@ -375,6 +547,7 @@ class RaceGame {
 
   summary() {
     const { race } = this;
+    this.finishPrizes.textContent = this.prizesWords();
     const fives = `${race.fives} of ${race.gatesMet}`;
     const sides = `Left ${race.fivesLeft}, right ${race.fivesRight}`;
     return {
@@ -404,6 +577,7 @@ new GameSession({
           <div class="chip"><span class="chip-label">Lap</span><span id="chip-lap" class="chip-value">1 of 2</span></div>
           <div class="chip"><span class="chip-label">Stars</span><span id="chip-stars" class="chip-value">0</span></div>
           <div class="chip"><span class="chip-label">Fives</span><span id="chip-fives" class="chip-value">0</span></div>
+          <div id="chip-coins-box" class="chip chip-coins" hidden><span class="chip-label">Coins</span><span id="chip-coins" class="chip-value">0</span></div>
         </div>
         <div class="race-progress" aria-hidden="true"><div id="race-progress-fill" class="race-progress-fill"></div></div>
         <ol id="race-order" class="race-order" aria-hidden="true"></ol>
@@ -445,6 +619,8 @@ new GameSession({
         </svg>
         <p id="fly-film-words" class="fly-film-words">Other hand: fist, then open!</p>
       </div>
+      <div id="powers" class="powers" aria-hidden="true"></div>
+      <div id="new-label" class="new-label" aria-hidden="true"><span id="new-label-tag" class="new-label-tag">New!</span><span id="new-label-mark" class="new-label-mark"></span><span id="new-label-name" class="new-label-name"></span></div>
       <div id="toast" class="toast" aria-live="polite"><img id="toast-face" class="toast-face is-hidden" alt=""><span id="toast-text"></span></div>
       <div class="five-film" aria-hidden="true">
         <svg viewBox="0 0 120 110">

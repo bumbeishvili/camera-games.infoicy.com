@@ -27,7 +27,7 @@ function capsule(length, radius) {
 }
 
 /** A big open hand, fingers up and palm towards +Z. Its thumb is on the road's side of it. */
-function handGeometry(thumbSide) {
+export function handGeometry(thumbSide) {
   const fingers = [
     { x: 0.42, length: 0.68, fan: 0.17 },
     { x: 0.145, length: 0.84, fan: 0.05 },
@@ -44,7 +44,8 @@ function handGeometry(thumbSide) {
   return mergeParts(parts);
 }
 
-function palmTexture() {
+/** The star on a big hand's palm, with a 5 on it, or what's given, like the 10 on the high ten's. */
+export function palmTexture(number = '5') {
   return canvasTexture(256, 256, (ctx, w, h) => {
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
@@ -54,10 +55,10 @@ function palmTexture() {
     starPath(ctx, w / 2, h / 2, 118, 62);
     ctx.fill();
     ctx.fillStyle = '#27384b';
-    ctx.font = '700 132px Fredoka, sans-serif';
+    ctx.font = `700 ${number.length > 1 ? 104 : 132}px Fredoka, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('5', w / 2, h / 2 + 10);
+    ctx.fillText(number, w / 2, h / 2 + 10);
   });
 }
 

@@ -1,22 +1,44 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  CAR_WIDTH,
+  CHEST_REACH,
+  CHEVRON_SPACING,
   closestAcross,
+  COINS,
   FASTEST_SPEED,
   FistAndOpen,
   GATE_SPOTS,
+  gateOutcome,
+  HIGH_TEN_BEFORE_LINE,
+  NEW_THINGS,
+  newAt,
+  picksUp,
+  POWER,
+  POWER_KINDS,
+  POWER_REACH,
+  PowerUps,
   racePlan,
   RAMP_SPOTS,
+  REACH,
+  ReachEasing,
   RIVAL_PACE,
   RIVAL_TURBO,
   rivalSpeed,
   sideChanges,
   SLAP,
+  spillSpots,
+  starSpots,
   TOP_SPEED,
+  TRACTOR,
+  tractorRun,
+  trailFor,
   TURBO,
   TurboMeter,
 } from '../../games/high-five-racers/rules.js';
-import { LANE_LIMIT, LAP_LENGTH, PLACES, START_BEHIND_LINE } from '../../games/high-five-racers/track.js';
+import { LANE_LIMIT, LAP_LENGTH, PLACES, ROAD_HALF, START_BEHIND_LINE } from '../../games/high-five-racers/track.js';
+
+const CAR_WIDTH_HALF = 1.3;
 
 const open = { status: 'open', reason: null };
 const fist = { status: 'closed', reason: 'closed' };
@@ -117,6 +139,12 @@ function hardness(level) {
     sideChanges: sideChanges(plan.gates),
     ramps: plan.ramps.length,
     sideRamps: plan.ramps.filter(({ lateral }) => lateral !== 0).length,
+    // What's new comes in level by level, and stays.
+    kinds: NEW_THINGS.filter((thing) => thing.from <= level).length,
+    powerUps: plan.powerUps.length,
+    powerKinds: new Set(plan.powerUps.map(({ kind }) => kind)).size,
+    balloons: plan.balloons.length,
+    chests: plan.chests.length,
   };
 }
 
@@ -141,6 +169,271 @@ test('level 1 is the race as it always was', () => {
   ];
   assert.deepEqual(cases.map((each) => rivalSpeed(each)), [24.5, 13, 27]);
   assert.deepEqual(cases.map((each) => rivalSpeed({ ...each, pace: plan.rivalPace })), [24.5, 13, 27]);
+  // None of what later levels bring.
+  assert.equal(plan.coins, false);
+  assert.deepEqual(plan.powerUps, []);
+  assert.deepEqual(plan.balloons, []);
+  assert.deepEqual(plan.chests, []);
+  assert.equal(plan.tractor, null);
+  assert.equal(plan.rain, null);
+  assert.equal(plan.sunset || plan.highTen || plan.goldenLap || plan.slalom, false);
+  assert.deepEqual(newAt(1), []);
+});
+
+/** The stars as pickups.js laid them out before they were worked out in rules.js, to check nothing moved. */
+function starsAsTheyWere(gateSpots, ramps) {
+  const stars = [];
+  const add = (along, lateral, lift = 0) => stars.push({ along, lateral, lift });
+  const overSideRamp = (along) => ramps.some((ramp) => ramp.lateral !== 0 && along > ramp.along - 4 && along < ramp.along + 30);
+  gateSpots.forEach(([along, side], index) => {
+    const fromSide = index === 0 ? 0 : gateSpots[index - 1][1] * 1.2;
+    const after = index === 0 ? -Infinity : gateSpots[index - 1][0] + 6;
+    let count = 6;
+    while (count > 2 && along - 12 - (count - 1) * 8.5 < after) count -= 1;
+    for (let i = 0; i < count; i += 1) {
+      const share = i / (count - 1);
+      const eased = share * share * (3 - 2 * share);
+      const at = along - 12 - (count - 1 - i) * 8.5;
+      if (!overSideRamp(at)) add(at, fromSide + (side * 3.6 - fromSide) * eased);
+    }
+  });
+  for (const ramp of ramps) {
+    for (let i = 0; i < 5; i += 1) add(ramp.along + 7 + i * 5.2, ramp.lateral, 0.5 + 1.6 * Math.sin((i / 4) * Math.PI));
+  }
+  return stars;
+}
+
+test('the stars are where they always were, at every level', () => {
+  for (const level of LEVELS) {
+    const { gates, ramps } = racePlan(level);
+    assert.deepEqual(starSpots(gates, ramps), starsAsTheyWere(gates, ramps), `level ${level}`);
+  }
+});
+
+/* ---------- what each level brings ---------- */
+
+/** For each new thing, whether a level's plan really has it. */
+const sameSideTwice = (spots) => spots.some(([, side], index) => index > 0 && spots[index - 1][1] === side);
+const hasPower = (kind) => (plan) => plan.powerUps.some((each) => each.kind === kind);
+const REALLY_ON = {
+  coins: (plan) => plan.coins === true,
+  magnet: hasPower('magnet'),
+  pair: (plan) => sameSideTwice(plan.gates),
+  tractor: (plan) => plan.tractor !== null,
+  car4: (plan) => plan.rivals >= 4,
+  sunset: (plan) => plan.sunset === true,
+  rivalTurbo: (plan) => plan.rivalTurboEvery < Infinity,
+  bubble: hasPower('bubble'),
+  sideRamp: (plan) => plan.ramps.some(({ lateral }) => lateral !== 0),
+  balloon: (plan) => plan.balloons.length > 0,
+  slalom: (plan) => plan.slalom === true && plan.gates.slice(0, 5).every(([, side], index) => side === (index % 2 ? -1 : 1)),
+  chest: (plan) => plan.chests.length > 0,
+  wide: hasPower('wide'),
+  car5: (plan) => plan.rivals >= 5,
+  rain: (plan) => plan.rain !== null,
+  rainbow: hasPower('rainbow'),
+  highTen: (plan) => plan.highTen === true,
+  goldenLap: (plan) => plan.goldenLap === true,
+};
+
+test('every level from 2 to 10 brings something new, and level 1 nothing', () => {
+  assert.deepEqual(newAt(1), []);
+  for (const level of LEVELS.slice(1)) {
+    const news = newAt(level);
+    assert.ok(news.length >= 1 && news.length <= 3, `level ${level} has ${news.length} new things`);
+    for (const { id, mark, name, nameKa } of news) {
+      assert.ok(typeof mark === 'string' && mark.length > 0 && mark.length <= 3, `${id}: one small picture`);
+      assert.ok(name.split(' ').length <= 3, `${id}: "${name}" is a few words`);
+      assert.ok(typeof nameKa === 'string' && nameKa.length > 1, `${id}: has a Georgian name`);
+    }
+  }
+  assert.equal(new Set(NEW_THINGS.map(({ id }) => id)).size, NEW_THINGS.length);
+});
+
+test('each new thing listed is really there from its level on, and not before', () => {
+  for (const { id, from } of NEW_THINGS) {
+    const check = REALLY_ON[id];
+    assert.ok(check, `${id} has a check`);
+    assert.equal(check(racePlan(from - 1)), false, `${id} isn't at level ${from - 1}`);
+    for (const level of LEVELS.filter((each) => each >= from)) assert.equal(check(racePlan(level)), true, `${id} at level ${level}`);
+  }
+  // Every kind of power-up is listed as new somewhere.
+  for (const kind of POWER_KINDS) assert.ok(NEW_THINGS.some(({ id }) => id === kind), kind);
+});
+
+test('power-ups and balloons sit on the trails of stars, clear of each other and of the ramps', () => {
+  for (const level of LEVELS) {
+    const { gates, ramps, powerUps, balloons } = racePlan(level);
+    const specials = [...powerUps, ...balloons];
+    for (const { along, lateral } of specials) {
+      // On the trail to the big hand after it: between two of its stars, and in the same place across.
+      const index = gates.findIndex(([at]) => at > along);
+      const trail = trailFor(gates, index);
+      const before = trail.filter((star) => star.along < along).at(-1);
+      const after = trail.find((star) => star.along > along);
+      assert.ok(before && after, `level ${level}: ${along} is on a trail`);
+      assert.ok(Math.abs(lateral - (before.lateral + after.lateral) / 2) < 1e-9);
+      assert.ok(Math.abs(lateral) < LANE_LIMIT);
+      for (const [from, to] of NO_HANDS) assert.ok(!(wrap(along - from) <= wrap(to - from)), `level ${level}: something at ${along}`);
+      // Never on a ramp down the middle, or its arc of stars.
+      for (const ramp of ramps) {
+        if (ramp.lateral === 0) assert.ok(along < ramp.along - 4 || along > ramp.along + 30, `level ${level}: ${along} on a ramp`);
+      }
+    }
+    specials.forEach((a, i) => specials.slice(i + 1).forEach((b) => assert.ok(Math.abs(a.along - b.along) >= 10, `level ${level}: ${a.along} and ${b.along}`)));
+  }
+});
+
+test('a treasure chest is on the way to the big hand after it, and leaves as long to get across as the big hands do', () => {
+  const first = closestAcross(racePlan(1).gates, LAP_LENGTH);
+  for (const level of LEVELS) {
+    const { gates, chests } = racePlan(level);
+    for (const { along, side } of chests) {
+      const next = gates.find(([at]) => at > along);
+      assert.equal(next[1], side, `level ${level}: the big hand after the chest is on its side`);
+      assert.ok(next[0] - along < 40);
+      // Counting the chest as one more thing to reach for, it changes nothing about how often or how soon.
+      const withChests = [...gates, [along, side]].sort((a, b) => a[0] - b[0]);
+      assert.ok(closestAcross(withChests, LAP_LENGTH) >= 0.7 * first, `level ${level}`);
+      assert.equal(sideChanges(withChests), sideChanges(gates));
+    }
+  }
+});
+
+test('a treasure chest asks for no more of a reach than the big hand after it', () => {
+  assert.ok(CHEST_REACH > 0.5 && CHEST_REACH <= 1);
+});
+
+test('the tractor is slow and short, so passing it is quick, and its stretch and the shower are clear of the tunnel', () => {
+  assert.ok(TRACTOR.speed < 0.4 * TOP_SPEED);
+  // It keeps to the shoulder, off the tarmac, where no car can touch it however far over it goes, and inside
+  // the marker posts further out.
+  assert.ok(TRACTOR.out - TRACTOR.width / 2 > LANE_LIMIT + CAR_WIDTH / 2, 'no car can touch it');
+  assert.ok(TRACTOR.out - TRACTOR.width / 2 >= ROAD_HALF, 'it is off the tarmac');
+  assert.ok(TRACTOR.out + TRACTOR.width / 2 < ROAD_HALF + 3 - 0.2, 'it is inside the marker posts');
+  for (const level of LEVELS) {
+    const { tractor, rain } = racePlan(level);
+    for (const stretch of [tractor, rain].filter(Boolean)) {
+      assert.ok(stretch.from > PLACES.tunnel[1] && stretch.to < PLACES.bridge[0], `level ${level}: ${stretch.from}-${stretch.to}`);
+    }
+  }
+  assert.ok(HIGH_TEN_BEFORE_LINE > 0 && HIGH_TEN_BEFORE_LINE < 12);
+  // The high ten is past the last big hand of the lap.
+  assert.ok(LAP_LENGTH - HIGH_TEN_BEFORE_LINE > racePlan(10).gates.at(-1)[0] + 8);
+});
+
+test('the tractor keeps to the side away from the next big hand, and stops short of the next one on its side', () => {
+  // Its front is about 2 m ahead of where it is, and it rolls on a little as it stops.
+  const rollsOn = TRACTOR.speed / TRACTOR.slows + 2;
+  for (const level of LEVELS) {
+    const plan = racePlan(level);
+    const run = tractorRun(plan, LAP_LENGTH);
+    if (!plan.tractor) {
+      assert.equal(run, null, `level ${level}`);
+      continue;
+    }
+    const next = plan.gates.find(([along]) => along >= run.from);
+    assert.equal(run.side, -next[1], `level ${level}: away from the next big hand`);
+    // The post of a big hand on its side is never where the tractor is, from its back as it comes out to its
+    // front where it stops.
+    for (const [along, side] of plan.gates) {
+      if (side === run.side) assert.ok(along < run.from - TRACTOR.length || along > run.to + rollsOn + 1, `level ${level}: the big hand at ${along}`);
+    }
+    assert.ok(run.to - run.from > 60, `level ${level}: it still has a good way to go`);
+  }
+});
+
+/* ---------- prizes and power-ups ---------- */
+
+test('coins spill out ahead of the car, spaced so they go past slowly enough, where the car is', () => {
+  const spots = spillSpots(300, -2, 3);
+  assert.equal(spots.length, 3);
+  spots.forEach((spot, index) => {
+    assert.equal(spot.lateral, -2);
+    assert.ok(spot.distance > 300 + 10);
+    if (index > 0) assert.ok(spot.distance - spots[index - 1].distance >= CHEVRON_SPACING);
+  });
+  // With nothing else on the road, they land where they always did.
+  assert.deepEqual(spillSpots(300, -2, 3, -Infinity), spots);
+  // A car passed just after a slap: its coins land past the slap's, which are still on the road, and every
+  // coin is as far from the next as ever, so they're still picked up one at a time.
+  const after = spillSpots(305, 1, 2, spots.at(-1).distance);
+  const all = [...spots, ...after].map(({ distance }) => distance).sort((a, b) => a - b);
+  all.forEach((at, index) => {
+    if (index > 0) assert.ok(at - all[index - 1] >= COINS.spacing, `${all[index - 1]} and ${at}`);
+  });
+  // Far behind the car, coins already on the road don't hold new ones back.
+  assert.equal(spillSpots(900, 0, 1, 343)[0].distance, 900 + COINS.firstAhead);
+  // Even at the car's fastest, fewer than three go past a second.
+  assert.ok(FASTEST_SPEED / COINS.spacing < 3);
+  assert.ok(COINS.perFive > 0 && COINS.perPass > 0 && COINS.perTractor > 0);
+  assert.ok(COINS.gem > 1 && COINS.chest > COINS.gem && COINS.highTen > 1);
+});
+
+test('prizes are picked up generously, and from anywhere across the road with the magnet', () => {
+  const car = { distance: 500, lateral: 0 };
+  assert.equal(picksUp({ distance: 501, lateral: 2.5 }, car), true, 'a car width or more to the side');
+  assert.equal(picksUp({ distance: 501, lateral: 4.5 }, car), false);
+  assert.equal(picksUp({ distance: 501, lateral: 4.5 }, car, true), true, 'with the magnet');
+  assert.equal(picksUp({ distance: 510, lateral: 0 }, car, true), false, 'only once the car is there');
+  assert.ok(POWER.magnet.across >= 2 * LANE_LIMIT, 'the magnet reaches right across the road');
+  assert.ok(COINS.across > CAR_WIDTH_HALF * 2 && POWER_REACH.across > CAR_WIDTH_HALF * 2);
+  assert.ok(COINS.drift > 1, 'coins drift over to the car');
+});
+
+test('a power-up lasts its time while the hand is open, waits while it rests, and then ends', () => {
+  const powers = new PowerUps();
+  assert.equal(powers.has('magnet'), false);
+  powers.take('magnet');
+  powers.take('bubble');
+  assert.equal(powers.has('magnet'), true);
+  assert.equal(powers.share('magnet'), 1);
+  for (let t = 0; t < 3; t += 0.1) assert.deepEqual(powers.update(0, 0.1), [], 'resting takes nothing away');
+  assert.equal(powers.share('magnet'), 1);
+  let ended = [];
+  let seconds = 0;
+  while (!ended.includes('magnet') && seconds < 20) {
+    ended = powers.update(1, 0.05);
+    seconds += 0.05;
+  }
+  assert.ok(Math.abs(seconds - POWER.magnet.seconds) < 0.11, `lasted ${seconds.toFixed(2)} s`);
+  assert.equal(powers.has('magnet'), false);
+  assert.equal(powers.has('bubble'), true, 'each has its own time');
+  powers.take('magnet');
+  assert.equal(powers.share('magnet'), 1, 'taking one again starts it over');
+  powers.reset();
+  assert.ok(POWER_KINDS.every((kind) => !powers.has(kind)));
+  for (const kind of POWER_KINDS) assert.ok(POWER[kind].seconds >= 5 && POWER[kind].seconds <= 12, kind);
+  // Closer hands only ever make reaching easier, and stars only ever count for more.
+  assert.ok(POWER.wide.reach > 0 && POWER.wide.reach < 1);
+  assert.ok(POWER.rainbow.starsEach > 1);
+});
+
+test('a high five that only came with closer hands doesn\'t make reaching harder afterwards', () => {
+  // A side that's been missed, so that its reach has come down.
+  const easing = new ReachEasing(REACH.medium);
+  easing.recordPass(1, 0, true);
+  easing.recordPass(1, 0, true);
+  const eased = easing.reachFor(1);
+  assert.ok(eased < REACH.medium);
+  // With closer hands, the car only had to be this far over, and was, but not as far as without them.
+  const assisted = eased * POWER.wide.reach + 0.1;
+  assert.equal(gateOutcome({ handOpen: true, lateral: assisted, side: 1, reach: eased * POWER.wide.reach }), 'slap');
+  easing.recordPass(1, assisted, true);
+  assert.ok(easing.reachFor(1) <= eased, 'it isn\'t taken back up');
+  // A slap at the side's own reach takes it back up, as it always did, and the other side is left alone.
+  const now = easing.reachFor(1);
+  easing.recordPass(1, now + 0.1, true);
+  assert.ok(easing.reachFor(1) > now);
+  assert.equal(easing.reachFor(-1), REACH.medium);
+  // Without a power-up, it's exactly what was recorded before.
+  for (const [lateral, handOpen] of [[0, true], [3, true], [3, false], [-3, true], [1, false]]) {
+    const before = new ReachEasing(REACH.medium);
+    before.record(1, gateOutcome({ handOpen, lateral, side: 1, reach: before.reachFor(1) }), handOpen);
+    const after = new ReachEasing(REACH.medium);
+    after.recordPass(1, lateral, handOpen);
+    assert.deepEqual(after.ease, before.ease, `${lateral} ${handOpen}`);
+  }
 });
 
 test('each level is the same or harder than the one before in every way, and harder in at least one', () => {
@@ -157,7 +450,6 @@ test('each level is the same or harder than the one before in every way, and har
 });
 
 test('new kinds of thing come in from about level 3, and level 10 has them all', () => {
-  const sameSideTwice = (spots) => spots.some(([, side], index) => index > 0 && spots[index - 1][1] === side);
   assert.ok(!sameSideTwice(racePlan(2).gates));
   assert.ok(sameSideTwice(racePlan(3).gates), 'two big hands on one side');
   assert.ok(racePlan(4).rivals > 3, 'another car');
@@ -166,6 +458,10 @@ test('new kinds of thing come in from about level 3, and level 10 has them all',
   assert.ok(sideChanges(racePlan(7).gates) > sideChanges(racePlan(6).gates), 'a slalom');
   const top = hardness(10);
   assert.ok(top.rivals === 5 && top.turbo > 0 && top.sideRamps === 2 && top.hands > 13);
+  // Level 10 has every new thing there is, and every kind of power-up.
+  const plan = racePlan(10);
+  for (const { id } of NEW_THINGS) assert.ok(REALLY_ON[id](plan), id);
+  assert.equal(top.powerKinds, POWER_KINDS.length);
 });
 
 test('even level 10 leaves time to get across, and asks for no more than twice as many moves', () => {

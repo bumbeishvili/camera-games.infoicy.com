@@ -9,7 +9,7 @@ import { PLACES, ROAD_HALF, within } from './track.js';
 const CHUNK = 150;
 const STEM = faceted(new THREE.CylinderGeometry(0.5, 0.5, 1, 3));
 const PETALS = faceted(new THREE.IcosahedronGeometry(0.5, 0));
-const SKY_TOP = '#58b7ff';
+export const SKY_TOP = '#58b7ff';
 export const SKY_HORIZON = '#d6f0ff';
 
 /** A kind of thing, placed many times. finish() turns what was placed into InstancedMeshes. */
@@ -430,6 +430,8 @@ export function buildSky(scene) {
   const clouds = new THREE.Mesh(m.geometry(), new THREE.MeshBasicMaterial({ vertexColors: true, fog: false }));
   clouds.frustumCulled = false;
   scene.add(clouds);
+  // For the light at sunset: see weather.js.
+  clouds.userData.sun = sun;
   return clouds;
 }
 

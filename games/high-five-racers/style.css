@@ -2,7 +2,14 @@
 
 body:not([data-screen='playing']) .turbo,
 body:not([data-screen='playing']) .toast,
+body:not([data-screen='playing']) .powers,
+body:not([data-screen='playing']) .new-label,
 body:not([data-screen='playing']) .five-film { display: none; }
+
+/* With the coins from level 2 there are five chips, which don't fit beside the camera's picture on every screen.
+   They keep clear of it, and where there isn't room the last of them go on a second row. */
+.hud-top { max-width: calc(50vw - var(--camera-small) / 2 - 16px); }
+.chips { flex-wrap: wrap; }
 
 /* ---------- who's in front: faces in order, which swap places when someone overtakes ---------- */
 .race-order {
@@ -63,7 +70,8 @@ body:not([data-screen='playing']) .five-film { display: none; }
   display: flex;
   align-items: center;
   gap: 8px;
-  width: clamp(180px, 25vw, 330px);
+  /* As wide as there's room for to the right of the meters, so its words fit on one line. */
+  width: clamp(180px, calc(50vw - (var(--meter-size) + clamp(8px, 2vw, 24px) + clamp(46px, 6vw, 74px)) / 2 - 24px), 360px);
   padding: 8px 14px 8px 10px;
   background: var(--surface);
   border-radius: 22px;
@@ -121,7 +129,8 @@ body:not([data-screen='playing']) .five-film { display: none; }
   line-height: 1;
 }
 
-.turbo-word { font-size: clamp(15px, 1.8vw, 23px); white-space: nowrap; }
+/* Where the words don't fit on one line, as in Georgian, they go onto two rather than running out of the meter. */
+.turbo-word { font-size: clamp(15px, 1.8vw, 23px); }
 
 .turbo-speed {
   font-size: clamp(15px, 1.8vw, 22px);
@@ -170,7 +179,7 @@ body:not([data-screen='playing']) .five-film { display: none; }
   display: none;
   position: fixed;
   z-index: 3;
-  bottom: calc(14px + 84px);
+  bottom: calc(14px + 94px);
   left: calc(50% + (var(--meter-size) + clamp(8px, 2vw, 24px) + clamp(46px, 6vw, 74px)) / 2 + 12px);
   width: clamp(180px, 25vw, 330px);
   padding: 6px 10px 10px;
@@ -215,6 +224,82 @@ body[data-fly-film='right'] .fly-film svg { transform: scaleX(-1); }
   76% { transform: translateY(-22px); }
   90%, 100% { transform: translateY(0); }
 }
+
+/* ---------- power-ups that are on: a picture, and a ring that goes down as each one runs out ---------- */
+.powers {
+  position: fixed;
+  z-index: 2;
+  top: 70px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.power {
+  display: none;
+  place-items: center;
+  width: clamp(48px, 5.4vw, 64px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: conic-gradient(var(--good) calc(var(--left, 1) * 360deg), var(--accent-track) 0);
+  box-shadow: var(--shadow);
+}
+
+.power.is-on { display: grid; }
+
+.power img {
+  width: 82%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--surface);
+  padding: 8%;
+}
+
+/* ---------- the first time something new comes into sight: a little label over it, which fades ---------- */
+.new-label {
+  position: fixed;
+  z-index: 4;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px 5px 5px;
+  background: var(--surface);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  font-size: clamp(15px, 1.9vw, 22px);
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(var(--x, 50vw), var(--y, 30vh)) translate(-50%, -100%);
+  transition: opacity 0.35s ease-out;
+  pointer-events: none;
+}
+
+.new-label.is-showing { opacity: 1; }
+
+.new-label-tag {
+  padding: 2px 9px 3px;
+  border-radius: 999px;
+  background: var(--good);
+  color: #ffffff;
+  font-size: 0.78em;
+}
+
+.new-label-mark { font-size: 1.2em; }
+
+.finish-prizes {
+  margin: 0;
+  font-size: clamp(16px, 2vw, 22px);
+  font-weight: 600;
+  text-align: center;
+}
+
+.finish-prizes:empty { display: none; }
 
 /* ---------- little words beside the action ---------- */
 .toast {
@@ -319,6 +404,9 @@ body[data-five-film='left'] .five-film svg { transform: scaleX(-1); }
   /* Smaller, so that it stays clear of the prompt. */
   .fly-film { width: 160px; bottom: calc(14px + 62px); padding: 4px 8px 6px; }
   .fly-film-words { font-size: 13px; }
+  /* A little closer together, so that all five chips stay on one row on a phone held sideways. */
+  .chips { gap: 4px; }
+  .chip { padding-inline: 8px; }
 }
 
 /* On a narrow screen there's no room beside the camera's picture, so all of this goes under it. */
@@ -327,17 +415,19 @@ body[data-five-film='left'] .five-film svg { transform: scaleX(-1); }
     left: auto;
     right: 10px;
     bottom: calc(var(--meter-size) + 54px);
-    width: 170px;
+    width: 196px;
   }
+
+  .turbo-word { font-size: 14px; }
 
   .fly-film {
     left: auto;
     right: 10px;
-    bottom: calc(var(--meter-size) + 54px + 76px);
-    width: 170px;
+    bottom: calc(var(--meter-size) + 54px + 84px);
+    width: 196px;
   }
 
-  .hud-top { top: calc(12px + var(--camera-small) / var(--camera-aspect) + 14px); }
+  .hud-top { top: calc(12px + var(--camera-small) / var(--camera-aspect) + 14px); max-width: calc(100vw - 24px); }
   .race-order { --row: min(34px, calc(180px / var(--cars, 4))); }
   body[data-screen='playing'] .prompt { top: calc(12px + var(--camera-small) / var(--camera-aspect) + 96px); }
 

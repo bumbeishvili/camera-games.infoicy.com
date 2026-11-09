@@ -129,7 +129,7 @@ export function wantedSpeed(drive, turboBonus = 0, boostLeft = 0) {
 // is 10 cm or so of hand movement, and the car's place on the road follows the hand, so "medium"
 // takes about half of that. Grown-ups choose under the gear icon.
 export const REACH = { small: 1.4, medium: 2.6, big: 4 };
-const LEAST_REACH = 0.9;
+export const LEAST_REACH = 0.9;
 
 /**
  * What happens as the car goes past a big hand. side is -1 for a hand on the left of the road and
@@ -163,6 +163,14 @@ export class ReachEasing {
   record(side, outcome, handOpen) {
     if (outcome === 'slap') this.ease[side] = Math.min(1, this.ease[side] + 0.1);
     else if (outcome === 'passed' && handOpen) this.ease[side] = Math.max(0.25, this.ease[side] - 0.18);
+  }
+
+  /**
+   * A big hand gone past, judged at this side's own reach, whatever made it easier at the time. A slap that
+   * only came with the closer-hands power-up doesn't take the reach back up, so nothing gets harder after it.
+   */
+  recordPass(side, lateral, handOpen) {
+    this.record(side, gateOutcome({ handOpen, lateral, side, reach: this.reachFor(side) }), handOpen);
   }
 }
 
@@ -261,13 +269,235 @@ export function closestAcross(spots, lapLength) {
   return closest;
 }
 
+/* ---------- the stars, and what sits on their trails ---------- */
+
+// Trails of stars lead over to each big hand, so following them gets you there. In metres.
+export const STAR_TRAIL = { count: 6, spacing: 8.5, before: 12, edge: 3.6, fromSide: 1.2 };
+
+/**
+ * The trail of stars to the big hand at index in a list of [along, side], as { along, lateral } for each
+ * star, nearest the start first. Two big hands close together have a shorter trail, which starts after the first.
+ */
+export function trailFor(gateSpots, index) {
+  const [along, side] = gateSpots[index];
+  const { spacing, before, edge, fromSide } = STAR_TRAIL;
+  const from = index === 0 ? 0 : gateSpots[index - 1][1] * fromSide;
+  const after = index === 0 ? -Infinity : gateSpots[index - 1][0] + 6;
+  let count = STAR_TRAIL.count;
+  while (count > 2 && along - before - (count - 1) * spacing < after) count -= 1;
+  return Array.from({ length: count }, (_, i) => {
+    const share = i / (count - 1);
+    const eased = share * share * (3 - 2 * share);
+    return { along: along - before - (count - 1 - i) * spacing, lateral: from + (side * edge - from) * eased };
+  });
+}
+
+/** Every star at a level: the trails, less any over a ramp to one side, and an arc over each ramp. */
+export function starSpots(gateSpots, ramps) {
+  const spots = [];
+  // A ramp to one side has its own stars, so a trail doesn't go through them.
+  const overSideRamp = (along) => ramps.some((ramp) => ramp.lateral !== 0 && along > ramp.along - 4 && along < ramp.along + 30);
+  gateSpots.forEach((_, index) => {
+    for (const star of trailFor(gateSpots, index)) if (!overSideRamp(star.along)) spots.push({ ...star, lift: 0 });
+  });
+  // An arc of stars over each ramp, in the air where a jump goes.
+  for (const ramp of ramps) {
+    for (let i = 0; i < 5; i += 1) spots.push({ along: ramp.along + 7 + i * 5.2, lateral: ramp.lateral, lift: 0.5 + 1.6 * Math.sin((i / 4) * Math.PI) });
+  }
+  return spots;
+}
+
+/**
+ * A spot on the trail to the big hand near gateAlong, halfway between two of its stars (gap 0 is between
+ * the first and second), so whatever is put there is on the way and nothing extra to steer to.
+ */
+export function onTrail(gateSpots, gateAlong, gap) {
+  const index = gateSpots.findIndex(([along]) => Math.abs(along - gateAlong) <= 6);
+  if (index === -1) throw new Error(`No big hand near ${gateAlong}`);
+  const trail = trailFor(gateSpots, index);
+  if (gap + 1 >= trail.length) throw new Error(`The trail to ${gateAlong} is too short`);
+  const [a, b] = [trail[gap], trail[gap + 1]];
+  return { along: (a.along + b.along) / 2, lateral: (a.lateral + b.lateral) / 2 };
+}
+
+/* ---------- prizes ---------- */
+
+// Coins spill out of a big hand that's slapped, and out of a car or the tractor that's passed, onto the road
+// ahead, where the car is. They drift over towards it as it comes, so they're hard to miss, and missing one
+// costs nothing. A gem from a balloon is worth five, and a treasure chest ten. In metres and seconds.
+export const COINS = {
+  perFive: 3,
+  perPass: 2,
+  perTractor: 3,
+  // Each one is further on than the last by at least the spacing that keeps anything repeating along the
+  // road going past fewer than three times a second, counting coins from everywhere that are still about.
+  spacing: CHEVRON_SPACING + 0.4,
+  firstAhead: 15,
+  across: 3, // How far to the side of the car one is still picked up.
+  along: 3.4,
+  drift: 1.8, // How fast one moves over towards the car.
+  gem: 5,
+  chest: 10,
+  highTen: 10,
+  passAgainAfter: 8, // Seconds before passing the same car spills coins again.
+};
+
+// A treasure chest opens for a car that's this much of the way over that a big hand needs: it's on the verge,
+// and a prize, so it's a little more generous.
+export const CHEST_REACH = 0.8;
+
+/**
+ * Where spilled coins land: on the road ahead of a car at a distance and a place across the road. after is the
+ * furthest on of any coins already on the road, from a slap, a car or the tractor a moment before, and these
+ * land past it, so they still come one at a time however many spill out together.
+ */
+export function spillSpots(distance, lateral, count, after = -Infinity) {
+  const first = Math.max(distance + COINS.firstAhead, after + COINS.spacing);
+  return Array.from({ length: count }, (_, i) => ({ distance: first + i * COINS.spacing, lateral }));
+}
+
+/** Whether a prize on the road is picked up by the car. Within reach of the magnet, anything across the road is. */
+export function picksUp(prize, car, magnet = false) {
+  const across = magnet ? POWER.magnet.across : COINS.across;
+  return Math.abs(prize.distance - car.distance) < COINS.along && Math.abs(prize.lateral - car.lateral) < across;
+}
+
+/* ---------- power-ups ---------- */
+
+// Driven through, each lasts a few seconds of driving. Like turbo, resting pauses them and takes nothing away.
+export const POWER = {
+  // Pulls stars and coins in from anywhere across the road, a little way ahead.
+  magnet: { seconds: 7, across: 12, ahead: 34 },
+  // Other cars and the tractor bounce softly off it, and the child's car isn't pushed at all.
+  bubble: { seconds: 8 },
+  // The big hands come in closer: how far to reach is this much of what it was.
+  wide: { seconds: 10, reach: 0.6 },
+  // A rainbow behind the car, and each star counts twice.
+  rainbow: { seconds: 8, starsEach: 2 },
+};
+export const POWER_KINDS = Object.keys(POWER);
+export const POWER_REACH = { along: 3.6, across: 3.2 }; // How close to drive to one to pick it up.
+
+/** Which power-ups are on and for how long. It runs down only while the hand in play is open. */
+export class PowerUps {
+  constructor() {
+    this.reset();
+  }
+
+  reset() {
+    this.left = Object.fromEntries(POWER_KINDS.map((kind) => [kind, 0]));
+  }
+
+  take(kind) {
+    this.left[kind] = POWER[kind].seconds;
+  }
+
+  has(kind) {
+    return this.left[kind] > 0;
+  }
+
+  /** How much is left, from 1 just taken to 0. */
+  share(kind) {
+    return this.left[kind] / POWER[kind].seconds;
+  }
+
+  /** Returns the kinds that have just run out. */
+  update(open, dt) {
+    if (!(open > 0)) return [];
+    const ended = [];
+    for (const kind of POWER_KINDS) {
+      if (this.left[kind] <= 0) continue;
+      this.left[kind] = Math.max(0, this.left[kind] - dt);
+      if (this.left[kind] === 0) ended.push(kind);
+    }
+    return ended;
+  }
+}
+
+/* ---------- levels ---------- */
+
+/**
+ * What each level brings that's new, in order, as shown on the title card, under the countdown and on the
+ * finish card. mark is a small picture, and the Georgian names need a native speaker's check.
+ */
+export const NEW_THINGS = [
+  { id: 'coins', from: 2, mark: '🪙', name: 'Coins', nameKa: 'მონეტები' },
+  { id: 'magnet', from: 3, mark: '🧲', name: 'Magnet', nameKa: 'მაგნიტი' },
+  { id: 'pair', from: 3, mark: '✋', name: 'Hand pairs', nameKa: 'ხელების წყვილი' },
+  { id: 'tractor', from: 4, mark: '🚜', name: 'Tractor', nameKa: 'ტრაქტორი' },
+  { id: 'car4', from: 4, mark: '🏎️', name: 'Another car', nameKa: 'კიდევ ერთი მანქანა' },
+  { id: 'sunset', from: 5, mark: '🌇', name: 'Sunset', nameKa: 'მზის ჩასვლა' },
+  { id: 'rivalTurbo', from: 5, mark: '🔥', name: 'Racers’ turbo', nameKa: 'მეტოქეების ტურბო' },
+  { id: 'bubble', from: 6, mark: '🫧', name: 'Bubble shield', nameKa: 'ბუშტის ფარი' },
+  { id: 'sideRamp', from: 6, mark: '🛹', name: 'Side ramp', nameKa: 'გვერდითი ტრამპლინი' },
+  { id: 'balloon', from: 7, mark: '🎈', name: 'Balloon gems', nameKa: 'ბუშტის ძვირფასი ქვები' },
+  { id: 'slalom', from: 7, mark: '〰️', name: 'Slalom', nameKa: 'სლალომი' },
+  { id: 'chest', from: 8, mark: '🎁', name: 'Treasure chest', nameKa: 'განძის ყუთი' },
+  { id: 'wide', from: 8, mark: '🖐️', name: 'Closer hands', nameKa: 'ახლო ხელები' },
+  { id: 'car5', from: 8, mark: '🏎️', name: 'Another car', nameKa: 'კიდევ ერთი მანქანა' },
+  { id: 'rain', from: 9, mark: '🌦️', name: 'Rain shower', nameKa: 'წვიმა' },
+  { id: 'rainbow', from: 9, mark: '🌈', name: 'Rainbow trail', nameKa: 'ცისარტყელას კვალი' },
+  { id: 'highTen', from: 10, mark: '🙌', name: 'High ten', nameKa: 'ორმაგი ხუთი' },
+  { id: 'goldenLap', from: 10, mark: '⭐', name: 'Golden lap', nameKa: 'ოქროს წრე' },
+];
+
+/** What a level brings that's new, as [{ id, mark, name, nameKa }]. Level 1 is the race as it always was. */
+export function newAt(level) {
+  return NEW_THINGS.filter((thing) => thing.from === level).map(({ id, mark, name, nameKa }) => ({ id, mark, name, nameKa }));
+}
+
+// Where the things on the trails are: on the trail to the big hand near `gate`, in the gap after star `gap`.
+const POWER_SPOTS = [
+  { kind: 'magnet', from: 3, gate: 560, gap: 2 },
+  { kind: 'magnet', from: 3, gate: 1150, gap: 2 },
+  { kind: 'bubble', from: 6, gate: 1345, gap: 1 },
+  { kind: 'wide', from: 8, gate: 55, gap: 3 },
+  { kind: 'rainbow', from: 9, gate: 745, gap: 1 },
+];
+const BALLOON_SPOTS = [{ gate: 1060, gap: 3 }];
+// A treasure chest at the roadside at the fair, on the way to the big hand after it, on the same side, and as
+// far from the big hand before it, on the other side, as any two big hands on opposite sides ever are.
+const CHEST_SPOTS = [{ along: 1135, side: 1 }];
+// The tractor: slow, so it's passed. It comes out of the farm and trundles along its stretch on the shoulder of
+// the road, out this far from the middle, on the side away from the next big hand. That's off the tarmac, so it's
+// never in anyone's way and no car can touch it, wherever the child steers. It stops this far before the next
+// big hand on its side, whose post is on the shoulder too. In metres and metres a second, and slows is how
+// quickly it slows to a stop. The shower is over the lake.
+export const TRACTOR = { speed: 8, length: 7.4, width: 2.7, out: 7.9, stopsBefore: 12, slows: 1.5 };
+const TRACTOR_STRETCH = { from: 478, to: 660 };
+const RAIN_STRETCH = { from: 540, to: 705 };
+// The giant hands of the high ten stand this far before the finish line, on the last lap, so that they're the
+// finish. The camera following the car is never much nearer them than it is to the car, as the race is over
+// as soon as the car is through. Further back, the camera would come right up to them, and they're big enough
+// that going past at speed they'd sweep across much of the picture at once.
+export const HIGH_TEN_BEFORE_LINE = 2.5;
+
+/**
+ * Where a level's tractor goes: on the side of the road away from the next big hand after it comes out, and on
+ * along its stretch until it's stopsBefore short of the first big hand on that side. Returns { side, from, to },
+ * in metres along the lap, or null at a level without it.
+ */
+export function tractorRun(plan, lapLength) {
+  if (!plan.tractor) return null;
+  const { from, to } = plan.tractor;
+  const ahead = (along) => (((along - from) % lapLength) + lapLength) % lapLength;
+  const next = plan.gates.reduce((best, spot) => (ahead(spot[0]) < ahead(best[0]) ? spot : best));
+  const side = -next[1];
+  const post = Math.min(...plan.gates.filter(([, each]) => each === side).map(([along]) => ahead(along)));
+  return { side, from, to: from + Math.max(0, Math.min(to - from, post - TRACTOR.stopsBefore)) };
+}
+
 /**
  * What each level changes, from level 1 (the race as it always was) to 10. The laps, how far to reach, the
  * steering help, the hand and how open it has to be are a grown-up's, and never change. Neither does the
- * car, or the rule that the others ease off at the end so that the child wins.
+ * car, or the rule that the others ease off at the end so that the child wins. Each level from 2 brings
+ * something new, listed in NEW_THINGS, and keeps everything before it.
  */
 export function racePlan(level) {
   const keen = ramp(level, 0, 1);
+  const on = (id) => level >= NEW_THINGS.find((thing) => thing.id === id).from;
+  const gates = gatesFor(level);
+  const ramps = rampsFor(level);
   return {
     // More cars to race: a fourth from level 4, and a fifth from level 8.
     rivals: stepsAt(level, { 1: 3, 4: 4, 8: 5 }),
@@ -282,9 +512,28 @@ export function racePlan(level) {
     // From level 5 they use turbo too, one at a time, every this many seconds, and the child passes back.
     rivalTurboEvery: stepsAt(level, { 1: Infinity, 5: 26, 9: 18 }),
     // More big hands, two in a row on one side from level 3, and a slalom from level 7.
-    gates: gatesFor(level),
+    gates,
+    slalom: on('slalom'),
     // A ramp to one side of the road from level 6, and another from level 9.
-    ramps: rampsFor(level),
+    ramps,
+    // From level 2, coins spill out of each big hand slapped and each car passed.
+    coins: on('coins'),
+    // Power-ups on the trails of stars: a magnet from level 3, a bubble from 6, closer hands from 8 and a
+    // rainbow from 9.
+    powerUps: POWER_SPOTS.filter((spot) => level >= spot.from).map(({ kind, gate, gap }) => ({ kind, ...onTrail(gates, gate, gap) })),
+    // From level 4 a tractor beside the farm's stretch of road, to pass.
+    tractor: on('tractor') ? { ...TRACTOR_STRETCH } : null,
+    // From level 5 the light goes golden over the race, from about a quarter of the way to over half.
+    sunset: on('sunset'),
+    // From level 7 a hot-air balloon lowers a gem onto a trail.
+    balloons: on('balloon') ? BALLOON_SPOTS.map(({ gate, gap }) => onTrail(gates, gate, gap)) : [],
+    // From level 8 a treasure chest at the roadside, opened by reaching over to it like a big hand.
+    chests: on('chest') ? CHEST_SPOTS.map((spot) => ({ ...spot })) : [],
+    // From level 9 a light shower over the lake, and a rainbow after it.
+    rain: on('rain') ? { ...RAIN_STRETCH } : null,
+    // At level 10, a giant high ten at the finish, and the last lap's stars are golden and count twice.
+    highTen: on('highTen'),
+    goldenLap: on('goldenLap'),
   };
 }
 

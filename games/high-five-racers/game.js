@@ -9,15 +9,22 @@
 // are low contrast and long, there are no full-screen effects, and the tunnel is as bright as outdoors.
 // Anything that happens is a burst of small shapes where it happened.
 //
-// Each level (rules.js, racePlan) brings more cars, more big hands and ramps, and keener racing.
+// Each level (rules.js, racePlan) brings more cars, more big hands and ramps, and keener racing, and from
+// level 2 something new each time: coins, power-ups, a tractor, a sunset, a balloon with a gem, a treasure
+// chest, a shower of rain and a giant high ten at the finish. Those are in extras.js and weather.js.
 import * as THREE from '../../vendor/three/three.module.js';
 import { makeDriver, RaceCar, RIVAL_STYLES } from './cars.js';
 import { Particles, SpeedLines } from './effects.js';
+import { CarPowers, Chests, CoinField, GemBalloons, HighTen, PowerUpField, Tractor } from './extras.js';
 import { HAND_COLOURS, HighFiveGates, PALM_HEIGHT } from './gates.js';
 import { canvasTexture, clamp, damp, mod, softCircleTexture } from './kit.js';
 import { Ramps, StarField } from './pickups.js';
-import { CAR_LENGTH, CAR_WIDTH, FASTEST_SPEED, FistAndOpen, gateOutcome, racePlan, REACH, ReachEasing, RIVAL_TURBO, rivalSpeed, SLAP, TOP_SPEED, touching, TurboMeter, wantedSpeed } from './rules.js';
+import {
+  CAR_LENGTH, CAR_WIDTH, CHEST_REACH, COINS, FASTEST_SPEED, FistAndOpen, gateOutcome, HIGH_TEN_BEFORE_LINE, LEAST_REACH, newAt, POWER, PowerUps,
+  racePlan, REACH, ReachEasing, RIVAL_TURBO, rivalSpeed, SLAP, TOP_SPEED, touching, TRACTOR, tractorRun, TurboMeter, wantedSpeed,
+} from './rules.js';
 import { LANE_LIMIT, START_BEHIND_LINE, Track } from './track.js';
+import { Weather } from './weather.js';
 import { World } from './world.js';
 
 const ACCELERATION = 10;
@@ -49,6 +56,19 @@ const jumpSpeed = (speed) => 3 + speed * 0.22;
 const FINISH_STOP = 3; // Rivals pull up this far before the line, so the child gets there first.
 const PASSED_BY = 1.5; // How far clear a car has to be to have passed, so two side by side don't keep swapping.
 const SAY_PASSED_AGAIN_AFTER_SECONDS = 8;
+// The first time each new thing of a level comes into sight, a little label goes over it for this long. It only
+// counts as shown once it has been up on the screen for a while. One that couldn't be seen for this long goes,
+// and can come again a few seconds later. All in seconds.
+const CALLOUT_SECONDS = 2.8;
+const CALLOUT_FADE = 0.35; // The last of it, as the label fades.
+const CALLOUT_COUNTS_AFTER = 1;
+const CALLOUT_WAIT = 4;
+const CALLOUT_AGAIN_AFTER = 3;
+const IN_SIGHT = [12, 95]; // Metres ahead of the car that something counts as coming into sight.
+// The giant high ten starts fading in this far ahead of the car, in metres, so it's never suddenly big.
+const HIGH_TEN_SHOWS_FROM = 260;
+const BUBBLE_ROOM = 1.3; // How much further out than the car itself the bubble pushes others away.
+const COIN_BURST = { count: 10, shapes: ['coin', 'star'], colours: ['#ffc93c', '#fff1b0'], speed: 3.5, up: 3.5, life: 0.55, size: 0.5 };
 
 const STEERING = {
   // The car's place on the road follows the hand. That's easier than turning a wheel for a child who
@@ -109,7 +129,8 @@ export class Race {
     this.track = new Track();
     this.world = new World(this.scene, this.track, { reducedMotion: this.reducedMotion });
 
-    this.scene.add(new THREE.HemisphereLight('#e8f6ff', '#bcd2a4', 1.75));
+    this.hemisphere = new THREE.HemisphereLight('#e8f6ff', '#bcd2a4', 1.75);
+    this.scene.add(this.hemisphere);
     this.sunlight = new THREE.DirectionalLight('#fff4dc', 2.3);
     this.sunlight.castShadow = true;
     this.sunlight.shadow.mapSize.set(1024, 1024);
@@ -139,13 +160,26 @@ export class Race {
     this.ramps = new Ramps(this.scene, this.track);
     this.reach = new ReachEasing(REACH[reach] ?? REACH.medium);
     this.gates = new HighFiveGates(this.scene, this.track, { reducedMotion: this.reducedMotion });
-    this.gates.reachFor = (side) => this.reach.reachFor(side);
+    this.powers = new PowerUps();
+    this.gates.reachFor = (side) => this.reachNow(side);
     this.gates.applyReach();
     this.particles = new Particles(this.scene);
     this.particles.budget = this.reducedMotion ? 0.5 : 1;
     this.speedLines = new SpeedLines(this.scene);
     this.turbo = new TurboMeter();
     this.otherHand = new FistAndOpen();
+
+    // What the later levels bring. Each is made once and laid out again for each level.
+    const extrasLook = { environment, reducedMotion: this.reducedMotion };
+    this.coins = new CoinField(this.scene, this.track, extrasLook);
+    this.powerUps = new PowerUpField(this.scene, this.track, extrasLook);
+    this.carPowers = new CarPowers(this.player, extrasLook);
+    this.tractor = new Tractor(this.scene);
+    this.balloons = new GemBalloons(this.scene, this.track, extrasLook);
+    this.chests = new Chests(this.scene, this.track);
+    this.highTen = new HighTen(this.scene, this.track, extrasLook);
+    this.highTen.setPlace(this.track.length - HIGH_TEN_BEFORE_LINE);
+    this.weather = new Weather(this.scene, this.track, this.world, { hemisphere: this.hemisphere, sunlight: this.sunlight, fillLight: this.fillLight }, extrasLook);
 
     this.setLevel(level);
 
@@ -201,6 +235,7 @@ export class Race {
    * ramps are. See racePlan in rules.js. Called before a race, and before reset().
    */
   setLevel(level) {
+    const changed = level !== this.level;
     this.level = level;
     const plan = racePlan(level);
     this.plan = plan;
@@ -221,6 +256,14 @@ export class Race {
     this.gates.setLayout(plan.gates);
     this.stars.setLayout(plan.gates, plan.ramps);
     this.ramps.setLayout(plan.ramps);
+    this.powerUps.setLayout(plan.powerUps);
+    this.balloons.setLayout(plan.balloons);
+    this.chests.setLayout(plan.chests);
+    // What's new at this level gets a little label the first time it comes into sight.
+    this.newHere = newAt(level);
+    // Anything made for a new level is got ready now, so that it can't stutter when it first comes into view.
+    // The same level again has nothing new, and getting all of it ready takes a moment.
+    if (this.camera && changed) this.renderer.compile(this.scene, this.camera);
   }
 
   paintsFor(spec, index) {
@@ -273,6 +316,19 @@ export class Race {
     this.airWait = 0;
     this.restingFor = 0;
     this.turbo.reset();
+    this.powers.reset();
+    // Prizes: coins picked up, of which gems and treasure chests are worth more. See COINS in rules.js.
+    this.coinTotal = 0;
+    this.prizes = { coins: 0, gems: 0, chests: 0, highTens: 0 };
+    this.coins.reset();
+    this.powerUps.reset();
+    this.balloons.reset();
+    this.chests.reset();
+    this.farm = { active: false, lap: null, distance: 0, lateral: 0, side: 1, speed: 0, passed: false, end: 0 };
+    this.tractor.group.visible = false;
+    this.callout = null;
+    this.calledOut = new Set();
+    this.calloutAgainAt = new Map();
     this.rivals.forEach((rival, index) => {
       // The first three line up one behind another, and the others from higher levels beside them, in the
       // other half of the road, so they're no closer together and all start behind the line.
@@ -288,6 +344,7 @@ export class Race {
       rival.flying = false;
       rival.comingBack = false;
       rival.turboLeft = 0;
+      rival.coinsAt = -Infinity;
       // Spread out, so they take turns.
       rival.turboIn = this.plan.rivalTurboEvery * (0.5 + index * 0.37);
     });
@@ -298,6 +355,27 @@ export class Race {
   setMode(mode) {
     this.mode = mode;
     this.snapCamera = true;
+    // Nothing is picked up once the race is over, and no power-up is left on for the next one. A hand check in
+    // the middle of a race takes nothing away: coins stay on the road, and power-ups wait, as turbo does.
+    if (mode === 'finished' || mode === 'attract') {
+      const hadWide = this.powers.has('wide');
+      this.coins.reset();
+      this.powers.reset();
+      if (hadWide) this.gates.applyReach({ snap: false });
+    }
+  }
+
+  /** Whether a race is on and it's the last lap, which in a race of one lap is all of it. */
+  get onLastLap() {
+    return this.mode === 'race' && clamp(this.lapIndex + 1, 1, this.laps) === this.laps;
+  }
+
+  /**
+   * At level 10 the last lap is golden. It goes by where the car is, so the first star past the line counts
+   * twice too.
+   */
+  get goldenLapNow() {
+    return Boolean(this.plan.goldenLap) && this.onLastLap;
   }
 
   /** Only the hand being played with appears on the car. */
@@ -309,6 +387,15 @@ export class Race {
     right.root.visible = side === 'right';
     sleeves.right.visible = side === 'right';
     this.player.setFreeArm(side);
+  }
+
+  /**
+   * How far over the car has to be for a big hand on one side, right now. It's what a grown-up chose, eased
+   * for a side that keeps being missed, and less while the closer-hands power-up is on.
+   */
+  reachNow(side) {
+    const reach = this.reach.reachFor(side);
+    return this.powers.has('wide') ? Math.max(LEAST_REACH, reach * POWER.wide.reach) : reach;
   }
 
   /** How far the child has to reach for a big hand. */
@@ -343,6 +430,7 @@ export class Race {
       turboOn: this.turbo.active,
       boosting: this.boostLeft > 0,
       flying: this.soaring,
+      coins: this.coinTotal,
     };
   }
 
@@ -367,11 +455,16 @@ export class Race {
     return Math.floor(this.distance / this.track.length);
   }
 
-  /** The car steers itself to the next big hand, or else the next star. */
+  /** The car steers itself to the next big hand or treasure chest, or else the next star. */
   autoLane() {
     const { gate, ahead } = this.gates.next(this.distance);
-    if (ahead < 42) return gate.side * Math.max(this.reach.reachFor(gate.side) + 0.5, 3.4);
-    return this.stars.nextLane(mod(this.distance, this.track.length), this.lapIndex) ?? 0;
+    const reachOver = (side) => side * Math.max(this.reachNow(side) + 0.5, 3.4);
+    const position = mod(this.distance, this.track.length);
+    // A chest is gone over to from further off, as it's the first of the two on that side.
+    const chest = this.chests.chests.find((each) => each.openedOnLap !== this.lapIndex && mod(each.along - position, this.track.length) < Math.min(60, ahead));
+    if (chest) return reachOver(chest.side);
+    if (ahead < 42) return reachOver(gate.side);
+    return this.stars.nextLane(position, this.lapIndex) ?? 0;
   }
 
   updatePlayer(dt, { drive = 0, steer = 0, steering = 'help', other = null }) {
@@ -387,6 +480,11 @@ export class Race {
     }
     this.turbo.update(handOpen ? 1 : 0, dt);
     if (this.turbo.active !== wasTurbo) this.events.onTurbo?.(this.turbo.active);
+    // Power-ups run down only while the hand is open, like turbo.
+    for (const kind of this.powers.update(handOpen ? 1 : 0, dt)) {
+      if (kind === 'wide') this.gates.applyReach({ snap: false });
+      this.events.onPower?.(kind, false);
+    }
     this.boostLeft = handOpen ? Math.max(0, this.boostLeft - dt) : 0;
 
     const targetSpeed = wantedSpeed(drive, this.turbo.bonus, this.boostLeft);
@@ -413,14 +511,19 @@ export class Race {
     this.lateral = clamp(this.lateral + (this.lateralVelocity + this.shove * grip) * dt, -LANE_LIMIT, LANE_LIMIT);
 
     const lapPosition = mod(this.distance, this.track.length);
+    // A magnet draws the stars a little way ahead over to the car.
+    this.stars.pull(dt, { position: lapPosition, lateral: this.lateral, reach: this.powers.has('magnet') ? POWER.magnet.ahead : 0 });
     if (this.distance > 0) {
       this.stars.collect(lapPosition, this.lateral, this.lapIndex, (star) => {
-        this.starTotal += 1;
+        // On the golden lap and with the rainbow on, each star counts twice, or four times with both.
+        this.starTotal += (this.goldenLapNow ? 2 : 1) * (this.powers.has('rainbow') ? POWER.rainbow.starsEach : 1);
         this.particles.burst(star.position, { count: 9, shapes: ['star', 'dot'], colours: ['#ffe27a', '#fff3b8'], speed: 3.5, up: 3.5, life: 0.55, size: 0.45 });
         this.events.onStar?.(this.starTotal);
       });
+      this.powerUps.collect(lapPosition, this.lateral, this.lapIndex, (token) => this.takePower(token));
     }
     this.updateGates(dt, handOpen);
+    this.updateRoadside(handOpen);
     this.updateJump(dt);
 
     const lap = clamp(this.lapIndex + 1, 1, this.laps);
@@ -458,6 +561,11 @@ export class Race {
       const at = this.tmpC.copy(rival.car.group.position);
       at.y += 2.4;
       this.particles.burst(at, { count: 8, shapes: ['star'], colours: ['#ffffff', '#ffe27a'], speed: 3, up: 3, life: 0.6, size: 0.4 });
+      // From level 2 they drop a few coins too, though not again straight away for the same car.
+      if (this.plan.coins && this.mode === 'race' && this.time - rival.coinsAt > COINS.passAgainAfter) {
+        rival.coinsAt = this.time;
+        this.coins.spill(at, this.distance, this.lateral, COINS.perPass);
+      }
       if (this.time - rival.passedAt > SAY_PASSED_AGAIN_AFTER_SECONDS) this.events.onOvertake?.(rival.spec);
       rival.passedAt = this.time;
     }
@@ -465,7 +573,7 @@ export class Race {
 
   updateGates(dt, handOpen) {
     const { gate: next, ahead } = this.gates.next(this.distance);
-    const reach = this.reach.reachFor(next.side);
+    const reach = this.reachNow(next.side);
     const lined = this.lateral * next.side >= reach;
     // The arm goes out just before the hands meet, and comes back after.
     const timeLeft = ahead / Math.max(this.speed, 1);
@@ -484,9 +592,11 @@ export class Race {
       if (mod(gate.along - from, this.track.length) > moved) continue;
       // Flying high over a big hand is neither a high five nor a miss, so it costs nothing.
       if (this.soaring && this.lift > FLIGHT.overGatesAbove) continue;
-      const outcome = gateOutcome({ handOpen, lateral: this.lateral, side: gate.side, reach: this.reach.reachFor(gate.side) });
+      const outcome = gateOutcome({ handOpen, lateral: this.lateral, side: gate.side, reach: this.reachNow(gate.side) });
       this.gatesMet += 1;
-      this.reach.record(gate.side, outcome, handOpen);
+      // Easing goes by how far over the car really was, so a slap the closer hands made easier can't make the
+      // reach on that side any harder for afterwards.
+      this.reach.recordPass(gate.side, this.lateral, handOpen);
       this.gates.applyReach({ snap: false });
       if (outcome === 'slap') this.slapGate(gate);
       else if (outcome === 'closed') this.gates.brush(gate, 4);
@@ -521,8 +631,68 @@ export class Race {
       gravity: 9,
     });
     this.particles.emit({ shape: 'ring', colour: '#ffffff', x: where.x, y: where.y, z: where.z, life: 0.4, size: 1.4, grow: 13, opacity: 0.85 });
+    // From level 2, coins spill out of the big hand onto the road ahead.
+    if (this.plan.coins) this.coins.spill(where, this.distance, this.lateral, COINS.perFive);
     this.player.fighter.setExpression('happy', 1.4);
     this.events.onFive?.(this.fives, gate.side, this.streak);
+  }
+
+  /** A power-up was driven through. */
+  takePower(token) {
+    this.powers.take(token.kind);
+    if (token.kind === 'wide') this.gates.applyReach({ snap: false });
+    const at = this.tmpA.copy(token.group.position);
+    this.particles.burst(at, { count: 16, shapes: ['star', 'dot'], colours: ['#ffffff', '#fff3b8', '#bfe8ff'], speed: 5, up: 4, life: 0.6, size: 0.5 });
+    this.particles.emit({ shape: 'ring', colour: '#ffffff', x: at.x, y: at.y, z: at.z, life: 0.35, size: 1.2, grow: 8, opacity: 0.7 });
+    this.events.onPower?.(token.kind, true);
+  }
+
+  /** A coin picked up, or a gem or treasure, worth more. */
+  addCoins(value, kind, at) {
+    this.coinTotal += value;
+    if (kind === 'coin') this.prizes.coins += 1;
+    else if (kind === 'gem') this.prizes.gems += 1;
+    else if (kind === 'chest') this.prizes.chests += 1;
+    else if (kind === 'highTen') this.prizes.highTens += 1;
+    if (at) this.particles.burst(at, kind === 'coin' ? COIN_BURST : { ...COIN_BURST, count: 22, speed: 6, up: 6, life: 0.8, size: 0.6, shapes: kind === 'gem' ? ['gem', 'star'] : ['coin', 'star'], colours: kind === 'gem' ? ['#53e0ff', '#ffffff'] : COIN_BURST.colours });
+    this.events.onCoin?.(this.coinTotal, kind);
+  }
+
+  /**
+   * Things beside the road that the car goes past: a treasure chest opens for a car reached over to it like a
+   * big hand, and on the last lap at level 10, the giant high ten.
+   */
+  updateRoadside(handOpen) {
+    const moved = this.distance - this.previousDistance;
+    if (moved <= 0 || moved > 8 || this.distance <= 0) return;
+    const { length } = this.track;
+    const from = mod(this.previousDistance, length);
+    const passing = (along) => mod(along - from, length) <= moved;
+    for (const chest of this.chests.chests) {
+      if (chest.openedOnLap === this.lapIndex || !passing(chest.along)) continue;
+      if (!handOpen || this.lateral * chest.side < Math.max(LEAST_REACH, CHEST_REACH * this.reachNow(chest.side))) continue;
+      chest.openedOnLap = this.lapIndex;
+      const at = this.tmpA.copy(chest.group.position);
+      at.y += 1.8;
+      this.particles.burst(at, { count: 30, shapes: ['coin', 'gem', 'star'], colours: ['#ffc93c', '#53e0ff', '#ff7eb6', '#ffffff'], speed: 6, up: 9, life: 1, size: 0.6, gravity: 10 });
+      this.addCoins(COINS.chest, 'chest', null);
+    }
+    // The high ten stands this far before the finish line on the last lap.
+    const highTenAt = this.raceDistance - HIGH_TEN_BEFORE_LINE;
+    if (this.plan.highTen && this.previousDistance < highTenAt && this.distance >= highTenAt) {
+      this.highTen.slap(handOpen);
+      if (handOpen) {
+        for (const index of [0, 1]) {
+          const at = this.highTen.palmAt(index, this.tmpA);
+          this.particles.burst(at, { count: 34, shapes: ['star', 'hand', 'paper', 'coin'], colours: [...HAND_COLOURS, '#ffffff'], speed: 9, up: 8, life: 1.1, size: 0.85, gravity: 8 });
+          this.particles.emit({ shape: 'ring', colour: '#ffffff', x: at.x, y: at.y, z: at.z, life: 0.45, size: 1.6, grow: 14, opacity: 0.85 });
+        }
+        this.player.fighter.setExpression('happy', 2);
+        this.player.wave = 2;
+        this.addCoins(COINS.highTen, 'highTen', null);
+      }
+      this.events.onHighTen?.(handOpen);
+    }
   }
 
   /** Up into the air, from the other hand's turbo. */
@@ -638,6 +808,11 @@ export class Race {
       if (chasing && Math.abs(gap) < 9 && Math.abs(rival.lateral - this.lateral) < 2.6) {
         lane += rival.lateral >= this.lateral ? 2.4 : -2.4;
       }
+      // The tractor is on the shoulder, where no car can touch it, and they give it room as they go by.
+      const { farm } = this;
+      if (farm.active && Math.abs(farm.distance - 1.3 - rival.distance) < 10 && Math.abs(farm.lateral - rival.lateral) < 3.4) {
+        lane += rival.lateral >= farm.lateral ? 2.6 : -2.6;
+      }
       // While the child's car flies, those near it make room at the edges of the road, so that they go past
       // beside the camera rather than right under it, which with a crowd behind could change much of the
       // picture at once.
@@ -651,7 +826,7 @@ export class Race {
       rival.bumpWait = Math.max(0, rival.bumpWait - dt);
       this.rivalOverRamps(rival, dt);
 
-      if (chasing && this.speed > 1 && touching(this, rival)) this.bump(rival);
+      if (chasing && this.speed > 1 && (touching(this, rival) || (this.powers.has('bubble') && this.inBubble(rival.distance, rival.lateral, CAR_LENGTH, CAR_WIDTH)))) this.bump(rival);
       if (chasing) this.rivalPassesGates(rival, dt);
 
       // Being beside the child means looking over and, as they pass, a wave.
@@ -705,6 +880,11 @@ export class Race {
    */
   bump(rival) {
     const side = rival.lateral >= this.lateral ? 1 : -1;
+    if (this.powers.has('bubble')) {
+      this.bounceOffBubble(rival, side);
+      if (touching(this, rival)) this.keepApart(rival, side);
+      return;
+    }
     const ahead = rival.distance >= this.distance ? 1 : -1;
     const across = CAR_WIDTH - Math.abs(rival.lateral - this.lateral);
     const along = CAR_LENGTH - Math.abs(rival.distance - this.distance);
@@ -725,6 +905,213 @@ export class Race {
     at.y += 0.7;
     this.particles.burst(at, { count: 14, shapes: ['spark', 'star'], colours: ['#ffd23f', '#ff9f45', '#ffffff'], speed: 7, up: 4, life: 0.45, size: 0.42, gravity: 12 });
     this.events.onBump?.();
+  }
+
+  /** Whether something of a length and width at a distance and lateral is touching the car's bubble. */
+  inBubble(distance, lateral, length, width) {
+    return Math.abs(distance - this.distance) < (CAR_LENGTH + length) / 2 + BUBBLE_ROOM
+      && Math.abs(lateral - this.lateral) < (CAR_WIDTH + width) / 2 + BUBBLE_ROOM;
+  }
+
+  /**
+   * With the bubble on, the child's car isn't pushed about, but two cars still never go through each other. One
+   * that gets right up to the car is moved out of its way, whichever way it overlaps least, which is checked
+   * every frame, so it's never far. Only one that's against the edge of the road and can't go any further
+   * across leaves the child's car to move over, by what's left.
+   */
+  keepApart(rival, side) {
+    const across = CAR_WIDTH - Math.abs(rival.lateral - this.lateral);
+    const along = CAR_LENGTH - Math.abs(rival.distance - this.distance);
+    if (across < along) {
+      const before = rival.lateral;
+      rival.lateral = clamp(rival.lateral + side * across, -LANE_LIMIT, LANE_LIMIT);
+      const still = across - Math.abs(rival.lateral - before);
+      if (still > 0) this.lateral = clamp(this.lateral - side * still, -LANE_LIMIT, LANE_LIMIT);
+    } else {
+      const ahead = rival.distance >= this.distance ? 1 : -1;
+      rival.distance += ahead * along;
+      rival.speed = ahead > 0 ? Math.max(rival.speed, this.speed) : Math.min(rival.speed, this.speed * 0.9);
+    }
+  }
+
+  /** With the bubble on, whatever touches it bounces softly away to the side, and the child's car isn't pushed. */
+  bounceOffBubble(other, side) {
+    other.shove = side * 12;
+    if (other.bumpWait > 0) return;
+    other.bumpWait = 0.9;
+    const at = this.tmpA.copy(this.player.group.position);
+    at.y += 1.3;
+    const across = this.tmpB.set(Math.cos(this.player.group.rotation.y), 0, -Math.sin(this.player.group.rotation.y)).multiplyScalar(-side * 2);
+    at.add(across);
+    this.particles.burst(at, { count: 12, shapes: ['dot', 'ring'], colours: ['#ffffff', '#bfe8ff', '#8fd6ff'], speed: 4, up: 2.5, life: 0.5, size: 0.42, gravity: 2 });
+    this.events.onBounce?.();
+  }
+
+  /**
+   * From level 4, a tractor comes out of the farm once a lap as the car gets near, and trundles along the
+   * shoulder of its stretch of road, on the side away from the next big hand. That's off the tarmac, so it's never
+   * in the way and nothing can run into it, wherever the child steers or flies. It stops before the next big hand
+   * on its side, whose post is on the shoulder too, and it waits for a child who's resting, and through a hand
+   * check. Going past it brings out coins from its trailer.
+   */
+  updateTractor(dt, resting) {
+    const stretch = this.plan.tractor;
+    const { farm, tractor } = this;
+    if (!stretch || (this.mode !== 'race' && this.mode !== 'grid')) {
+      farm.active = false;
+      tractor.group.visible = false;
+      return;
+    }
+    const { length } = this.track;
+    const here = mod(this.distance, length);
+    if (this.mode === 'race' && !farm.active && farm.lap !== this.lapIndex && this.distance > 0 && here > stretch.from - 120 && here < stretch.from - 30) {
+      const start = this.distance + (stretch.from - here);
+      const { side, from, to } = tractorRun(this.plan, length);
+      Object.assign(farm, { active: true, lap: this.lapIndex, distance: start, end: start + to - from, side, lateral: side * TRACTOR.out, speed: TRACTOR.speed, passed: false });
+    }
+    if (!farm.active) {
+      tractor.group.visible = false;
+      return;
+    }
+    const gap = farm.distance - this.distance;
+    farm.speed = damp(farm.speed, resting || farm.distance >= farm.end ? 0 : TRACTOR.speed, TRACTOR.slows, dt);
+    farm.distance += farm.speed * dt;
+    if (!farm.passed && this.distance > farm.distance + 1.5) {
+      farm.passed = true;
+      tractor.wave = 2.4;
+      if (this.plan.coins) {
+        const at = this.tmpA.copy(tractor.group.position);
+        at.y += 2.4;
+        this.coins.spill(at, this.distance, this.lateral, COINS.perTractor);
+      }
+      this.events.onTractor?.();
+    }
+    if (gap < -70) farm.active = false;
+    tractor.group.visible = farm.active;
+    tractor.place(this.track, farm.distance, farm.lateral, farm.speed, dt, this.reducedMotion);
+  }
+
+  /**
+   * The first time something new at this level comes into sight, a little label goes over it for a moment,
+   * and nothing is said. Things that aren't in one place, like the sunset, get it in the middle, near the top.
+   * Sets this.callout to { id, left, at, ... }, where at is a spot in the world or null. The screen sets
+   * callout.visible while it has the label up, and it only counts as shown once it has been up for a while: a
+   * label that couldn't be seen comes again, the next time what it's for is in sight. A hand check in the
+   * middle of a race holds it where it is.
+   */
+  updateCallout(dt) {
+    if (this.mode === 'grid') return;
+    if (this.mode !== 'race') {
+      this.callout = null;
+      return;
+    }
+    const { callout } = this;
+    if (callout) {
+      const at = callout.follow?.();
+      if (at) callout.at = at;
+      // Once what it's over has been picked up, the label fades straight away.
+      else if (callout.follow) callout.left = Math.min(callout.left, CALLOUT_FADE);
+      if (callout.visible) callout.seen += dt;
+      if (callout.seen >= CALLOUT_COUNTS_AFTER) this.calledOut.add(callout.id);
+      // Its time only runs while it's up, or once it's fading. Until then it waits to be seen, for a while.
+      if (callout.visible || callout.left <= CALLOUT_FADE) callout.left -= dt;
+      else callout.wait -= dt;
+      callout.ending = callout.left <= CALLOUT_FADE;
+      if (callout.left <= 0 || callout.wait <= 0) {
+        if (!this.calledOut.has(callout.id)) this.calloutAgainAt.set(callout.id, this.time + CALLOUT_AGAIN_AFTER);
+        this.callout = null;
+      }
+      return;
+    }
+    for (const thing of this.newHere) {
+      if (this.calledOut.has(thing.id) || (this.calloutAgainAt.get(thing.id) ?? -Infinity) > this.time) continue;
+      const follow = this.inSight(thing.id);
+      if (follow === undefined) continue;
+      this.callout = { ...thing, left: CALLOUT_SECONDS, wait: CALLOUT_WAIT, seen: 0, visible: false, ending: false, follow, at: follow?.() ?? null };
+      return;
+    }
+  }
+
+  /**
+   * Whether something new is in sight: undefined if not, null for something that isn't in one place, or a
+   * function that says where it is now.
+   */
+  inSight(id) {
+    const { length } = this.track;
+    const position = mod(this.distance, length);
+    const lap = this.lapIndex;
+    const ahead = (along) => mod(along - position, length);
+    const near = (gap) => gap > IN_SIGHT[0] && gap < IN_SIGHT[1];
+    const above = (object, up = 2.6) => () => {
+      const at = object.getWorldPosition(new THREE.Vector3());
+      at.y += up;
+      return at;
+    };
+    const atRoad = (along, lateral, up) => () => this.track.pointAt(along, lateral, new THREE.Vector3()).setY(this.track.heightAt(along) + up);
+    switch (id) {
+      case 'coins': {
+        // As soon as they spill out, over the one furthest on.
+        const coin = this.coins.items.at(-1);
+        return coin && coin.distance - this.distance > 8 ? () => (this.coins.items.includes(coin) ? coin.position.clone().setY(coin.position.y + 1.4) : null) : undefined;
+      }
+      case 'magnet':
+      case 'bubble':
+      case 'wide':
+      case 'rainbow': {
+        const { token, ahead: gap } = this.powerUps.next(position, lap, id);
+        if (!token || !near(gap)) return undefined;
+        const follow = above(token.group, 1.9);
+        return () => (token.takenOnLap === this.lapIndex ? null : follow());
+      }
+      case 'pair': {
+        const gate = this.gates.gates.find((each, index) => index > 0 && this.gates.gates[index - 1].side === each.side && near(ahead(each.along)));
+        return gate ? above(gate.pivot, 4.4) : undefined;
+      }
+      case 'slalom': {
+        const gate = this.plan.slalom ? this.gates.gates[0] : null;
+        return gate && near(ahead(gate.along)) ? above(gate.pivot, 4.4) : undefined;
+      }
+      case 'tractor': {
+        // Only once it's close, as it comes out of the farm just past the tunnel, which hides it before.
+        const gap = this.farm.distance - this.distance;
+        return this.farm.active && gap > IN_SIGHT[0] && gap < 55 ? above(this.tractor.group, 4.4) : undefined;
+      }
+      case 'car4':
+      case 'car5': {
+        const rival = this.rivals[id === 'car4' ? 3 : 4];
+        return rival && near(rival.distance - this.distance) ? above(rival.car.group, 4.6) : undefined;
+      }
+      case 'rivalTurbo': {
+        // Only once it's in the picture: beside the car or ahead of it, as one behind may be behind the camera.
+        const rival = this.rivals.find((each) => each.turboLeft > 0 && each.distance - this.distance > -4 && each.distance - this.distance < IN_SIGHT[1]);
+        return rival ? above(rival.car.group, 4.6) : undefined;
+      }
+      case 'sideRamp': {
+        const ramp = this.ramps.layout.find((each) => each.lateral !== 0 && near(ahead(each.along)));
+        return ramp ? atRoad(ramp.along + 3.5, ramp.lateral, 3.4) : undefined;
+      }
+      case 'balloon': {
+        const balloon = this.balloons.balloons.find((each) => each.takenOnLap !== lap && near(ahead(each.along)) && each.drop > 0.3);
+        if (!balloon) return undefined;
+        const follow = above(balloon.gem, 1.6);
+        return () => (balloon.takenOnLap === this.lapIndex ? null : follow());
+      }
+      case 'chest': {
+        const chest = this.chests.chests.find((each) => near(ahead(each.along)));
+        return chest ? above(chest.group, 3) : undefined;
+      }
+      case 'highTen':
+        return this.highTen.shown > 0.5 && near(ahead(this.highTen.along)) ? atRoad(this.highTen.along, 0, 10.5) : undefined;
+      // These go by what this race wants, so the last race's sunset fading away at the start isn't taken for it.
+      case 'sunset':
+        return this.weather.sunsetWanted > 0.15 && this.weather.sunset > 0.15 ? null : undefined;
+      case 'rain':
+        return this.weather.rainWanted > 0.3 && this.weather.rain > 0.3 ? null : undefined;
+      case 'goldenLap':
+        return this.goldenLapNow && this.distance > 0 ? null : undefined;
+      default:
+        return undefined;
+    }
   }
 
   /** Little things drifting across the view, which say where you are, and show how fast you're going past. */
@@ -820,6 +1207,7 @@ export class Race {
     if (this.mode === 'race') {
       this.updatePlayer(dt, input);
       this.updateRivals(dt, true);
+      this.updateTractor(dt, this.drive === 0 && this.speed < RESTING_SPEED);
     } else if (this.mode === 'grid') {
       this.speed = 0;
       this.drive = 0;
@@ -884,6 +1272,7 @@ export class Race {
     this.emitAir(dt);
 
     this.stars.update(this.time, this.lapIndex, racing || this.mode === 'grid');
+    this.updateExtras(dt, racing);
     const showGates = racing || this.mode === 'grid';
     this.gates.update(dt, this.time, {
       next: showGates ? this.gateNext ?? this.gates.gates[0] : null,
@@ -910,6 +1299,40 @@ export class Race {
     const lineStrength = this.reducedMotion ? 0 : racing ? clamp((speedShare - 0.85) / 0.4, 0, 1) : 0;
     this.speedLines.update(dt, this.camera, this.speed, this.quality.level >= 3 ? 0 : lineStrength);
     this.particles.update(dt, this.camera, this.renderer.domElement.height);
+  }
+
+  /**
+   * Everything from the later levels that has to move each frame. It comes after the race itself has moved on,
+   * so on the frame the race finishes, nothing from the race is left up in the view of the finish.
+   */
+  updateExtras(dt, racing) {
+    const showing = racing || this.mode === 'grid';
+    const position = mod(this.distance, this.track.length);
+    const lap = this.lapIndex;
+    // During a hand check in the middle of a race, the tractor waits as it does for a child who's resting.
+    if (this.mode !== 'race') this.updateTractor(dt, true);
+    // Nothing is picked up during a hand check, as the race is waiting.
+    this.coins.update(dt, this.time, { distance: this.distance, lateral: this.lateral, magnet: this.powers.has('magnet'), collect: racing }, (coin) => {
+      this.addCoins(1, 'coin', coin.position);
+    });
+    this.powerUps.update(this.time, lap, showing);
+    this.balloons.update(dt, this.time, { position, lap, lateral: this.lateral, lift: this.lift, visible: showing, collect: racing }, (balloon) => {
+      this.addCoins(COINS.gem, 'gem', this.balloons.gemPosition(balloon, this.tmpA));
+    });
+    this.chests.update(dt, lap, showing);
+    // The high ten fades in far ahead on the last lap, and stays through a hand check. When the view cuts away,
+    // as at the finish, it goes at once, so it's never left in the new view for a moment.
+    const highTenAhead = this.raceDistance - HIGH_TEN_BEFORE_LINE - this.distance;
+    const highTenWanted = this.plan.highTen && showing && !this.finished && highTenAhead < HIGH_TEN_SHOWS_FROM;
+    this.highTen.update(dt, highTenWanted, this.snapCamera);
+    this.stars.setGolden(this.goldenLapNow ? 1 : 0, dt);
+    this.carPowers.update(dt, this.powers, this.time);
+    // The rainbow trail only while the car is going with the hand open: resting leaves nothing behind.
+    if (racing && this.powers.has('rainbow') && this.drive > 0 && this.speed > RESTING_SPEED) this.carPowers.trail(dt, this.particles, this.player, this.speed);
+    const progress = clamp((this.distance + START_BEHIND_LINE) / (this.raceDistance + START_BEHIND_LINE), 0, 1);
+    this.weather.update(dt, { plan: this.plan, progress, position, racing: racing || this.mode === 'finished', camera: this.camera });
+    if (racing) this.weather.rainOn(dt, this.particles, this.camera);
+    this.updateCallout(dt);
   }
 
   poseDriver(dt, { left = null, right = null, steer = 0 }) {

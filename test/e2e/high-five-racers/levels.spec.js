@@ -1,7 +1,8 @@
 // The racer's levels. Level 10 has five other cars, who race harder and use turbo now and then, more big
 // hands with two in a row on one side and a slalom, and ramps to one side of the road that jump straight
-// into a high five. It can still be finished, the child still wins, and flying still works. Level 1 is
-// what the rest of this folder's tests check, and safety.spec.js runs its checks at both.
+// into a high five, as well as everything new that each level brings (new-things.spec.js). It can still be
+// finished, the child still wins, and flying still works. Level 1 is what the rest of this folder's tests
+// check, and safety.spec.js runs its checks at level 1, 6 and 10.
 import {
   car,
   expect,
@@ -217,13 +218,18 @@ test('a whole race at level 10 can be finished, and the child still wins', async
   await expect(page.locator('#level-done-text')).toHaveText('All 10 levels done!');
   const done = await page.evaluate(() => {
     const { race } = window.__game;
-    return { place: race.place, fives: race.fives, met: race.gatesMet, stars: race.starTotal };
+    return { place: race.place, fives: race.fives, met: race.gatesMet, stars: race.starTotal, coins: race.coinTotal, prizes: race.prizes };
   });
   console.log('level 10 race', JSON.stringify(done));
   expect(done.place).toBe(1);
   expect(done.met).toBeGreaterThanOrEqual(19);
   expect(done.fives).toBeGreaterThan(10);
   expect(done.stars).toBeGreaterThan(20);
+  // With the car steering itself, it picks up coins, the treasure chest and the high ten on the way.
+  expect(done.coins).toBeGreaterThan(30);
+  expect(done.prizes.chests).toBe(1);
+  expect(done.prizes.highTens).toBe(1);
+  await expect(page.locator('#finish-prizes')).toContainText(`🪙 ${done.coins} coins`);
   await page.waitForTimeout(1000);
   await shot(page, 'high-five-racers-level10-finish');
 });

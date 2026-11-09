@@ -79,7 +79,7 @@ test('every sound and voice line loads and decodes in Chrome', async ({ page }) 
     expect(duration, text).toBeLessThan(5);
   }
   expect(Object.keys(loaded.sounds).sort()).toEqual(
-    ['applause', 'bump', 'cheer', 'engineLoop', 'engineStart', 'go', 'handsOpen', 'landed', 'lap', 'passBy', 'rush', 'slap', 'sparkle', 'star', 'tick', 'whoosh', 'win'],
+    ['applause', 'bell', 'boing', 'bump', 'cheer', 'clap', 'engineLoop', 'engineStart', 'go', 'handsOpen', 'harp', 'landed', 'lap', 'passBy', 'rush', 'slap', 'sparkle', 'star', 'tick', 'unlock', 'whoosh', 'win'],
   );
   // The engine has to come back the exact length it was written, or its loop would click.
   expect(loaded.sounds.engineLoop).toBeCloseTo(4, 3);

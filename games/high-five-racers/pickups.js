@@ -1,16 +1,23 @@
 // Things on the road: stars to catch, and ramps to jump. Neither is in the way, and missing either
 // costs nothing. Where they are depends on the level (rules.js), and both are laid out again for each.
 import * as THREE from '../../vendor/three/three.module.js';
-import { canvasTexture, lerp, mod, TAU } from './kit.js';
+import { canvasTexture, damp, mod, TAU } from './kit.js';
+import { starSpots } from './rules.js';
 import { GATE_SPOTS, RAMP_SPOTS } from './track.js';
 
 const STAR_HEIGHT = 1.55;
-const STARS_PER_TRAIL = 6;
-const STAR_SPACING = 8.5;
+const STAR_COLOUR = new THREE.Color('#ffd23f');
+const STAR_GLOW = new THREE.Color('#c98a00');
+// On the golden lap, a deeper gold that glows more, and a little bigger.
+const GOLDEN_COLOUR = new THREE.Color('#ffb21a');
+const GOLDEN_GLOW = new THREE.Color('#e07b00');
 const RAMP_LENGTH = 7;
 const RAMP_HEIGHT = 1.05;
 export const RAMP_HALF_WIDTH = 2.9;
 const STAR_ROOM = 160; // Stars the one mesh has room for, which is more than any level has.
+// A star the magnet pulled over stays there while it's this close ahead of the car, or behind it, in metres. The
+// magnet only reaches 34 m ahead, and the camera is about 13 m behind the car.
+const PULLED_STAYS = { ahead: 60, behind: 40 };
 const LEVEL_ONE_RAMPS = RAMP_SPOTS.map((along) => ({ along, lateral: 0 }));
 
 function starGeometry() {
@@ -35,7 +42,7 @@ export class StarField {
     this.track = track;
     this.mesh = new THREE.InstancedMesh(
       starGeometry(),
-      new THREE.MeshStandardMaterial({ color: '#ffd23f', emissive: '#c98a00', emissiveIntensity: 0.55, roughness: 0.35 }),
+      new THREE.MeshStandardMaterial({ color: STAR_COLOUR, emissive: STAR_GLOW, emissiveIntensity: 0.55, roughness: 0.35 }),
       STAR_ROOM,
     );
     this.mesh.castShadow = true;
@@ -48,40 +55,24 @@ export class StarField {
   /** Stars for a level's big hands, a list of [along, side], and its ramps, a list of { along, lateral }. */
   setLayout(gateSpots, ramps) {
     const { track } = this;
-    this.stars = [];
-    const add = (along, lateral, lift = 0) => {
+    this.stars = starSpots(gateSpots, ramps).slice(0, STAR_ROOM).map(({ along, lateral, lift }) => {
       const position = track.pointAt(along, lateral, new THREE.Vector3());
       position.y += STAR_HEIGHT + lift;
-      this.stars.push({ along: mod(along, track.length), lateral, position, takenOnLap: -2, spin: along * 0.3 });
-    };
-    // A ramp to one side has its own stars, so a trail doesn't go through them.
-    const overSideRamp = (along) => ramps.some((ramp) => ramp.lateral !== 0 && along > ramp.along - 4 && along < ramp.along + 30);
-    gateSpots.forEach(([along, side], index) => {
-      const fromSide = index === 0 ? 0 : gateSpots[index - 1][1] * 1.2;
-      // Two big hands close together have a shorter trail, which starts after the first.
-      const after = index === 0 ? -Infinity : gateSpots[index - 1][0] + 6;
-      let count = STARS_PER_TRAIL;
-      while (count > 2 && along - 12 - (count - 1) * STAR_SPACING < after) count -= 1;
-      for (let i = 0; i < count; i += 1) {
-        const share = i / (count - 1);
-        const eased = share * share * (3 - 2 * share);
-        const at = along - 12 - (count - 1 - i) * STAR_SPACING;
-        if (!overSideRamp(at)) add(at, lerp(fromSide, side * 3.6, eased));
-      }
+      // pulled is where a magnet has drawn it to across the road. It goes back once the car has gone by.
+      return { along: mod(along, track.length), lateral, lift, pulled: lateral, position, takenOnLap: -2, spin: along * 0.3 };
     });
-    // An arc of stars over each ramp, in the air where a jump goes.
-    for (const ramp of ramps) {
-      for (let i = 0; i < 5; i += 1) {
-        const share = i / 4;
-        add(ramp.along + 7 + i * 5.2, ramp.lateral, 0.5 + 1.6 * Math.sin(share * Math.PI));
-      }
-    }
-    this.stars = this.stars.slice(0, STAR_ROOM);
     this.mesh.count = this.stars.length;
+    this.golden = 0;
   }
 
   reset() {
-    for (const star of this.stars) star.takenOnLap = -2;
+    for (const star of this.stars) {
+      star.takenOnLap = -2;
+      if (star.pulled !== star.lateral) {
+        star.pulled = star.lateral;
+        this.place(star);
+      }
+    }
   }
 
   /** The nearest star still ahead, for when the car is steering itself. */
@@ -103,20 +94,57 @@ export class StarField {
     for (const star of this.stars) {
       if (star.takenOnLap === lap) continue;
       const between = Math.abs(star.along - position);
-      if (between < 3.4 && Math.abs(star.lateral - lateral) < 2.6) {
+      if (between < 3.4 && Math.abs(star.pulled - lateral) < 2.6) {
         star.takenOnLap = lap;
         onCollect(star);
       }
     }
   }
 
+  /**
+   * A magnet draws the stars a little way ahead over to the car, wherever they are across the road. position
+   * and lateral are where the car is on the lap, and reach how far ahead the magnet pulls, or 0 without one.
+   * When the magnet runs out, a star it pulled over stays where it is, so nothing jumps back across the road in
+   * front of the car. It only goes back to its own place once it's well out of sight behind, for the next lap.
+   */
+  pull(dt, { position, lateral, reach }) {
+    const { length } = this.track;
+    for (const star of this.stars) {
+      const ahead = mod(star.along - position, length);
+      if (ahead < reach) {
+        if (Math.abs(lateral - star.pulled) < 1e-3) continue;
+        star.pulled = damp(star.pulled, lateral, 7, dt);
+        this.place(star);
+      } else if (star.pulled !== star.lateral && ahead > PULLED_STAYS.ahead && length - ahead > PULLED_STAYS.behind) {
+        star.pulled = star.lateral;
+        this.place(star);
+      }
+    }
+  }
+
+  place(star) {
+    this.track.pointAt(star.along, star.pulled, star.position);
+    star.position.y += STAR_HEIGHT + star.lift;
+  }
+
+  /** golden is 1 on the golden lap and 0 otherwise. It changes over a second or so, so nothing flashes. */
+  setGolden(golden, dt) {
+    if (Math.abs(golden - this.golden) < 1e-3) return;
+    this.golden = damp(this.golden, golden, 3, dt);
+    if (Math.abs(golden - this.golden) < 0.01) this.golden = golden;
+    const { material } = this.mesh;
+    material.color.lerpColors(STAR_COLOUR, GOLDEN_COLOUR, this.golden);
+    material.emissive.lerpColors(STAR_GLOW, GOLDEN_GLOW, this.golden);
+  }
+
   update(time, lap, visible) {
+    const size = 0.85 * (1 + 0.15 * this.golden);
     this.stars.forEach((star, index) => {
       const show = visible && star.takenOnLap !== lap;
       this.dummy.position.copy(star.position);
       this.dummy.position.y += Math.sin(time * 2 + star.spin) * 0.14;
       this.dummy.rotation.y = time * 1.6 + star.spin;
-      this.dummy.scale.setScalar(show ? 0.85 : 0);
+      this.dummy.scale.setScalar(show ? size : 0);
       this.dummy.updateMatrix();
       this.mesh.setMatrixAt(index, this.dummy.matrix);
     });
