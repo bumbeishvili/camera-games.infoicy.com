@@ -229,8 +229,10 @@ export class FriendsPanel {
   /** The child has finished, this long after "GO!". extra is { w: 1 if they won, n: how many they dropped }. */
   finished(ms, extra = {}) {
     if (!this.current) return;
-    this.results.set(this.room.you, { ms, won: extra.w !== 0, dropped: extra.n ?? 0 });
-    this.room.done(ms, extra);
+    // Rounded once, here, so that the time on this card and on friends' cards is the same to the tenth.
+    const whole = Math.round(ms);
+    this.results.set(this.room.you, { ms: whole, won: extra.w !== 0, dropped: extra.n ?? 0 });
+    this.room.done(whole, extra);
   }
 
   heardDone(id, { ms, w, n }) {
