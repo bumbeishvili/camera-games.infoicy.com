@@ -8,6 +8,7 @@ import { INK } from '../../core/glove.js';
 
 const COLOURS = { ready: '#35e07a', firing: '#ffb02e', empty: '#ff8f7e', shield: '#59c8ff', lost: '#c6d0db' };
 const CORNER_SPLAT_SECONDS = 3.2;
+const STAR_FADE_SECONDS = 0.2; // How long the star in the middle of the crosshair takes to come and go.
 const SHIELD_SPLAT_SECONDS = 1.1;
 const CHARGE_TRACK = 'rgb(18 48 77 / 0.5)';
 const TAU = Math.PI * 2;
@@ -85,9 +86,12 @@ export class Sights {
     this.ring = 0;
     this.lastLook = 'ready';
     this.lockPop = 0;
+    this.starShare = 0;
     this.corners = [];
     this.shieldSplats = [];
+    this.bubbleSplats = [];
     this.nextCorner = 0;
+    this.prizeLooks = new Map(); // Each kind of prize, drawn once and kept.
     this.resize();
   }
 
@@ -102,7 +106,14 @@ export class Sights {
   reset() {
     this.corners = [];
     this.shieldSplats = [];
+    this.bubbleSplats = [];
     this.lockPop = 0;
+  }
+
+  /** Goo has landed on the shield bubble from a power-up, and slides off it. */
+  hitBubble() {
+    this.bubbleSplats.push({ dx: (Math.random() - 0.5) * 0.5, age: 0, seed: Math.random() * 9 });
+    if (this.bubbleSplats.length > 3) this.bubbleSplats.shift();
   }
 
   /** Goo has hit the view: a small splat near a corner, well out of the way of the middle. */
@@ -123,12 +134,16 @@ export class Sights {
 
   update(dt) {
     this.time += dt;
-    this.spin += dt * (this.reducedMotion ? 0 : this.look === 'firing' ? 3.4 : 0.5);
+    // Its marks turn while it's firing, slowly enough that they don't flicker as they pass.
+    this.spin += dt * (this.reducedMotion ? 0 : this.look === 'firing' ? 0.8 : 0.25);
     this.lockPop = Math.max(0, this.lockPop - dt * 4);
+    this.starShare = Math.min(1, Math.max(0, (this.starShare ?? 0) + ((this.look === 'firing' ? 1 : -1) * dt) / STAR_FADE_SECONDS));
     for (const splat of this.corners) splat.age += dt;
     this.corners = this.corners.filter(({ age }) => age < CORNER_SPLAT_SECONDS);
     for (const splat of this.shieldSplats) splat.age += dt;
     this.shieldSplats = this.shieldSplats.filter(({ age }) => age < SHIELD_SPLAT_SECONDS);
+    for (const splat of this.bubbleSplats) splat.age += dt;
+    this.bubbleSplats = this.bubbleSplats.filter(({ age }) => age < SHIELD_SPLAT_SECONDS);
   }
 
   /** state has what's needed to draw a frame, all in pixels: see Stage.drawSights. */
@@ -143,9 +158,162 @@ export class Sights {
     if (state.lock) this.drawLock(state.lock);
     if (state.haze > 0.004) this.drawHaze(state.haze);
     for (const warning of state.warnings) this.drawWarning(warning);
+    if (state.guard > 0.001) this.drawGuard(state);
     if (state.shield > 0.001) this.drawShield(state);
     for (const splat of this.corners) this.drawCornerSplat(splat);
     if (state.crosshair?.seen) this.drawCrosshair(state.crosshair);
+    for (const prize of state.prizes ?? []) this.drawPrize(prize);
+    if (state.label) this.drawLabel(state.label);
+  }
+
+  /**
+   * The shield bubble from a power-up: the thin rim of a soap bubble where the shield goes, with nothing
+   * over the middle, so the picture's brightness hardly changes as it comes and goes. Goo that lands on
+   * it slides off.
+   */
+  drawGuard({ guard: share, shieldX, shieldY, shieldR }) {
+    const { ctx, height } = this;
+    const r = shieldR * 1.08;
+    const wobble = this.reducedMotion ? 0 : Math.sin(this.time * 1.7) * 0.015;
+    ctx.save();
+    ctx.globalAlpha = share;
+    ctx.lineWidth = Math.max(5, height * 0.008);
+    ctx.strokeStyle = 'rgb(110 190 235 / 0.7)';
+    ctx.beginPath();
+    ctx.ellipse(shieldX, shieldY, r * (1 + wobble), r * (1 - wobble), 0, 0, TAU);
+    ctx.stroke();
+    // Soap-bubble colours along the rim, and a shine.
+    ctx.lineWidth = Math.max(3, height * 0.005);
+    for (const [from, to, colour] of [[1.05, 1.35, 'rgb(255 190 230 / 0.6)'], [1.55, 1.8, 'rgb(255 236 150 / 0.6)'], [0.1, 0.45, 'rgb(170 240 190 / 0.6)']]) {
+      ctx.strokeStyle = colour;
+      ctx.beginPath();
+      ctx.arc(shieldX, shieldY, r * 0.965, Math.PI * from, Math.PI * to);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgb(255 255 255 / 0.6)';
+    ctx.beginPath();
+    ctx.ellipse(shieldX - r * 0.5, shieldY - r * 0.55, r * 0.12, r * 0.06, -0.7, 0, TAU);
+    ctx.fill();
+    // Goo that lands on it leaves a small, faint splat that slides off: a big one in the middle of the
+    // view flickered.
+    for (const splat of this.bubbleSplats) {
+      const left = 1 - splat.age / SHIELD_SPLAT_SECONDS;
+      ctx.globalAlpha = share * 0.55 * Math.min(1, left * 2.5) * Math.min(1, splat.age / 0.15);
+      gooBlob(ctx, shieldX + splat.dx * r, shieldY - r * 0.3 + splat.age * r * 0.3, r * 0.11, splat.seed);
+    }
+    ctx.restore();
+  }
+
+  /** A picture of a prize, drawn once for each kind and kept. */
+  prizeLook(kind, mark) {
+    const key = `${kind} ${mark ?? ''}`;
+    if (this.prizeLooks.has(key)) return this.prizeLooks.get(key);
+    const size = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.translate(size / 2, size / 2);
+    ctx.lineJoin = 'round';
+    // A soft edge rather than ink, as they come thick and fast.
+    ctx.strokeStyle = '#4d5d78';
+    ctx.lineWidth = 3;
+    if (kind === 'bolt') {
+      // A nut, silver-blue, with a hole in it.
+      ctx.beginPath();
+      for (let i = 0; i < 6; i += 1) ctx[i ? 'lineTo' : 'moveTo'](Math.cos((i / 6) * TAU) * 22, Math.sin((i / 6) * TAU) * 22);
+      ctx.closePath();
+      ctx.fillStyle = '#b4c3d3';
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, 8, 0, TAU);
+      ctx.fillStyle = '#6f8299';
+      ctx.fill();
+      ctx.stroke();
+    } else if (kind === 'gem') {
+      ctx.beginPath();
+      ctx.moveTo(-20, -7);
+      ctx.lineTo(-10, -18);
+      ctx.lineTo(10, -18);
+      ctx.lineTo(20, -7);
+      ctx.lineTo(0, 22);
+      ctx.closePath();
+      ctx.fillStyle = '#6fd3f0';
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-20, -7);
+      ctx.lineTo(20, -7);
+      ctx.moveTo(-6, -7);
+      ctx.lineTo(0, 22);
+      ctx.lineTo(6, -7);
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    } else if (kind === 'star') {
+      starPath(ctx, 0, 1, 25, 11);
+      ctx.fillStyle = '#ffd23f';
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      // A power-up: a glass ball with its picture inside.
+      ctx.beginPath();
+      ctx.arc(0, 0, 28, 0, TAU);
+      ctx.fillStyle = '#e6f6ff';
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#3f8fe0';
+      ctx.stroke();
+      ctx.font = '30px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(mark ?? '', 0, 2);
+    }
+    this.prizeLooks.set(key, canvas);
+    return canvas;
+  }
+
+  /** Something picked up, on its way to the crosshair. Power-ups are bigger. */
+  drawPrize({ x, y, kind, mark, alpha, size }) {
+    if (alpha <= 0.01) return;
+    const { ctx } = this;
+    const look = this.prizeLook(kind, mark);
+    const wide = size * (kind === 'power' ? 1.7 : 1.2);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(look, x - wide / 2, y - wide / 2, wide, wide);
+    ctx.restore();
+  }
+
+  /** The name of something new, in a little white bubble with a point at the bottom. */
+  drawLabel({ x, y, words, alpha }) {
+    if (alpha <= 0.01) return;
+    const { ctx } = this;
+    const size = clamp(this.height * 0.03, 15, 26);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = `600 ${size}px Fredoka, "Noto Sans Georgian", sans-serif`;
+    const wide = ctx.measureText(words).width + size * 1.2;
+    const high = size * 1.7;
+    const top = clamp(y - high - size * 0.5, 4, this.height - high - size);
+    // Kept on the screen, with its point still under the thing it names.
+    const left = clamp(x - wide / 2, 6, this.width - wide - 6);
+    const point = clamp(x, left + high / 2, left + wide - high / 2);
+    ctx.beginPath();
+    ctx.roundRect(left, top, wide, high, high / 2);
+    ctx.moveTo(point - size * 0.4, top + high);
+    ctx.lineTo(point, top + high + size * 0.5);
+    ctx.lineTo(point + size * 0.4, top + high);
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 3;
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = INK;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(words, left + wide / 2, top + high / 2 + 1);
+    ctx.restore();
   }
 
   /**
@@ -251,7 +419,7 @@ export class Sights {
     ctx.strokeStyle = shielded ? COLOURS.shield : '#c6f24e';
     ctx.lineWidth = 4;
     ctx.setLineDash([16, 10]);
-    ctx.lineDashOffset = this.reducedMotion ? 0 : -this.time * 30;
+    ctx.lineDashOffset = this.reducedMotion ? 0 : -this.time * 12;
     ctx.beginPath();
     ctx.arc(x, y, ring, 0, TAU);
     ctx.stroke();
@@ -346,7 +514,7 @@ export class Sights {
     this.look = look;
     const r = target ? Math.max(radius * 0.78, target * 1.18) : radius;
     this.ring += (r - this.ring) * 0.25;
-    const R = (this.ring || r) * (1 + this.lockPop * 0.12);
+    const R = (this.ring || r) * (1 + this.lockPop * 0.07);
     const colour = COLOURS[look];
     ctx.save();
     ctx.translate(x, y);
@@ -428,14 +596,10 @@ export class Sights {
         ctx.stroke();
       }
       ctx.restore();
-      if (look === 'firing') {
-        starPath(ctx, 0, 0, R * 0.26, R * 0.11, 5, this.spin);
-        ctx.fillStyle = '#fff3c4';
-        ctx.fill();
-        ctx.strokeStyle = INK;
-        ctx.lineWidth = 3;
-        ctx.stroke();
-      } else {
+      // The star in the middle while firing, and a dot while not, each fading into the other.
+      const star = this.starShare;
+      if (star < 0.99) {
+        ctx.globalAlpha = 1 - star;
         ctx.fillStyle = INK;
         ctx.beginPath();
         ctx.arc(0, 0, 7, 0, TAU);
@@ -445,6 +609,16 @@ export class Sights {
         ctx.arc(0, 0, 4, 0, TAU);
         ctx.fill();
       }
+      if (star > 0.01) {
+        ctx.globalAlpha = star;
+        starPath(ctx, 0, 0, R * 0.26, R * 0.11, 5, this.spin);
+        ctx.fillStyle = '#fff3c4';
+        ctx.fill();
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
     }
     ctx.restore();
 

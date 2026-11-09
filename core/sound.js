@@ -20,6 +20,9 @@ const STAR_STREAK_SECONDS = 1.2;
 const STAR_RATES = [1, 9 / 8, 5 / 4, 3 / 2, 5 / 3, 2];
 
 const MASTER_LEVEL = 0.9; // Headroom, as a sharp sound can get a little past the limiter.
+// The limiter adds back gain of its own, so its loudest moments land close to full scale: a busy moment in
+// Cannon Bay, a cannon, a ship going down and a voice together, reached 1.02. This keeps them under it.
+const OUTPUT_LEVEL = 0.9;
 const VOICE_LEVEL = 1.5;
 const VOICE_DUCK = 0.45; // How far background sound drops while the voice speaks.
 const LINE_PAUSE_SECONDS = 0.16; // Between one line and the next.
@@ -60,17 +63,21 @@ export class Sound {
     const { context } = this;
     // A limiter, so several sounds at once can't clip. Chrome adds make-up gain to this
     // node based on these settings, which raises everything by about 3 dB.
-    this.output = context.createDynamicsCompressor();
-    this.output.threshold.value = -6;
-    this.output.knee.value = 6;
-    this.output.ratio.value = 12;
-    this.output.attack.value = 0.003;
-    this.output.release.value = 0.15;
+    this.limiter = context.createDynamicsCompressor();
+    this.limiter.threshold.value = -6;
+    this.limiter.knee.value = 6;
+    this.limiter.ratio.value = 12;
+    this.limiter.attack.value = 0.003;
+    this.limiter.release.value = 0.15;
+    // What reaches the speakers.
+    this.output = context.createGain();
+    this.output.gain.value = OUTPUT_LEVEL;
+    this.limiter.connect(this.output);
     this.output.connect(context.destination);
 
     this.master = context.createGain();
     this.master.gain.value = MASTER_LEVEL;
-    this.master.connect(this.output);
+    this.master.connect(this.limiter);
 
     this.backgroundBus = context.createGain();
     this.effectsBus = context.createGain();
@@ -154,7 +161,8 @@ export class Sound {
     this.backgroundBus.gain.setTargetAtTime(level, this.context.currentTime, speaking ? 0.04 : 0.25);
   }
 
-  play(name, { gain = 1, rate = 1, bus = this.effectsBus } = {}) {
+  /** A sound effect. after is how many seconds from now it starts, for sounds that shouldn't all start at once. */
+  play(name, { gain = 1, rate = 1, bus = this.effectsBus, after = 0 } = {}) {
     const buffer = this.buffers.get(name);
     if (!this.context || !buffer || !this.soundOn) return;
     const source = this.context.createBufferSource();
@@ -163,7 +171,7 @@ export class Sound {
     const level = this.context.createGain();
     level.gain.value = gain;
     source.connect(level).connect(bus);
-    source.start();
+    source.start(after > 0 ? this.context.currentTime + after : 0);
   }
 
   /** A sound that keeps going until it's stopped, under everything else. */

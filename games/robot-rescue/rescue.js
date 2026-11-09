@@ -34,7 +34,77 @@ export function levelPlan(level = 1) {
     rollers: stepsAt(level, { 1: 0, 5: 2, 9: 3 }), // From level 5, robots on one big wheel take the place of some walkers.
     doubleThrow: stepsAt(level, { 1: 0, 7: 0.35, 10: 0.5 }), // From level 7, some robots throw a second blob straight after the first.
     bigSteps: level >= 8, // From level 8, the big one steps from side to side, taking its weak spots with it.
+    // Something new to see and play with at every level from 2, on top of all that: see NEWS below.
+    bolts: level >= 2, // Robots that fall apart leave bolts, which fly over to the crosshair.
+    spread: level >= 2, // Power-ups, starting with the triple shot: three balls at once.
+    lids: stepsAt(level, { 1: 0, 3: 1, 8: 2 }), // Robots with a lid for a shield, in place of a walker or two.
+    bubble: level >= 4, // The bubble shot, which traps a robot in a floating bubble.
+    keyChest: level >= 5, // A golden robot with a key, which opens a treasure chest by the cage.
+    gems: level >= 5, // Bigger robots leave a gem as well.
+    splitters: level >= 6 ? 1 : 0, // A robot that comes apart into two little ones.
+    guard: level >= 6, // The shield bubble, which stops goo by itself.
+    boing: level >= 7, // The boing ball, big and slow, which bounces on to the next robot.
+    heart: level >= 7, // A heart, but only once one has been lost.
+    planes: level >= 8, // Paper planes, which find a robot by themselves.
+    magnet: level >= 8, // The magnet, which pulls a bolt out of a robot with each hit.
+    sunset: level >= 8, // The ride goes on into a warm evening, just as bright.
+    carrier: level >= 9, // A drone carrying a friend in a little cage, who floats down when it's dropped.
+    slow: level >= 9, // Slow motion: the robots and their goo go at half speed.
+    king: level >= 10, // The big one is the robot king, and bits of him come off as he goes.
+    treasure: level >= 10, // The king leaves his treasure: gold stars.
   };
+}
+
+/**
+ * What each level brings that's new, shown on the title card, under the countdown, and on the finish
+ * card as what's coming up. key is what levelPlan switches on from that level. The first time each of a
+ * level's new things turns up in a game, its name floats over it for a moment.
+ */
+export const NEWS = {
+  2: [{ key: 'bolts', mark: '🔩', name: 'Bolts', nameKa: 'ჭანჭიკები' }, { key: 'spread', mark: '🔱', name: 'Triple shot', nameKa: 'სამმაგი გასროლა' }],
+  3: [{ key: 'swoop', mark: '🚁', name: 'Swooping drones', nameKa: 'მყვინთავი დრონები' }, { key: 'lids', mark: '🛡️', name: 'Lid robots', nameKa: 'ფარიანი რობოტები' }],
+  4: [{ key: 'hop', mark: '🪀', name: 'Hopping robots', nameKa: 'მხტუნავი რობოტები' }, { key: 'bubble', mark: '🫧', name: 'Bubble shot', nameKa: 'ბუშტის გასროლა' }],
+  5: [{ key: 'rollers', mark: '🛞', name: 'Rollers', nameKa: 'ბორბლიანი რობოტები' }, { key: 'keyChest', mark: '🗝️', name: 'Key and chest', nameKa: 'გასაღები და სკივრი' }, { key: 'gems', mark: '💎', name: 'Gems', nameKa: 'ძვირფასი ქვები' }],
+  6: [{ key: 'splitters', mark: '🧩', name: 'Splitting robots', nameKa: 'ორად გაყოფადი რობოტები' }, { key: 'guard', mark: '🔵', name: 'Shield bubble', nameKa: 'დამცავი ბუშტი' }],
+  7: [{ key: 'boing', mark: '🏀', name: 'Boing ball', nameKa: 'ხტუნია ბურთი' }, { key: 'heart', mark: '❤️', name: 'Hearts', nameKa: 'გულები' }],
+  8: [{ key: 'planes', mark: '✈️', name: 'Paper planes', nameKa: 'ქაღალდის თვითმფრინავები' }, { key: 'magnet', mark: '🧲', name: 'Magnet', nameKa: 'მაგნიტი' }, { key: 'sunset', mark: '🌅', name: 'Sunset ride', nameKa: 'მზის ჩასვლა' }],
+  9: [{ key: 'carrier', mark: '🪂', name: 'Flying cages', nameKa: 'მფრინავი გალიები' }, { key: 'slow', mark: '🐌', name: 'Slow motion', nameKa: 'ნელი მოძრაობა' }],
+  10: [{ key: 'king', mark: '👑', name: 'Robot king', nameKa: 'რობოტების მეფე' }, { key: 'treasure', mark: '🌟', name: 'King’s treasure', nameKa: 'მეფის განძი' }],
+};
+
+export const newsAt = (level) => NEWS[level] ?? [];
+
+/**
+ * The power-ups. A robot that falls apart now and then leaves one, in a glass ball that flies over to
+ * the crosshair like the bolts. The kinds of fire change what the blaster shoots, for a few seconds,
+ * and firing stays the same: an open hand on something. Each waits while the child rests, and between
+ * stops. A heart only comes once one has been lost.
+ */
+export const POWERS = {
+  spread: { mark: '🔱', name: 'Triple shot', nameKa: 'სამმაგი გასროლა', seconds: 7, fire: true },
+  bubble: { mark: '🫧', name: 'Bubble shot', nameKa: 'ბუშტის გასროლა', seconds: 7, fire: true },
+  guard: { mark: '🔵', name: 'Shield bubble', nameKa: 'დამცავი ბუშტი', seconds: 8 },
+  boing: { mark: '🏀', name: 'Boing ball', nameKa: 'ხტუნია ბურთი', seconds: 7, fire: true },
+  heart: { mark: '❤️', name: 'Heart', nameKa: 'გული', seconds: 0 },
+  planes: { mark: '✈️', name: 'Paper planes', nameKa: 'ქაღალდის თვითმფრინავები', seconds: 7, fire: true },
+  magnet: { mark: '🧲', name: 'Magnet', nameKa: 'მაგნიტი', seconds: 8 },
+  slow: { mark: '🐌', name: 'Slow motion', nameKa: 'ნელი მოძრაობა', seconds: 6 },
+};
+
+/** What's picked up, as it's counted on the screen and the finish card. */
+export const PRIZES = {
+  bolt: { mark: '🔩', stat: 'bolts' },
+  gem: { mark: '💎', stat: 'gems' },
+  star: { mark: '⭐', stat: 'stars' },
+  pal: { mark: '🤗', stat: 'pals' },
+};
+
+/** The power-ups a level has, the level's own new ones first, then the newest of the rest. */
+export function powerOrder(level) {
+  const plan = levelPlan(level);
+  const unlocked = Object.keys(POWERS).filter((key) => plan[key]);
+  const fresh = newsAt(level).map(({ key }) => key).filter((key) => POWERS[key]);
+  return [...fresh, ...unlocked.filter((key) => !fresh.includes(key)).reverse()];
 }
 
 // How fast things happen. walk is in metres a second, and atOnce is how many robots are out together.
@@ -60,14 +130,29 @@ export const AIM_HELP = {
 };
 
 // How many hits each can take. The big one is different: it only takes hits in its weak spots. Rollers
-// only come on the higher levels.
+// and everything after them only come on the higher levels.
 export const ROBOT_KINDS = {
   walker: { hp: 5 },
   drone: { hp: 3 },
   peeker: { hp: 3 },
   roller: { hp: 3 },
   big: { hp: 0 },
+  lid: { hp: 4 }, // Holds up a lid that shots bonk off, and lowers it to walk or throw.
+  splitter: { hp: 4 }, // Comes apart into two little ones.
+  mini: { hp: 2 }, // A little one, which walks about and never throws.
+  keybot: { hp: 4 }, // A golden one, whose wind-up key opens the treasure chest.
+  carrier: { hp: 4 }, // A drone with a friend in a little cage underneath, which never throws.
 };
+
+// Those that go about on foot, from post to post.
+const ON_FOOT = new Set(['walker', 'lid', 'splitter', 'mini', 'keybot']);
+// Those too busy to throw anything.
+const NEVER_THROW = new Set(['roller', 'mini', 'carrier']);
+// How many bolts each leaves, and which are big enough to leave a gem as well.
+const BOLTS = { walker: 2, lid: 2, splitter: 2, keybot: 1, drone: 1, peeker: 1, roller: 1, mini: 1, carrier: 1, big: 0 };
+const GEMS = new Set(['lid', 'splitter', 'keybot', 'carrier', 'roller']);
+// The friends who are carried about at each stop, from level 9: everyone not already in a cage.
+export const PALS = ['widget', 'bramble', 'nova', 'cinder', 'tur'];
 
 // The weak spots of the big one, in the order they open, in metres from its feet.
 export const BIG_SPOTS = [
@@ -187,6 +272,35 @@ const ROLL_PAUSE_SECONDS = 1; // At each spot, to turn round.
 const SECOND_THROW_SECONDS = 0.5; // The wind up for a second blob, straight after the first.
 export const BIG_STEP = { across: 2.4, speed: 0.55 }; // Metres each way, and how quickly it goes from side to side.
 
+// Prizes take this long from a robot falling apart to reaching the crosshair, a little after each other.
+export const PRIZE_SECONDS = 1.3;
+const PRIZE_STAGGER_SECONDS = 0.18; // Not too close together, as a stream of them flickered.
+export const POWER_EVERY = 8; // Every eighth robot to fall apart leaves a power-up, from the second.
+const POWER_FIRST = 2;
+export const BUBBLE_SECONDS = 4; // How long a robot floats in a bubble, where every hit counts twice.
+export const LID_BONKS = 8; // After this many shots have bonked off it, the lid falls off.
+export const KEY_SECONDS = 1.4; // How long the key takes to fly over to the chest.
+const CHEST_PRIZES = { gem: 4, star: 2 };
+const TREASURE = { star: 6, gem: 2 };
+export const SLOW = { robots: 0.55, goo: 0.6 }; // How fast things go in slow motion.
+const MAGNET_EVERY_SECONDS = 0.8; // The magnet pulls a bolt out of a robot no more often than this.
+const SPREAD_REACH = 9; // Metres: the triple shot's other balls go for anything this near what's aimed at.
+export const BOING = { flight: 0.45, hop: 0.5, bounces: 1, damage: 2, reach: 10 };
+const BUBBLE_SHOT_SECONDS = 0.3;
+const PLANE_SECONDS = 0.6;
+// The other kinds of fire come less often than paint, as each does more, and a lot of them going all
+// over the place at once flickered.
+const FIRE_RATES = { spread: FIRE_RATE / 2.5, bubble: FIRE_RATE / 2, boing: FIRE_RATE / 3, planes: FIRE_RATE / 3 };
+// The drone with a friend under it goes slowly to and fro, in front of everything.
+export const CARRIER = { across: 6.5, speed: 0.15, height: 5.4, z: 15 };
+
+/** Whether a lid robot is holding its lid up: not while it walks, throws or floats in a bubble. */
+export function lidIsUp(robot) {
+  return robot.kind === 'lid' && !robot.lidOff && robot.state === 'ready' && !(robot.throwing > 0) && !(robot.bubbled > 0);
+}
+
+const AIM_FOLLOW = 11; // How quickly the crosshair catches up with where it's going, a share a second.
+
 /** The hand in play, as this game needs it. Anything uncertain neither fires nor raises the shield. */
 export function readHand(snapshot) {
   const hand = snapshot[snapshot.side];
@@ -214,9 +328,10 @@ export class Blaster {
 
   /**
    * One frame. aiming says something is in the crosshair. Returns what happened, as shots fired, and
-   * whether it has just run out or just been filled.
+   * whether it has just run out or just been filled. rate is how many shots a second, which some kinds
+   * of fire have fewer of.
    */
-  update(dt, { hand, aiming }) {
+  update(dt, { hand, aiming, rate = FIRE_RATE }) {
     const result = { shots: 0, ranOut: false, filled: false };
     const before = this.charge;
     this.firing = hand === 'open' && aiming && this.charge > 0 && !this.fillingItself;
@@ -225,7 +340,7 @@ export class Blaster {
       this.cooldown -= dt;
       while (this.cooldown <= 0) {
         result.shots += 1;
-        this.cooldown += 1 / FIRE_RATE;
+        this.cooldown += 1 / rate;
       }
       if (this.charge === 0 && before > 0) result.ranOut = true;
     } else {
@@ -325,7 +440,9 @@ export class Aim {
       aimX += (this.target.x - aimX) * amount;
       aimY += (this.target.y - aimY) * amount;
     }
-    const follow = 1 - Math.exp(-dt * 18);
+    // It glides onto what it's pulled to, rather than jumping: with robots falling apart quickly, it
+    // jumping from one to the next flickered.
+    const follow = 1 - Math.exp(-dt * AIM_FOLLOW);
     this.x += (aimX - this.x) * follow;
     this.y += (aimY - this.y) * follow;
 
@@ -339,16 +456,40 @@ export class Aim {
 }
 
 let nextId = 1;
+let nextShot = 1; // Shots are counted on their own, so robots are numbered just as they always were.
 
-/** A place's robots in the order they come out, with rollers in place of the last few walkers on the higher levels. */
-export function lineUp(place, rollers = 0) {
+/**
+ * A place's robots in the order they come out. On the higher levels rollers take the place of the last
+ * few walkers, and lid robots and a splitting one take the place of the first. A drone carrying a friend
+ * comes out second, and a golden robot with a key third. plan is what levelPlan says.
+ */
+export function lineUp(place, rollers = 0, { lids = 0, splitters = 0, keyChest = false, carrier = false } = {}) {
   const line = [...place.robots];
   let left = rollers;
-  for (let i = line.length - 1; i >= 0 && left > 0; i -= 1) {
+  const walkers = [];
+  for (let i = line.length - 1; i >= 0; i -= 1) {
     if (line[i] !== 'walker') continue;
-    line[i] = 'roller';
-    left -= 1;
+    if (left > 0) {
+      line[i] = 'roller';
+      left -= 1;
+    } else {
+      walkers.unshift(i);
+    }
   }
+  const kinds = [];
+  for (let i = 0; i < Math.max(lids, splitters); i += 1) {
+    if (i < lids) kinds.push('lid');
+    if (i < splitters) kinds.push('splitter');
+  }
+  kinds.forEach((kind, k) => {
+    if (k < walkers.length) line[walkers[k]] = kind;
+  });
+  const drone = line.indexOf('drone');
+  if (carrier && drone >= 0) {
+    line.splice(drone, 1);
+    line.splice(Math.min(1, line.length), 0, 'carrier');
+  }
+  if (keyChest) line.splice(Math.min(2, line.length), 0, 'keybot');
   return line;
 }
 
@@ -381,8 +522,20 @@ export class Mission {
     this.resting = false;
     this.shield = false;
     this.time = 0;
+    this.clock = 0; // The robots' own time, which goes slower in slow motion.
     this.freed = 0;
-    this.stats = { robots: 0, friends: 0, shots: 0, gooBlocked: 0, gooShot: 0, gooHits: 0, reloads: 0 };
+    this.prizes = []; // What's on its way to the crosshair: bolts, gems, stars and power-ups.
+    this.fire = null; // A kind of fire from a power-up, as { kind, left }.
+    this.timed = { guard: 0, magnet: 0, slow: 0 }; // How long the other power-ups have left.
+    this.powers = powerOrder(levelNumber);
+    this.powerTurn = 0;
+    this.heartOwed = false; // A heart's turn came with every heart there: see nextPower.
+    this.dropped = 0; // Robots that have fallen apart, as every so often one leaves a power-up.
+    this.planeTurn = 0;
+    this.chest = null; // This stop's treasure chest, from level 5.
+    this.leavingChest = null; // The last stop's, if its key was still on its way when the tram set off.
+    this.toDealWith = 0; // How many robots there are at this stop altogether, little ones and all.
+    this.stats = { robots: 0, friends: 0, shots: 0, gooBlocked: 0, gooShot: 0, gooHits: 0, reloads: 0, bolts: 0, gems: 0, stars: 0, pals: 0, powers: 0, chests: 0, bonks: 0, gooBubbled: 0 };
   }
 
   /** Speed and difficulty can change in the middle of a game, from the panel. */
@@ -430,6 +583,288 @@ export class Mission {
     return this.level.gooInAir + this.plan.gooInAir;
   }
 
+  /* ---------- power-ups ---------- */
+
+  /** The kind of fire the blaster has right now: null for the usual paint. */
+  get fireKind() {
+    return this.fire?.kind ?? null;
+  }
+
+  get guarded() {
+    return this.timed.guard > 0;
+  }
+
+  get slowing() {
+    return this.timed.slow > 0;
+  }
+
+  get magnetOn() {
+    return this.timed.magnet > 0;
+  }
+
+  /** How long a power-up has left, and how long it lasts, for the bar on the screen. */
+  powerLeft(kind) {
+    const left = POWERS[kind]?.fire ? (this.fire?.kind === kind ? this.fire.left : 0) : this.timed[kind] ?? 0;
+    return { left, seconds: POWERS[kind]?.seconds ?? 1 };
+  }
+
+  /** The power-ups on at the moment, by name. */
+  get powersOn() {
+    return [this.fireKind, ...Object.keys(this.timed).filter((kind) => this.timed[kind] > 0)].filter(Boolean);
+  }
+
+  /**
+   * The next power-up to leave behind, going round those this level has. A heart only comes once one has
+   * gone: when its turn comes with every heart there, it waits, and comes as soon as one has gone, so
+   * that it isn't missed.
+   */
+  nextPower() {
+    if (this.heartOwed && this.hearts < this.level.hearts) {
+      this.heartOwed = false;
+      return 'heart';
+    }
+    for (let tries = 0; tries < this.powers.length; tries += 1) {
+      const kind = this.powers[this.powerTurn % this.powers.length];
+      this.powerTurn += 1;
+      if (kind === 'heart' && this.hearts >= this.level.hearts) {
+        this.heartOwed = true;
+        continue;
+      }
+      if (kind === 'heart') this.heartOwed = false;
+      return kind;
+    }
+    return null;
+  }
+
+  startPower(kind) {
+    this.stats.powers += 1;
+    if (kind === 'heart') {
+      // Once the last heart has gone, the game's lost, and no heart comes back.
+      if (this.hearts <= 0) return;
+      this.hearts = Math.min(this.level.hearts, this.hearts + 1);
+      this.emit('heart-up', { hearts: this.hearts });
+      return;
+    }
+    const { seconds, fire } = POWERS[kind];
+    if (fire) this.fire = { kind, left: seconds };
+    else this.timed[kind] = seconds;
+    this.emit('power', { kind });
+  }
+
+  /** Power-ups run down only while there's fighting going on, and wait while the child rests. */
+  updatePowers(dt) {
+    if (this.resting || this.phase !== 'fighting') return;
+    if (this.fire) {
+      this.fire.left -= dt;
+      if (this.fire.left <= 0) {
+        const { kind } = this.fire;
+        this.fire = null;
+        this.emit('power-end', { kind });
+      }
+    }
+    for (const kind of Object.keys(this.timed)) {
+      if (this.timed[kind] <= 0) continue;
+      this.timed[kind] = Math.max(0, this.timed[kind] - dt);
+      if (this.timed[kind] === 0) this.emit('power-end', { kind });
+    }
+  }
+
+  /* ---------- prizes ---------- */
+
+  /**
+   * Something to pick up, on its way from where it came from to the crosshair. source is the robot, the
+   * weak spot or 'chest' it came out of. order puts those that come out together a little apart.
+   */
+  addPrize(kind, source, order = 0, extra = {}) {
+    const at = source?.kind === 'spot' ? { x: source.big.x + source.at[0], y: source.at[1], z: source.big.z } : source;
+    const prize = {
+      id: nextId,
+      kind,
+      source,
+      from: { x: at?.x ?? 0, y: (at?.y ?? 0) + 1.4, z: at?.z ?? 8 },
+      place: this.place?.id ?? null,
+      t: -(order * PRIZE_STAGGER_SECONDS) / PRIZE_SECONDS,
+      seconds: PRIZE_SECONDS,
+      ...extra,
+    };
+    nextId += 1;
+    this.prizes.push(prize);
+    this.emit('prize-out', { prize });
+    return prize;
+  }
+
+  /** What a robot leaves when it falls apart: bolts, a gem from a bigger one, and now and then a power-up. */
+  leaveBehind(robot) {
+    if (!this.plan.bolts) return;
+    let order = 0;
+    for (let i = 0; i < (BOLTS[robot.kind] ?? 2); i += 1) this.addPrize('bolt', robot, order++);
+    if (this.plan.gems && GEMS.has(robot.kind)) this.addPrize('gem', robot, order++);
+    if (robot.kind === 'big' && robot.king && this.plan.treasure) {
+      for (const [kind, count] of Object.entries(TREASURE)) {
+        for (let i = 0; i < count; i += 1) this.addPrize(kind, robot, order++, { treasure: true });
+      }
+    }
+    this.dropped += 1;
+    if (robot.kind !== 'big' && this.dropped % POWER_EVERY === POWER_FIRST % POWER_EVERY) {
+      const power = this.nextPower();
+      if (power) this.addPrize('power', robot, order++, { power });
+    }
+  }
+
+  updatePrizes(dt) {
+    for (const prize of [...this.prizes]) {
+      prize.t += dt / prize.seconds;
+      if (prize.t >= 1) this.collect(prize);
+    }
+  }
+
+  collect(prize) {
+    if (!this.prizes.includes(prize)) return;
+    this.prizes = this.prizes.filter((other) => other !== prize);
+    if (prize.kind === 'power') this.startPower(prize.power);
+    else this.stats[PRIZES[prize.kind].stat] += 1;
+    this.emit('prize', { prize });
+  }
+
+  /** Everything still on its way counts when the game ends. */
+  collectAll() {
+    this.openChestNow();
+    for (const prize of [...this.prizes]) this.collect(prize);
+  }
+
+  /* ---------- the chest, and a friend who's carried about ---------- */
+
+  /** The golden robot has fallen apart, and its key flies over to the chest. */
+  keyFlies(robot) {
+    if (!this.chest || this.chest.keyIn > 0 || this.chest.open) return;
+    this.chest.keyIn = KEY_SECONDS;
+    this.emit('key', { robot });
+  }
+
+  /** A key still on its way gets there, to this stop's chest or, as the tram goes, to the last stop's. */
+  updateChest(dt) {
+    for (const chest of [this.leavingChest, this.chest]) {
+      if (!chest || !(chest.keyIn > 0)) continue;
+      chest.keyIn = Math.max(0, chest.keyIn - dt);
+      if (chest.keyIn === 0) this.openChest(chest);
+    }
+  }
+
+  openChestNow() {
+    for (const chest of [this.leavingChest, this.chest]) if (chest?.keyIn > 0) this.openChest(chest);
+  }
+
+  /** It opens where it is, at its own stop, and its gems and stars come out of it. */
+  openChest(chest) {
+    chest.keyIn = 0;
+    chest.open = true;
+    if (chest === this.leavingChest) this.leavingChest = null;
+    this.stats.chests += 1;
+    this.emit('chest-open', { place: chest.place });
+    let order = 0;
+    for (const [kind, count] of Object.entries(CHEST_PRIZES)) {
+      for (let i = 0; i < count; i += 1) this.addPrize(kind, 'chest', order++, { place: chest.place.id });
+    }
+  }
+
+  freePal(robot) {
+    this.stats.pals += 1;
+    this.emit('pal-freed', { robot, who: robot.pal });
+  }
+
+  /* ---------- what each kind of fire does ---------- */
+
+  /** What can be shot at, apart from goo. */
+  robotTargets() {
+    return this.targets().filter(({ kind }) => kind !== 'goo');
+  }
+
+  /** Where something that can be aimed at is, near enough, in the place's metres. */
+  whereIs(thing) {
+    if (thing.kind === 'spot') return { x: thing.big.x + thing.at[0], z: thing.big.z };
+    return thing;
+  }
+
+  /** The nearest things to aim at next to this one, for the triple shot's other balls and the boing ball. */
+  nearestTo(thing, count, reach, { robotsOnly = false } = {}) {
+    const from = this.whereIs(thing);
+    return (robotsOnly ? this.robotTargets() : this.targets())
+      .filter((other) => other !== thing)
+      .map((other) => {
+        const at = this.whereIs(other);
+        return { other, gap: Math.hypot(at.x - from.x, at.z - from.z) };
+      })
+      .filter(({ gap }) => gap <= reach)
+      .sort((a, b) => a.gap - b.gap)
+      .slice(0, count)
+      .map(({ other }) => other);
+  }
+
+  /**
+   * Paper planes go for what's in the crosshair, and every other one for something else that can be
+   * seen from the tram: not one still coming in from the side.
+   */
+  planeTarget(target) {
+    const all = this.robotTargets().filter((thing) => {
+      const at = this.whereIs(thing);
+      return Math.abs(at.x) <= at.z * 0.8;
+    });
+    this.planeTurn += 1;
+    if (target && this.planeTurn % 2 === 1) return target;
+    return all[this.planeTurn % all.length] ?? target;
+  }
+
+  makeShot(target, kind = 'paint', extra = {}) {
+    const flight = { bubble: BUBBLE_SHOT_SECONDS, boing: BOING.flight, plane: PLANE_SECONDS }[kind] ?? SHOT_SECONDS;
+    const shot = { id: nextShot, target, left: flight, flight, colour: this.stats.shots % 4, kind, ...extra };
+    nextShot += 1;
+    if (kind === 'boing') shot.bounces = BOING.bounces;
+    return shot;
+  }
+
+  /** A shot that bounces on, if it's a boing ball and there's something near enough to bounce to. */
+  bounceOn(shot, next) {
+    if (shot.kind !== 'boing' || !(shot.bounces > 0)) return;
+    const [onTo] = this.nearestTo(shot.target, 1, BOING.reach, { robotsOnly: true });
+    if (!onTo) return;
+    const bounce = { ...this.makeShot(onTo, 'boing'), bounces: shot.bounces - 1, from: shot, left: BOING.hop, flight: BOING.hop };
+    next.push(bounce);
+    this.emit('bounce', { shot: bounce });
+  }
+
+  /** The robot floats in a bubble for a while, and can't move or throw. Every hit on it counts twice. */
+  trap(robot) {
+    robot.bubbled = BUBBLE_SECONDS;
+    robot.throwing = 0;
+    robot.secondThrow = false;
+    this.emit('bubbled', { robot });
+  }
+
+  bonk(robot) {
+    robot.bonks = (robot.bonks ?? 0) + 1;
+    robot.shakeFor = 0.12;
+    this.stats.bonks += 1;
+    this.emit('bonk', { robot });
+    if (robot.bonks >= LID_BONKS) {
+      robot.lidOff = true;
+      this.emit('lid-off', { robot });
+    }
+  }
+
+  /** The magnet pulls a bolt out of a robot that's hit, now and then. */
+  pullBolt(robot) {
+    if (this.time - (robot.pulledAt ?? -Infinity) < MAGNET_EVERY_SECONDS) return;
+    robot.pulledAt = this.time;
+    this.addPrize('bolt', robot, 0, { pulled: true });
+  }
+
+  /** It comes apart into two little ones, one each side of where it was. */
+  split(robot) {
+    this.toDealWith += 2;
+    for (const side of [-1, 1]) this.spawn('mini', 0, { x: robot.x + side * 0.75, z: robot.z, paint: robot.paint, state: 'walking' });
+    this.emit('split', { robot });
+  }
+
   get place() {
     return this.stops[this.index] ?? null;
   }
@@ -458,6 +893,7 @@ export class Mission {
   warmUp(dt) {
     if (this.phase !== 'fighting') return;
     this.time += dt;
+    this.clock += dt;
     this.updateRobots(dt, false);
   }
 
@@ -470,7 +906,13 @@ export class Mission {
   }
 
   beginPlace() {
-    this.queue = lineUp(this.place, this.plan.rollers);
+    // Prizes still on their way from the last stop carry on, and are counted when they get there. A key
+    // still on its way there opens that stop's chest, not this one's.
+    if (this.leavingChest?.keyIn > 0) this.openChest(this.leavingChest);
+    this.leavingChest = this.chest?.keyIn > 0 ? this.chest : null;
+    this.chest = this.plan.keyChest ? { keyIn: 0, open: false, place: this.place } : null;
+    this.queue = lineUp(this.place, this.plan.rollers, this.plan);
+    this.toDealWith = this.queue.length;
     this.robots = [];
     this.goo = [];
     this.shots = [];
@@ -492,7 +934,8 @@ export class Mission {
     }
   }
 
-  spawn(kind, ahead = 0) {
+  /** A robot comes out. at puts it somewhere in particular, as for the little ones from a splitting one. */
+  spawn(kind, ahead = 0, at = null) {
     const robot = {
       id: nextId,
       kind,
@@ -516,8 +959,14 @@ export class Mission {
       drone: () => this.placeDrone(robot, ahead),
       peeker: () => this.placePeeker(robot),
       big: () => this.placeBig(robot),
+      lid: () => this.placeWalker(robot, ahead),
+      splitter: () => this.placeWalker(robot, ahead),
+      mini: () => this.placeWalker(robot, ahead),
+      keybot: () => this.placeWalker(robot, ahead),
+      carrier: () => this.placeCarrier(robot, ahead),
     };
     placed[kind]();
+    if (at) Object.assign(robot, at);
     this.robots.push(robot);
     this.emit('robot', { robot });
     return robot;
@@ -558,6 +1007,15 @@ export class Mission {
     this.moveDrone(robot, 0);
   }
 
+  /** It comes in from one side like a drone, and then goes slowly to and fro in front of everything. */
+  placeCarrier(robot, ahead) {
+    robot.enter = ahead;
+    robot.fromX = (this.random() < 0.5 ? -1 : 1) * 22;
+    robot.drift = 0;
+    robot.pal = PALS[this.index % PALS.length];
+    this.moveCarrier(robot, 0);
+  }
+
   placePeeker(robot) {
     robot.cover = this.freeSpot(this.place.covers, ({ cover }) => cover);
     robot.state = 'rising';
@@ -579,6 +1037,7 @@ export class Mission {
     robot.state = 'ready';
     robot.spots = BIG_SPOTS.slice(0, this.level.bigSpots).map((spot) => ({ ...spot, kind: 'spot', big: robot, maxHp: spot.hp, open: false, done: false }));
     robot.spotIn = 0.4;
+    robot.king = this.plan.king;
   }
 
   /* ---------- what can be aimed at ---------- */
@@ -606,12 +1065,18 @@ export class Mission {
   update(dt, { hand = 'none', target = null } = {}) {
     if (this.phase === 'ready' || this.phase === 'won' || this.phase === 'lost') return;
     this.time += dt;
+    // In slow motion the robots and their goo go slower, and the child's blaster doesn't.
+    const robotsDt = this.slowing ? dt * SLOW.robots : dt;
+    this.clock += robotsDt;
     this.shield = hand === 'closed';
     this.updateRest(dt, hand);
+    this.updatePowers(dt);
     this.updateBlaster(dt, hand, target);
     this.updateShots(dt);
-    this.updateRobots(dt);
-    this.updateGoo(dt);
+    this.updateRobots(robotsDt);
+    this.updateGoo(this.slowing ? dt * SLOW.goo : dt);
+    this.updatePrizes(dt);
+    this.updateChest(dt);
     this.updatePhase(dt);
   }
 
@@ -636,14 +1101,12 @@ export class Mission {
   }
 
   updateBlaster(dt, hand, target) {
-    const aiming = Boolean(target) && this.isTarget(target);
-    const { shots, ranOut, filled } = this.blaster.update(dt, { hand, aiming });
-    for (let i = 0; i < shots; i += 1) {
-      const shot = { target, left: SHOT_SECONDS, flight: SHOT_SECONDS, colour: this.stats.shots % 4 };
-      this.shots.push(shot);
-      this.stats.shots += 1;
-      this.emit('shot', { shot });
-    }
+    const aimed = Boolean(target) && this.isTarget(target);
+    const fire = this.fireKind;
+    // Paper planes find a robot by themselves, so an open hand fires them whatever it's on.
+    const aiming = aimed || (fire === 'planes' && hand === 'open' && this.robotTargets().length > 0);
+    const { shots, ranOut, filled } = this.blaster.update(dt, { hand, aiming, rate: FIRE_RATES[fire] ?? FIRE_RATE });
+    for (let i = 0; i < shots; i += 1) this.fireOne(aimed ? target : null, fire);
     if (ranOut) this.emit('empty');
     if (filled) {
       this.stats.reloads += 1;
@@ -651,28 +1114,58 @@ export class Mission {
     }
   }
 
-  updateShots(dt) {
-    for (const shot of this.shots) {
-      shot.left -= dt;
-      if (shot.left <= 0) this.land(shot);
+  /** One shot, of whatever kind the blaster has. The triple shot sends two more balls at what's near. */
+  fireOne(target, fire) {
+    const kind = { bubble: 'bubble', boing: 'boing', planes: 'plane' }[fire] ?? 'paint';
+    const shot = this.makeShot(kind === 'plane' ? this.planeTarget(target) : target, kind);
+    this.shots.push(shot);
+    this.stats.shots += 1;
+    const sides = [];
+    if (fire === 'spread' && target) {
+      // The other two balls go for whatever's near enough. With nothing near, there's just the one.
+      this.nearestTo(target, 2, SPREAD_REACH).forEach((other, index) => {
+        const side = this.makeShot(other, 'paint', { side: true, aimedAt: target, colour: (shot.colour + 1 + index) % 4 });
+        sides.push(side);
+        this.shots.push(side);
+      });
     }
-    this.shots = this.shots.filter(({ left }) => left > 0);
+    this.emit('shot', { shot, sides });
   }
 
-  /** A shot has got there. What it was aimed at may have gone by now, and that's fine. */
-  land(shot) {
+  updateShots(dt) {
+    const next = [];
+    for (const shot of this.shots) {
+      shot.left -= dt;
+      if (shot.left <= 0) this.land(shot, next);
+    }
+    this.shots = this.shots.filter(({ left }) => left > 0).concat(next);
+  }
+
+  /**
+   * A shot has got there. What it was aimed at may have gone by now, and that's fine. A ball that went
+   * wide lands on nothing. next is where a boing ball bouncing on goes.
+   */
+  land(shot, next = []) {
     const { target } = shot;
-    if (!this.isTarget(target)) return;
+    if (!target || !this.isTarget(target)) return;
+    const damage = shot.kind === 'boing' ? BOING.damage : 1;
     if (target.kind === 'goo') {
       this.gooShot(target);
     } else if (target.kind === 'spot') {
-      this.hitSpot(target);
+      this.hitSpot(target, damage);
+    } else if (lidIsUp(target) && shot.kind !== 'plane') {
+      // Paper planes fly round the side of a lid.
+      this.bonk(target);
     } else {
-      target.hp -= 1;
+      const trapped = target.bubbled > 0;
+      if (shot.kind === 'bubble' && !trapped && target.kind !== 'big') this.trap(target);
+      target.hp -= trapped ? damage * 2 : damage;
       target.shakeFor = 0.22;
       this.emit('robot-hit', { robot: target, shot });
+      if (this.magnetOn && this.plan.bolts) this.pullBolt(target);
       if (target.hp <= 0) this.drop(target);
     }
+    this.bounceOn(shot, next);
   }
 
   gooShot(goo) {
@@ -683,8 +1176,8 @@ export class Mission {
     this.emit('goo-shot', { goo });
   }
 
-  hitSpot(spot) {
-    spot.hp -= 1;
+  hitSpot(spot, damage = 1) {
+    spot.hp -= damage;
     spot.big.shakeFor = 0.22;
     this.emit('spot-hit', { spot, robot: spot.big });
     if (spot.hp > 0) return;
@@ -692,21 +1185,35 @@ export class Mission {
     spot.done = true;
     const big = spot.big;
     big.spotIn = BIG_NEXT_SPOT_SECONDS;
-    this.emit('spot-done', { spot, robot: big });
+    this.emit('spot-done', { spot, robot: big, left: big.spots.filter(({ done }) => !done).length });
+    if (this.plan.bolts) {
+      this.addPrize('bolt', spot, 0);
+      this.addPrize('bolt', spot, 1);
+      if (this.plan.gems) this.addPrize('gem', spot, 2);
+    }
     if (big.spots.every(({ done }) => done)) {
       // All the helpers fall down with it, which is the big moment of the whole game.
       this.queue = [];
       this.drop(big);
-      for (const robot of [...this.robots]) this.drop(robot);
+      for (const robot of [...this.robots]) this.drop(robot, { withBig: true });
     }
   }
 
-  drop(robot) {
+  /**
+   * A robot falls apart. What it leaves comes out first, while it can still be seen where it was. Those
+   * falling down with the big one don't leave anything or come apart, but a key still opens the chest
+   * and a friend being carried still floats down.
+   */
+  drop(robot, { withBig = false } = {}) {
+    if (!withBig) this.leaveBehind(robot);
+    if (robot.kind === 'keybot') this.keyFlies(robot);
+    if (robot.kind === 'carrier') this.freePal(robot);
     this.robots = this.robots.filter((other) => other !== robot);
     this.stats.robots += 1;
     this.holdThrows = 0;
     this.spawnIn = Math.max(this.spawnIn, BETWEEN_ROBOTS_SECONDS);
     this.emit('robot-dropped', { robot, left: this.leftHere });
+    if (robot.kind === 'splitter' && !withBig) this.split(robot);
   }
 
   updateRobots(dt, throwing = true) {
@@ -718,11 +1225,20 @@ export class Mission {
       if (this.queue.length < before) this.spawnIn = BETWEEN_ROBOTS_SECONDS;
     }
     for (const robot of this.robots) {
-      robot.stateFor += dt;
       robot.shakeFor = Math.max(0, robot.shakeFor - dt);
-      if (robot.kind === 'walker') this.updateWalker(robot, dt);
+      // One floating in a bubble stays where it is, and can't throw. Its own time waits too, so that it
+      // carries on from where it was, rather than landing a hop or ducking all at once.
+      if (robot.bubbled > 0) {
+        robot.bubbled = Math.max(0, robot.bubbled - dt);
+        robot.bubbleTime = (robot.bubbleTime ?? 0) + dt;
+        if (robot.bubbled === 0) this.emit('unbubbled', { robot });
+        continue;
+      }
+      robot.stateFor += dt;
+      if (ON_FOOT.has(robot.kind)) this.updateWalker(robot, dt);
       else if (robot.kind === 'roller') this.updateRoller(robot, dt);
       else if (robot.kind === 'drone') this.moveDrone(robot, dt);
+      else if (robot.kind === 'carrier') this.moveCarrier(robot, dt);
       else if (robot.kind === 'peeker') this.updatePeeker(robot);
       else this.updateBig(robot, dt);
       if (robot.throwing > 0) this.updateThrow(robot, dt);
@@ -795,7 +1311,8 @@ export class Mission {
     const [x, y, z] = this.place.air[robot.spot];
     robot.enter = Math.min(1, robot.enter + dt / DRONE_ENTER_SECONDS);
     if (robot.enter === 1 && robot.state === 'walking') this.setState(robot, 'ready');
-    const time = this.time + robot.phase;
+    // Its own time, which waited while it was in a bubble.
+    const time = this.clock - (robot.bubbleTime ?? 0) + robot.phase;
     let hoverX = x + Math.sin(time * 0.62) * 2.2;
     let hoverY = y + Math.sin(time * 1.15) * 0.45;
     let hoverZ = z + Math.cos(time * 0.47) * 1.1;
@@ -809,6 +1326,21 @@ export class Mission {
     robot.x = mix(robot.fromX, hoverX, smooth);
     robot.y = mix(8, hoverY, smooth);
     robot.z = mix(z + 7, hoverZ, smooth);
+  }
+
+  /** Slowly to and fro across the place, and still while the child rests. */
+  moveCarrier(robot, dt) {
+    robot.enter = Math.min(1, robot.enter + dt / DRONE_ENTER_SECONDS);
+    if (robot.enter === 1 && robot.state === 'walking') this.setState(robot, 'ready');
+    if (!this.resting) robot.drift += dt;
+    const turn = robot.drift * CARRIER.speed + robot.phase;
+    const x = Math.sin(turn) * CARRIER.across;
+    const y = CARRIER.height + Math.sin(robot.drift * 0.9) * 0.3;
+    const z = CARRIER.z + Math.cos(turn * 0.5) * 1.2;
+    const smooth = robot.enter * robot.enter * (3 - 2 * robot.enter);
+    robot.x = mix(robot.fromX, x, smooth);
+    robot.y = mix(8, y, smooth);
+    robot.z = mix(z + 7, z, smooth);
   }
 
   /** How far down into a swoop a drone is, as a smooth dip from 0 to 1 and back up. */
@@ -902,8 +1434,9 @@ export class Mission {
     this.throwIn -= dt;
     if (this.throwIn > 0) return;
     if (this.goo.length + this.inHand >= this.gooInAir) return;
-    // Rollers are too busy rolling to throw anything.
-    const able = this.robots.filter((robot) => robot.state === 'ready' && robot.throwing === 0 && robot.kind !== 'roller' && (robot.kind !== 'peeker' || robot.rise === 1));
+    // Rollers are too busy rolling to throw anything, and so are little ones and drones carrying a friend.
+    // A robot floating in a bubble can't.
+    const able = this.robots.filter((robot) => robot.state === 'ready' && robot.throwing === 0 && !NEVER_THROW.has(robot.kind) && !(robot.bubbled > 0) && (robot.kind !== 'peeker' || robot.rise === 1));
     if (!able.length) return;
     const thrower = able[Math.floor(this.random() * able.length)];
     thrower.throwing = WINDUP_SECONDS;
@@ -936,7 +1469,7 @@ export class Mission {
   }
 
   throwGoo(robot) {
-    const heights = { walker: 2.5, drone: robot.y - 0.5, peeker: 1.9, big: 7.6 };
+    const heights = { walker: 2.5, lid: 2.5, splitter: 2.5, keybot: 2.5, drone: robot.y - 0.5, peeker: 1.9, big: 7.6 };
     const side = this.random() < 0.5 ? -1 : 1;
     const goo = {
       id: nextId,
@@ -979,6 +1512,12 @@ export class Mission {
     if (this.shield) {
       this.stats.gooBlocked += 1;
       this.emit('goo-blocked', { goo });
+      return;
+    }
+    // The shield bubble from a power-up stops it too, as long as it lasts.
+    if (this.guarded) {
+      this.stats.gooBubbled += 1;
+      this.emit('goo-blocked', { goo, bubble: true });
       return;
     }
     this.stats.gooHits += 1;
@@ -1030,6 +1569,7 @@ export class Mission {
 
   afterFreeing() {
     if (this.isLastStop) {
+      this.collectAll();
       this.phase = 'won';
       this.emit('won');
       return;
@@ -1049,6 +1589,7 @@ export class Mission {
   }
 
   lose() {
+    this.collectAll();
     this.phase = 'lost';
     this.emit('lost');
   }

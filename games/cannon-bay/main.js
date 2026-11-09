@@ -7,7 +7,7 @@ import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
 import { GameSession, SPOKEN } from '../../core/session.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { BaySound } from './bay-sound.js';
-import { Battle, HEARTS, MOST_AT_ONCE, levelPlan } from './battle.js';
+import { Battle, HEARTS, MOST_AT_ONCE, levelPlan, newsAt, newsFor } from './battle.js';
 import { Bay } from './sea.js';
 
 // Every one of these has a rendered voice file: see audio/voice/lines.json.
@@ -50,6 +50,26 @@ const LIMIT_PROMPT_FROM = 0.3;
 const WHEEL_TURNS_DEGREES = 135;
 const MARK_MARGIN = 74;
 const MARK_TOP = 128;
+// A mark for each pirate that can be out at once, with room for the two little rafts a raft comes apart into.
+const MOST_MARKS = MOST_AT_ONCE + levelPlan(10).atOnce + 4;
+
+// The first time something new is seen in a battle, a little label with its name, for this long.
+const LABEL_SECONDS = 2.8;
+const LABEL_FADE = 0.6;
+// One for something out of sight waits for it to come into view, for up to this long.
+const LABEL_WAITS = 14;
+const NAMES_AFTER_SECONDS = 1.3; // Long enough for "GO!" to have gone.
+// What the label says for each kind of pirate ship, and for each prize, by its key in levelPlan.
+const KIND_NEWS = { raft: 'rafts', sloop: 'sloops', smoky: 'smoke', sub: 'subs', flagship: 'flagship', king: 'king' };
+const PRIZE_NEWS = { gem: 'gems', heart: 'hearts', key: 'keys' };
+const CHEST_NAME = { mark: '🧰', name: 'Treasure chest', nameKa: 'განძის სკივრი' };
+// The prizes counted along the top, and on the finish card, and which part of the level brings each.
+const PRIZE_COUNTS = [
+  { id: 'gems', stat: 'gems', plan: 'gems', mark: '💎', word: 'gems' },
+  { id: 'sailors', stat: 'sailors', plan: 'sailors', mark: '🛟', word: 'sailors' },
+  { id: 'chests', stat: 'chests', plan: 'keys', mark: '🧰', word: 'chests' },
+  { id: 'powers', stat: 'powers', plan: 'triple', mark: '✨', word: 'power-ups', top: false },
+];
 
 // When the film of what to do comes up: until the child has done it for this long, and again if they
 // seem stuck.
@@ -79,6 +99,11 @@ function shuffled(list) {
 class CannonBay {
   chimeOnOpen = false; // The sails going up have their own sound.
 
+  /** What a level brings that's new, for the cards: see NEWS in battle.js. */
+  newAt(level) {
+    return newsAt(level);
+  }
+
   constructor(session) {
     this.session = session;
     this.story = new StoryBox(session);
@@ -86,9 +111,12 @@ class CannonBay {
     this.bay = new Bay(byElement('game'), characterWithId('joze'), this.pirateSpecs);
     this.buildMarks();
     this.buildWheel();
+    this.labelHolder = byElement('bay-labels');
+    this.labels = [];
     this.lastShown = {};
     this.resetHelp();
     this.makeBattle();
+    window.addEventListener('resize', () => this.measureTop());
     // A fine sight on the title screen, with its sails up.
     this.battle.sails = 1;
     const game = this;
@@ -115,6 +143,8 @@ class CannonBay {
     this.endIn = null;
     this.saidBye = 0;
     for (const mark of this.marks) mark.root.dataset.where = 'none';
+    this.clearLabels();
+    this.showPrizeCounts();
   }
 
   resetHelp() {
@@ -159,6 +189,14 @@ class CannonBay {
     this.battle.begin();
     this.say('joze', MISSION);
     this.nextCaptainIn = FIRST_CAPTAIN_AFTER;
+    // The weather, if it's new, is named out over the water in front.
+    const { plan } = this.battle;
+    const ahead = () => {
+      const { battle } = this;
+      return { x: battle.x + Math.sin(battle.heading) * 240, y: 55, z: battle.z - Math.cos(battle.heading) * 240 };
+    };
+    if (plan.sunset) this.firstSeen('sunset', ahead);
+    else if (plan.mist) this.firstSeen('mist', ahead);
   }
 
   resume() {
@@ -188,7 +226,14 @@ class CannonBay {
     session.sound.sailing(battle.speed / battle.pace.speed, battle.sails);
     this.updateWheel(snapshot);
     this.updateHud();
+    // The prizes along the top can change height with the window, so the story box keeps checking.
+    this.measureIn = (this.measureIn ?? 0) - dt;
+    if (this.measureIn <= 0) {
+      this.measureIn = 0.5;
+      this.measureTop();
+    }
     this.updateMarks();
+    this.updateLabels(dt);
     this.updateHelp(dt, snapshot);
     this.updateStory(dt);
 
@@ -223,9 +268,12 @@ class CannonBay {
 
   finished() {
     const { session, battle } = this;
+    // Whatever's still floating over to the ship counts on the card.
+    battle.collectAll();
     session.sound.stopSea();
     this.story.hide();
     this.bay.setSailing(false);
+    this.clearLabels();
     for (const mark of this.marks) mark.root.dataset.where = 'none';
     document.body.dataset.film = 'off';
     const line = battle.state === 'lost' ? LOST : WON;
@@ -234,12 +282,21 @@ class CannonBay {
   }
 
   summary() {
-    const { beaten } = this.battle;
+    const { beaten, plan, stats } = this.battle;
     const { hands } = this.session.settings;
-    const { gold } = this.battle.stats;
+    const { gold } = stats;
     const count = (value) => ({ left: hands === 'left' ? value : 0, right: hands === 'right' ? value : 0 });
+    const rows = { beaten: count(beaten), gold: count(gold) };
+    // The prizes of the higher levels, in one row, with only those this level has.
+    const shown = PRIZE_COUNTS.filter(({ plan: key }) => plan[key]);
+    rows.prizes = count(shown.map(({ stat, mark }) => `${mark} ${stats[stat]}`).join(' · '));
+    const row = byElement('sum-left-prizes')?.closest('tr');
+    if (row) {
+      row.hidden = shown.length === 0;
+      row.querySelector('th').textContent = `Prizes: ${shown.map(({ word }) => word).join(', ')}`;
+    }
     // Being sunk, which only Medium and Tough allow, means trying the same level again.
-    return { hero: beaten, noun: 'battle', rows: { beaten: count(beaten), gold: count(gold) }, won: this.battle.state !== 'lost' };
+    return { hero: beaten, noun: 'battle', rows, won: this.battle.state !== 'lost' };
   }
 
   /* ---------- what happens ---------- */
@@ -261,9 +318,30 @@ class CannonBay {
         sound.hurt();
         this.shakeHearts();
       },
-      spawn: () => this.showCaptains(),
+      spawn: () => {
+        this.showCaptains();
+        this.labelPirate(event.pirate);
+      },
       gold: () => sound.gold(),
       beaten: () => this.onBeaten(event),
+      'little-beaten': () => {
+        sound.beaten(away(event.pirate.x, event.pirate.z), { small: true });
+        this.showCaptains();
+      },
+      drop: () => this.labelPrize(event.prize),
+      // Once it's over, what's still coming over is counted quietly, under the horn and the cheering.
+      prize: () => {
+        if (battle.state === 'sailing') sound.prize(event.prize);
+      },
+      power: () => sound.powerUp(),
+      bubbled: () => sound.bubble(away(event.pirate.x, event.pirate.z)),
+      bounce: () => sound.boing(away(event.from.x, event.from.z)),
+      blocked: () => sound.bubble(0, 0.7),
+      'sail-down': () => sound.sailDown(away(event.x, event.z)),
+      split: () => sound.hit(away(event.pirate.x, event.pirate.z)),
+      smoke: () => sound.puff(away(event.pirate.x, event.pirate.z)),
+      dive: () => sound.splash(away(event.pirate.x, event.pirate.z), 0.5),
+      surface: () => sound.splash(away(event.pirate.x, event.pirate.z), 0.5),
       won: () => {
         this.endIn = AFTER_WIN_SECONDS;
         sound.won();
@@ -275,16 +353,19 @@ class CannonBay {
     handlers[event.type]?.();
   }
 
-  onBeaten({ pirate, left }) {
+  onBeaten({ pirate, left, boat }) {
     const { sound } = this.session;
-    sound.beaten(Math.hypot(pirate.x - this.battle.x, pirate.z - this.battle.z));
-    this.showCaptains();
+    // What's said comes first, so the voice is already on as the beaten ship's sounds start, and they go
+    // under it rather than all starting at full on top of each other, which came close to clipping.
     if (left === 1) {
       sound.say(ONE_LEFT, { ifQuiet: true });
-    } else if (left > 1 && this.saidBye % BYE_EVERY === 0) {
+    } else if (left > 1 && boat && this.saidBye % BYE_EVERY === 0) {
       this.say('joze', BYE_BYE, { ifQuiet: true });
     }
-    this.saidBye += 1;
+    if (boat) this.saidBye += 1;
+    // A raft has nobody on it, so no lifeboat is launched, and nobody is heard rowing or said to be.
+    sound.beaten(Math.hypot(pirate.x - this.battle.x, pirate.z - this.battle.z), { rowing: Boolean(boat) });
+    this.showCaptains();
   }
 
   /** Who's speaking, with their picture and their words, which never holds anything up. */
@@ -306,7 +387,8 @@ class CannonBay {
     }
     this.nextCaptainIn -= dt;
     if (this.nextCaptainIn > 0 || battle.state !== 'sailing' || battle.resting) return;
-    const pirate = battle.afloat.find((each) => !each.spoke && Math.hypot(each.x - battle.x, each.z - battle.z) < CAPTAIN_SPEAKS_WITHIN);
+    // The little rafts a raft comes apart into are the same captain's, who has had their say.
+    const pirate = battle.afloat.find((each) => !each.spoke && !each.little && Math.hypot(each.x - battle.x, each.z - battle.z) < CAPTAIN_SPEAKS_WITHIN);
     if (!pirate) return;
     const who = this.order[pirate.index % this.order.length];
     if (this.say(who, CAPTAINS[who], { ifQuiet: true })) {
@@ -361,6 +443,121 @@ class CannonBay {
       return { key: 'beside', text: SAIL_BESIDE, side: null };
     }
     return null;
+  }
+
+  /* ---------- what's new, the first time it's seen ---------- */
+
+  /**
+   * A label with a new thing's name over it, the first time it's seen in a battle at the level that
+   * brings it. where() says where it is in the world now. Things from the levels before aren't named
+   * again, so that there are never many at once.
+   */
+  firstSeen(key, where, item = newsFor(key)) {
+    const newHere = newsAt(this.battle.levelNumber).some((news) => news.key === (key === 'chest' ? 'keys' : key));
+    if (!item || !newHere || this.labelled.has(key)) return;
+    this.labelled.add(key);
+    const root = document.createElement('div');
+    root.className = 'bay-label';
+    root.dataset.key = key;
+    root.innerHTML = `<span class="bay-label-mark" aria-hidden="true">${item.mark}</span><span class="bay-label-name"></span>`;
+    this.labelHolder.append(root);
+    const label = { key, root, item, where, left: LABEL_SECONDS, waits: LABEL_WAITS, ka: null };
+    this.nameLabel(label);
+    this.labels.push(label);
+  }
+
+  /** A label's words, in the language the voice speaks, which can change in the middle of a battle. */
+  nameLabel(label) {
+    const ka = this.session.settings.language === 'ka';
+    if (label.ka === ka) return;
+    label.ka = ka;
+    label.root.querySelector('.bay-label-name').textContent = ka && label.item.nameKa ? label.item.nameKa : label.item.name;
+  }
+
+  /** A new kind of pirate ship, or one towing a sailor, the first time one comes. */
+  labelPirate(pirate) {
+    const { plan } = this.battle;
+    const where = () => (pirate.state === 'gone' ? null : { x: pirate.x, y: 34 * (pirate.kind === 'king' ? 1.4 : 1), z: pirate.z });
+    const kind = KIND_NEWS[pirate.kind];
+    if (kind && plan[kind]) this.firstSeen(kind, where);
+    // Over the cage it tows, behind it.
+    if (pirate.cage) this.firstSeen('sailors', () => (pirate.state === 'gone' ? null : { x: pirate.x - Math.sin(pirate.heading) * 30, y: 14, z: pirate.z + Math.cos(pirate.heading) * 30 }));
+  }
+
+  /** A new kind of prize or power-up, the first time one is dropped. */
+  labelPrize(prize) {
+    // Once it's picked up, its name stays over the child's ship for the rest of its time.
+    const where = () => (prize.left > 0 ? { x: prize.x, y: 15, z: prize.z } : prize.taken ? { x: this.battle.x, y: 30, z: this.battle.z } : null);
+    if (prize.kind === 'power') this.firstSeen(prize.power, where);
+    else if (prize.kind === 'chest') this.firstSeen('chest', where, CHEST_NAME);
+    else if (PRIZE_NEWS[prize.kind]) this.firstSeen(PRIZE_NEWS[prize.kind], where);
+  }
+
+  updateLabels(dt) {
+    const { bay } = this;
+    const placed = [];
+    // Names wait until "GO!" has gone, and only start counting down then.
+    const afterGo = this.session.playSeconds > NAMES_AFTER_SECONDS;
+    for (const label of this.labels) {
+      if (!afterGo) {
+        label.root.style.opacity = '0';
+        continue;
+      }
+      this.nameLabel(label);
+      const at = label.where();
+      const on = at ? bay.project(at.x, at.y, at.z) : null;
+      const visible = on && !on.behind && on.x > 40 && on.x < bay.width - 40 && on.y > 0 && on.y < bay.height;
+      // Its time only starts once it can be seen, unless it's taken too long, or what it's on has gone.
+      const started = label.left < LABEL_SECONDS;
+      label.waits -= dt;
+      if (started || visible || label.waits <= 0 || !at) label.left -= dt;
+      // It fades in and out slowly, never blinking.
+      const fade = Math.min(1, (LABEL_SECONDS - label.left) / LABEL_FADE, label.left / LABEL_FADE);
+      label.root.style.opacity = visible ? Math.max(0, fade).toFixed(2) : '0';
+      if (visible) {
+        // Two near each other go one above the other, rather than on top of each other.
+        const x = Math.round(on.x);
+        let y = Math.round(clamp(on.y, 90, bay.height - 40));
+        while (placed.some((other) => Math.abs(other.x - x) < 190 && Math.abs(other.y - y) < 38)) y -= 40;
+        placed.push({ x, y });
+        label.root.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+      }
+      if (label.left <= 0) label.root.remove();
+    }
+    this.labels = this.labels.filter(({ left }) => left > 0);
+  }
+
+  clearLabels() {
+    for (const label of this.labels ?? []) label.root.remove();
+    this.labels = [];
+    this.labelled = new Set();
+  }
+
+  /** Along the top, only the prizes this level has. */
+  showPrizeCounts() {
+    const { plan } = this.battle;
+    const holder = byElement('bay-prizes');
+    let any = false;
+    for (const { id, plan: key, top } of PRIZE_COUNTS) {
+      if (top === false) continue;
+      const pill = holder.querySelector(`[data-kind="${id}"]`);
+      pill.hidden = !plan[key];
+      any ||= plan[key];
+    }
+    holder.dataset.on = any ? 'yes' : 'no';
+    this.measureTop();
+  }
+
+  /**
+   * The story box goes under the prizes along the top, wherever they end: on a narrow window, or with
+   * a long name in Georgian, they can need a second row.
+   */
+  measureTop() {
+    const bottom = Math.round(document.querySelector('.hud-top')?.getBoundingClientRect().bottom ?? 0);
+    if (bottom > 0 && bottom !== this.topBottom) {
+      this.topBottom = bottom;
+      document.documentElement.style.setProperty('--hud-bottom', `${bottom}px`);
+    }
   }
 
   /* ---------- what's on the screen ---------- */
@@ -421,7 +618,37 @@ class CannonBay {
     }
     if (lastShown.hearts !== hearts) {
       lastShown.hearts = hearts;
-      byElement('hearts').textContent = '♥'.repeat(Math.max(0, hearts)) + '♡'.repeat(HEARTS - Math.max(0, hearts));
+      byElement('hearts').textContent = '♥'.repeat(Math.max(0, hearts)) + '♡'.repeat(Math.max(0, HEARTS - Math.max(0, hearts)));
+    }
+    for (const { id, stat, top } of PRIZE_COUNTS) {
+      if (top === false || lastShown[id] === battle.stats[stat]) continue;
+      lastShown[id] = battle.stats[stat];
+      byElement(`bay-${id}`).textContent = String(battle.stats[stat]);
+    }
+    // The power-up going, with its name and a bar that runs down.
+    const power = battle.state === 'sailing' ? battle.power : null;
+    const kind = power?.kind ?? null;
+    // Its name follows the voice's language, even if that's changed in the middle of a battle.
+    const ka = this.session.settings.language === 'ka';
+    if (lastShown.power !== kind || lastShown.powerKa !== ka) {
+      lastShown.power = kind;
+      lastShown.powerKa = ka;
+      const pill = byElement('bay-power');
+      pill.hidden = !kind;
+      if (kind) {
+        const item = newsFor(kind);
+        pill.dataset.kind = kind;
+        byElement('bay-power-mark').textContent = item.mark;
+        byElement('bay-power-name').textContent = ka ? item.nameKa : item.name;
+      }
+      this.measureTop();
+    }
+    if (power) {
+      const share = Math.round((power.left / power.total) * 100);
+      if (lastShown.powerShare !== share) {
+        lastShown.powerShare = share;
+        byElement('bay-power-fill').style.width = `${share}%`;
+      }
     }
   }
 
@@ -435,7 +662,7 @@ class CannonBay {
   buildMarks() {
     const holder = byElement('marks');
     // As many as there can ever be at once, which is more on the higher levels.
-    this.marks = Array.from({ length: MOST_AT_ONCE + levelPlan(10).atOnce }, () => {
+    this.marks = Array.from({ length: MOST_MARKS }, () => {
       const root = document.createElement('div');
       root.className = 'mark';
       root.dataset.where = 'none';
@@ -449,9 +676,12 @@ class CannonBay {
       bar.append(fill);
       const arrow = document.createElement('span');
       arrow.className = 'mark-arrow';
-      root.append(bar, face, arrow);
+      // What it carries or is, on the higher levels: the key, a sailor to rescue, or the king's crown.
+      const badge = document.createElement('span');
+      badge.className = 'mark-badge';
+      root.append(bar, face, arrow, badge);
       holder.append(root);
-      return { root, face, fill, arrow, pirate: null };
+      return { root, face, fill, arrow, badge, pirate: null };
     });
   }
 
@@ -465,14 +695,19 @@ class CannonBay {
       if (!pirate) {
         mark.root.dataset.where = 'none';
         mark.pirate = null;
+        mark.badge.textContent = '';
         return;
       }
       if (mark.pirate !== pirate) {
         mark.pirate = pirate;
         mark.face.src = this.session.portraits[this.order[pirate.index % this.order.length]];
+        mark.root.dataset.kind = pirate.kind;
       }
+      const badge = pirate.key ? '🗝️' : pirate.cage ? '🛟' : pirate.kind === 'king' ? '👑' : '';
+      if (mark.badge.textContent !== badge) mark.badge.textContent = badge;
       const firedOn = battle.zones.left.target === pirate || battle.zones.right.target === pirate;
-      mark.root.dataset.state = firedOn && battle.firing ? 'fired-on' : pirate.mode === 'side' ? 'hunting' : 'sailing';
+      const hidden = pirate.under || pirate.smoke > 0;
+      mark.root.dataset.state = hidden ? 'hidden' : firedOn && battle.firing ? 'fired-on' : pirate.mode === 'side' ? 'hunting' : 'sailing';
       mark.fill.style.width = `${Math.round((pirate.hitsLeft / pirate.maxHits) * 100)}%`;
       const seen = bay.project(pirate.x, 47, pirate.z);
       const low = bay.project(pirate.x, 0, pirate.z);
@@ -502,7 +737,11 @@ new GameSession({
     finishTitle: WON,
     heroMark: '⚓',
     heroNoun: 'pirate ships beaten',
-    extraRows: [{ id: 'beaten', label: 'Ships beaten' }, { id: 'gold', label: 'Gold picked up' }],
+    extraRows: [
+      { id: 'beaten', label: 'Ships beaten' },
+      { id: 'gold', label: 'Gold picked up' },
+      { id: 'prizes', label: 'Prizes' },
+    ],
     hudTop: `
       <div class="hud-top">
         <div class="chips">
@@ -510,7 +749,14 @@ new GameSession({
           <div class="chip bay-gold"><span class="chip-label">Gold</span><span id="bay-gold" class="chip-value">0</span></div>
           <div class="chip bay-hearts"><span class="chip-label">Hearts</span><span id="hearts" class="chip-value">♥♥♥♥♥</span></div>
         </div>
+        <div id="bay-prizes" class="bay-prizes" data-on="no">
+          <span class="bay-prize" data-kind="gems" hidden><span aria-hidden="true">💎</span><b id="bay-gems">0</b></span>
+          <span class="bay-prize" data-kind="sailors" hidden><span aria-hidden="true">🛟</span><b id="bay-sailors">0</b></span>
+          <span class="bay-prize" data-kind="chests" hidden><span aria-hidden="true">🧰</span><b id="bay-chests">0</b></span>
+          <span id="bay-power" class="bay-power" hidden><span id="bay-power-mark" aria-hidden="true"></span><span id="bay-power-name"></span><span class="bay-power-bar"><span id="bay-power-fill"></span></span></span>
+        </div>
       </div>
+      <div id="bay-labels" class="bay-labels" aria-hidden="true"></div>
       <div id="bay-captains" class="bay-captains" aria-hidden="true"></div>
       <div id="marks" class="marks" aria-hidden="true"></div>
       ${STORY_BOX}

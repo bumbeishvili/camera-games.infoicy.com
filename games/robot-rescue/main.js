@@ -6,7 +6,7 @@ import { renderPortraits } from '../../core/body/portraits.js';
 import { ROSTER } from '../../core/body/roster.js';
 import { GameSession, SPOKEN } from '../../core/session.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
-import { Mission, readHand } from './rescue.js';
+import { Mission, POWERS, PRIZES, newsAt, readHand } from './rescue.js';
 import { RescueSound } from './rescue-sound.js';
 import { Stage } from './stage.js';
 
@@ -31,6 +31,7 @@ const SPOKEN_AT_MOST = 2; // Each prompt is spoken this many times in a game, an
 const STARS_SHOWN_SECONDS = 4;
 const GOT_IT_CLOSED_SECONDS = 0.4; // A closed hand held this long has plainly been done on purpose.
 const BY_THE_WATER = new Set(['canal', 'harbour']);
+const NAMES_AFTER_SECONDS = 1.3;
 
 const byId = (id) => document.getElementById(id);
 const HEART = '<svg class="heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21C5 15.500 2 12 2 8a5.500 5.500 0 0 1 10-3 5.500 5.500 0 0 1 10 3c0 4-3 7.500-10 13z"/></svg>';
@@ -76,8 +77,13 @@ class RescueGame {
   }
 
   applySettings() {
-    const { hands, reach } = this.session.settings;
-    this.stage.configure({ side: hands, reach });
+    const { hands, reach, language } = this.session.settings;
+    this.stage.configure({ side: hands, reach, language });
+  }
+
+  /** What a level brings that's new: see NEWS in rescue.js. */
+  newAt(level) {
+    return newsAt(level);
   }
 
   setHands() {
@@ -128,8 +134,13 @@ class RescueGame {
     this.stage.reset(this.mission);
     this.mission.start();
     this.stage.showSights = true;
+    this.haulShown = null;
+    this.powerShown = null;
+    this.progressShown = 0;
     this.showHearts();
     this.showProgress();
+    this.showHaul();
+    this.showPower();
   }
 
   begin() {
@@ -161,8 +172,33 @@ class RescueGame {
       'goo-shot': () => sound.gooPopped(),
       'goo-blocked': () => {
         sound.gooBlocked();
-        this.gotIt.closed = true;
+        // The shield bubble from a power-up stopped it, not a closed hand.
+        if (!event.bubble) this.gotIt.closed = true;
       },
+      // Its counter is shown, and measured, as soon as it's on its way, so that it flies straight to it.
+      'prize-out': () => {
+        this.homesWanted = true;
+      },
+      prize: () => {
+        sound.prizeIn(event.prize.kind);
+        this.showHaul();
+        this.showPower();
+      },
+      'heart-up': () => {
+        sound.heartUp();
+        this.showHearts(event.hearts);
+      },
+      bonk: () => sound.bonk(),
+      'lid-off': () => sound.lidOff(),
+      split: () => sound.splitApart(),
+      key: () => sound.keyFlies(),
+      'chest-open': () => sound.chestOpens(),
+      'pal-freed': () => {
+        sound.palFreed();
+        this.showHaul();
+      },
+      bubbled: () => sound.bubbleUp(),
+      bounce: () => sound.boingBall(),
       'goo-hit': () => this.onGooHit(event),
       empty: () => sound.ranOut(),
       reloaded: () => {
@@ -224,14 +260,104 @@ class RescueGame {
     session.finish();
   }
 
+  /**
+   * How far through the rescue it is: the friends freed, and how much of this stop has been dealt with.
+   * It never goes backwards, as a robot coming apart into two little ones adds one to deal with.
+   */
   showProgress() {
     const { mission } = this;
     if (!mission || this.preview) return;
     byId('chip-friends').textContent = `${mission.freed} of ${mission.stops.length}`;
     byId('chip-robots').textContent = String(mission.stats.robots);
-    const here = mission.place ? mission.place.robots.length : 1;
-    const share = mission.freed + (mission.phase === 'fighting' ? 1 - mission.leftHere / here : 0);
-    byId('race-progress-fill').style.width = `${Math.round((share / mission.stops.length) * 100)}%`;
+    const here = Math.max(1, mission.toDealWith);
+    const share = mission.freed + (mission.phase === 'fighting' ? Math.max(0, 1 - mission.leftHere / here) : 0);
+    this.progressShown = Math.max(this.progressShown ?? 0, share);
+    byId('race-progress-fill').style.width = `${Math.round((this.progressShown / mission.stops.length) * 100)}%`;
+  }
+
+  /** The kinds of prize on their way over, which are shown where they'll be counted before they get there. */
+  coming() {
+    const prizes = this.mission?.prizes ?? [];
+    return {
+      kinds: new Set(prizes.map(({ kind }) => kind)),
+      powers: new Set(prizes.filter(({ kind, power }) => kind === 'power' && power !== 'heart').map(({ power }) => power)),
+    };
+  }
+
+  /** Bolts, gems, stars and friends from the air, from level 2, each once there's one, or one on its way. */
+  showHaul() {
+    const { mission } = this;
+    const chip = byId('chip-haul');
+    if (!mission || this.preview || !chip) return;
+    const { stats, plan } = mission;
+    const { kinds } = this.coming();
+    const key = `${plan.bolts} ${stats.bolts} ${stats.gems} ${stats.stars} ${stats.pals} ${[...kinds].join(',')}`;
+    if (key === this.haulShown) return;
+    this.haulShown = key;
+    chip.hidden = !plan.bolts;
+    for (const [kind, { stat }] of Object.entries(PRIZES)) {
+      const item = chip.querySelector(`[data-haul='${kind}']`);
+      item.hidden = kind !== 'bolt' && !stats[stat] && !kinds.has(kind);
+      item.querySelector('.haul-count').textContent = String(stats[stat]);
+    }
+    this.measureTop();
+  }
+
+  /**
+   * The power-ups that are on, each with a bar that runs down, and those on their way over, faintly, so
+   * that each flies to its own place.
+   */
+  showPower() {
+    const { mission } = this;
+    const chip = byId('chip-power');
+    if (!mission || !chip) return;
+    const on = this.preview ? [] : mission.powersOn;
+    const coming = this.preview ? [] : [...this.coming().powers].filter((kind) => !on.includes(kind));
+    const shown = [...on, ...coming];
+    // Its name is in the language the voice speaks, which a grown-up can change in the middle of a game.
+    const ka = this.session.settings.language === 'ka';
+    const key = `${on.join(',')} ${coming.join(',')} ${ka}`;
+    if (key !== this.powerShown) {
+      this.powerShown = key;
+      chip.hidden = !shown.length;
+      chip.querySelector('.chip-value').innerHTML = shown.map((kind) => `<span class="power${on.includes(kind) ? '' : ' is-coming'}" data-power="${kind}"><span class="power-mark" aria-hidden="true">${POWERS[kind].mark}</span><span class="power-bar"><span></span></span></span>`).join('');
+      chip.querySelector('.chip-label').textContent = shown.length === 1 ? (ka ? POWERS[shown[0]].nameKa : POWERS[shown[0]].name) : 'Power-ups';
+      this.measureTop();
+    }
+    for (const kind of shown) {
+      const { left, seconds } = on.includes(kind) ? mission.powerLeft(kind) : { left: 1, seconds: 1 };
+      const bar = chip.querySelector(`[data-power='${kind}'] .power-bar span`);
+      if (bar) bar.style.width = `${Math.round((left / seconds) * 100)}%`;
+    }
+  }
+
+  /**
+   * The story box goes under the second row of chips, wherever that ends up. Prizes fly to where
+   * they're counted, so the stage is told where that is.
+   */
+  measureTop() {
+    const bottom = Math.round(document.querySelector('.hud-top')?.getBoundingClientRect().bottom ?? 0);
+    if (bottom > 0 && bottom !== this.topBottom) {
+      this.topBottom = bottom;
+      document.documentElement.style.setProperty('--hud-bottom', `${bottom}px`);
+    }
+    this.stage.hudBottom = this.topBottom;
+    // Each kind of prize to its own counter, each power-up to its own place, and a heart to the first
+    // heart that's gone.
+    const homes = {};
+    const middle = (element) => {
+      const box = element?.getBoundingClientRect();
+      return box?.width ? { x: box.left + box.width / 2, y: box.top + box.height / 2 } : null;
+    };
+    for (const kind of Object.keys(PRIZES)) {
+      const home = middle(document.querySelector(`#chip-haul [data-haul='${kind}'] [aria-hidden]`));
+      if (home) homes[kind] = home;
+    }
+    for (const kind of Object.keys(POWERS)) {
+      const home = kind === 'heart' ? middle(document.querySelector('#chip-hearts .heart.is-gone') ?? document.querySelector('#chip-hearts .heart:last-child')) : middle(document.querySelector(`#chip-power [data-power='${kind}'] .power-mark`));
+      if (home) homes[`power:${kind}`] = home;
+    }
+    this.stage.prizeHomes = homes;
   }
 
   showHearts(hearts = this.mission?.hearts) {
@@ -251,11 +377,19 @@ class RescueGame {
     const { stage, mission, session } = this;
     const hand = readHand(snapshot);
     stage.showSights = true;
+    // Names of new things wait until "Go!" has gone.
+    stage.playing = session.playSeconds > NAMES_AFTER_SECONDS;
     stage.aspect = session.camera.aspect;
     const target = stage.steer(dt, snapshot);
     mission.update(dt, { hand, target });
     // The game may have just finished.
     if (session.screen !== 'playing') return;
+    if (this.homesWanted) {
+      this.homesWanted = false;
+      this.showHaul();
+      this.showPower();
+      this.measureTop();
+    }
     stage.update(dt, hand);
     if (hand === 'closed' && !this.wasShielding) session.sound.shieldUp();
     this.wasShielding = hand === 'closed';
@@ -263,6 +397,13 @@ class RescueGame {
     if (hand === 'closed' && this.closedFor > GOT_IT_CLOSED_SECONDS) this.gotIt.closed = true;
     this.firedAgo += dt;
     this.starsFor = Math.max(0, this.starsFor - dt);
+    this.showPower();
+    // The second row of chips can change height with the window, so the story box keeps checking.
+    this.measureIn = (this.measureIn ?? 0) - dt;
+    if (this.measureIn <= 0) {
+      this.measureIn = 0.5;
+      this.measureTop();
+    }
     this.showShield(hand === 'closed');
     session.sound.setRide({ moving: mission.phase === 'moving', byWater: BY_THE_WATER.has(mission.place?.id) });
     if (this.storyFor > 0) {
@@ -296,6 +437,7 @@ class RescueGame {
       document.body.dataset.film = 'off';
     }
     const { stage, mission, session } = this;
+    stage.playing = false;
     if (this.preview || session.screen === 'countdown') mission.warmUp(dt);
     const counting = session.screen === 'countdown';
     this.showShield(counting && readHand(snapshot) === 'closed');
@@ -330,7 +472,7 @@ class RescueGame {
     const fighting = mission.phase === 'fighting';
     if (fighting && mission.resting && hand === 'closed') return this.once('resting', SPOKEN.resting);
     if (hand === 'open' && mission.blaster.empty && mission.leftHere > 0) return this.once('reload', CLOSE_TO_RELOAD);
-    if (fighting && hand !== 'closed' && mission.gooClose > SHIELD_PROMPT_CLOSE && !this.blockedOne()) return this.once('shield', CLOSE_FOR_SHIELD);
+    if (fighting && hand !== 'closed' && !mission.guarded && mission.gooClose > SHIELD_PROMPT_CLOSE && !this.blockedOne()) return this.once('shield', CLOSE_FOR_SHIELD);
     if (fighting && hand === 'closed' && !mission.goo.length && this.closedFor > CLOSED_PROMPT_SECONDS) return this.once('fire', OPEN_TO_FIRE);
     // The words of what's just been said, for as long as it takes to find the first star.
     if (this.starsFor > 0) return { key: 'stars', text: GOLD_STARS, side: null, silent: true };
@@ -358,12 +500,15 @@ class RescueGame {
   }
 
   summary() {
-    const { stats } = this.mission;
+    const { stats, plan } = this.mission;
     const { hands } = this.session.settings;
-    const onHand = (value) => ({ left: hands === 'left' ? value : 0, right: hands === 'right' ? value : 0 });
+    const onHand = (value, other = 0) => ({ left: hands === 'left' ? value : other, right: hands === 'right' ? value : other });
+    // What was picked up, from level 2: bolts always, and the rest once there's one.
+    const haul = Object.values(PRIZES).filter(({ stat }) => stat === 'bolts' || stats[stat] > 0).map(({ mark, stat }) => `${mark} ${stats[stat]}`).join('  ');
+    byId('sum-left-prizes').closest('tr').hidden = !plan.bolts;
     // Running out of hearts, which only Medium and Tough allow, means trying the same level again.
     const won = this.ended !== SO_CLOSE;
-    return { hero: this.heroCount(), noun: 'rescue', rows: { robots: onHand(stats.robots), friends: onHand(stats.friends) }, won };
+    return { hero: this.heroCount(), noun: 'rescue', rows: { robots: onHand(stats.robots), friends: onHand(stats.friends), prizes: onHand(plan.bolts ? haul : '', '') }, won };
   }
 }
 
@@ -377,7 +522,7 @@ new GameSession({
     finishTitle: FINISH,
     heroMark: '🎉',
     heroNoun: 'friends freed',
-    extraRows: [{ id: 'robots', label: 'Robots dropped' }, { id: 'friends', label: 'Friends freed' }],
+    extraRows: [{ id: 'robots', label: 'Robots dropped' }, { id: 'friends', label: 'Friends freed' }, { id: 'prizes', label: 'Prizes' }],
     hudTop: `
       <div class="hud-top">
         <div class="chips">
@@ -386,6 +531,10 @@ new GameSession({
           <div class="chip chip-hearts"><span class="chip-label">Hearts</span><span id="chip-hearts" class="chip-value"></span></div>
         </div>
         <div class="race-progress" aria-hidden="true"><div id="race-progress-fill" class="race-progress-fill"></div></div>
+        <div class="chips chips-more">
+          <div id="chip-haul" class="chip chip-haul" hidden><span class="chip-label">Prizes</span><span class="chip-value">${Object.entries(PRIZES).map(([kind, { mark }]) => `<span class="haul" data-haul="${kind}" ${kind === 'bolt' ? '' : 'hidden'}><span aria-hidden="true">${mark}</span><span class="haul-count">0</span></span>`).join('')}</span></div>
+          <div id="chip-power" class="chip chip-power" hidden><span class="chip-label">Power-up</span><span class="chip-value"></span></div>
+        </div>
       </div>
       ${STORY_BOX}
       <div class="film" aria-hidden="true">

@@ -78,11 +78,14 @@ export const startHunting = (page, side = 'right') => page.evaluate((handSide) =
 
 export const stopHunting = (page) => page.evaluate(() => window.__stopHunting?.());
 
-/** Clears everything at this place, for a test that's about what comes after. */
+/** Clears everything at this place, for a test that's about what comes after. A robot that comes apart
+ * leaves two little ones, so it goes round until there's nobody left. */
 export const clearHere = (page) => page.evaluate(() => {
   const { mission } = window.__game;
   mission.queue = [];
-  for (const robot of [...mission.robots]) mission.drop(robot);
+  for (let round = 0; round < 4 && mission.robots.length; round += 1) {
+    for (const robot of [...mission.robots]) mission.drop(robot);
+  }
 });
 
 /** Stays awake for as long as a test needs, whatever the hand is doing. */
@@ -102,3 +105,64 @@ export const throwOneGoo = (page) => page.evaluate(() => {
 });
 
 export const expectSoon = (read, options = {}) => expect.poll(read, { timeout: 30_000, intervals: [100], ...options });
+
+/**
+ * Reads how bright each part of the picture is, frame by frame, with the crosshair and shield drawn
+ * over the town, as the child sees it. Runs for a while, doing what's asked meanwhile.
+ */
+export const watchBrightness = (page, frames) => page.evaluate(async (count) => {
+  const { stage } = window.__game;
+  const [wide, high] = [32, 18];
+  const small = document.createElement('canvas');
+  small.width = wide;
+  small.height = high;
+  const context = small.getContext('2d', { willReadFrequently: true });
+  const reading = [];
+  for (let i = 0; i < count; i += 1) {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    stage.render();
+    context.drawImage(stage.canvas, 0, 0, wide, high);
+    context.drawImage(stage.sights.canvas, 0, 0, wide, high);
+    const { data } = context.getImageData(0, 0, wide, high);
+    const cells = new Array(wide * high);
+    for (let j = 0; j < cells.length; j += 1) cells[j] = (data[j * 4] + data[j * 4 + 1] + data[j * 4 + 2]) / 3;
+    reading.push({ at: performance.now(), cells });
+  }
+  return reading;
+}, frames);
+
+/** The biggest change of the whole picture between frames, and how much of it is flickering. */
+export function judge(reading) {
+  const averages = reading.map(({ cells }) => cells.reduce((sum, value) => sum + value, 0) / cells.length);
+  const biggestStep = Math.max(...averages.slice(1).map((value, index) => Math.abs(value - averages[index])));
+  const seconds = (reading.at(-1).at - reading[0].at) / 1000;
+  // A flash is a big rise and a big fall in one part of the picture. Too many of them, over a big part
+  // of the picture, is what can set off a seizure: more than 3 a second, over more than a quarter.
+  const SWING = 40; // Out of 255.
+  const cellCount = reading[0].cells.length;
+  let flickering = 0;
+  for (let cell = 0; cell < cellCount; cell += 1) {
+    let low = reading[0].cells[cell];
+    let high = low;
+    let going = 0;
+    let swings = 0;
+    for (const { cells } of reading) {
+      const value = cells[cell];
+      low = Math.min(low, value);
+      high = Math.max(high, value);
+      if (going >= 0 && high - value >= SWING) {
+        swings += 1;
+        going = -1;
+        low = value;
+        high = value;
+      } else if (going <= 0 && value - low >= SWING) {
+        swings += 1;
+        going = 1;
+        low = value;
+        high = value;
+      }
+    }
+    if (swings / 2 / seconds > 3) flickering += 1;
+  }
+  return { biggestStep, flickeringShare: flickering / cellCount, seconds, frames: reading.length };
+}

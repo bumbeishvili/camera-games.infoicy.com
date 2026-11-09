@@ -28,6 +28,7 @@ const MUSIC_LEVEL = 0.16;
 const BIRDS_LEVEL = 0.22;
 const ENGINE_IDLE = { level: 0.1, rate: 0.82 };
 const ENGINE_DRIVING = { level: 0.34, rate: 1.14 };
+const HIT_APART_MS = 10; // Hits in the same frame, like a triple shot's, are heard as one.
 const near = (spread) => 1 + (Math.random() - 0.5) * spread;
 const oneOf = (name, count) => `${name}-${1 + Math.floor(Math.random() * count)}`;
 
@@ -35,6 +36,7 @@ export class PatrolSound extends Sound {
   constructor(options) {
     super({ ...options, sounds: TANK_SOUNDS });
     this.lost = false;
+    this.hitAt = -Infinity;
   }
 
   startPatrol() {
@@ -61,6 +63,9 @@ export class PatrolSound extends Sound {
   }
 
   hit() {
+    const now = performance.now();
+    if (now - this.hitAt < HIT_APART_MS) return;
+    this.hitAt = now;
     this.play(oneOf('hit', 3), { gain: 0.34, rate: near(0.2) });
   }
 
@@ -79,6 +84,16 @@ export class PatrolSound extends Sound {
   stopped() {
     this.play('splutter', { gain: 0.5, rate: near(0.14) });
     this.play('rattle', { gain: 0.52, rate: near(0.14) });
+  }
+
+  /** A prize reaching the tank: a little twinkle. */
+  prize() {
+    this.play('sparkle', { gain: 0.16, rate: near(0.3) * 1.25 });
+  }
+
+  /** A shot bouncing off a shield. */
+  bump() {
+    this.play('bump', { gain: 0.26, rate: near(0.1) * 1.3 });
   }
 
   /** Its crew climbs out. */

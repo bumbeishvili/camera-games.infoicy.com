@@ -292,6 +292,8 @@ test('the whole game can be played through to the finish, with the real hand ste
   const open = await page.locator('#sum-right-open').textContent();
   expect(open).toMatch(/\d+:\d\d/);
   expect(Number(await page.locator('#sum-right-openings').textContent())).toBeGreaterThan(0);
+  // Level 1 is as it always was: no prizes but the gold, along the top or on the card.
+  await expect(page.locator('#sum-right-prizes')).toBeHidden();
   await page.waitForTimeout(700);
   await shot(page, 'c-finish');
 });

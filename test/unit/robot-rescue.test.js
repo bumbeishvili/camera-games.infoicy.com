@@ -6,11 +6,25 @@ import {
   AIM_HELP,
   Aim,
   BIG_SPOTS,
+  BOING,
+  BUBBLE_SECONDS,
   Blaster,
+  KEY_SECONDS,
+  LID_BONKS,
+  NEWS,
+  PALS,
+  POWERS,
+  POWER_EVERY,
+  PRIZE_SECONDS,
+  SLOW,
+  lidIsUp,
+  newsAt,
+  powerOrder,
   DRAIN_SECONDS,
   FILLS_ITSELF_AFTER,
   FIRE_RATE,
   GOO_LEAST_SECONDS,
+  HOP,
   LEVELS,
   Mission,
   levelPlan,
@@ -22,7 +36,12 @@ import {
   readHand,
 } from '../../games/robot-rescue/rescue.js';
 import { RescueSound } from '../../games/robot-rescue/rescue-sound.js';
+import { Debris, FloatingCage, carriedFriend, makeRobotView } from '../../games/robot-rescue/robots.js';
+import { Stage } from '../../games/robot-rescue/stage.js';
+import { WATER_LEVEL } from '../../games/robot-rescue/town.js';
+import { byId } from '../../core/body/roster.js';
 import { Sound } from '../../core/sound.js';
+import * as THREE from '../../vendor/three/three.module.js';
 
 const DT = 1 / 60;
 const FOLDER = new URL('../../games/robot-rescue/', import.meta.url);
@@ -902,7 +921,11 @@ test('nothing lights up the whole screen: there are no full-screen effects to fi
 
 const LEVEL_NUMBERS = Array.from({ length: 10 }, (_, index) => index + 1);
 // Which way is harder for each thing a level changes: up, down, or switched on.
-const HARDER = { walk: 'up', shuffle: 'down', peek: 'down', throwEvery: 'down', gooSeconds: 'down', atOnce: 'up', gooInAir: 'up', swoop: 'on', hop: 'on', rollers: 'up', doubleThrow: 'up', bigSteps: 'on' };
+const HARDER = {
+  walk: 'up', shuffle: 'down', peek: 'down', throwEvery: 'down', gooSeconds: 'down', atOnce: 'up', gooInAir: 'up', swoop: 'on', hop: 'on', rollers: 'up', doubleThrow: 'up', bigSteps: 'on',
+  // What's new to see and play with, which only ever comes in and stays: see NEWS.
+  bolts: 'on', spread: 'on', lids: 'up', bubble: 'on', keyChest: 'on', gems: 'on', splitters: 'up', guard: 'on', boing: 'on', heart: 'on', planes: 'on', magnet: 'on', sunset: 'on', carrier: 'on', slow: 'on', king: 'on', treasure: 'on',
+};
 
 test('level 1 is the game as it always was, with every pace and difficulty', () => {
   for (const pace of Object.keys(PACES)) {
@@ -923,12 +946,19 @@ test('level 1 is the game as it always was, with every pace and difficulty', () 
   const plan = levelPlan(1);
   assert.deepEqual([plan.swoop, plan.hop, plan.rollers, plan.doubleThrow, plan.bigSteps], [false, false, 0, 0, false]);
   for (const place of PLACES) assert.deepEqual(lineUp(place, levelPlan(1).rollers), place.robots);
+  for (const place of PLACES) assert.deepEqual(lineUp(place, plan.rollers, plan), place.robots);
+  // Nothing new at all: every new thing is off.
+  for (const { key } of Object.values(NEWS).flat()) assert.ok(!Number(plan[key]), key);
   // The same robots come out in the same order, and nothing new happens.
   const old = makeMission({ levelNumber: 1 });
   const log = old.log;
   playThrough(old.mission);
-  for (const type of ['swoop', 'hop']) assert.equal(log.count(type), 0, type);
+  for (const type of ['swoop', 'hop', 'prize-out', 'prize', 'power', 'bonk', 'split', 'key', 'chest-open', 'pal-freed', 'bubbled', 'bounce', 'heart-up']) assert.equal(log.count(type), 0, type);
   assert.ok(!log.events.some(({ type, robot }) => type === 'robot' && robot.kind === 'roller'));
+  assert.ok(log.events.filter(({ type }) => type === 'robot').every(({ robot }) => ['walker', 'drone', 'peeker', 'big'].includes(robot.kind)));
+  const { stats } = old.mission;
+  assert.deepEqual([stats.bolts, stats.gems, stats.stars, stats.pals, stats.powers, stats.chests], [0, 0, 0, 0, 0, 0]);
+  assert.ok(log.events.filter(({ type }) => type === 'shot').every(({ shot }) => shot.kind === 'paint' && shot.flight === 0.2));
 });
 
 test('each level is the same or harder than the one before in every way, and harder in at least one', () => {
@@ -1115,4 +1145,707 @@ test('a hopping peeker flies from one cover to another, and can be aimed at as i
   assert.ok(peeker.lift > 0.8);
   assert.ok(mission.targets().includes(peeker));
   assert.ok(log.count('hop') >= 1);
+});
+
+/* ---------- what's new at each level ---------- */
+
+test('what\'s new: nothing at level 1, and something at every level from 2 to 10, each with a picture and names', () => {
+  assert.deepEqual(newsAt(1), []);
+  for (const level of LEVEL_NUMBERS.slice(1)) {
+    const news = newsAt(level);
+    assert.ok(news.length >= 1, `level ${level}`);
+    for (const { mark, name, nameKa, key } of news) {
+      assert.ok(mark && name && nameKa && key, `level ${level}: ${name}`);
+      assert.ok(name.split(' ').length <= 3, name);
+      assert.ok(/[ა-ჿ]/.test(nameKa), nameKa);
+    }
+  }
+  const keys = Object.values(NEWS).flat().map(({ key }) => key);
+  assert.equal(new Set(keys).size, keys.length, 'each new thing is new only once');
+});
+
+test('each new thing listed is really switched on from its level, and not before', () => {
+  for (const level of LEVEL_NUMBERS.slice(1)) {
+    for (const { key } of newsAt(level)) {
+      assert.ok(key in levelPlan(level), key);
+      assert.ok(Number(levelPlan(level)[key]) > 0, `${key} on at ${level}`);
+      assert.ok(!Number(levelPlan(level - 1)[key]), `${key} not before ${level}`);
+      for (const later of LEVEL_NUMBERS.filter((at) => at > level)) assert.ok(Number(levelPlan(later)[key]) > 0, `${key} stays at ${later}`);
+    }
+  }
+  // Every power-up comes in on a level of its own, and a level's own come first.
+  for (const kind of Object.keys(POWERS)) assert.ok(Object.values(NEWS).flat().some(({ key }) => key === kind), kind);
+  assert.deepEqual(powerOrder(2), ['spread']);
+  assert.deepEqual(powerOrder(4).slice(0, 1), ['bubble']);
+  assert.deepEqual(powerOrder(8).slice(0, 2), ['planes', 'magnet']);
+  assert.equal(powerOrder(10).length, Object.keys(POWERS).length);
+});
+
+test('the new kinds of robot come out where they can be seen, early at each stop, and the line is no longer than one more', () => {
+  for (const level of LEVEL_NUMBERS) {
+    const plan = levelPlan(level);
+    for (const place of PLACES) {
+      const line = lineUp(place, plan.rollers, plan);
+      assert.ok(line.length <= place.robots.length + 1, `${level} ${place.id}`);
+      if (plan.keyChest) assert.equal(line[2], 'keybot');
+      if (plan.carrier) assert.equal(line[1], 'carrier');
+      if (plan.lids) assert.ok(line.includes('lid'), `${level} ${place.id} lid`);
+      if (place.big) assert.equal(line[0], 'big');
+    }
+  }
+  // At the top level, everything comes along at once somewhere.
+  const all = new Set(PLACES.flatMap((place) => lineUp(place, levelPlan(10).rollers, levelPlan(10))));
+  for (const kind of ['walker', 'drone', 'peeker', 'roller', 'lid', 'splitter', 'keybot', 'carrier', 'big']) assert.ok(all.has(kind), kind);
+});
+
+/* ---------- prizes and power-ups ---------- */
+
+/** Drops a robot of this kind where it stands, as if it had been shot. */
+function dropOne(mission, kind = 'walker') {
+  const robot = outKind(mission, kind);
+  mission.drop(robot);
+  return robot;
+}
+
+test('from level 2, a robot falling apart leaves bolts, which fly over and are counted', () => {
+  const { mission, log } = makeMission({ levelNumber: 2 });
+  dropOne(mission);
+  assert.equal(mission.prizes.filter(({ kind }) => kind === 'bolt').length, 2);
+  assert.equal(log.count('prize-out'), 2);
+  assert.equal(mission.stats.bolts, 0, 'not counted until they get there');
+  run(mission, PRIZE_SECONDS + 0.4, { hand: 'none' });
+  assert.equal(mission.stats.bolts, 2);
+  assert.equal(mission.prizes.length, 0);
+  assert.equal(log.count('prize'), 2);
+  // Nothing is lost for missing a prize: there's nothing to miss, and they come whatever the hand does.
+  assert.equal(mission.hearts, LEVELS.gentle.hearts);
+});
+
+test('every eighth robot, from the second, leaves a power-up, and the level\'s own one comes first', () => {
+  const { mission } = makeMission({ levelNumber: 4 });
+  const powers = [];
+  for (let i = 0; i < 20; i += 1) {
+    dropOne(mission);
+    powers.push(...mission.prizes.filter(({ kind }) => kind === 'power').map(({ power }) => power));
+    mission.collectAll();
+  }
+  assert.deepEqual(powers, ['bubble', 'spread', 'bubble']);
+  assert.equal(POWER_EVERY, 8);
+});
+
+test('a power-up runs out, waits while the child rests, and waits between stops', () => {
+  const { mission, log } = makeMission({ levelNumber: 2 });
+  mission.holdThrows = 999;
+  mission.startPower('spread');
+  assert.equal(mission.fireKind, 'spread');
+  run(mission, 1, { hand: 'open' });
+  const left = mission.fire.left;
+  assert.ok(Math.abs(left - (POWERS.spread.seconds - 1)) < 0.05);
+  run(mission, 12, { hand: 'none' }); // Resting from 4 seconds in.
+  assert.ok(mission.resting);
+  assert.ok(Math.abs(mission.fire.left - (left - REST_AFTER_SECONDS)) < 0.05, 'it waited');
+  run(mission, POWERS.spread.seconds, { hand: 'open' });
+  assert.equal(mission.fireKind, null);
+  assert.equal(log.count('power-end'), 1);
+  // Between stops it waits too.
+  mission.startPower('magnet');
+  mission.queue = [];
+  for (const robot of [...mission.robots]) mission.drop(robot);
+  while (mission.phase === 'fighting') mission.update(DT, { hand: 'open' });
+  const before = mission.timed.magnet;
+  while (mission.phase !== 'fighting') mission.update(DT, { hand: 'open' });
+  assert.equal(mission.timed.magnet, before);
+});
+
+test('prizes still on their way when the tram moves on carry on over and are counted, and the rest when the game ends', () => {
+  const { mission } = makeMission({ levelNumber: 5, stops: 3 });
+  for (let i = 0; i < 3; i += 1) {
+    mission.queue = [];
+    for (const robot of [...mission.robots]) mission.drop(robot);
+    while (mission.phase === 'fighting' && mission.leftHere > 0) {
+      for (const robot of [...mission.robots]) mission.drop(robot);
+    }
+    while (!['moving', 'won'].includes(mission.phase)) mission.update(DT, { hand: 'open' });
+    if (mission.phase === 'won') break;
+    // They don't vanish as the tram sets off: they're still flying over, and counted as they get there.
+    const from = mission.stops[mission.index - 1].id;
+    const flying = mission.prizes.filter(({ place }) => place === from);
+    assert.ok(flying.length > 0);
+    const counted = mission.stats.bolts + mission.stats.gems + mission.stats.stars;
+    while (mission.phase !== 'fighting') mission.update(DT, { hand: 'open' });
+    assert.equal(mission.prizes.filter(({ place }) => place === from).length, 0, 'all there by the next stop');
+    assert.ok(mission.stats.bolts + mission.stats.gems + mission.stats.stars >= counted + flying.length);
+  }
+  assert.equal(mission.phase, 'won');
+  assert.equal(mission.prizes.length, 0);
+  assert.ok(mission.stats.bolts > 0 && mission.stats.gems > 0);
+});
+
+test('a key still on its way when the tram sets off opens its own stop\'s chest, and not the next one\'s', () => {
+  const { mission, log } = makeMission({ levelNumber: 5 });
+  mission.queue = [];
+  const key = mission.robots.find(({ kind }) => kind === 'keybot') ?? outKind(mission, 'keybot');
+  for (const robot of mission.robots.filter((robot) => robot !== key)) mission.drop(robot);
+  mission.drop(key);
+  const first = mission.place;
+  while (mission.phase !== 'moving') mission.update(DT, { hand: 'open' });
+  assert.equal(log.count('chest-open'), 0, 'the key is still on its way');
+  while (!log.count('chest-open') && mission.phase === 'moving') mission.update(DT, { hand: 'open' });
+  assert.equal(log.events.find(({ type }) => type === 'chest-open').place, first);
+  const fromChest = mission.prizes.filter(({ source }) => source === 'chest');
+  assert.equal(fromChest.length, 6);
+  assert.ok(fromChest.every(({ place }) => place === first.id), 'its gems and stars come out of it');
+  assert.equal(mission.chest.place, mission.place);
+  assert.equal(mission.chest.open, false, 'the next stop\'s chest is still locked');
+  while (mission.phase !== 'fighting') mission.update(DT, { hand: 'open' });
+  assert.equal(mission.stats.chests, 1);
+  assert.equal(mission.stats.stars, 2);
+});
+
+test('the triple shot sends two more balls at what\'s near, and just the one when there\'s nothing near', () => {
+  const { mission, log } = makeMission({ levelNumber: 2 });
+  mission.holdThrows = 999;
+  mission.startPower('spread');
+  const robot = outKind(mission, 'walker');
+  // Another one close by, for the other balls to go for.
+  mission.spawn('walker', 0, { x: robot.x + 2, z: robot.z, state: 'ready' });
+  run(mission, 0.5, { hand: 'open', aim: () => robot });
+  const shots = log.events.filter(({ type }) => type === 'shot');
+  assert.ok(shots.length >= 1);
+  assert.ok(shots.length <= Math.ceil((0.5 * 5.5) / 2.5) + 1, 'it comes less often than paint');
+  for (const { sides } of shots) {
+    assert.ok(sides.length >= 1 && sides.length <= 2);
+    for (const side of sides) assert.ok(side.target && side.target !== robot);
+  }
+  // With nothing else about, there's only the one ball.
+  const alone = makeMission({ levelNumber: 2 }).mission;
+  alone.holdThrows = 999;
+  alone.queue = [];
+  const only = alone.robots[0];
+  for (const other of alone.robots.slice(1)) alone.drop(other);
+  alone.startPower('spread');
+  run(alone, 0.6, { hand: 'open', aim: () => only });
+  assert.ok(alone.shots.every(({ target }) => target === only));
+  assert.ok(alone.shots.length >= 1);
+});
+
+test('the bubble shot traps a robot: it floats where it is, doesn\'t throw, and every hit counts twice', () => {
+  const { mission, log } = makeMission({ levelNumber: 4 });
+  mission.holdThrows = 0;
+  mission.throwIn = 0;
+  mission.startPower('bubble');
+  const robot = outKind(mission, 'walker');
+  robot.state = 'walking';
+  robot.hp = 99;
+  robot.maxHp = 99;
+  run(mission, 0.4, { hand: 'open', aim: () => robot });
+  assert.ok(robot.bubbled > 0);
+  assert.equal(log.count('bubbled'), 1);
+  const at = [robot.x, robot.z];
+  const hp = robot.hp;
+  run(mission, 1, { hand: 'open', aim: () => robot });
+  assert.deepEqual([robot.x, robot.z], at);
+  assert.ok(hp - robot.hp >= 2 * 3, `${hp - robot.hp} for about 4 hits`);
+  assert.ok(!log.events.some(({ type, robot: thrower }) => type === 'windup' && thrower === robot));
+  run(mission, BUBBLE_SECONDS + 0.5, { hand: 'none' });
+  assert.equal(robot.bubbled, 0);
+  assert.equal(log.count('unbubbled'), 1);
+  // The big one can't be trapped.
+  const { mission: there, big } = atTheBigOne({ levelNumber: 4 });
+  there.startPower('bubble');
+  run(there, 3, { hand: 'open', aim: (m) => m.targets().find(({ kind }) => kind === 'spot') ?? null });
+  assert.ok(!(big.bubbled > 0));
+});
+
+test('the boing ball does twice the damage, comes half as often, and bounces on to the next robot', () => {
+  const { mission, log } = makeMission({ levelNumber: 7 });
+  mission.holdThrows = 999;
+  mission.startPower('boing');
+  const robot = outKind(mission, 'walker');
+  robot.hp = 99;
+  run(mission, 1, { hand: 'open', aim: () => robot });
+  const shots = log.events.filter(({ type }) => type === 'shot');
+  assert.ok(shots.every(({ shot }) => shot.kind === 'boing'));
+  assert.ok(shots.length <= 4);
+  assert.ok(log.count('bounce') > 0, 'it bounces');
+  const bounce = log.events.find(({ type }) => type === 'bounce').shot;
+  assert.notEqual(bounce.target, robot);
+  assert.ok(bounce.bounces < BOING.bounces);
+  assert.ok(99 - robot.hp >= 2 * (shots.length - 1));
+});
+
+test('paper planes find a robot by themselves, with nothing in the crosshair, and fly round a lid', () => {
+  const { mission, log } = makeMission({ levelNumber: 8 });
+  mission.holdThrows = 999;
+  mission.startPower('planes');
+  run(mission, 1, { hand: 'open', aim: () => null });
+  const planes = log.events.filter(({ type }) => type === 'shot').map(({ shot }) => shot);
+  assert.ok(planes.length >= 2);
+  assert.ok(planes.every(({ kind, target }) => kind === 'plane' && target));
+  // A closed hand still doesn't fire them.
+  const before = log.count('shot');
+  run(mission, 1, { hand: 'closed', aim: () => null });
+  assert.equal(log.count('shot'), before);
+  const lid = outKind(mission, 'lid');
+  lid.state = 'ready';
+  lid.throwing = 0;
+  assert.ok(lidIsUp(lid));
+  const hp = lid.hp;
+  mission.land({ target: lid, kind: 'plane' });
+  assert.equal(lid.hp, hp - 1);
+});
+
+test('a lid robot\'s lid bonks shots off while it\'s up, never while it walks or throws, and falls off in the end', () => {
+  const { mission, log } = makeMission({ levelNumber: 3 });
+  const lid = outKind(mission, 'lid');
+  lid.state = 'ready';
+  lid.throwing = 0;
+  const hp = lid.hp;
+  for (let i = 0; i < LID_BONKS - 1; i += 1) mission.land({ target: lid, kind: 'paint' });
+  assert.equal(lid.hp, hp);
+  assert.equal(log.count('bonk'), LID_BONKS - 1);
+  lid.state = 'walking';
+  assert.ok(!lidIsUp(lid));
+  mission.land({ target: lid, kind: 'paint' });
+  assert.equal(lid.hp, hp - 1);
+  lid.state = 'ready';
+  lid.throwing = 0.3;
+  assert.ok(!lidIsUp(lid));
+  lid.throwing = 0;
+  mission.land({ target: lid, kind: 'paint' });
+  assert.equal(log.count('lid-off'), 1);
+  assert.ok(!lidIsUp(lid));
+  mission.land({ target: lid, kind: 'paint' });
+  assert.equal(lid.hp, hp - 2);
+  // A child just keeping the hand open on one gets it in the end, lid and all.
+  const { mission: again } = makeMission({ levelNumber: 3 });
+  again.holdThrows = 999;
+  const other = outKind(again, 'lid');
+  other.state = 'ready';
+  run(again, 8, { hand: 'open', aim: (m) => (m.robots.includes(other) ? other : null) });
+  assert.ok(!again.robots.includes(other));
+});
+
+test('a splitting robot comes apart into two little ones, which never throw, and the stop isn\'t done until they\'re gone', () => {
+  const { mission, log } = makeMission({ levelNumber: 6 });
+  const splitter = outKind(mission, 'splitter');
+  const before = mission.leftHere;
+  mission.drop(splitter);
+  const minis = mission.robots.filter(({ kind }) => kind === 'mini');
+  assert.equal(minis.length, 2);
+  assert.equal(mission.leftHere, before + 1);
+  assert.equal(log.count('split'), 1);
+  assert.ok(minis.every(({ x }) => Math.abs(Math.abs(x - splitter.x) - 0.75) < 1e-9));
+  mission.holdThrows = 0;
+  mission.throwIn = 0;
+  for (const robot of mission.robots) if (robot.kind !== 'mini') robot.throwing = 9;
+  run(mission, 6, { hand: 'none' });
+  assert.ok(!log.events.some(({ type, robot }) => type === 'windup' && robot.kind === 'mini'));
+  // Falling down with the big one, it doesn't come apart.
+  const { mission: there, big } = atTheBigOne({ levelNumber: 6 });
+  there.spawn('splitter');
+  for (const spot of big.spots) {
+    spot.open = true;
+    spot.hp = 1;
+    there.land({ target: spot, kind: 'paint' });
+  }
+  assert.equal(there.robots.filter(({ kind }) => kind === 'mini').length, 0);
+});
+
+test('the golden robot\'s key flies to the chest, which opens with gems and stars, even if the stop ends first', () => {
+  const { mission, log } = makeMission({ levelNumber: 5 });
+  assert.ok(mission.chest && !mission.chest.open);
+  const golden = mission.robots.find(({ kind }) => kind === 'keybot') ?? outKind(mission, 'keybot');
+  mission.drop(golden);
+  assert.equal(log.count('key'), 1);
+  run(mission, KEY_SECONDS + 0.1, { hand: 'none' });
+  assert.ok(mission.chest.open);
+  assert.equal(log.count('chest-open'), 1);
+  run(mission, PRIZE_SECONDS + 1, { hand: 'none' });
+  assert.equal(mission.stats.gems >= 4, true);
+  assert.equal(mission.stats.stars, 2);
+  assert.equal(mission.stats.chests, 1);
+  // If it's the last robot there, the chest still opens before the tram goes.
+  const { mission: quick } = makeMission({ levelNumber: 5 });
+  quick.queue = [];
+  const key = quick.robots.find(({ kind }) => kind === 'keybot') ?? outKind(quick, 'keybot');
+  for (const robot of quick.robots.filter((robot) => robot !== key)) quick.drop(robot);
+  quick.drop(key);
+  while (quick.phase !== 'moving') quick.update(DT, { hand: 'open' });
+  while (quick.phase === 'moving') quick.update(DT, { hand: 'open' });
+  assert.equal(quick.stats.chests, 1);
+  assert.equal(quick.stats.stars, 2);
+});
+
+test('a drone carrying a friend goes slowly to and fro, never throws, and its friend floats down and is counted', () => {
+  const { mission, log } = makeMission({ levelNumber: 9 });
+  const carrier = mission.robots.find(({ kind }) => kind === 'carrier');
+  assert.ok(carrier, 'it comes out second');
+  assert.equal(carrier.pal, PALS[0]);
+  mission.holdThrows = 0;
+  mission.throwIn = 0;
+  const seen = [];
+  for (let t = 0; t < 20; t += DT) {
+    mission.update(DT, { hand: 'none' });
+    if (!mission.resting) seen.push(carrier.x);
+  }
+  assert.ok(Math.max(...seen) - Math.min(...seen) > 2, 'it goes to and fro');
+  assert.ok(!log.events.some(({ type, robot }) => type === 'windup' && robot === carrier));
+  // It stays where it is while the child rests.
+  const at = carrier.x;
+  run(mission, 3, { hand: 'none' });
+  assert.equal(carrier.x, at);
+  mission.drop(carrier);
+  assert.equal(mission.stats.pals, 1);
+  assert.equal(log.events.find(({ type }) => type === 'pal-freed').who, PALS[0]);
+});
+
+test('the shield bubble stops goo without the hand closing, and doesn\'t count as the child\'s own shield', () => {
+  const { mission, log } = makeMission({ levelNumber: 6 });
+  mission.startPower('guard');
+  const goo = throwOne(mission);
+  run(mission, goo.seconds + 0.1, { hand: 'open' });
+  assert.equal(mission.hearts, LEVELS.gentle.hearts);
+  assert.equal(mission.stats.gooBubbled, 1);
+  assert.equal(mission.stats.gooBlocked, 0);
+  assert.ok(log.events.some(({ type, bubble }) => type === 'goo-blocked' && bubble));
+});
+
+test('the magnet pulls a bolt out of a robot that\'s hit, now and then', () => {
+  const { mission } = makeMission({ levelNumber: 8 });
+  mission.holdThrows = 999;
+  mission.startPower('magnet');
+  const robot = outKind(mission, 'walker');
+  robot.hp = 99;
+  run(mission, 2, { hand: 'open', aim: () => robot });
+  const pulled = mission.prizes.filter(({ pulled }) => pulled).length + mission.stats.bolts;
+  assert.ok(pulled >= 2 && pulled <= 4, `${pulled} bolts in 2 seconds`);
+});
+
+test('a heart only comes once one has been lost, and gives one back', () => {
+  const { mission } = makeMission({ levelNumber: 7, level: 'medium' });
+  for (let i = 0; i < 40; i += 1) assert.notEqual(mission.nextPower(), 'heart');
+  mission.hearts -= 1;
+  const kinds = Array.from({ length: 6 }, () => mission.nextPower());
+  assert.ok(kinds.includes('heart'));
+  mission.startPower('heart');
+  assert.equal(mission.hearts, LEVELS.medium.hearts);
+});
+
+test('slow motion slows the robots and their goo, and not the blaster', () => {
+  const plain = makeMission({ levelNumber: 9 }).mission;
+  const slow = makeMission({ levelNumber: 9 }).mission;
+  slow.startPower('slow');
+  for (const mission of [plain, slow]) {
+    mission.holdThrows = 999;
+    run(mission, 2, { hand: 'open' });
+  }
+  const walked = (mission) => mission.robots.filter(({ kind }) => kind === 'walker' || kind === 'lid').reduce((sum, { x, z }) => sum + Math.abs(x) + Math.abs(z), 0);
+  assert.notEqual(walked(plain), walked(slow));
+  assert.ok(Math.abs(slow.clock - 2 * SLOW.robots) < 0.05);
+  const goo = throwOne(slow);
+  run(slow, 1, { hand: 'open' });
+  assert.ok(Math.abs(goo.t - SLOW.goo / goo.seconds) < 0.02);
+});
+
+test('at level 10 the big one is the robot king: weak spots leave prizes, and he leaves his treasure', () => {
+  const { mission, log, big } = atTheBigOne({ levelNumber: 10 });
+  assert.equal(big.king, true);
+  assert.equal(atTheBigOne({ levelNumber: 9 }).big.king, false);
+  for (const spot of big.spots) {
+    spot.open = true;
+    spot.hp = 1;
+    mission.land({ target: spot, kind: 'paint' });
+  }
+  const stars = mission.prizes.filter(({ kind, treasure }) => kind === 'star' && treasure).length;
+  assert.equal(stars, 6);
+  assert.ok(mission.prizes.filter(({ source }) => source?.kind === 'spot').length >= big.spots.length * 2);
+  while (mission.phase !== 'won') mission.update(DT, { hand: 'open' });
+  assert.ok(mission.stats.stars >= 6);
+  assert.equal(log.count('won'), 1);
+});
+
+/* ---------- the new things and the rules that never change ---------- */
+
+test('every level from 2 to 10 can be finished, and level 10 at every pace and difficulty', () => {
+  for (const levelNumber of LEVEL_NUMBERS.slice(1)) {
+    const mission = new Mission({ levelNumber, random: steady(levelNumber) });
+    mission.start();
+    assert.ok(playLikeAChild(mission).won, `level ${levelNumber}`);
+    if (levelNumber >= 2) assert.ok(mission.stats.bolts > 0, `level ${levelNumber} bolts`);
+  }
+  for (const pace of Object.keys(PACES)) {
+    for (const level of Object.keys(LEVELS)) {
+      for (const reloading of [true, false]) {
+        const mission = new Mission({ pace, level, reloading, levelNumber: 10, random: steady(5) });
+        mission.start();
+        const result = playLikeAChild(mission);
+        assert.ok(result.won, `${pace} ${level} reloading ${reloading}`);
+        assert.equal(mission.stats.friends, PLACES.length);
+      }
+    }
+  }
+});
+
+test('at level 10 with every power-up on at once, Gentle still can\'t be lost, and resting still stops everything', () => {
+  const { mission, log } = makeMission({ levelNumber: 10 });
+  mission.holdThrows = 0;
+  for (const kind of Object.keys(POWERS)) mission.startPower(kind);
+  mission.timed.guard = 0; // So the goo really arrives.
+  for (let i = 0; i < 10; i += 1) {
+    const goo = throwOne(mission);
+    run(mission, goo.seconds / SLOW.goo + 0.2, { hand: 'open' });
+  }
+  assert.equal(mission.hearts, 1);
+  assert.equal(log.count('lost'), 0);
+  // Resting: nothing is thrown, nothing moves, and the power-ups wait.
+  run(mission, 6, { hand: 'none' });
+  assert.ok(mission.resting);
+  const left = mission.powersOn.map((kind) => mission.powerLeft(kind).left);
+  const where = mission.robots.map(({ x, z }) => `${x.toFixed(3)},${z.toFixed(3)}`);
+  const goo = log.count('goo');
+  run(mission, 20, { hand: 'none' });
+  assert.deepEqual(mission.powersOn.map((kind) => mission.powerLeft(kind).left), left);
+  assert.deepEqual(mission.robots.filter(({ kind }) => kind !== 'drone').map(({ x, z }) => `${x.toFixed(3)},${z.toFixed(3)}`), where.filter((_, index) => mission.robots[index]?.kind !== 'drone'));
+  assert.equal(log.count('goo'), goo);
+});
+
+test('the level 10 game, played as a child would, has every new thing in it', () => {
+  const { mission, log } = makeMission({ levelNumber: 10, pace: 'medium' });
+  playLikeAChild(mission);
+  assert.equal(mission.phase, 'won');
+  const kinds = new Set(log.events.filter(({ type }) => type === 'robot').map(({ robot }) => robot.kind));
+  for (const kind of ['lid', 'splitter', 'mini', 'keybot', 'carrier', 'roller', 'big']) assert.ok(kinds.has(kind), kind);
+  const fired = new Set(log.events.filter(({ type }) => type === 'shot').map(({ shot }) => shot.kind));
+  console.log('robot rescue level 10:', JSON.stringify(mission.stats), [...fired].join(' '));
+  assert.ok(fired.size >= 3, [...fired].join(' '));
+  assert.ok(mission.stats.powers >= 6);
+  assert.equal(mission.stats.chests, PLACES.length);
+  assert.equal(mission.stats.pals, PLACES.length);
+  assert.ok(mission.stats.bolts > 40 && mission.stats.gems > 10 && mission.stats.stars >= 6 + 2 * PLACES.length);
+});
+
+test('the new sounds don\'t pile up: bolts twinkle once for a handful, and bonks and bubbles take turns', () => {
+  const sound = new RescueSound();
+  sound.context = { currentTime: 10 };
+  const played = [];
+  sound.play = (name) => played.push(name);
+  for (let i = 0; i < 6; i += 1) sound.prizeIn('bolt');
+  assert.deepEqual(played, ['sparkle']);
+  played.length = 0;
+  for (let i = 0; i < 6; i += 1) sound.bonk();
+  for (let i = 0; i < 6; i += 1) sound.bubbleUp();
+  for (let i = 0; i < 6; i += 1) sound.boingBall();
+  assert.deepEqual(played, ['shieldHit', 'gooPop', 'boing']);
+  // A power-up always gets its sound, as there's only ever one at a time.
+  played.length = 0;
+  sound.prizeIn('power');
+  sound.prizeIn('power');
+  assert.equal(played.length, 4);
+});
+
+/* ---------- a robot in a bubble, hearts, the progress, and the pieces on the screen ---------- */
+
+test('a robot let out of a bubble picks up where it left off: a hop doesn\'t land at once, a duck doesn\'t vanish, and a drone doesn\'t jump', () => {
+  const { mission } = makeMission({ levelNumber: 10 });
+  mission.holdThrows = 999;
+  const peeker = outKind(mission, 'peeker');
+  mission.startHop(peeker);
+  run(mission, HOP.seconds / 2, { hand: 'open' });
+  const hop = peeker.hop;
+  mission.trap(peeker);
+  run(mission, BUBBLE_SECONDS + 0.05, { hand: 'open' });
+  assert.equal(peeker.bubbled, 0);
+  let at = { x: peeker.x, z: peeker.z };
+  mission.update(DT, { hand: 'open' });
+  assert.ok(Math.hypot(peeker.x - at.x, peeker.z - at.z) < 0.3, 'not on the far cover in one go');
+  assert.ok(peeker.hop > hop - 0.01 && peeker.hop < hop + 0.1, `${hop} then ${peeker.hop}`);
+
+  const ducking = makeMission({ levelNumber: 10 }).mission;
+  ducking.holdThrows = 999;
+  const duck = outKind(ducking, 'peeker');
+  ducking.setState(duck, 'ducking');
+  run(ducking, 0.1, { hand: 'open' });
+  const rise = duck.rise;
+  ducking.trap(duck);
+  while (duck.bubbled > 0) ducking.update(DT, { hand: 'open' });
+  ducking.update(DT, { hand: 'open' });
+  assert.ok(duck.rise > 0 && duck.rise > rise - 0.1, `${rise} then ${duck.rise}: it carries on going down from where it was`);
+
+  const flying = makeMission({ levelNumber: 10 }).mission;
+  flying.holdThrows = 999;
+  const drone = outKind(flying, 'drone');
+  run(flying, 2, { hand: 'open' });
+  flying.trap(drone);
+  run(flying, BUBBLE_SECONDS + 0.05, { hand: 'open' });
+  at = { x: drone.x, y: drone.y, z: drone.z };
+  flying.update(DT, { hand: 'open' });
+  assert.ok(Math.hypot(drone.x - at.x, drone.y - at.y, drone.z - at.z) < 0.2, 'it doesn\'t jump');
+});
+
+test('once the last heart has gone, a heart still on its way puts none back, and the game is lost', () => {
+  const { mission, log } = makeMission({ levelNumber: 7, level: 'medium' });
+  mission.holdThrows = 999;
+  mission.hearts = 1;
+  const goo = throwOne(mission);
+  run(mission, goo.seconds + 0.05, { hand: 'none' });
+  assert.equal(mission.hearts, 0);
+  const robot = mission.robots.find(({ kind }) => kind !== 'big');
+  const heart = mission.addPrize('power', robot, 0, { power: 'heart' });
+  heart.t = 0.99;
+  run(mission, 2, { hand: 'none' });
+  assert.equal(log.count('heart-up'), 0);
+  assert.equal(mission.hearts, 0);
+  assert.equal(mission.phase, 'lost');
+});
+
+test('a heart whose turn comes with every heart there waits, and comes as soon as one has gone', () => {
+  const { mission } = makeMission({ levelNumber: 7, level: 'medium' });
+  mission.powerTurn = mission.powers.indexOf('heart');
+  assert.notEqual(mission.nextPower(), 'heart', 'not with every heart there');
+  mission.hearts -= 1;
+  assert.equal(mission.nextPower(), 'heart', 'its turn waited');
+  assert.notEqual(mission.nextPower(), 'heart');
+});
+
+test('how many robots there are at a stop counts the little ones a splitting robot comes apart into', () => {
+  const { mission } = makeMission({ levelNumber: 6 });
+  const plan = levelPlan(6);
+  assert.equal(mission.toDealWith, lineUp(mission.place, plan.rollers, plan).length);
+  assert.equal(mission.toDealWith, mission.leftHere);
+  const before = mission.toDealWith;
+  mission.split(outKind(mission, 'walker'));
+  assert.equal(mission.toDealWith, before + 2);
+});
+
+/** A robot's record, as the rules would make it, for its look on the screen. */
+const robotOf = (kind, extra = {}) => ({ id: 1, kind, hp: 2, maxHp: 2, x: 1, y: 0, z: 12, state: 'ready', stateFor: 0, phase: 0.4, paint: 1, rise: 1, shakeFor: 0, throwing: 0, ...extra });
+
+test('a robot falling apart: each bit shrinks away from its own size, so a little robot\'s bits and the golden one\'s key never grow', () => {
+  for (const kind of ['mini', 'keybot', 'walker']) {
+    const scene = new THREE.Scene();
+    const view = makeRobotView(robotOf(kind), false);
+    scene.add(view.root);
+    const debris = new Debris(scene);
+    debris.burst(view, 1);
+    const sizes = new Map(debris.bits.map(({ bit }) => [bit, bit.scale.x]));
+    for (let t = 0; t < 2; t += DT) {
+      debris.update(DT);
+      for (const [bit, size] of sizes) assert.ok(bit.scale.x <= size + 1e-9, `${kind}: from ${size} to ${bit.scale.x}`);
+    }
+    assert.equal(debris.bits.length, 0);
+  }
+});
+
+test('a lid robot\'s lid, and a drone\'s rope, come away with the rest of it when it falls apart', () => {
+  const scene = new THREE.Scene();
+  const debris = new Debris(scene);
+  const lid = makeRobotView(robotOf('lid'), false);
+  scene.add(lid.root);
+  debris.burst(lid, 1);
+  assert.ok(debris.bits.some(({ bit }) => bit === lid.lid), 'the lid');
+  const place = new THREE.Group();
+  scene.add(place);
+  const carrier = makeRobotView(robotOf('carrier', { y: 5.4, enter: 1, drift: 0 }), false, 1.5, carriedFriend(byId('widget')));
+  place.add(carrier.root);
+  carrier.root.updateWorldMatrix(true, true);
+  place.attach(carrier.cage); // The friend is let go first.
+  debris.burst(carrier, 1);
+  assert.ok(debris.bits.some(({ bit }) => bit === carrier.hanging), 'the rope');
+});
+
+test('a friend let go by a drone floats down onto the street, the bridge or the water, and stays there, and is kept for next time', () => {
+  const landings = { market: Stage.prototype.landingFor('market', 6.2, 15), bridge: Stage.prototype.landingFor('canal', 4.1, 15), water: Stage.prototype.landingFor('canal', 6.2, 15) };
+  assert.deepEqual(landings.market, { x: 6.2, y: 0 });
+  assert.deepEqual(landings.bridge, { x: 3.6, y: 0 });
+  assert.equal(landings.water.water, true);
+  assert.ok(landings.water.y < 0 && landings.water.y >= WATER_LEVEL - 0.1);
+  assert.ok(Math.abs(landings.water.x) > 5.5, 'clear of the bridge\'s low wall');
+  for (const land of Object.values(landings)) {
+    const scene = new THREE.Scene();
+    const place = new THREE.Group();
+    scene.add(place);
+    const friend = carriedFriend(byId('nova'));
+    const view = makeRobotView(robotOf('carrier', { x: 6.2, y: 5.1, z: 15, enter: 1, drift: 0 }), false, 1.5, friend);
+    place.add(view.root);
+    view.root.updateWorldMatrix(true, true);
+    place.attach(view.cage);
+    const floating = new FloatingCage(view, false, land);
+    let lowest = Infinity;
+    for (let t = 0; t < 3.3; t += DT) {
+      floating.update(DT);
+      lowest = Math.min(lowest, view.cage.position.y);
+    }
+    assert.ok(lowest >= land.y - 0.07, `it went down to ${lowest}, and the ground is at ${land.y}`);
+    assert.ok(view.cage.position.y < land.y + 0.08, 'it got down');
+    assert.ok(Math.abs(view.cage.position.x - land.x) < 0.01);
+    while (floating.update(DT));
+    assert.equal(friend.root.parent, null);
+    assert.equal(carriedFriend(byId('nova')), friend, 'made once, and kept for the next drone');
+  }
+});
+
+test('a new thing\'s name only counts once it has really come up: one whose thing goes first waits for the next of its kind, and never holds the others up', () => {
+  const labels = (level) => {
+    const stage = { news: new Map(newsAt(level).map((item) => [item.key, item])), named: [], labels: [], playing: true, language: 'en', hudBottom: 120, name: Stage.prototype.name };
+    const name = (key, at, gone = () => false) => Stage.prototype.name.call(stage, key, at, gone);
+    const play = (seconds) => {
+      for (let t = 0; t < seconds; t += DT) Stage.prototype.updateLabels.call(stage, DT);
+    };
+    return { stage, name, play };
+  };
+  // At level 5, a roller's name is up when a gem comes out, and the gem lands before the roller's name is done.
+  const { stage, name, play } = labels(5);
+  name('rollers', () => ({ x: 100, y: 300 }));
+  play(0.1);
+  assert.deepEqual(stage.named, ['rollers']);
+  let landed = false;
+  name('gems', () => (landed ? null : { x: 200, y: 260 }), () => landed);
+  play(1.2);
+  landed = true;
+  play(3);
+  assert.ok(!stage.named.includes('gems'), 'never seen, so not named');
+  assert.ok(stage.labels.some(({ key }) => key === 'gems'), 'it waits for the next one');
+  // The next gem gets the name, below the chips along the top.
+  name('gems', () => ({ x: 220, y: 90 }));
+  play(0.1);
+  assert.ok(stage.named.includes('gems'));
+  assert.equal(stage.labels[0].key, 'gems');
+  assert.ok(stage.labels[0].pinned.y >= 120);
+  assert.equal(stage.labels[0].words, 'Gems');
+  stage.language = 'ka';
+  assert.equal(stage.labels[0].words, 'ძვირფასი ქვები', 'in the language the voice speaks now');
+  // At level 8, a power-up that can't be seen yet doesn't hold up the sunset.
+  const later = labels(8);
+  later.name('planes', () => null);
+  later.name('sunset', () => ({ x: 640, y: 140 }));
+  later.play(0.1);
+  assert.deepEqual(later.stage.named, ['sunset']);
+  // And one that never can be seen goes in the end, and isn't counted as named.
+  later.play(12);
+  assert.ok(!later.stage.labels.some(({ key }) => key === 'planes'));
+  assert.ok(!later.stage.named.includes('planes'));
+  // A power-up that has got there before its name could come up is on, at the top, and named there.
+  const power = labels(4);
+  const prize = { kind: 'power', power: 'bubble' };
+  Object.assign(power.stage, { prizeLooks: new Map(), prizeHomes: { 'power:bubble': { x: 300, y: 60 } }, mission: { powersOn: [] } });
+  power.name('hop', () => ({ x: 600, y: 300 }));
+  Stage.prototype.namePrize.call(power.stage, 'bubble', prize);
+  power.play(1);
+  power.stage.mission.powersOn = ['bubble'];
+  power.play(2);
+  assert.ok(power.stage.named.includes('bubble'));
+  assert.deepEqual(power.stage.labels[0].pinned, { x: 300, y: 154 });
+});
+
+test('a triple shot\'s three balls landing together are heard as one hit', () => {
+  const sound = new RescueSound();
+  sound.context = { currentTime: 10 };
+  const played = [];
+  sound.play = (name) => played.push(name);
+  for (let i = 0; i < 3; i += 1) sound.hit();
+  assert.equal(played.length, 1);
+  sound.context.currentTime = 10.2;
+  sound.hit();
+  assert.equal(played.length, 2, 'the next shot\'s is heard');
 });

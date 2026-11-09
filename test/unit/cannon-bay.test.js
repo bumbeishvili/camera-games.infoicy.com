@@ -2,7 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { Battle, HEARTS, HULL, LEVELS, MOST_AT_ONCE, PACES, REST_AFTER, SHIP_KINDS, forwardOf, levelPlan } from '../../games/cannon-bay/battle.js';
+import { Battle, HEARTS, HULL, LEVELS, MOST_AT_ONCE, MOST_HEARTS, NEWS, PACES, POWERS, REST_AFTER, SHIP_KINDS, forwardOf, levelPlan, newsAt } from '../../games/cannon-bay/battle.js';
+import { BaySound } from '../../games/cannon-bay/bay-sound.js';
 import { getChart } from '../../games/cannon-bay/chart.js';
 import { WORLD, heightAt } from '../../games/sky-wings/island-map.js';
 
@@ -739,13 +740,28 @@ test('the game has no method called then, which await would take for a promise',
 
 const LEVEL_NUMBERS = Array.from({ length: 10 }, (_, index) => index + 1);
 // Which way is harder for each thing a level changes: up, down, or switched on.
-const HARDER = { fireEvery: 'down', apart: 'down', chase: 'up', side: 'down', runEvery: 'down', weave: 'on', sloops: 'on', atOnce: 'up', balls: 'up', flagship: 'on' };
+const NEW_THINGS = ['gems', 'triple', 'sailors', 'hearts', 'rafts', 'shield', 'bubble', 'keys', 'magnet', 'smoke', 'mist', 'subs', 'bounce', 'snow', 'king', 'sunset'];
+const HARDER = { fireEvery: 'down', apart: 'down', chase: 'up', side: 'down', runEvery: 'down', weave: 'on', sloops: 'on', atOnce: 'up', balls: 'up', flagship: 'on', ...Object.fromEntries(NEW_THINGS.map((key) => [key, 'on'])) };
 
 test('level 1 is the game as it always was', () => {
   const plan = levelPlan(1);
+  // levelPlan(1) as it was before the levels brought anything new.
+  const before = { fireEvery: 1, apart: 1, chase: 1, side: 1, runEvery: 0.33, weave: false, sloops: false, atOnce: 0, balls: 0, flagship: false };
+  for (const [key, value] of Object.entries(before)) assert.equal(plan[key], value, key);
+  for (const key of NEW_THINGS) assert.equal(plan[key], false, key);
   for (const key of ['fireEvery', 'apart', 'chase', 'side']) assert.equal(plan[key], 1, key);
   assert.equal(plan.runEvery, 0.33);
   assert.deepEqual([plan.weave, plan.sloops, plan.atOnce, plan.balls, plan.flagship], [false, false, 0, 0, false]);
+  // Plain ships only, which drop only their line of gold, and the cannons fire as they always did.
+  const { battle, types } = start({ ships: 9, levelNumber: 1 });
+  assert.ok(battle.roles.every(({ kind, cage, key }) => kind === 'ship' && !cage && !key));
+  assert.deepEqual(battle.bonuses, []);
+  const [pirate] = battle.afloat;
+  while (pirate.state === 'sailing') battle.hit(pirate, pirate);
+  assert.ok(battle.coins.length > 0);
+  assert.deepEqual(battle.prizes, []);
+  assert.equal(battle.fireKind, 'ball');
+  assert.ok(!types().includes('drop'));
   for (const level of Object.keys(LEVELS)) {
     const { battle } = start({ level, ships: 9, levelNumber: 1 });
     assert.equal(battle.level, LEVELS[level]);
@@ -772,6 +788,46 @@ test('each level is the same or harder than the one before in every way, and har
     assert.ok(harder >= 1, `level ${level} is no harder than ${level - 1}`);
   }
   for (const key of ['weave', 'sloops', 'atOnce', 'balls', 'flagship']) assert.ok(LEVEL_NUMBERS.find((level) => Number(levelPlan(level)[key]) > 0) >= 3, key);
+});
+
+test('each level from 2 brings something new, listed for the cards, and nothing at level 1', () => {
+  assert.deepEqual(newsAt(1), []);
+  for (const level of LEVEL_NUMBERS.slice(1)) {
+    const news = newsAt(level);
+    assert.ok(news.length >= 1 && news.length <= 2, `level ${level}: ${news.length}`);
+    for (const item of news) {
+      assert.match(item.mark, /\p{Extended_Pictographic}/u, item.name);
+      assert.ok(item.name.split(' ').length <= 3, item.name);
+      assert.match(item.nameKa, /[\u10D0-\u10FF]/, item.name);
+      // Really switched on from that level, and not before.
+      assert.ok(Number(levelPlan(level)[item.key]) > 0, `${item.key} at ${level}`);
+      assert.ok(!(Number(levelPlan(level - 1)[item.key]) > 0), `${item.key} before ${level}`);
+    }
+  }
+  // Every new thing in levelPlan is on the cards somewhere.
+  for (const key of NEW_THINGS) assert.ok(NEWS.some((item) => item.key === key), key);
+});
+
+test('each new kind of ship comes along in its level, even in a battle of only four, and straight away', () => {
+  for (const [level, kind] of [[4, 'raft'], [5, 'sloop'], [7, 'smoky'], [8, 'sub'], [9, 'flagship'], [10, 'king']]) {
+    for (const ships of [4, 6, 9]) {
+      const { battle } = start({ ships, levelNumber: level });
+      const kinds = battle.roles.map((role) => role.kind);
+      assert.ok(kinds.includes(kind), `${kind} at level ${level} with ${ships}`);
+      // The newest is the first one out, unless it's the last, as a flagship or the king is.
+      if (!['flagship', 'king'].includes(kind)) assert.equal(battle.afloat[0].kind, kind);
+      else assert.equal(kinds.at(-1), kind);
+    }
+  }
+  // A sailor to rescue from level 3, and a key from level 6, in any battle.
+  for (const ships of [4, 6, 9]) {
+    for (const level of [3, 6, 10]) {
+      const { battle } = start({ ships, levelNumber: level });
+      assert.ok(battle.roles.some(({ cage }) => cage), `cage at ${level} with ${ships}`);
+      assert.equal(battle.roles.some(({ key }) => key), level >= 6, `key at ${level} with ${ships}`);
+      assert.ok(!battle.roles.at(-1).cage, 'not on the last');
+    }
+  }
 });
 
 test('a level never changes what a grown-up chose: the zones, the help with lining up, Gentle, the cannons or how many ships', () => {
@@ -838,42 +894,53 @@ test('at level 10 there\'s still at least 70% of the time to react: balls fly as
   for (const { ball } of balls) assert.ok(ball.seconds >= 2, 'slow');
 });
 
-for (const [pace, level] of [['slow', 'gentle'], ['medium', 'medium'], ['fast', 'tough']]) {
-  test(`level 10 at ${pace} speed on ${level} can be finished, steering as a child might`, () => {
-    const { battle, types } = start({ ships: 9, pace, level, levelNumber: 10, random: seeded(17) });
-    let seconds = 0;
-    while (battle.state === 'sailing' && seconds < 900) {
-      battle.update(STEP, sailBeside(battle));
-      if (battle.state === 'sailing') battle.hearts = Math.max(battle.hearts, 2);
-      seconds += STEP;
-    }
-    assert.equal(battle.state, 'won');
-    assert.equal(types().filter((type) => type === 'beaten').length, 9);
-  });
+for (const pace of Object.keys(PACES)) {
+  for (const level of Object.keys(LEVELS)) {
+    test(`level 10 at ${pace} speed on ${level} can be finished, steering as a child might`, () => {
+      const { battle, types } = start({ ships: 9, pace, level, levelNumber: 10, random: seeded(17) });
+      let seconds = 0;
+      while (battle.state === 'sailing' && seconds < 900) {
+        battle.update(STEP, sailBeside(battle));
+        if (battle.state === 'sailing') battle.hearts = Math.max(battle.hearts, 2);
+        seconds += STEP;
+      }
+      assert.equal(battle.state, 'won');
+      assert.equal(types().filter((type) => type === 'beaten').length, 9);
+      assert.equal(battle.left, 0);
+    });
+  }
 }
 
-test('at level 10 the new things really happen: weaving, sloops, four at once, bigger broadsides and a flagship last', () => {
-  const { battle, events } = start({ ships: 9, levelNumber: 10, random: seeded(4) });
+test('at level 10 the new things really happen, in a whole battle played as a child might', () => {
+  const { battle, events, types } = start({ ships: 9, levelNumber: 10, random: seeded(4) });
   assert.equal(battle.afloat.length, MOST_AT_ONCE + 1);
   const spawned = () => events.filter(({ type }) => type === 'spawn').map(({ pirate }) => pirate);
-  const kinds = [...battle.afloat.map(({ kind }) => kind)];
   let weaving = false;
   let most = 0;
   let seconds = 0;
+  const fired = new Set();
   while (battle.state === 'sailing' && seconds < 900) {
     battle.update(STEP, sailBeside(battle));
     for (const pirate of battle.afloat) if (pirate.mode === 'away' && Math.abs(battle.weaving(pirate)) > 0.5) weaving = true;
     for (const pirate of battle.pirates) most = Math.max(most, pirate.burstLeft);
+    fired.add(battle.fireKind);
     seconds += STEP;
   }
-  kinds.push(...spawned().map(({ kind }) => kind));
+  const kinds = spawned().map(({ kind }) => kind);
   assert.equal(battle.state, 'won');
   assert.ok(weaving, 'weaving');
-  assert.ok(kinds.includes('sloop'), 'sloops');
-  assert.equal(kinds.at(-1), 'flagship');
+  for (const kind of ['sub', 'smoky', 'sloop', 'raft']) assert.ok(kinds.includes(kind), kind);
+  assert.equal(kinds.at(-1), 'king');
   assert.ok(most >= LEVELS.gentle.balls + 1, 'bigger broadsides');
-  const flagship = spawned().at(-1);
-  assert.equal(flagship.maxHits, Math.round(LEVELS.gentle.shipHits * SHIP_KINDS.flagship.hits));
+  const king = spawned().at(-1);
+  assert.equal(king.maxHits, Math.round(LEVELS.gentle.shipHits * SHIP_KINDS.king.hits));
+  for (const type of ['split', 'little-beaten', 'smoke', 'dive', 'surface', 'sail-down', 'drop', 'prize', 'power']) assert.ok(types().includes(type), type);
+  const { stats } = battle;
+  console.log('level 10 battle', JSON.stringify({ seconds: Math.round(seconds), gems: stats.gems, sailors: stats.sailors, keys: stats.keys, chests: stats.chests, powers: stats.powers, hearts: stats.hearts, fired: [...fired] }));
+  assert.ok(stats.gems >= 9, 'gems picked up');
+  assert.ok(stats.sailors >= 1, 'a sailor rescued');
+  assert.ok(stats.powers >= 3, 'power-ups');
+  assert.ok(fired.size >= 3, 'other kinds of fire');
 });
 
 test('at level 10, resting still stops the firing, and the pirates sail in circles', () => {
@@ -887,4 +954,546 @@ test('at level 10, resting still stops the firing, and the pirates sail in circl
   assert.equal(events.filter(({ type }) => type === 'pirate-fire').length, fired);
   assert.equal(battle.stats.hurts, hurts);
   assert.ok(battle.afloat.every(({ mode }) => mode === 'circle'));
+});
+
+/* ---------- what the higher levels bring: prizes, power-ups and new kinds of ship ---------- */
+
+/** Beats the first pirate afloat right beside the child's ship, so whatever it drops is close. */
+function beatBeside(battle, pirate = battle.afloat[0], away = 70) {
+  pirate.x = battle.x + Math.cos(battle.heading) * away;
+  pirate.z = battle.z + Math.sin(battle.heading) * away;
+  while (pirate.state === 'sailing') battle.hit(pirate, pirate);
+  return pirate;
+}
+
+/** A prize of this kind, right here. */
+const prizeAt = (battle, kind, x, z, details = {}) => battle.addPrize(kind, x, z, details);
+
+test('from level 2, a beaten ship drops gems, which float over to the ship, are picked up and counted', () => {
+  const { battle, types } = start({ levelNumber: 2 });
+  beatBeside(battle);
+  const gems = battle.prizes.filter(({ kind }) => kind === 'gem');
+  assert.equal(gems.length, 3);
+  assert.ok(types().includes('drop'));
+  // Just sitting there with the sails down, they come over by themselves.
+  run(battle, 8, CLOSED);
+  assert.equal(battle.stats.gems, 3);
+  assert.ok(types().includes('prize'));
+  assert.equal(battle.prizes.filter(({ kind }) => kind === 'gem').length, 0);
+});
+
+test('a prize too far away to come over goes in the end, and that costs nothing; resting keeps it', () => {
+  const { battle } = start({ levelNumber: 2 });
+  const gem = prizeAt(battle, 'gem', battle.x + 400, battle.z);
+  run(battle, REST_AFTER + 1, CLOSED);
+  assert.equal(battle.resting, true);
+  const left = gem.left;
+  run(battle, 20, CLOSED);
+  assert.equal(gem.left, left, 'resting keeps it');
+  // Short closes aren't a rest, so the time goes, and the ship stays put.
+  for (let i = 0; i < 12; i += 1) {
+    run(battle, REST_AFTER - 0.5, CLOSED);
+    battle.update(STEP, { ...CLOSED, open: true, drive: 0 });
+  }
+  assert.ok(!battle.prizes.includes(gem));
+  assert.ok(!gem.taken);
+  assert.equal(battle.stats.gems, 0);
+});
+
+test('the newest power-up of the level is the first one dropped, and then they take turns', () => {
+  for (const [level, first] of [[2, 'triple'], [4, 'shield'], [5, 'bubble'], [6, 'magnet'], [8, 'bounce'], [9, 'snow']]) {
+    const { battle } = start({ levelNumber: level });
+    beatBeside(battle);
+    const power = battle.prizes.find(({ kind }) => kind === 'power');
+    assert.equal(power?.power, first, `level ${level}`);
+  }
+  const { battle } = start({ levelNumber: 3, ships: 9 });
+  const dropped = [];
+  for (let i = 0; i < 4; i += 1) {
+    battle.prizes = [];
+    beatBeside(battle);
+    battle.fill();
+    const bonus = battle.prizes.find(({ kind }) => kind === 'power' || kind === 'heart');
+    dropped.push(bonus.power ?? bonus.kind);
+  }
+  assert.deepEqual(dropped, ['heart', 'triple', 'heart', 'triple']);
+});
+
+/** Picks up a power-up of this kind, as sailing over it would. */
+function powerUp(battle, power) {
+  prizeAt(battle, 'power', battle.x, battle.z, { power });
+  battle.update(STEP, OPEN);
+  assert.equal(battle.power?.kind, power);
+}
+
+test('a power-up lasts a few seconds, shows how long is left, waits while the child rests, and is counted', () => {
+  const { battle, types } = start({ levelNumber: 10 });
+  powerUp(battle, 'triple');
+  assert.equal(battle.stats.powers, 1);
+  assert.equal(battle.fireKind, 'triple');
+  run(battle, 4, OPEN);
+  assert.ok(battle.power.left < battle.power.total && battle.power.left > 0);
+  run(battle, REST_AFTER + 0.5, CLOSED);
+  const left = battle.power.left;
+  run(battle, 10, CLOSED);
+  assert.equal(battle.power.left, left, 'resting keeps it');
+  // Anything else dropped meanwhile is cleared away, so this is about the one.
+  run(battle, POWERS.triple.seconds, () => {
+    battle.prizes = [];
+    for (const pirate of battle.afloat) pirate.hitsLeft = pirate.maxHits;
+    return OPEN;
+  });
+  assert.equal(battle.power, null);
+  assert.equal(battle.fireKind, 'ball');
+  assert.ok(types().includes('power-end'));
+  // A new one takes over from one going.
+  powerUp(battle, 'bubble');
+  powerUp(battle, 'snow');
+  assert.equal(battle.fireKind, 'snow');
+});
+
+test('the triple shot fires three balls at once, side by side, and all three hit', () => {
+  const { battle } = start({ levelNumber: 2 });
+  powerUp(battle, 'triple');
+  const pirate = hold(battle, Math.PI / 2);
+  const { hitsLeft } = pirate;
+  holding(battle, 0.1, Math.PI / 2);
+  assert.equal(battle.shots.length, 3);
+  assert.ok(battle.shots.every(({ fire }) => fire === 'triple'));
+  const alongs = battle.shots.map(({ along }) => along).sort((a, b) => a - b);
+  assert.ok(alongs[2] - alongs[0] > 15, 'side by side');
+  holding(battle, 1.4, Math.PI / 2);
+  assert.ok(hitsLeft - pirate.hitsLeft >= 3);
+});
+
+test('the bubble shot traps a ship in a bubble for a moment: it stops, and can\'t fire', () => {
+  const { battle, types } = start({ levelNumber: 5 });
+  powerUp(battle, 'bubble');
+  const pirate = hold(battle, Math.PI / 2);
+  holding(battle, 1.5, Math.PI / 2);
+  assert.ok(pirate.bubbled > 0);
+  assert.ok(types().includes('bubbled'));
+  battle.power = null;
+  // Let go of it, and it bobs where it is.
+  pirate.fireIn = 0;
+  battle.broadsideIn = 0;
+  const fired = types().filter((type) => type === 'pirate-fire').length;
+  run(battle, 1.2, CLOSED);
+  assert.ok(pirate.speed < 3, `${pirate.speed}`);
+  assert.equal(types().filter((type) => type === 'pirate-fire').length, fired);
+  run(battle, 3, CLOSED);
+  assert.equal(pirate.bubbled, 0);
+  assert.ok(types().includes('unbubbled'));
+});
+
+test('the snow shot slows a ship down, and it reloads more slowly', () => {
+  const { battle, types } = start({ levelNumber: 9 });
+  powerUp(battle, 'snow');
+  const pirate = hold(battle, Math.PI / 2);
+  holding(battle, 1.5, Math.PI / 2);
+  assert.ok(pirate.frosted > 0);
+  assert.ok(types().includes('frosted'));
+  assert.ok(battle.quicker(pirate) < battle.plan.chase * 0.6);
+  pirate.frosted = 0;
+  assert.ok(battle.quicker(pirate) >= battle.plan.chase * 0.99);
+});
+
+test('the bouncing ball goes on to the next ship near enough, once', () => {
+  const { battle, types } = start({ levelNumber: 8 });
+  powerUp(battle, 'bounce');
+  const [first, second] = battle.afloat;
+  const place = () => {
+    hold(battle, Math.PI / 2);
+    second.x = first.x + Math.sin(battle.heading) * 60;
+    second.z = first.z - Math.cos(battle.heading) * 60;
+    second.fireIn = 100;
+  };
+  const before = second.hitsLeft;
+  for (let i = 0; i < 2 / STEP; i += 1) {
+    place();
+    battle.update(STEP, OPEN);
+  }
+  assert.ok(types().includes('bounce'));
+  assert.ok(second.hitsLeft < before, 'the second one was hit too');
+  // A bounced ball doesn't bounce again.
+  const bounces = types().filter((type) => type === 'bounce').length;
+  const fires = types().filter((type) => type === 'fire').length;
+  assert.ok(bounces <= fires);
+});
+
+test('the shield bubble: a ball landing on the ship bounces off, and costs nothing', () => {
+  const { battle, types } = start({ levelNumber: 4, level: 'tough' });
+  powerUp(battle, 'shield');
+  ballOnHull(battle);
+  battle.update(STEP, OPEN);
+  assert.equal(battle.hearts, HEARTS);
+  assert.equal(battle.stats.blocked, 1);
+  assert.ok(types().includes('blocked'));
+  battle.power = null;
+  ballOnHull(battle);
+  battle.update(STEP, OPEN);
+  assert.equal(battle.hearts, HEARTS - 1);
+});
+
+test('the magnet brings prizes and gold over from far away', () => {
+  const { battle } = start({ levelNumber: 6 });
+  const far = prizeAt(battle, 'gem', battle.x + 380, battle.z);
+  run(battle, 3, CLOSED);
+  assert.equal(battle.stats.gems, 0, 'too far without it');
+  powerUp(battle, 'magnet');
+  battle.coins.push({ x: battle.x - 300, z: battle.z, left: 26, phase: 0 });
+  run(battle, 8, CLOSED);
+  assert.equal(battle.stats.gems, 1);
+  assert.ok(!battle.prizes.includes(far));
+  assert.ok(battle.stats.gold >= 1);
+});
+
+test('a heart from level 3 adds a heart, up to two more than the usual five', () => {
+  const { battle } = start({ levelNumber: 3 });
+  for (let i = 0; i < 4; i += 1) {
+    prizeAt(battle, 'heart', battle.x, battle.z);
+    battle.update(STEP, OPEN);
+  }
+  assert.equal(battle.hearts, MOST_HEARTS);
+  assert.equal(MOST_HEARTS, HEARTS + 2);
+  assert.equal(battle.stats.hearts, 4);
+});
+
+test('from level 3 a pirate tows a sailor in a cage, who floats free when it\'s beaten, and is rescued by sailing over', () => {
+  const { battle, types } = start({ levelNumber: 3, ships: 4 });
+  battle.update(STEP, OPEN);
+  const towing = battle.afloat.find(({ cage }) => cage) ?? (() => {
+    while (!battle.afloat.some(({ cage }) => cage)) {
+      beatBeside(battle);
+      battle.fill();
+    }
+    return battle.afloat.find(({ cage }) => cage);
+  })();
+  beatBeside(battle, towing);
+  const cage = battle.prizes.find(({ kind }) => kind === 'cage');
+  assert.ok(cage);
+  run(battle, 10, CLOSED);
+  assert.equal(battle.stats.sailors, 1);
+  assert.ok(types().includes('prize'));
+});
+
+test('from level 6 a pirate carries a key: picking it up brings a treasure chest, which opens for gems and a power-up', () => {
+  const { battle } = start({ levelNumber: 6, ships: 6 });
+  let carrier = battle.afloat.find(({ key }) => key);
+  while (!carrier) {
+    beatBeside(battle);
+    battle.fill();
+    carrier = battle.afloat.find(({ key }) => key);
+  }
+  battle.prizes = [];
+  beatBeside(battle, carrier);
+  assert.ok(battle.prizes.some(({ kind }) => kind === 'key'));
+  // Without the magnet, which would bring the chest over too.
+  battle.prizes = battle.prizes.filter(({ kind }) => kind !== 'power');
+  run(battle, 8, CLOSED);
+  assert.equal(battle.stats.keys, 1);
+  const chest = battle.prizes.find(({ kind }) => kind === 'chest');
+  assert.ok(chest, 'a chest');
+  assert.ok(getChart().room(chest.x, chest.z) > 20, 'on open water');
+  const away = Math.hypot(chest.x - battle.x, chest.z - battle.z);
+  assert.ok(away > 90 && away < 170, `${away}`);
+  // It doesn't go away by itself.
+  run(battle, 40, CLOSED);
+  assert.ok(battle.prizes.includes(chest));
+  const { gems, powers } = battle.stats;
+  battle.x = chest.x;
+  battle.z = chest.z;
+  battle.update(STEP, CLOSED);
+  assert.equal(battle.stats.chests, 1);
+  // It all comes straight over, and some may be picked up at once.
+  run(battle, 5, CLOSED);
+  assert.ok(battle.stats.gems - gems + battle.prizes.filter(({ kind }) => kind === 'gem').length >= 5);
+  assert.equal(battle.stats.powers, powers + 1);
+});
+
+test('from level 4 a barrel raft comes apart into two little rafts, which never fire, and both have to be beaten too', () => {
+  const { battle, types } = start({ levelNumber: 4, ships: 1 });
+  const [raft] = battle.afloat;
+  assert.equal(raft.kind, 'raft');
+  assert.equal(battle.left, 1);
+  beatBeside(battle, raft);
+  assert.ok(types().includes('split'));
+  const littles = battle.afloat.filter(({ little }) => little);
+  assert.equal(littles.length, 2);
+  assert.equal(battle.left, 2);
+  assert.equal(battle.stats.beaten, 1);
+  assert.ok(!types().includes('lifeboat'));
+  assert.equal(battle.boats.length, 0, 'nobody was on it');
+  // Alongside, loaded and ready, they still never fire. A closed hand doesn't fire at them either.
+  for (let i = 0; i < 3 / STEP; i += 1) {
+    littles.forEach((little, index) => {
+      const direction = battle.heading + (index ? 1 : -1) * Math.PI / 2;
+      little.x = battle.x + Math.sin(direction) * 90;
+      little.z = battle.z - Math.cos(direction) * 90;
+      little.heading = battle.heading;
+      little.fireIn = 0;
+    });
+    battle.broadsideIn = 0;
+    battle.update(STEP, CLOSED);
+  }
+  assert.ok(!types().includes('pirate-fire'), 'little ones never fire');
+  assert.notEqual(battle.state, 'won');
+  for (const little of littles) beatBeside(battle, little);
+  assert.equal(battle.left, 0);
+  assert.equal(battle.stats.littles, 2);
+  run(battle, 3, OPEN);
+  assert.equal(battle.state, 'won');
+});
+
+test('from level 7 a smoke ship hides in its own smoke when hit, twice, and can\'t be fired at for a moment', () => {
+  const { battle, types } = start({ levelNumber: 7, ships: 4 });
+  const smoky = battle.afloat.find(({ kind }) => kind === 'smoky');
+  assert.ok(smoky);
+  let smokes = 0;
+  while (smoky.state === 'sailing' && smokes < 2) {
+    battle.hit(smoky, smoky);
+    if (smoky.smoke > 0) {
+      smokes += 1;
+      assert.equal(battle.canTarget(smoky), false);
+      assert.ok(!battle.targets.includes(smoky));
+      run(battle, 3.2, CLOSED);
+      assert.equal(battle.canTarget(smoky), true);
+    }
+  }
+  assert.equal(smokes, 2);
+  assert.equal(types().filter((type) => type === 'smoke').length, 2);
+});
+
+test('from level 8 a submarine dives and comes up again beside the child, and can\'t be fired at under the water', () => {
+  const { battle, types } = start({ levelNumber: 8, ships: 4 });
+  const sub = battle.afloat.find(({ kind }) => kind === 'sub');
+  assert.ok(sub);
+  assert.equal(sub.under, false, 'it starts where it can be seen');
+  let dived = false;
+  for (let i = 0; i < 12 / STEP; i += 1) {
+    battle.update(STEP, OPEN);
+    if (sub.under) {
+      dived = true;
+      assert.equal(battle.canTarget(sub), false);
+      assert.equal(sub.burstLeft, 0);
+    }
+  }
+  assert.ok(dived);
+  assert.ok(types().includes('dive'));
+  run(battle, 6, OPEN);
+  assert.ok(types().includes('surface'));
+  // Resting brings it up, so it's all there when the child comes back.
+  sub.under = true;
+  sub.diveIn = 4;
+  run(battle, REST_AFTER + 0.5, CLOSED);
+  assert.equal(sub.under, false);
+});
+
+test('at level 10 the pirate king\'s sails come down one at a time as it\'s hit', () => {
+  const { battle, events } = start({ levelNumber: 10, ships: 1 });
+  const [king] = battle.afloat;
+  assert.equal(king.kind, 'king');
+  assert.equal(king.partsLeft, 4);
+  const downs = [];
+  while (king.state === 'sailing') {
+    battle.hit(king, king);
+    const last = events.at(-1);
+    if (events.some((event) => event.type === 'sail-down' && !downs.includes(event))) downs.push(...events.filter((event) => event.type === 'sail-down' && !downs.includes(event)));
+    void last;
+  }
+  assert.deepEqual(downs.map(({ partsLeft }) => partsLeft), [3, 2, 1, 0]);
+});
+
+test('nothing new makes Gentle losable, at any level: hearts still stop at one', () => {
+  for (const level of LEVEL_NUMBERS) {
+    const { battle, types } = start({ levelNumber: level, ships: 4 });
+    for (let i = 0; i < 40; i += 1) {
+      ballOnHull(battle);
+      battle.update(STEP, OPEN);
+    }
+    assert.equal(battle.hearts, 1, `level ${level}`);
+    assert.ok(!types().includes('lost'));
+  }
+});
+
+test('at level 10, resting stops the new kinds of ship too: nobody hides or fires, and power-ups wait', () => {
+  const { battle, events } = start({ levelNumber: 10, ships: 9, random: seeded(5) });
+  run(battle, 8, OPEN);
+  powerUp(battle, 'bounce');
+  run(battle, REST_AFTER + 0.5, CLOSED);
+  const left = battle.power.left;
+  const fired = events.filter(({ type }) => type === 'pirate-fire').length;
+  run(battle, 40, CLOSED);
+  assert.equal(events.filter(({ type }) => type === 'pirate-fire').length, fired);
+  assert.ok(battle.afloat.every(({ under }) => !under));
+  assert.equal(battle.power.left, left);
+});
+
+/* ---------- the end of a battle, and what's still on its way ---------- */
+
+/** Which way is to the right of the child's ship. */
+const rightOfShip = (battle) => ({ x: Math.cos(battle.heading), z: Math.sin(battle.heading) });
+
+/** Beats every pirate there is, one after another right beside the ship, and waits for the win. */
+function winNow(battle) {
+  for (let i = 0; i < 40 && battle.left > 0; i += 1) {
+    battle.fill();
+    if (battle.afloat[0]) beatBeside(battle, battle.afloat[0]);
+  }
+  while (battle.state === 'sailing') battle.update(STEP, CLOSED);
+}
+
+test('prizes still floating over when a battle is won keep coming and are counted, and nothing new starts', () => {
+  const { battle, types } = start({ levelNumber: 6, ships: 4 });
+  winNow(battle);
+  assert.equal(battle.state, 'won');
+  battle.prizes = [];
+  battle.power = null;
+  const right = rightOfShip(battle);
+  const gem = prizeAt(battle, 'gem', battle.x + right.x * 60, battle.z + right.z * 60);
+  prizeAt(battle, 'power', battle.x + right.x * 20, battle.z + right.z * 20, { power: 'triple' });
+  prizeAt(battle, 'key', battle.x - right.x * 20, battle.z - right.z * 20);
+  const before = { ...battle.stats };
+  const at = { x: gem.x, z: gem.z };
+  run(battle, 0.5, CLOSED);
+  assert.ok(Math.hypot(gem.x - at.x, gem.z - at.z) > 5, 'it isn\'t frozen on the water');
+  // The finish card comes up 2.2 seconds after the win.
+  run(battle, 1.7, CLOSED);
+  assert.equal(battle.stats.gems, before.gems + 1);
+  assert.equal(battle.stats.powers, before.powers + 1);
+  assert.equal(battle.stats.keys, before.keys + 1);
+  assert.ok(types().filter((type) => type === 'prize').length >= 3);
+  // Nothing new starts once it's over: no power-up, and no chest to sail to.
+  assert.equal(battle.power, null);
+  assert.ok(!battle.prizes.some(({ kind }) => kind === 'chest'));
+});
+
+test('when the finish card comes up, whatever\'s still on its way counts, everything else shrinks away, and the count stays put', () => {
+  const { battle } = start({ levelNumber: 3, ships: 4 });
+  winNow(battle);
+  battle.prizes = [];
+  const right = rightOfShip(battle);
+  prizeAt(battle, 'gem', battle.x + right.x * 100, battle.z + right.z * 100);
+  prizeAt(battle, 'cage', battle.x - right.x * 105, battle.z - right.z * 105);
+  const far = prizeAt(battle, 'gem', battle.x + right.x * 500, battle.z + right.z * 500);
+  const before = { ...battle.stats };
+  battle.collectAll();
+  assert.equal(battle.stats.gems, before.gems + 1, 'the one floating over');
+  assert.equal(battle.stats.sailors, before.sailors + 1);
+  assert.ok(battle.prizes.every(({ fading, left }) => fading && left <= 1.2), 'they all shrink away');
+  const counted = { ...battle.stats };
+  run(battle, 2, CLOSED);
+  assert.equal(battle.prizes.length, 0);
+  assert.ok(!far.taken);
+  assert.deepEqual(battle.stats, counted, 'nothing changes after the tally');
+});
+
+test('once the last heart has gone, no heart comes back, though one picked up still counts', () => {
+  const { battle } = start({ levelNumber: 3, level: 'tough' });
+  battle.hearts = 1;
+  ballOnHull(battle);
+  battle.update(STEP, OPEN);
+  assert.equal(battle.state, 'lost');
+  prizeAt(battle, 'heart', battle.x, battle.z);
+  run(battle, 0.5, OPEN);
+  assert.equal(battle.hearts, 0);
+  assert.equal(battle.stats.hearts, 1);
+});
+
+test('a shot still on its way when the battle ends just splashes down, and beats nobody', () => {
+  const { battle, types } = start({ level: 'tough' });
+  const pirate = holding(battle, 0.1, Math.PI / 2);
+  assert.ok(battle.shots.length > 0);
+  const { hitsLeft } = pirate;
+  battle.hearts = 1;
+  ballOnHull(battle);
+  battle.update(STEP, CLOSED);
+  assert.equal(battle.state, 'lost');
+  run(battle, 2, CLOSED);
+  assert.equal(pirate.hitsLeft, hitsLeft);
+  assert.equal(battle.stats.beaten, 0);
+  assert.ok(types().includes('splash'));
+});
+
+test('the key is never on the last pirate, or on one that hides, dives or comes apart, so its chest can be sailed to in time', () => {
+  for (const level of LEVEL_NUMBERS.filter((at) => levelPlan(at).keys)) {
+    for (const ships of [4, 6, 9]) {
+      const { roles } = new Battle({ ships, levelNumber: level });
+      const carriers = roles.flatMap(({ key }, index) => (key ? [index] : []));
+      assert.equal(carriers.length, 1, `level ${level}, ${ships} ships`);
+      assert.ok(carriers[0] < ships - 1, `level ${level}, ${ships} ships: the last`);
+      assert.ok(['ship', 'sloop'].includes(roles[carriers[0]].kind), `level ${level}, ${ships} ships: a ${roles[carriers[0]].kind}`);
+    }
+  }
+  // Played through by a child who sails over to the chest once it's up, it's nearly always reached.
+  const chestFirst = (battle) => {
+    const chest = battle.prizes.find(({ kind }) => kind === 'chest');
+    return chest ? wheelFor(battle, Math.atan2(chest.x - battle.x, -(chest.z - battle.z))) : sailBeside(battle);
+  };
+  for (const level of [6, 7]) {
+    let opened = 0;
+    for (let seed = 1; seed <= 8; seed += 1) {
+      const { battle } = start({ levelNumber: level, ships: 4, random: seeded(seed) });
+      for (let seconds = 0; battle.state === 'sailing' && seconds < 600; seconds += STEP) {
+        battle.update(STEP, chestFirst(battle));
+        if (battle.state === 'sailing') battle.hearts = Math.max(battle.hearts, 2);
+      }
+      opened += battle.stats.chests;
+    }
+    assert.ok(opened >= 7, `level ${level}: ${opened} of 8`);
+  }
+});
+
+test('a treasure chest always comes up in water the ship can sail to, well inside the edge of the world', () => {
+  const random = seeded(3);
+  for (let i = 0; i < 400; i += 1) {
+    const { battle } = start({ levelNumber: 6, random });
+    // Anywhere on the water the ship can be, heading any way at all.
+    do {
+      const angle = random() * Math.PI * 2;
+      const out = Math.sqrt(random()) * WORLD.limit;
+      battle.x = Math.sin(angle) * out;
+      battle.z = Math.cos(angle) * out;
+    } while (getChart().room(battle.x, battle.z) < 30);
+    battle.heading = random() * Math.PI * 2;
+    const chest = battle.showChest();
+    assert.ok(Math.hypot(chest.x, chest.z) < WORLD.limit - 110, `${Math.round(Math.hypot(chest.x, chest.z))} from the middle`);
+    assert.ok(getChart().room(chest.x, chest.z) >= 12, 'on open water');
+  }
+});
+
+test('a snowball\'s frost and a bubble wait while the child rests, as the power-ups do', () => {
+  const { battle } = start({ levelNumber: 9 });
+  const pirate = hold(battle, Math.PI / 2, 300);
+  run(battle, REST_AFTER + 0.5, CLOSED);
+  assert.equal(battle.resting, true);
+  pirate.frosted = 5;
+  pirate.bubbled = 3;
+  run(battle, 10, CLOSED);
+  assert.equal(pirate.frosted, 5);
+  assert.equal(pirate.bubbled, 3);
+  run(battle, 1, OPEN);
+  assert.ok(pirate.frosted < 5 && pirate.bubbled < 3);
+});
+
+test('a triple shot\'s three balls landing together make one thud, and a raft beaten has nobody heard rowing away', () => {
+  const sound = new BaySound();
+  const played = [];
+  sound.play = (name) => played.push(name);
+  for (let i = 0; i < 3; i += 1) sound.hit(40);
+  assert.deepEqual(played, ['thud']);
+  played.length = 0;
+  sound.beaten(40, { rowing: false });
+  assert.ok(played.length > 0 && !played.includes('row'));
+  played.length = 0;
+  sound.beaten(40);
+  assert.ok(played.includes('row'));
+  // The rules say who's rowing: a raft launches no lifeboat.
+  const { battle, events } = start({ levelNumber: 4, ships: 2 });
+  const raft = battle.afloat.find(({ kind }) => kind === 'raft');
+  beatBeside(battle, raft);
+  assert.equal(events.find(({ type, pirate }) => type === 'beaten' && pirate === raft).boat, null);
+  const ship = battle.afloat.find(({ kind, little }) => kind === 'ship' && !little);
+  beatBeside(battle, ship);
+  assert.ok(events.find(({ type, pirate }) => type === 'beaten' && pirate === ship).boat);
 });

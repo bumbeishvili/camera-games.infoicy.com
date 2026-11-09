@@ -5,7 +5,7 @@ import { battleState, sailTowardsPirates, startPlaying, stopSailing } from './he
 
 const atLevel = (level, settings = {}) => ({ levels: { 'cannon-bay': level }, ...settings });
 
-test('level 10: four pirates at once, quick sloops, bigger broadsides and a flagship last, and it can still be finished', async ({ page }) => {
+test('level 10: four pirates at once, a submarine, a smoke ship and the pirate king, bigger broadsides and prizes, and it can still be finished', async ({ page }) => {
   test.setTimeout(480_000);
   await startPlaying(page, atLevel(10, { bayShips: 4, bayPace: 'fast' }));
   await expect(page.locator('#level-badge')).toHaveText('Level 10 of 10');
@@ -14,7 +14,7 @@ test('level 10: four pirates at once, quick sloops, bigger broadsides and a flag
     return { level: battle.levelNumber, afloat: battle.afloat.map(({ kind }) => kind) };
   });
   expect(start.level).toBe(10);
-  expect(start.afloat).toEqual(['ship', 'sloop', 'ship', 'flagship']);
+  expect(start.afloat).toEqual(['sub', 'ship', 'smoky', 'king']);
   await page.evaluate(() => {
     window.__most = 0;
     window.__weaving = false;
@@ -26,13 +26,14 @@ test('level 10: four pirates at once, quick sloops, bigger broadsides and a flag
   });
   await page.waitForTimeout(1500);
   await shot(page, 'cannon-bay-level10-start');
-  // Seen from the side: the sloop smaller, and the flagship bigger.
-  const sizes = await page.evaluate(() => {
+  // Seen from the side: the king's ship bigger, with its crown.
+  const king = await page.evaluate(() => {
     const { battle, bay } = window.__game;
-    return battle.afloat.map((pirate) => [pirate.kind, bay.shipFor(pirate).root.scale.x]);
+    const ship = bay.shipFor(battle.afloat.find(({ kind }) => kind === 'king'));
+    return { size: ship.root.scale.x, crown: Boolean(ship.crown?.visible) };
   });
-  expect(sizes.find(([kind]) => kind === 'sloop')[1]).toBeLessThan(1);
-  expect(sizes.find(([kind]) => kind === 'flagship')[1]).toBeGreaterThan(1);
+  expect(king.size).toBeGreaterThan(1);
+  expect(king.crown).toBe(true);
   await sailTowardsPirates(page);
   let shownFour = false;
   await expect.poll(async () => {
@@ -49,21 +50,30 @@ test('level 10: four pirates at once, quick sloops, bigger broadsides and a flag
   expect(seen.most).toBeGreaterThanOrEqual(3);
   await expect(page.locator('#screen-finish h2')).toHaveText('You drove them all off! The treasure is safe!');
   await expect(page.locator('#level-done-text')).toHaveText('All 10 levels done!');
+  // What was picked up is counted on the finish card, as it was along the top.
+  const picked = await page.evaluate(() => window.__game.battle.stats);
+  console.log('picked up at level 10', JSON.stringify({ gems: picked.gems, sailors: picked.sailors, chests: picked.chests, powers: picked.powers }));
+  expect(picked.gems).toBeGreaterThan(0);
+  await expect(page.locator('#sum-right-prizes')).toHaveText(`💎 ${picked.gems} · 🛟 ${picked.sailors} · 🧰 ${picked.chests} · ✨ ${picked.powers}`);
+  await expect(page.locator('#sum-right-prizes')).toBeVisible();
+  await expect(page.locator('tr:has(#sum-right-prizes) th')).toHaveText('Prizes: gems, sailors, chests, power-ups');
   await page.waitForTimeout(700);
   await shot(page, 'cannon-bay-level10-finish');
 });
 
 test('level 10: there\'s a mark for each of the four pirates, with their own health', async ({ page }) => {
   await startPlaying(page, atLevel(10, { bayShips: 6 }));
-  await expect(page.locator('.mark')).toHaveCount(4);
+  // Enough for four, and the little rafts a raft comes apart into.
+  await expect(page.locator('.mark')).toHaveCount(8);
   await expect.poll(() => page.locator('.mark:not([data-where="none"])').count(), { timeout: 10_000 }).toBe(4);
   await page.evaluate(() => {
     const { battle } = window.__game;
-    const sloop = battle.afloat.find(({ kind }) => kind === 'sloop');
-    battle.hit(sloop, sloop);
+    const ship = battle.afloat.find(({ kind }) => kind === 'ship');
+    battle.hit(ship, ship);
   });
-  const fills = await page.locator('.mark-fill').evaluateAll((nodes) => nodes.map((node) => node.style.width));
-  expect(fills.filter((width) => width !== '100%').length).toBe(1);
+  // The marks are drawn again on the next frame.
+  const hurt = () => page.locator('.mark:not([data-where="none"]) .mark-fill').evaluateAll((nodes) => nodes.filter((node) => node.style.width !== '100%').length);
+  await expect.poll(hurt, { timeout: 5000 }).toBe(1);
 });
 
 test('the cannons set to always still fire at level 10, with a closed hand', async ({ page }) => {

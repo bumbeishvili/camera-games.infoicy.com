@@ -18,7 +18,7 @@ const countEvents = (page) => page.evaluate(() => {
 });
 const seen = (page) => page.evaluate(() => window.__seen);
 
-test('level 10: drones swoop, peekers hop, rollers roll and goo comes two at a time, and it can still be finished', async ({ page }) => {
+test('level 10: drones swoop, peekers hop, rollers roll, every new kind of robot comes out, and it can still be finished', async ({ page }) => {
   test.setTimeout(420_000);
   await reachRescue(page, atLevel(10, { stops: 3, reach: 'lots', pace: 'fast' }));
   await expect(page.locator('#level-badge')).toHaveText('Level 10 of 10');
@@ -62,8 +62,14 @@ test('level 10: drones swoop, peekers hop, rollers roll and goo comes two at a t
   expect(events['second-throw'] ?? 0).toBeGreaterThan(0);
   expect(Math.max(...bigAt) - Math.min(...bigAt)).toBeGreaterThan(0.5);
   expect(shown.roller).toBe(true);
+  // What the higher levels brought, all in the one game.
+  for (const kind of ['lid', 'splitter', 'mini', 'keybot', 'carrier']) expect(events[`robot-${kind}`] ?? 0, kind).toBeGreaterThan(0);
+  for (const type of ['prize', 'power', 'chest-open', 'pal-freed']) expect(events[type] ?? 0, type).toBeGreaterThan(0);
   await expect(page.locator('#screen-finish h2')).toHaveText('You saved everyone!');
   await expect(page.locator('#level-done-text')).toHaveText('All 10 levels done!');
+  const stats = await page.evaluate(() => window.__game.mission.stats);
+  await expect(page.locator('#sum-right-prizes')).toContainText(`🔩 ${stats.bolts}`);
+  await expect(page.locator('#sum-right-prizes')).toContainText(`🤗 ${stats.pals}`);
   await page.waitForTimeout(700);
   await shot(page, 'robot-rescue-level10-finish');
 });

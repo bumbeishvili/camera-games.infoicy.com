@@ -7,7 +7,7 @@ import { byId as characterById } from '../../core/body/roster.js';
 import { GameSession, SPOKEN } from '../../core/session.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { Field } from './field.js';
-import { Patrol, readHand } from './patrol.js';
+import { POWERS, PRIZES, Patrol, newsAt, readHand } from './patrol.js';
 import { PatrolSound } from './patrol-sound.js';
 
 // Each of these has a rendered voice file: see audio/voice/lines.json.
@@ -32,6 +32,7 @@ const OPEN_PROMPT_SECONDS = 2.2; // Closed, with a tank in reach, and not drivin
 const CLOSE_PROMPT_SECONDS = 4; // Open, with nothing in reach.
 const SPOKEN_AT_MOST = 2; // Each prompt is spoken this many times in a game, and read after that.
 const TICKLES_AT_MOST = 2; // Joze only says this now and then.
+const NAMES_AFTER_SECONDS = 1.3; // Names of new things wait until "GO!" has gone.
 
 const byId = (id) => document.getElementById(id);
 const HEART = '<svg class="heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21C5 15.500 2 12 2 8a5.500 5.500 0 0 1 10-3 5.500 5.500 0 0 1 10 3c0 4-3 7.500-10 13z"/></svg>';
@@ -55,6 +56,7 @@ class TankGame {
     this.saidWaving = false;
     this.applySettings();
     this.startPreview();
+    window.addEventListener('resize', () => this.measureTop());
     const game = this;
     this.debug = {
       field: this.field,
@@ -74,9 +76,14 @@ class TankGame {
     this.preview = true;
   }
 
+  /** What each level brings that's new, for the cards: see NEWS in patrol.js. */
+  newAt(level) {
+    return newsAt(level);
+  }
+
   applySettings() {
-    const { hands } = this.session.settings;
-    this.field.configure({ side: hands });
+    const { hands, language } = this.session.settings;
+    this.field.configure({ side: hands, language });
     if (this.patrol) {
       const { reach, pace, tankLevel, driving } = this.session.settings;
       this.patrol.configure({ help: reach, pace, level: tankLevel, driving });
@@ -122,11 +129,14 @@ class TankGame {
       driving: settings.driving,
       onEvent: (event) => this.onEvent(event),
     });
+    this.field.configure({ side: settings.hands, language: settings.language });
     this.field.reset(this.patrol);
-    this.field.configure({ side: settings.hands });
     this.field.showMarks = true;
+    this.powerShown = null;
     this.showHearts();
     this.showProgress();
+    this.showHaul();
+    this.showPower();
   }
 
   begin() {
@@ -145,7 +155,8 @@ class TankGame {
     const { sound } = this.session;
     const handlers = {
       shot: () => {
-        sound.shot();
+        // A triple shot's two side balls go with the middle one, which makes the one sound.
+        if (!event.side) sound.shot();
         this.sinceAction = 0;
       },
       hit: () => sound.hit(),
@@ -158,15 +169,88 @@ class TankGame {
       resting: () => this.onResting(event),
       won: () => this.end(FINISH),
       lost: () => this.onLost(),
+      prize: () => {
+        this.prizeSound();
+        this.showHaul();
+      },
+      'chest-open': () => sound.crew(),
+      'crate-got': () => sound.crew(),
+      power: () => this.showPower(),
+      'power-off': () => this.showPower(),
+      bonk: () => sound.bump(),
+      'shield-down': () => sound.stopped(),
+      bubbled: () => sound.crew(),
+      dig: () => sound.land(false),
+      'pop-up': () => sound.land(false),
+      split: () => sound.stopped(),
+      'part-off': () => sound.stopped(),
+      'cage-hit': () => sound.hit(),
+      freed: () => {
+        if (event.byChild) sound.crew();
+        this.showHaul();
+      },
     };
     handlers[event.type]?.();
     this.showProgress();
   }
 
-  onStopped({ left }) {
+  onStopped({ left, part }) {
     const { sound } = this.session;
     sound.stopped();
-    if (left === 1) this.sayAsJoze(JOZE_ONE_MORE, { quietly: true });
+    if (left === 1 && !part) this.sayAsJoze(JOZE_ONE_MORE, { quietly: true });
+  }
+
+  /** Prizes come in handfuls, so their twinkle isn't played for every one. */
+  prizeSound() {
+    const now = performance.now();
+    if (now - (this.lastPrizeSound ?? 0) < 140) return;
+    this.lastPrizeSound = now;
+    this.session.sound.prize();
+  }
+
+  /** What's been picked up, on the chip at the top: only what this level has, and only once there's some. */
+  showHaul() {
+    const { patrol } = this;
+    if (!patrol || this.preview) return;
+    const chip = byId('chip-haul');
+    chip.hidden = !patrol.plan.bolts;
+    const haul = patrol.haul;
+    for (const [key, value] of Object.entries(haul)) {
+      const item = chip.querySelector(`[data-haul='${key}']`);
+      item.hidden = key !== 'bolts' && value === 0;
+      item.querySelector('.haul-count').textContent = String(value);
+    }
+    this.measureTop();
+  }
+
+  /** Where the chips along the top end, for what goes under them, as they can need a second row. */
+  measureTop() {
+    const bottom = Math.round(document.querySelector('.hud-top')?.getBoundingClientRect().bottom ?? 0);
+    if (bottom > 0 && bottom !== this.topBottom) {
+      this.topBottom = bottom;
+      document.documentElement.style.setProperty('--hud-bottom', `${bottom}px`);
+    }
+  }
+
+  /** The power-up that's on, with a bar that runs down. */
+  showPower() {
+    const { patrol } = this;
+    const chip = byId('chip-power');
+    const on = patrol && !this.preview ? [['fire', patrol.fireKind, patrol.power.fireLeft], ['magnet', patrol.power.magnetLeft > 0 && 'magnet', patrol.power.magnetLeft], ['slow', patrol.slowing && 'slow', patrol.power.slowLeft]].filter(([, name]) => name) : [];
+    // Its name is in the language the voice speaks, which a grown-up can change in the middle of a round.
+    const ka = this.session.settings.language === 'ka';
+    const key = `${on.map(([, name]) => name).join(',')} ${ka}`;
+    if (key !== this.powerShown) {
+      this.powerShown = key;
+      chip.hidden = !on.length;
+      chip.querySelector('.chip-value').innerHTML = on.map(([slot, name]) => `<span class="power" data-power="${slot}"><span class="power-mark" aria-hidden="true">${POWERS[name].mark}</span><span class="power-bar"><span></span></span></span>`).join('');
+      chip.querySelector('.chip-label').textContent = on.length === 1 ? (ka ? POWERS[on[0][1]].nameKa : POWERS[on[0][1]].name) : 'Power-ups';
+      this.measureTop();
+    }
+    for (const [slot, name, left] of on) {
+      const bar = chip.querySelector(`[data-power='${slot}'] .power-bar span`);
+      if (bar) bar.style.width = `${Math.round((left / POWERS[name].seconds) * 100)}%`;
+    }
   }
 
   onCrew() {
@@ -253,7 +337,14 @@ class TankGame {
     // The game may have just finished.
     if (session.screen !== 'playing') return;
     field.showMarks = true;
+    field.playing = session.playSeconds > NAMES_AFTER_SECONDS;
     field.update(dt, hand);
+    this.showPower();
+    this.measureIn = (this.measureIn ?? 0) - dt;
+    if (this.measureIn <= 0) {
+      this.measureIn = 0.5;
+      this.measureTop();
+    }
     session.sound.engine(patrol.tank.speed / patrol.pace.drive);
 
     this.sinceAction = patrol.firing || patrol.tank.speed > 1 ? 0 : this.sinceAction + dt;
@@ -289,6 +380,7 @@ class TankGame {
     const { field, patrol, session } = this;
     const counting = session.screen === 'countdown';
     const hand = this.readTheHand(snapshot);
+    field.playing = false;
     if (this.preview || counting) patrol.warmUp(dt);
     // Behind the finish, the crews carry on waving and Joze carries on cheering.
     else if (session.screen === 'finish') patrol.update(dt);
@@ -330,7 +422,9 @@ class TankGame {
     if (!patrol.autoDrive && patrol.underShell) return this.once('look-out', LOOK_OUT);
     if (patrol.resting && hand === 'closed') return this.once('resting', SPOKEN.resting);
     if (!patrol.autoDrive && this.farFor > TOO_FAR_PROMPT_SECONDS) return this.once('far', TOO_FAR);
-    const nearOne = patrol.rolling.some((enemy) => patrol.inRange(enemy));
+    // What the gun can fire at, as it fires: robot tanks that can be seen, and the cage, but not a
+    // digger under the ground.
+    const nearOne = patrol.targets.some((target) => patrol.inRange(target));
     if (hand === 'closed' && nearOne && !patrol.driving && this.closedFor > OPEN_PROMPT_SECONDS) return this.once('fire', OPEN_TO_FIRE);
     if (!patrol.autoDrive && hand === 'open' && !nearOne && this.openFor > CLOSE_PROMPT_SECONDS) return this.once('drive', CLOSE_TO_DRIVE);
     this.lastPromptKey = null;
@@ -348,9 +442,15 @@ class TankGame {
   summary() {
     const { stats } = this.patrol;
     const { hands } = this.session.settings;
-    const onHand = (value) => ({ left: hands === 'left' ? value : 0, right: hands === 'right' ? value : 0 });
+    const onHand = (value, other = 0) => ({ left: hands === 'left' ? value : other, right: hands === 'right' ? value : other });
+    // What was picked up, from level 2 on, and any friend let out of a cage, from level 6.
+    const { plan } = this.patrol;
+    const haul = Object.entries(this.patrol.haul).filter(([key, value]) => key !== 'friends' && (value > 0 || key === 'bolts'));
+    const prizes = haul.map(([key, value]) => `${PRIZES[key.slice(0, -1)].mark} ${value}`).join('  ');
+    byId('sum-left-prizes').closest('tr').hidden = !plan.bolts;
+    byId('sum-left-friends').closest('tr').hidden = !plan.cage;
     // Running out of hearts, which only Medium and Tough allow, means trying the same level again.
-    return { hero: stats.stopped, noun: 'patrol', rows: { tanks: onHand(stats.stopped) }, won: this.patrol.state !== 'lost' };
+    return { hero: stats.stopped, noun: 'patrol', rows: { tanks: onHand(stats.stopped), prizes: onHand(plan.bolts ? prizes : '', ''), friends: onHand(stats.friends) }, won: this.patrol.state !== 'lost' };
   }
 }
 
@@ -364,7 +464,7 @@ new GameSession({
     finishTitle: FINISH,
     heroMark: '⭐',
     heroNoun: 'tanks stopped',
-    extraRows: [{ id: 'tanks', label: 'Tanks stopped' }],
+    extraRows: [{ id: 'tanks', label: 'Tanks stopped' }, { id: 'prizes', label: 'Prizes' }, { id: 'friends', label: 'Friends freed' }],
     hudTop: `
       <div class="hud-top">
         <div class="chips">
@@ -373,6 +473,10 @@ new GameSession({
           <div class="chip chip-hearts"><span class="chip-label">Hearts</span><span id="chip-hearts" class="chip-value"></span></div>
         </div>
         <div class="race-progress" aria-hidden="true"><div id="race-progress-fill" class="race-progress-fill"></div></div>
+        <div class="chips chips-more">
+          <div id="chip-haul" class="chip chip-haul" hidden><span class="chip-label">Prizes</span><span class="chip-value">${['bolts', 'gems', 'stars', 'friends'].map((key) => `<span class="haul" data-haul="${key}" ${key === 'bolts' ? '' : 'hidden'}><span aria-hidden="true">${{ bolts: '🔩', gems: '💎', stars: '🌟', friends: '🤗' }[key]}</span><span class="haul-count">0</span></span>`).join('')}</span></div>
+          <div id="chip-power" class="chip chip-power" hidden><span class="chip-label">Power-up</span><span class="chip-value"></span></div>
+        </div>
       </div>
       ${STORY_BOX}
       <div class="film" aria-hidden="true">

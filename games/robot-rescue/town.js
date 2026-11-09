@@ -729,15 +729,20 @@ function waterTexture() {
   });
 }
 
-function skyTexture() {
+// The day, and from level 8 a warm evening that's just as bright: the sky goes peach and pink at the
+// bottom, and the light warmer, but nothing gets darker.
+const DAY = { sky: ['#4aa6ec', '#8fd2fa', '#e6f6ff'], fog: '#dcf1fb', light: '#ffffff', ground: '#b9c7a0', sun: '#fff3dc', sunPower: 2.3, clouds: '#ffffff' };
+const EVENING = { sky: ['#6f9ee0', '#f7b8a0', '#ffe2bd'], fog: '#fbe3cf', light: '#fff0de', ground: '#c9b79a', sun: '#ffd9a8', sunPower: 2.45, clouds: '#ffe6dc' };
+
+function skyTexture(colours = DAY.sky) {
   const canvas = document.createElement('canvas');
   canvas.width = 4;
   canvas.height = 256;
   const ctx = canvas.getContext('2d');
   const sky = ctx.createLinearGradient(0, 0, 0, 256);
-  sky.addColorStop(0, '#4aa6ec');
-  sky.addColorStop(0.45, '#8fd2fa');
-  sky.addColorStop(0.62, '#e6f6ff');
+  sky.addColorStop(0, colours[0]);
+  sky.addColorStop(0.45, colours[1]);
+  sky.addColorStop(0.62, colours[2]);
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, 4, 256);
   const texture = new THREE.CanvasTexture(canvas);
@@ -823,10 +828,28 @@ export class Town {
     });
   }
 
+  /** The ride in the evening, from level 8, or in the day. It's set before a game, never during one. */
+  setEvening(evening) {
+    if (this.evening === evening) return;
+    this.evening = evening;
+    const look = evening ? EVENING : DAY;
+    this.skies[evening ? 'evening' : 'day'] ??= skyTexture(look.sky);
+    this.scene.background = this.skies[evening ? 'evening' : 'day'];
+    this.scene.fog.color.set(look.fog);
+    this.hemisphere.color.set(look.light);
+    this.hemisphere.groundColor.set(look.ground);
+    this.sun.color.set(look.sun);
+    this.sun.intensity = look.sunPower;
+    this.cloudPaint.color.set(look.clouds);
+  }
+
   buildSky(puffTexture) {
-    this.scene.background = skyTexture();
+    this.skies = { day: skyTexture() };
+    this.evening = false;
+    this.scene.background = this.skies.day;
     this.scene.fog = new THREE.Fog('#dcf1fb', 70, 420);
-    this.scene.add(new THREE.HemisphereLight('#ffffff', '#b9c7a0', 1.75));
+    this.hemisphere = new THREE.HemisphereLight('#ffffff', '#b9c7a0', 1.75);
+    this.scene.add(this.hemisphere);
     const sun = new THREE.DirectionalLight('#fff3dc', 2.3);
     sun.position.set(-70, 120, 10);
     sun.target.position.set(0, 0, -75);
@@ -840,6 +863,7 @@ export class Town {
     this.sun = sun;
 
     const paint = new THREE.SpriteMaterial({ map: puffTexture, color: '#ffffff', opacity: 0.92, transparent: true, depthWrite: false, fog: false });
+    this.cloudPaint = paint;
     const rand = seeded(5);
     this.clouds = Array.from({ length: 26 }, () => {
       const sprite = new THREE.Sprite(paint);

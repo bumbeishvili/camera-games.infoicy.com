@@ -9,8 +9,9 @@ import * as THREE from '../../vendor/three/three.module.js';
 import { ball, outlineMaterial } from '../../core/body/characters.js';
 import { SHAPES, Sparks } from '../../core/body/sparks.js';
 import { Glove } from '../../core/glove.js';
+import { CageView, Loot } from './goodies.js';
 import { Marks } from './marks.js';
-import { GUN, shellPoint } from './patrol.js';
+import { GUN, NEWS, POWERS, PRIZES, shellPoint } from './patrol.js';
 import { ChildTank, RobotTank, shadowTexture } from './tanks.js';
 import { Valley } from './valley.js';
 import { PLAY, bridgeRise, clampToPlay, groundY, heightAt } from './valley-map.js';
@@ -23,9 +24,21 @@ const SLOW_FRAME_SECONDS = 1 / 34;
 const SLOW_CHECK_FRAMES = 90;
 const PALM_SHARE = 0.04; // The little copy of the hand under the crosshair.
 const CROSSHAIR_SHARE = 0.066;
-const BAR_ABOVE = { scout: 5.6, basher: 5.8, heavy: 6.6 };
+const BAR_ABOVE = { scout: 5.6, basher: 5.8, heavy: 6.6, shield: 6.4, digger: 5.6, splitter: 6.6, mini: 4.4, boss: 8.6, cage: 8.4 };
 const RING_POINTS = 64;
-const SHOTS_AT_ONCE = 8;
+const SHOTS_AT_ONCE = 16;
+const LABEL_SECONDS = 2.6; // The first time something new turns up, its name is over it for this long.
+// What the new kinds of robot tank are called, the first time each turns up.
+const NEWS_BY_KEY = Object.fromEntries(Object.values(NEWS).flat().map((item) => [item.key, item]));
+const KIND_LABELS = {
+  shield: { name: 'Shield tank', nameKa: 'ფარიანი ტანკი' },
+  digger: { name: 'Digger tank', nameKa: 'მთხრელი ტანკი' },
+  splitter: { name: 'Splitting tank', nameKa: 'ორად გაყოფადი ტანკი' },
+  boss: { name: 'Big boss tank', nameKa: 'დიდი უფროსი ტანკი' },
+};
+// The warm light of the evening, on the higher levels, which is just as bright as the day's.
+const DAY = { sky: '#79bf60', hemi: '#ffffff', ground: '#a6c79a', sun: '#fff3dc', fog: '#d7eefb' };
+const SUNSET = { sky: '#e9a86a', hemi: '#ffd8b0', ground: '#c99a78', sun: '#ffb877', fog: '#f7c9a0' };
 const SHELLS_AT_ONCE = 6;
 const TRACK_MARKS = 420;
 const TRACK_EVERY = 0.85;
@@ -61,8 +74,10 @@ export class Field {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color('#79bf60');
     this.scene.fog = new THREE.Fog('#d7eefb', 150, 330);
-    this.scene.add(new THREE.HemisphereLight('#ffffff', '#a6c79a', 1.95));
+    this.hemi = new THREE.HemisphereLight('#ffffff', '#a6c79a', 1.95);
+    this.scene.add(this.hemi);
     const sun = new THREE.DirectionalLight('#fff3dc', 1.9);
+    this.sun = sun;
     // The same way the baked shadows on the ground fall.
     sun.position.set(-0.45, 1, -0.3);
     this.scene.add(sun);
@@ -74,6 +89,14 @@ export class Field {
     this.softShadow = shadowTexture();
     this.child = new ChildTank(this.scene, this.softShadow, this.reducedMotion);
     this.robots = new Map();
+    this.loot = new Loot(this.scene, this.softShadow, this.reducedMotion);
+    this.cageViews = new Map();
+    this.labels = [];
+    this.labelled = new Set();
+    this.named = []; // Every name put up this round, in order, for the tests.
+    this.playing = false; // Whether the game is being played, after "GO!", which is when names come up.
+    this.language = 'en';
+    this.sparkleIn = 0;
 
     this.gloves = { left: new Glove('left'), right: new Glove('right') };
     this.side = 'right';
@@ -98,14 +121,59 @@ export class Field {
     this.resize();
   }
 
-  configure({ side = this.side }) {
+  configure({ side = this.side, language = this.language }) {
     this.side = side;
+    this.language = language;
+  }
+
+  /** The light of the day, or of a warm evening on the higher levels. */
+  setSunset(on) {
+    const look = on ? SUNSET : DAY;
+    this.scene.background.set(look.sky);
+    this.hemi.color.set(look.hemi);
+    this.hemi.groundColor.set(look.ground);
+    this.sun.color.set(look.sun);
+    this.scene.fog.color.set(look.fog);
+    this.sunset = on;
+  }
+
+  /**
+   * The first time something new turns up, its name goes over it for a moment. item is what it's called,
+   * as { name, nameKa }, and at() says where it is.
+   */
+  label(key, item, at) {
+    if (this.labelled.has(key) || !item) return;
+    this.labelled.add(key);
+    this.named.push(this.wordsFor(item));
+    this.labels.push({ key, item, at, age: 0 });
+  }
+
+  /** The name of something new over a robot tank, for as long as it's rolling. */
+  labelOver(key, enemy, item = NEWS_BY_KEY[key]) {
+    this.label(key, item, () => (enemy.state === 'rolling' ? this.point.set(enemy.x, enemy.y + BAR_ABOVE[enemy.kind] + 1.6, enemy.z) : null));
+  }
+
+  /** Over the child's tank, where a prize or a crate's name goes once it's been picked up. */
+  overTank() {
+    const { tank } = this.patrol;
+    return this.point.set(tank.x, tank.y + 9, tank.z);
+  }
+
+  wordsFor(item) {
+    return this.language === 'ka' && item.nameKa ? item.nameKa : item.name;
   }
 
   buildShots() {
     const shape = ball(0.46);
     const line = outlineMaterial('#1d2740', 0.09);
     const mine = new THREE.MeshBasicMaterial({ color: '#ffd23f' });
+    // Each kind of fire has its own look: the usual yellow balls, see-through bubbles and big boing balls.
+    this.shotLooks = {
+      ball: { fill: mine, size: 1, arc: 1.6 },
+      spread: { fill: mine, size: 1, arc: 1.6 },
+      bubble: { fill: new THREE.MeshBasicMaterial({ color: '#a9dcff', transparent: true, opacity: 0.6, depthWrite: false }), size: 2.1, arc: 2.4 },
+      boing: { fill: new THREE.MeshBasicMaterial({ color: '#ff8c5a' }), size: 2.4, arc: 5 },
+    };
     this.shotBalls = Array.from({ length: SHOTS_AT_ONCE }, () => {
       const group = new THREE.Group();
       group.add(new THREE.Mesh(shape, mine), new THREE.Mesh(shape, line));
@@ -228,8 +296,18 @@ export class Field {
     this.tracks.count = 0;
     this.nextTrack = 0;
     this.lastTrack.clear();
+    // The names go first, so that a new kind of tank in the opening wave is named too.
+    this.labels = [];
+    this.labelled.clear();
+    this.named = [];
+    this.setSunset(Boolean(patrol.plan?.sunset));
+    if (patrol.plan?.sunset) this.label('sunset', NEWS_BY_KEY.sunset, () => this.point.set(0, 12, PLAY.far + 8));
     for (const enemy of patrol.enemies) this.addRobot(enemy);
     for (const ball of this.shotBalls) ball.visible = false;
+    this.loot.clear();
+    for (const view of this.cageViews.values()) view.dispose();
+    this.cageViews.clear();
+    for (const cage of patrol.cages) this.cageViews.set(cage, new CageView(cage, this.scene, this.reducedMotion));
     for (const { group, shadow } of this.shellBalls) {
       group.visible = false;
       shadow.visible = false;
@@ -241,6 +319,10 @@ export class Field {
     const view = new RobotTank(enemy, this.scene, this.softShadow, this.reducedMotion);
     view.place(enemy, 1 / 60, { snap: true });
     this.robots.set(enemy, view);
+    if (KIND_LABELS[enemy.kind]) this.label(enemy.kind, KIND_LABELS[enemy.kind], () => (enemy.state === 'gone' ? null : this.point.set(enemy.x, enemy.y + BAR_ABOVE[enemy.kind] + 1.6, enemy.z)));
+    // The second of a pair: the name goes between the two of them.
+    const { leader } = enemy;
+    if (leader) this.label('pairs', NEWS_BY_KEY.pairs, () => (enemy.state === 'rolling' && leader.state === 'rolling' ? this.point.set((enemy.x + leader.x) / 2, Math.max(enemy.y, leader.y) + 7.4, (enemy.z + leader.z) / 2) : null));
   }
 
   /* ---------- the hand ---------- */
@@ -299,7 +381,7 @@ export class Field {
   onEvent(event) {
     const handlers = {
       spawn: () => this.addRobot(event.enemy),
-      shot: () => this.onShot(event.shot),
+      shot: () => this.onShot(event.shot, event.side),
       hit: () => this.onHit(event.enemy),
       stopped: () => this.onStopped(event.enemy, event.left),
       crew: () => this.onCrew(event.enemy),
@@ -308,10 +390,102 @@ export class Field {
       land: () => this.onLand(event.shell, event.hit),
       fizzle: () => this.onFizzle(event.shell),
       hurt: () => this.onHurt(),
-      dash: () => this.dust(event.enemy),
-      'run-off': () => this.dust(event.enemy),
+      dash: () => {
+        this.dust(event.enemy);
+        this.labelOver('dash', event.enemy);
+      },
+      'run-off': () => {
+        this.dust(event.enemy);
+        this.labelOver('retreat', event.enemy);
+      },
+      bounce: () => this.onBounce(event),
+      bonk: () => this.onBonk(event.enemy),
+      'shield-down': () => this.puffs(this.topOf(event.enemy, this.point), { count: 4, colours: ['#d8d3cc', '#86e6dc'], size: 1.2, speed: 1.8, life: 0.8 }),
+      bubbled: () => this.bits(this.topOf(event.enemy, this.point), { count: 5, shapes: ['bubble'], colours: ['#d6efff', '#ffffff'], size: 1, speed: 3, life: 0.9, gravity: -2 }),
+      dig: () => this.dirt(event.enemy),
+      'pop-up': () => this.dirt(event.enemy),
+      split: () => this.onSplit(event.enemy),
+      'part-off': () => this.onPartOff(event.enemy, event.part),
+      'cage-hit': () => this.onCageHit(event.cage),
+      freed: () => this.onFreed(event.cage),
+      prizes: () => this.onPrizes(event.prizes),
+      prize: () => this.onPrize(),
+      crate: () => this.label(`power-${event.crate.power}`, POWERS[event.crate.power], () => (this.patrol.crates.includes(event.crate) ? this.point.set(event.crate.x, event.crate.y + 6.4, event.crate.z) : this.overTank())),
+      power: () => this.label(`power-${event.name}`, POWERS[event.name], () => this.overTank()),
+      'crate-got': () => this.onCrateGot(),
+      'chest-open': () => this.bits(this.point.set(event.prize.x, event.prize.y + 2, event.prize.z), { count: 8, shapes: ['star', 'spark'], colours: ['#ffd23f', '#ffffff'], size: 1, speed: 5, life: 0.9, gravity: 8 }),
     };
     handlers[event.type]?.();
+  }
+
+  onBounce({ from }) {
+    this.puffs(this.point.set(from.x, from.y + 3, from.z), { count: 2, colours: ['#ffd9c8'], size: 0.8, speed: 1.4, life: 0.5 });
+  }
+
+  /** A shot bouncing off a shield: a bonk and a few stars, and no harm done. */
+  onBonk(enemy) {
+    const view = this.robots.get(enemy);
+    view?.hit();
+    this.bits(this.topOf(enemy, this.point), { count: 4, shapes: ['star', 'spark'], colours: ['#ffffff', '#86e6dc'], size: 0.9, speed: 4.5, life: 0.5 });
+  }
+
+  /** Earth thrown up by a digger going down or coming up. */
+  dirt(enemy) {
+    const at = this.point.set(enemy.x, enemy.y + 0.8, enemy.z);
+    this.puffs(at, { count: 6, colours: ['#b58a5c', '#9a6a3c', '#d9c9a0'], size: 1.5, speed: 2.8, life: 0.9, grow: 1.6, opacity: 0.6, up: 0.6 });
+    this.bits(at, { count: 4, shapes: ['rock'], colours: ['#7d5430', '#9a6a3c'], size: 0.5, speed: 5, life: 0.55 });
+  }
+
+  /** A splitting tank comes apart, in soft smoke, and its two halves roll out of it. */
+  onSplit(enemy) {
+    const view = this.robots.get(enemy);
+    const at = this.topOf(enemy, this.point);
+    this.puffs(at, { count: 7, colours: ['#d8d3cc', '#b9b3a9', '#9fd3ff'], size: 1.8, speed: 2.4, life: 1.1, grow: 1.7 });
+    this.bits(at, { count: 8, shapes: ['bolt', 'star'], colours: ['#dfe6ee', '#ffd23f'], size: 1.2, speed: 6.5, life: 0.9 });
+    if (view) {
+      view.dispose();
+      this.robots.delete(enemy);
+    }
+  }
+
+  /** A part comes off the boss, with a puff and some bolts. */
+  onPartOff(enemy, part) {
+    this.robots.get(enemy)?.dropPart(part);
+    const at = this.topOf(enemy, this.point);
+    this.puffs(at, { count: 5, colours: ['#a59e95', '#b9b3a9'], size: 1.6, speed: 2.2, life: 1.1 });
+    this.bits(at, { count: 8, shapes: ['bolt', 'star'], colours: ['#dfe6ee', '#ffd23f'], size: 1.3, speed: 7, life: 0.9 });
+  }
+
+  onCageHit(cage) {
+    this.cageViews.get(cage)?.hit();
+    this.bits(this.point.set(cage.x, cage.y + 4, cage.z), { count: 4, shapes: ['star', 'spark'], colours: ['#ffd23f', '#ffffff'], size: 0.9, speed: 4.5, life: 0.5 });
+  }
+
+  onFreed(cage) {
+    this.cageViews.get(cage)?.open();
+    this.bits(this.point.set(cage.x, cage.y + 5, cage.z), { count: 10, shapes: ['star', 'spark', 'star'], colours: ['#ffd23f', '#ff7a9a', '#ffffff'], size: 1.1, speed: 5, life: 1.1, gravity: 6 });
+    this.child.cheer(1.6);
+  }
+
+  onPrizes(prizes) {
+    for (const prize of prizes) {
+      const item = prize.type === 'chest' ? NEWS_BY_KEY.treasure : PRIZES[prize.type];
+      this.label(`prize-${prize.type}`, item, () => (this.patrol.prizes.includes(prize) ? this.point.set(prize.x, prize.y + 4.2, prize.z) : this.overTank()));
+    }
+  }
+
+  /** A prize reaching the tank: a twinkle, and not too many at once. */
+  onPrize() {
+    if (this.sparkleIn > 0) return;
+    this.sparkleIn = 0.12;
+    const { tank } = this.patrol;
+    this.bits(this.point.set(tank.x, tank.y + 4, tank.z), { count: 2, shapes: ['star'], colours: ['#ffd23f'], size: 0.6, speed: 3, life: 0.5, gravity: 6 });
+  }
+
+  onCrateGot() {
+    const { tank } = this.patrol;
+    this.bits(this.point.set(tank.x, tank.y + 5, tank.z), { count: 7, shapes: ['star', 'spark'], colours: ['#ffd23f', '#ffffff', '#9fd3ff'], size: 0.9, speed: 4.5, life: 0.8, gravity: 6 });
+    this.child.cheer(1.2);
   }
 
   puffs(at, { count = 4, colours = ['#d8d3cc'], size = 1, speed = 2.4, life = 0.9, grow = 1.6, opacity = 0.72, up = 0.8 }) {
@@ -353,11 +527,13 @@ export class Field {
     }
   }
 
-  onShot(shot) {
+  onShot(shot, side = false) {
     const { child } = this;
-    child.fired();
     const muzzle = child.muzzle(this.point);
     shot.from = muzzle.clone();
+    // The two side balls of a triple shot go with the middle one: no more kick or smoke.
+    if (side) return;
+    child.fired();
     this.puffs(muzzle, { count: 3, colours: ['#efe9dd', '#d8d3cc'], size: 0.8, speed: 1.6, life: 0.5, grow: 2.2, opacity: 0.68 });
   }
 
@@ -374,6 +550,7 @@ export class Field {
 
   onStopped(enemy, left) {
     if (left === 0) this.onAllStopped();
+    if (enemy.kind === 'boss') this.robots.get(enemy)?.dropPart(3);
     const at = this.topOf(enemy, this.point);
     this.bits(at, { count: 14, shapes: ['bolt', 'star', 'bolt', 'spark'], colours: ['#dfe6ee', '#ffd23f', '#c6d0db', '#ffffff'], size: 1.5, speed: 8.5, life: 1.05 });
     this.puffs(at, { count: 7, colours: ['#a59e95', '#8a837b', '#b9b3a9'], size: 2, speed: 2.6, life: 1.3, grow: 1.8 });
@@ -521,7 +698,14 @@ export class Field {
     const { patrol } = this;
     for (const [enemy, view] of this.robots) {
       view.update(dt, { resting: patrol.resting, childAt: patrol.tank });
-      if (enemy.state === 'rolling') {
+      if (enemy.dig?.phase === 'under') {
+        // A trail of earth behind a digger going along underground.
+        enemy.dirtIn = (enemy.dirtIn ?? 0) - dt;
+        if (enemy.dirtIn <= 0) {
+          enemy.dirtIn = 0.2 / this.effects;
+          this.sparks.emit({ shape: 'puff', colour: '#b58a5c', at: { x: enemy.x + between(-1, 1), y: enemy.y + 0.8, z: enemy.z + between(-1, 1) }, velocity: [between(-0.4, 0.4), 1, between(-0.4, 0.4)], life: 0.8, size: 1.1, grow: 1.4, opacity: 0.55, drag: 0.8 });
+        }
+      } else if (enemy.state === 'rolling') {
         this.whileMoving(enemy, dt, view.wide * 0.32, view.length);
         // Getting tired: a thin wisp of smoke once it's nearly had enough.
         if (enemy.hp / enemy.maxHp <= 0.5) {
@@ -551,8 +735,12 @@ export class Field {
       shotBall.visible = Boolean(shot?.from);
       if (!shotBall.visible) return;
       const { target, share, from } = shot;
-      const toY = target.y + 2.8;
-      shotBall.position.set(mix(from.x, target.x, share), mix(from.y, toY, share) + Math.sin(share * Math.PI) * 1.6, mix(from.z, target.z, share));
+      const look = this.shotLooks[shot.kind] ?? this.shotLooks.ball;
+      shotBall.children[0].material = look.fill;
+      shotBall.scale.setScalar(look.size);
+      const toY = target.y + (target.kind === 'cage' ? 4 : 2.8) + (target.bubbled > 0 ? 2.4 : 0);
+      shotBall.position.set(mix(from.x, target.x, share), mix(from.y, toY, share) + Math.sin(share * Math.PI) * look.arc, mix(from.z, target.z, share));
+      if (shot.kind === 'boing' && !this.reducedMotion) shotBall.rotation.x += 0.2;
     });
   }
 
@@ -601,7 +789,23 @@ export class Field {
       this.updateRobots(dt);
       this.placeShots();
       this.placeShells(dt);
+      this.loot.update(dt, patrol);
+      for (const view of this.cageViews.values()) view.update(dt, tank);
+      if (patrol.state === 'playing') {
+        for (const cage of patrol.cages) if (cage.state === 'closed') this.label('cage', NEWS_BY_KEY.cage, () => (cage.state === 'closed' ? this.point.set(cage.x, cage.y + BAR_ABOVE.cage + 1.6, cage.z) : null));
+      }
     }
+    this.sparkleIn = Math.max(0, this.sparkleIn - dt);
+    // One name at a time, so they never pile up on each other. One whose thing has gone before its name
+    // came up is skipped, and left for the next one of its kind. They only count down in play, once "GO!"
+    // has gone, and not behind the countdown.
+    this.labels = this.labels.filter((label) => {
+      if (label.age >= LABEL_SECONDS) return false;
+      if (label.age > 0 || label.at()) return true;
+      this.labelled.delete(label.key);
+      return false;
+    });
+    if (this.playing && this.labels[0]) this.labels[0].age += dt;
     this.sparks.update(dt);
     this.drawMarks(dt);
   }
@@ -629,12 +833,23 @@ export class Field {
     const look = patrol.look;
     const bars = [];
     const sleeping = [];
-    for (const enemy of patrol.rolling) {
-      const top = BAR_ABOVE[enemy.kind];
+    for (const enemy of [...patrol.rolling, ...patrol.cages.filter(({ state }) => state === 'closed')]) {
+      if (patrol.hidden(enemy)) continue;
+      const top = BAR_ABOVE[enemy.kind] + (enemy.bubbled > 0 ? 2.4 : 0);
       const at = this.project(enemy.x, enemy.y + top, enemy.z);
       const size = this.sizeAt(enemy.x, enemy.y + top, enemy.z, enemy.size);
       bars.push({ x: at.x, y: at.y - 8, width: Math.max(38, size * 1.5), share: enemy.hp / enemy.maxHp, blocks: enemy.maxHp });
-      if (resting) sleeping.push({ x: at.x, y: at.y - 10 });
+      if (resting && enemy.kind !== 'cage') sleeping.push({ x: at.x, y: at.y - 10 });
+    }
+    // The name of something new, over it, fading in and out slowly.
+    const labels = [];
+    for (const label of this.playing ? this.labels.slice(0, 1) : []) {
+      const where = label.at();
+      if (!where) continue;
+      const at = this.project(where.x, where.y, where.z);
+      const alpha = clamp(Math.min(label.age / 0.5, (LABEL_SECONDS - label.age) / 0.7), 0, 1);
+      // In the language the voice speaks, which a grown-up can change in the middle of a round.
+      labels.push({ x: at.x, y: at.y, words: this.wordsFor(label.item), alpha });
     }
     // How far the gun reaches, as a ring on the ground, following its bumps.
     const points = [];
@@ -673,6 +888,7 @@ export class Field {
       shells,
       bars,
       sleeping,
+      labels,
       line,
       crosshair: spot ? {
         x: spot.x,

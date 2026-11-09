@@ -36,15 +36,87 @@ export function levelPlan(level = 1) {
     atOnce: stepsAt(level, { 1: 0, 6: 1 }), // From level 6, four pirates at once rather than three.
     balls: stepsAt(level, { 1: 0, 7: 1 }), // From level 7, each broadside has one more ball.
     flagship: level >= 9, // From level 9, the last captain sails a big flagship.
+    // Something new to see and play with at every level from 2, on top of the numbers above. NEWS below
+    // names each of them for the cards. Prizes and power-ups only ever help, and missing one costs nothing.
+    gems: level >= 2, // Beaten ships drop gems, which float over to the ship.
+    triple: level >= 2, // A power-up: three balls at once.
+    sailors: level >= 3, // A pirate tows a sailor in a cage, who floats free when it's beaten.
+    hearts: level >= 3, // Some ships drop a heart, which can go two over the usual five.
+    rafts: level >= 4, // Barrel rafts, which come apart into two little ones.
+    shield: level >= 4, // A power-up: a bubble round the ship that balls bounce off.
+    bubble: level >= 5, // A power-up: balls that trap a ship in a bubble for a moment.
+    keys: level >= 6, // A pirate carries a key, and picking it up brings a treasure chest.
+    magnet: level >= 6, // A power-up: prizes come from far away.
+    smoke: level >= 7, // Smoke ships, which hide in a puff of smoke and slip away, twice.
+    mist: level >= 7, // A light sea mist.
+    subs: level >= 8, // Submarines, which dive and come up somewhere else.
+    bounce: level >= 8, // A power-up: a big ball that bounces on to the next ship.
+    snow: level >= 9, // A power-up: snowballs that slow a ship down.
+    king: level >= 10, // The last is the pirate king's ship, whose sails come down one at a time.
+    sunset: level >= 10, // The sun going down, with the light just as bright.
   };
 }
 
-// The kinds of pirate ship: how many of the level's hits beat it, how fast it is, and how big it looks.
+/**
+ * What each level brings that's new, for the title card, the countdown and the finish card. Each key is
+ * switched on in levelPlan from that level on. Things that only get quicker or more frequent aren't here.
+ */
+export const NEWS = [
+  { level: 2, key: 'gems', mark: '💎', name: 'Gems', nameKa: 'ძვირფასი ქვები' },
+  { level: 2, key: 'triple', mark: '🍡', name: 'Triple shot', nameKa: 'სამმაგი გასროლა' },
+  { level: 3, key: 'sailors', mark: '🛟', name: 'Sailors to rescue', nameKa: 'გადასარჩენი მეზღვაურები' },
+  { level: 3, key: 'hearts', mark: '❤️', name: 'Extra hearts', nameKa: 'დამატებითი გულები' },
+  { level: 4, key: 'rafts', mark: '🛶', name: 'Barrel rafts', nameKa: 'კასრების ტივები' },
+  { level: 4, key: 'shield', mark: '🛡️', name: 'Shield bubble', nameKa: 'დამცავი ბუშტი' },
+  { level: 5, key: 'sloops', mark: '⛵', name: 'Quick sloops', nameKa: 'სწრაფი ნავები' },
+  { level: 5, key: 'bubble', mark: '🫧', name: 'Bubble shot', nameKa: 'ბუშტის გასროლა' },
+  { level: 6, key: 'keys', mark: '🗝️', name: 'Key and chest', nameKa: 'გასაღები და სკივრი' },
+  { level: 6, key: 'magnet', mark: '🧲', name: 'Magnet', nameKa: 'მაგნიტი' },
+  { level: 7, key: 'smoke', mark: '💨', name: 'Smoke ships', nameKa: 'კვამლის გემები' },
+  { level: 7, key: 'mist', mark: '☁️', name: 'Sea mist', nameKa: 'ზღვის ნისლი' },
+  { level: 8, key: 'subs', mark: '🔭', name: 'Submarines', nameKa: 'წყალქვეშა ნავები' },
+  { level: 8, key: 'bounce', mark: '🏐', name: 'Bouncing ball', nameKa: 'მხტუნავი ბურთი' },
+  { level: 9, key: 'flagship', mark: '🚢', name: 'Big flagship', nameKa: 'დიდი ფლაგმანი' },
+  { level: 9, key: 'snow', mark: '❄️', name: 'Snow shot', nameKa: 'თოვლის გასროლა' },
+  { level: 10, key: 'king', mark: '👑', name: 'Pirate King', nameKa: 'მეკობრეების მეფე' },
+  { level: 10, key: 'sunset', mark: '🌅', name: 'Sunset', nameKa: 'მზის ჩასვლა' },
+];
+
+/** What's new at this level, as the cards show it: [{ mark, name, nameKa, key }]. Nothing at level 1. */
+export function newsAt(level) {
+  return NEWS.filter((item) => item.level === level).map(({ key, mark, name, nameKa }) => ({ key, mark, name, nameKa }));
+}
+
+/** The name and picture of something new, by its key in levelPlan, for the little label the first time it's seen. */
+export const newsFor = (key) => NEWS.find((item) => item.key === key) ?? null;
+
+// The kinds of pirate ship: how many of the level's hits beat it, how fast it is, how big it looks, and
+// how many more or fewer balls it fires each time. A raft comes apart into two little ones, which never
+// fire. A submarine spends some of its time under the water, where it can't be fired at. The king's ship
+// has four sails, which come down one at a time as it's hit.
 export const SHIP_KINDS = {
   ship: { hits: 1, speed: 1, size: 1, balls: 0 },
   sloop: { hits: 0.6, speed: 1.2, size: 0.72, balls: 0 },
   flagship: { hits: 1.5, speed: 1, size: 1.3, balls: 1 },
+  raft: { hits: 0.5, speed: 0.9, size: 1, balls: -1 },
+  little: { hits: 0.22, speed: 1.1, size: 0.6, balls: 0, quiet: true },
+  smoky: { hits: 0.9, speed: 1.05, size: 1, balls: 0 },
+  sub: { hits: 0.7, speed: 1, size: 1, balls: -1 },
+  king: { hits: 1.8, speed: 1, size: 1.38, balls: 1, parts: 4 },
 };
+
+// What the child's cannons can fire, for a few seconds, from a power-up floating on the water. Each is
+// switched on by levelPlan under the same name. shield and magnet are the two that aren't cannonballs.
+export const POWERS = {
+  triple: { seconds: 10, fire: true },
+  shield: { seconds: 10, fire: false },
+  bubble: { seconds: 10, fire: true },
+  magnet: { seconds: 12, fire: false },
+  bounce: { seconds: 10, fire: true },
+  snow: { seconds: 10, fire: true },
+};
+// The level each comes in, as the newest is dropped first. A heart takes its turn with them, from level 3.
+const BONUS_FROM = { triple: 2, hearts: 3, shield: 4, bubble: 5, magnet: 6, bounce: 8, snow: 9 };
 
 // How fast the child's ship can go, in units a second.
 export const PACES = {
@@ -137,6 +209,17 @@ const SPAWN = { away: [270, 340], angle: [degrees(15), degrees(62)], room: 60, t
 const ROW = { speed: 7, seconds: 13, startOut: 20, aside: 1.05 };
 // What a beaten ship leaves floating: a line of gold leading from where it went down towards the child.
 const GOLD = { coins: 6, from: 22, apart: 12, reach: 13, seconds: 26, least: 10 };
+// Prizes from the higher levels float over to the ship by themselves from this near, and from much
+// further with the magnet. They're picked up by the hull coming this close, and go after a while.
+const PRIZE = { reach: 16, pull: 120, drift: 22, magnetPull: 520, magnetDrift: 70, seconds: 32, from: 30, spread: 26, gems: 3, chestGems: 6, chestAway: [110, 150], least: 12, fade: 1.2 };
+export const MOST_HEARTS = HEARTS + 2;
+const TRIPLE = { apart: 11 };
+const BUBBLE = { seconds: 3.2 };
+const FROST = { seconds: 5, speed: 0.5, reload: 0.4 };
+const BOUNCE = { reach: 190 };
+const SMOKE = { seconds: 3, every: 0.34 };
+const SUB = { up: 8, under: 4.5 };
+const TOW = 30; // How far behind its ship a sailor's cage is towed.
 const WON_AFTER = 2.6;
 const AFTER_WIN_WHEEL = 0.3;
 
@@ -260,9 +343,14 @@ export class Battle {
     this.balls = []; // The pirates'.
     this.boats = [];
     this.coins = [];
+    this.prizes = []; // Gems, hearts, keys, chests, sailors in cages and power-ups, from level 2.
+    this.power = null; // The power-up going, as { kind, left, total }.
     this.wonIn = null;
+    this.roles = this.planRoles();
+    this.bonuses = this.bonusOrder();
+    this.nextBonus = 0;
 
-    this.stats = { beaten: 0, shots: 0, hits: 0, hurts: 0, seconds: 0, openSeconds: 0, openings: 0, crewsAway: 0, gold: 0 };
+    this.stats = { beaten: 0, shots: 0, hits: 0, hurts: 0, seconds: 0, openSeconds: 0, openings: 0, crewsAway: 0, gold: 0, gems: 0, hearts: 0, keys: 0, chests: 0, sailors: 0, powers: 0, littles: 0, blocked: 0 };
   }
 
   emptyZone() {
@@ -290,12 +378,27 @@ export class Battle {
     return this.stats.beaten;
   }
 
+  /** Ships still to beat, with any little rafts still afloat. */
   get left() {
-    return this.total - this.stats.beaten;
+    return this.total - this.stats.beaten + this.pirates.filter((pirate) => pirate.little && pirate.state === 'sailing').length;
   }
 
   get afloat() {
     return this.pirates.filter(({ state }) => state === 'sailing');
+  }
+
+  /** What the cannons can fire at: afloat, and not hidden under the water or in smoke. */
+  canTarget(pirate) {
+    return pirate.state === 'sailing' && !pirate.under && !(pirate.smoke > 0);
+  }
+
+  get targets() {
+    return this.pirates.filter((pirate) => this.canTarget(pirate));
+  }
+
+  /** The kind of fire the cannons have right now: a power-up's, or the usual. */
+  get fireKind() {
+    return this.power && POWERS[this.power.kind].fire ? this.power.kind : 'ball';
   }
 
   get firing() {
@@ -310,14 +413,64 @@ export class Battle {
   }
 
   fill() {
-    while (this.waiting > 0 && this.afloat.length < this.mostAtOnce) this.spawn();
+    while (this.waiting > 0 && this.afloat.filter((pirate) => !pirate.little).length < this.mostAtOnce) this.spawn();
   }
 
-  /** What sort of ship the next pirate sails: the last is a flagship and every third a sloop, on the higher levels. */
+  /**
+   * What sort of ship each pirate sails, on the higher levels: the last is the flagship, or the pirate
+   * king's. The others take turns at the kinds the level has, the newest first so that it's seen straight
+   * away, with a plain ship between each.
+   */
   kindFor(index) {
-    if (this.plan.flagship && index === this.total - 1) return 'flagship';
-    if (this.plan.sloops && index % 3 === 1) return 'sloop';
-    return 'ship';
+    const { plan } = this;
+    if (index === this.total - 1 && plan.king) return 'king';
+    if (index === this.total - 1 && plan.flagship) return 'flagship';
+    const kinds = [['subs', 'sub'], ['smoke', 'smoky'], ['sloops', 'sloop'], ['rafts', 'raft']].filter(([key]) => plan[key]).map(([, kind]) => kind);
+    if (kinds.length === 0) return 'ship';
+    const turns = kinds.flatMap((kind) => [kind, 'ship']);
+    return turns[index % turns.length];
+  }
+
+  /** Each pirate's kind, and which of them tow a sailor in a cage and which carry the key, at this level. */
+  planRoles() {
+    const roles = Array.from({ length: this.total }, (_, index) => ({ kind: this.kindFor(index), cage: false, key: false }));
+    const last = this.total - 1;
+    if (this.plan.sailors) {
+      // The second pirate, so a rescue comes early, and another later on in a long battle.
+      const towing = (from) => roles.findIndex((role, index) => index >= from && index < last && !role.cage && ['ship', 'sloop', 'smoky'].includes(role.kind));
+      const first = towing(1);
+      if (first >= 0) roles[first].cage = true;
+      const second = this.total >= 6 ? towing(Math.max(4, first + 2)) : -1;
+      if (second >= 0) roles[second].cage = true;
+    }
+    if (this.plan.keys) {
+      // The chest the key brings up has to be sailed to before the battle ends, so it's never the last,
+      // and it's a plain ship or a sloop, which are soon beaten: not one that hides, dives or comes apart.
+      // In a battle of four they're all out at once, so it can be the first, or one towing a sailor too.
+      const quick = (role) => role.kind === 'ship' || role.kind === 'sloop';
+      const choices = [
+        (role, index) => index >= 2 && quick(role) && !role.cage,
+        (role) => quick(role) && !role.cage,
+        (role) => quick(role),
+        (role) => !['raft', 'smoky', 'sub'].includes(role.kind),
+        () => true,
+      ];
+      let carrier = -1;
+      for (const fits of choices) {
+        carrier = roles.findIndex((role, index) => index < last && fits(role, index));
+        if (carrier >= 0) break;
+      }
+      roles[Math.max(0, carrier)].key = true;
+    }
+    return roles;
+  }
+
+  /** The power-ups and hearts that beaten ships drop, one each, in turn: the level's newest first. */
+  bonusOrder() {
+    return Object.entries(BONUS_FROM)
+      .filter(([key]) => this.plan[key])
+      .sort(([, a], [, b]) => b - a)
+      .map(([key]) => (key === 'hearts' ? { kind: 'heart' } : { kind: 'power', power: key }));
   }
 
   /** Somewhere for a ship to come from, out in front of the child if there's water there. */
@@ -339,13 +492,22 @@ export class Battle {
   }
 
   spawn() {
-    const { random } = this;
     this.waiting -= 1;
     const { x, z } = this.findOpenWater();
-    const kind = this.kindFor(this.nextPirate);
-    const hits = Math.round(this.level.shipHits * SHIP_KINDS[kind].hits);
-    const pirate = {
-      index: this.nextPirate,
+    const role = this.roles[this.nextPirate] ?? { kind: this.kindFor(this.nextPirate) };
+    const pirate = this.makePirate(role.kind, x, z, this.nextPirate);
+    pirate.cage = Boolean(role.cage);
+    pirate.key = Boolean(role.key);
+    this.nextPirate += 1;
+    this.pirates.push(pirate);
+    this.emit('spawn', { pirate });
+  }
+
+  makePirate(kind, x, z, index) {
+    const { random } = this;
+    const hits = Math.max(3, Math.round(this.level.shipHits * SHIP_KINDS[kind].hits));
+    return {
+      index,
       kind,
       maxHits: hits,
       x,
@@ -373,15 +535,22 @@ export class Battle {
       turning: 0,
       coast: 0,
       atLimit: 0,
+      little: kind === 'little',
+      cage: false,
+      key: false,
+      bubbled: 0, // Seconds left in a bubble, from the bubble shot.
+      frosted: 0, // Seconds left slowed down, from a snowball.
+      smoke: 0, // Seconds left hidden in its own smoke, for a smoke ship.
+      smokeAt: hits * 0.66,
+      under: false, // A submarine under the water.
+      diveIn: SUB.up,
+      partsLeft: SHIP_KINDS[kind].parts ?? 0, // The king's sails.
     };
-    this.nextPirate += 1;
-    this.pirates.push(pirate);
-    this.emit('spawn', { pirate });
   }
 
   /** How much faster than usual this pirate sails when chasing or running for it: see levelPlan and SHIP_KINDS. */
   quicker(pirate) {
-    return this.plan.chase * SHIP_KINDS[pirate.kind].speed;
+    return this.plan.chase * SHIP_KINDS[pirate.kind].speed * (pirate.frosted > 0 ? FROST.speed : 1);
   }
 
   /** Sails a pirate towards a direction, and round anything in the way. */
@@ -427,6 +596,23 @@ export class Battle {
       this.sinkPirate(pirate, dt);
       return;
     }
+    // A snowball's frost and a bubble wait while the child rests, like the power-ups, so resting never
+    // uses them up.
+    const waiting = this.resting && this.state === 'sailing';
+    if (!waiting) pirate.frosted = Math.max(0, pirate.frosted - dt);
+    pirate.smoke = Math.max(0, pirate.smoke - dt);
+    // Trapped in a bubble, it bobs where it is for a moment, and can't fire.
+    if (pirate.bubbled > 0) {
+      if (!waiting) pirate.bubbled = Math.max(0, pirate.bubbled - dt);
+      pirate.burstLeft = 0;
+      pirate.speed = damp(pirate.speed, 0, 2.5, dt);
+      const forward = forwardOf(pirate.heading);
+      pirate.x += forward.x * pirate.speed * dt;
+      pirate.z += forward.z * pirate.speed * dt;
+      keepOnTheWater(pirate, dt);
+      if (pirate.bubbled === 0) this.emit('unbubbled', { pirate });
+      return;
+    }
     const dx = this.x - pirate.x;
     const dz = this.z - pirate.z;
     const away = Math.hypot(dx, dz);
@@ -446,8 +632,10 @@ export class Battle {
       return;
     }
     if (pirate.mode === 'circle') pirate.mode = 'chase';
+    if (pirate.kind === 'sub' && this.diveOrSurface(pirate, dt)) return;
 
-    pirate.fireIn -= dt;
+    // Slowed by a snowball, it takes longer to reload too.
+    pirate.fireIn -= dt * (pirate.frosted > 0 ? FROST.reload : 1);
     pirate.modeLeft -= dt;
     if (pirate.sinceHit % PIRATE.slowsEvery > PIRATE.slowsEvery - PIRATE.slowsFor && away < PIRATE.slowsWithin && Math.abs(this.turning) > PIRATE.slowsWhenTurning) {
       this.sailPirate(pirate, pirate.heading, PIRATE.slowShare, dt);
@@ -491,6 +679,25 @@ export class Battle {
     this.carryOnFiring(pirate, dt);
   }
 
+  /**
+   * A submarine comes up for a while and then dives, and under the water it can't be fired at and
+   * doesn't fire, and goes to come up again beside the child. Says whether it's under.
+   */
+  diveOrSurface(pirate, dt) {
+    pirate.diveIn -= dt;
+    if (pirate.diveIn <= 0) {
+      pirate.under = !pirate.under;
+      pirate.diveIn = pirate.under ? SUB.under : SUB.up;
+      pirate.burstLeft = 0;
+      if (!pirate.under) pirate.fireIn = Math.max(pirate.fireIn, PIRATE.afterRest);
+      this.emit(pirate.under ? 'dive' : 'surface', { pirate });
+    }
+    if (!pirate.under) return false;
+    const station = this.stationFor(pirate);
+    this.sailPirate(pirate, headingTo(station.x - pirate.x, station.z - pirate.z), PIRATE.catchUp * this.quicker(pirate), dt);
+    return true;
+  }
+
   /** On the higher levels, a pirate running for it zigzags from side to side. */
   weaving(pirate) {
     return this.plan.weave ? Math.sin(this.time * WEAVE.every + pirate.index * 1.7) * WEAVE.turn : 0;
@@ -518,8 +725,9 @@ export class Battle {
 
   fireWhenSideOn(pirate, away, off, facing) {
     if (pirate.burstLeft > 0 || pirate.fireIn > 0 || this.broadsideIn > 0 || away > PIRATE.leaveRange) return;
+    if (SHIP_KINDS[pirate.kind].quiet || pirate.under || pirate.smoke > 0) return;
     if (Math.abs(Math.abs(off) - Math.PI / 2) > PIRATE.beamWithin) return;
-    pirate.burstLeft = this.level.balls + this.plan.balls + SHIP_KINDS[pirate.kind].balls;
+    pirate.burstLeft = Math.max(1, this.level.balls + this.plan.balls + SHIP_KINDS[pirate.kind].balls);
     pirate.burstIn = 0;
     pirate.burstSide = facing;
     pirate.fireIn = between(this.random, this.level.fireEvery) * this.plan.fireEvery;
@@ -634,7 +842,7 @@ export class Battle {
   aimCannons(dt) {
     const nearest = { left: null, right: null };
     const distance = { left: Infinity, right: Infinity };
-    for (const pirate of this.afloat) {
+    for (const pirate of this.targets) {
       const side = this.zoneOf(pirate);
       if (!side) continue;
       const away = Math.hypot(pirate.x - this.x, pirate.z - this.z);
@@ -672,23 +880,38 @@ export class Battle {
       y: GUN_HEIGHT,
       z: this.z + forward.z * along + across.z * sign * HULL.beam,
     };
+    const kind = this.fireKind;
+    const aim = (this.random() - 0.5) * SHOT.spread * 2;
+    // A triple shot is three balls side by side, along the target.
+    const alongs = kind === 'triple' ? [aim - TRIPLE.apart, aim, aim + TRIPLE.apart] : [aim];
+    let shot = null;
+    for (const spot of alongs) {
+      shot = this.launch(from, target, { side, gun, along: spot, fire: kind === 'ball' ? null : kind });
+      this.stats.shots += 1;
+    }
+    this.emit('fire', { side, gun, shot, from, kind });
+  }
+
+  /** A ball from the child's ship, or bounced on from a ship it hit, on its way to target. */
+  launch(from, target, { side = null, gun = 0, along = 0, fire = null, bounced = false } = {}) {
     const away = Math.hypot(target.x - from.x, target.z - from.z);
     const shot = {
-      from,
+      from: { ...from },
       target,
       side,
       gun,
+      fire,
+      bounced,
       t: 0,
       seconds: clamp(away / SHOT.speed, SHOT.shortest, SHOT.longest),
       arc: SHOT.arc + away * SHOT.arcPerUnit,
-      along: (this.random() - 0.5) * SHOT.spread * 2,
+      along,
       x: from.x,
       y: from.y,
       z: from.z,
     };
     this.shots.push(shot);
-    this.stats.shots += 1;
-    this.emit('fire', { side, gun, shot, from });
+    return shot;
   }
 
   /** Each shot goes to wherever its target has got to, as lining up exactly isn't the point. */
@@ -703,7 +926,8 @@ export class Battle {
       shot.z = from.z + (toZ - from.z) * t;
       shot.y = from.y + (SHOT.height - from.y) * t + 4 * shot.arc * t * (1 - t);
       if (t >= 1) {
-        if (target.state === 'sailing') this.hit(target, shot);
+        // After the end, one still on its way just splashes down.
+        if (this.state === 'sailing' && this.canTarget(target)) this.hit(target, shot);
         else this.emit('splash', { x: shot.x, z: shot.z, size: 0.5, mine: true });
       }
     }
@@ -715,9 +939,20 @@ export class Battle {
     pirate.hitLeft = 0.35;
     pirate.sinceHit = 0;
     this.stats.hits += 1;
-    this.emit('hit', { pirate, x: shot.x, y: shot.y, z: shot.z });
+    this.emit('hit', { pirate, x: shot.x, y: shot.y, z: shot.z, fire: shot.fire ?? null });
+    this.knockSails(pirate, shot);
     if (pirate.hitsLeft <= 0) {
       this.beat(pirate);
+      return;
+    }
+    this.fireDoes(pirate, shot);
+    // A smoke ship hides in its own smoke and slips away, twice.
+    if (pirate.kind === 'smoky' && pirate.hitsLeft <= pirate.smokeAt) {
+      pirate.smokeAt -= pirate.maxHits * SMOKE.every;
+      pirate.smoke = SMOKE.seconds;
+      pirate.burstLeft = 0;
+      this.sendAway(pirate);
+      this.emit('smoke', { pirate });
       return;
     }
     // Being fired at, it runs for it now and then, and has to be chased.
@@ -727,17 +962,83 @@ export class Battle {
     }
   }
 
+  /** The king's ship has a sail for each quarter of its hits, and they come down one at a time. */
+  knockSails(pirate, shot) {
+    const parts = SHIP_KINDS[pirate.kind].parts;
+    if (!parts) return;
+    const left = Math.max(0, Math.ceil((pirate.hitsLeft / pirate.maxHits) * parts - 1e-9));
+    while (pirate.partsLeft > left) {
+      pirate.partsLeft -= 1;
+      this.emit('sail-down', { pirate, partsLeft: pirate.partsLeft, x: shot.x, z: shot.z });
+    }
+  }
+
+  /** What a power-up's ball does, besides the hit. */
+  fireDoes(pirate, shot) {
+    if (shot.fire === 'bubble') {
+      if (pirate.bubbled <= 0) this.emit('bubbled', { pirate });
+      pirate.bubbled = BUBBLE.seconds;
+    } else if (shot.fire === 'snow') {
+      if (pirate.frosted <= 0) this.emit('frosted', { pirate });
+      pirate.frosted = FROST.seconds;
+    } else if (shot.fire === 'bounce' && !shot.bounced) {
+      // The big ball bounces on to the next ship near enough, once.
+      let next = null;
+      let least = BOUNCE.reach;
+      for (const other of this.targets) {
+        const away = Math.hypot(other.x - pirate.x, other.z - pirate.z);
+        if (other !== pirate && away < least) {
+          least = away;
+          next = other;
+        }
+      }
+      if (next) {
+        const bounce = this.launch({ x: shot.x, y: shot.y, z: shot.z }, next, { fire: 'bounce', bounced: true, along: 0 });
+        this.emit('bounce', { from: pirate, to: next, shot: bounce });
+      }
+    }
+  }
+
   /** Its sails come down and it slowly sinks, and its crew has already got away in the lifeboat. */
   beat(pirate) {
     pirate.state = 'sinking';
     pirate.mode = 'sinking';
     pirate.burstLeft = 0;
+    pirate.bubbled = 0;
+    pirate.smoke = 0;
+    if (pirate.little) {
+      // One half of a raft, which nobody was on, and which comes apart and goes down.
+      this.stats.littles += 1;
+      this.dropPrizes(pirate);
+      this.emit('little-beaten', { pirate, left: this.left });
+      if (this.left === 0) this.wonIn = WON_AFTER;
+      return;
+    }
     this.stats.beaten += 1;
-    const boat = this.launchBoat(pirate);
+    // A raft has nobody on it, and comes apart into two little ones.
+    const boat = pirate.kind === 'raft' ? null : this.launchBoat(pirate);
+    if (pirate.kind === 'raft') this.split(pirate);
     this.dropGold(pirate);
+    this.dropPrizes(pirate);
     this.emit('beaten', { pirate, boat, beaten: this.stats.beaten, left: this.left });
     if (this.left === 0) this.wonIn = WON_AFTER;
     else this.spawnIn = PIRATE.nextIn;
+  }
+
+  /** A raft coming apart: two little rafts go off either way, to be chased. */
+  split(raft) {
+    const across = rightOf(raft.heading);
+    const littles = [-1, 1].map((side) => {
+      const little = this.makePirate('little', raft.x + across.x * side * 14, raft.z + across.z * side * 14, raft.index);
+      little.heading = raft.heading + side * 0.9;
+      little.speed = raft.speed;
+      little.fireIn = Infinity;
+      keepOnTheWater(little, 1);
+      this.sendAway(little, 2.5);
+      this.pirates.push(little);
+      return little;
+    });
+    this.emit('split', { pirate: raft, littles });
   }
 
   /** Off to the side of its ship, so that it's easy to see, and away from the child's. */
@@ -789,6 +1090,188 @@ export class Battle {
     this.coins = this.coins.filter(({ left }) => left > 0);
   }
 
+  /* ---------- prizes and power-ups, from level 2 ---------- */
+
+  /** Something floating on the water to pick up. Out of the way of the land, and never on it. */
+  addPrize(kind, x, z, details = {}) {
+    const chart = getChart();
+    if (chart.room(x, z) < PRIZE.least) {
+      const out = chart.away(x, z);
+      const push = PRIZE.least - chart.room(x, z) + 4;
+      x += out.x * push;
+      z += out.z * push;
+    }
+    const prize = { kind, x, z, left: kind === 'chest' ? Infinity : PRIZE.seconds, phase: this.random() * 6, ...details };
+    this.prizes.push(prize);
+    this.emit('drop', { prize });
+    return prize;
+  }
+
+  /** Somewhere between where a ship went down and the child's ship, a little to one side or the other. */
+  nearWreck(pirate, out = PRIZE.from) {
+    const way = forwardOf(headingTo(this.x - pirate.x, this.z - pirate.z));
+    const aside = (this.random() - 0.5) * PRIZE.spread;
+    return { x: pirate.x + way.x * out - way.z * aside, z: pirate.z + way.z * out + way.x * aside };
+  }
+
+  /**
+   * On the higher levels, what a beaten ship leaves besides its gold: gems, a sailor it was towing, the
+   * key it carried, and a power-up or a heart, one each in turn. A little raft leaves one gem.
+   */
+  dropPrizes(pirate) {
+    if (!this.plan.gems) return;
+    const gems = pirate.little ? 1 : PRIZE.gems;
+    for (let i = 0; i < gems; i += 1) {
+      const { x, z } = this.nearWreck(pirate, PRIZE.from + i * 8);
+      this.addPrize('gem', x, z, { colour: Math.floor(this.random() * 3) });
+    }
+    if (pirate.little) return;
+    if (pirate.cage) {
+      const back = forwardOf(pirate.heading);
+      this.addPrize('cage', pirate.x - back.x * TOW, pirate.z - back.z * TOW, { index: pirate.index });
+    }
+    if (pirate.key) {
+      const { x, z } = this.nearWreck(pirate, PRIZE.from + 12);
+      this.addPrize('key', x, z);
+    }
+    const bonus = this.bonuses[this.nextBonus % Math.max(1, this.bonuses.length)];
+    if (bonus) {
+      this.nextBonus += 1;
+      const { x, z } = this.nearWreck(pirate, PRIZE.from + 20);
+      this.addPrize(bonus.kind, x, z, bonus.power ? { power: bonus.power } : {});
+    }
+  }
+
+  /** Whether a prize floats over to the ship by itself: from near enough, or from far with the magnet. */
+  comesOver(prize, gap = this.distanceFromHull(prize.x, prize.z)) {
+    const magnet = this.power?.kind === 'magnet';
+    // A treasure chest has to be sailed to, unless the magnet's on.
+    return gap < (magnet ? PRIZE.magnetPull : PRIZE.pull) && (prize.kind !== 'chest' || magnet);
+  }
+
+  /** Prizes float over to the ship, and the hull coming near picks them up. The magnet brings them from far. */
+  movePrizes(dt) {
+    const magnet = this.power?.kind === 'magnet';
+    const drift = Math.max(magnet ? PRIZE.magnetDrift : PRIZE.drift, this.speed * 1.2);
+    for (const prize of this.prizes) {
+      // Nothing goes while the child rests. Once the battle's over and counted, what's left shrinks away.
+      if (!this.resting || this.state !== 'sailing' || prize.fading) prize.left -= dt;
+      if (prize.fading) continue;
+      const gap = this.distanceFromHull(prize.x, prize.z);
+      if (gap <= PRIZE.reach) {
+        prize.left = 0;
+        prize.taken = true;
+        this.collect(prize);
+        continue;
+      }
+      if (this.comesOver(prize, gap)) {
+        const dx = this.x - prize.x;
+        const dz = this.z - prize.z;
+        const away = Math.hypot(dx, dz) || 1;
+        const step = Math.min(away, drift * dt);
+        prize.x += (dx / away) * step;
+        prize.z += (dz / away) * step;
+      }
+    }
+    // The magnet brings the gold over too.
+    if (magnet) {
+      for (const coin of this.coins) {
+        const dx = this.x - coin.x;
+        const dz = this.z - coin.z;
+        const away = Math.hypot(dx, dz) || 1;
+        if (away > PRIZE.magnetPull) continue;
+        const step = Math.min(away, drift * dt);
+        coin.x += (dx / away) * step;
+        coin.z += (dz / away) * step;
+      }
+    }
+    this.prizes = this.prizes.filter(({ left }) => left > 0);
+  }
+
+  /** What a prize adds to what's been picked up. */
+  count(prize) {
+    const { stats } = this;
+    if (prize.kind === 'gem') stats.gems += 1;
+    if (prize.kind === 'heart') stats.hearts += 1;
+    if (prize.kind === 'cage') stats.sailors += 1;
+    if (prize.kind === 'key') stats.keys += 1;
+    if (prize.kind === 'chest') stats.chests += 1;
+    if (prize.kind === 'power') stats.powers += 1;
+  }
+
+  collect(prize) {
+    this.count(prize);
+    // Once the battle's over, what's picked up only counts: nothing new starts, there's no chest to sail
+    // to, and once the last heart has gone, no heart comes back.
+    if (this.state === 'sailing') {
+      if (prize.kind === 'heart') this.hearts = Math.min(MOST_HEARTS, this.hearts + 1);
+      if (prize.kind === 'key') this.showChest();
+      if (prize.kind === 'power') this.startPower(prize.power);
+    }
+    if (prize.kind === 'chest') this.openChest(prize);
+    this.emit('prize', { prize, hearts: this.hearts });
+  }
+
+  /**
+   * When the finish card comes up, whatever's still on its way to the ship counts, as it does in the
+   * other games, and everything else on the water shrinks away. A chest coming over counts with its gems.
+   */
+  collectAll() {
+    for (const prize of this.prizes) {
+      if (prize.fading) continue;
+      if (this.comesOver(prize)) {
+        this.count(prize);
+        if (prize.kind === 'chest') this.stats.gems += PRIZE.chestGems;
+      }
+      prize.fading = true;
+      prize.left = Math.min(prize.left, PRIZE.fade);
+    }
+  }
+
+  /** The key brings up a treasure chest out in front, a little to one side, to sail to. */
+  showChest() {
+    const chart = getChart();
+    // In open water, and well inside the edge of the world, where the ship can sail to it.
+    const fits = (x, z) => chart.room(x, z) >= 30 && Math.hypot(x, z) < EDGE.turnBackFrom - 20;
+    for (let attempt = 0; attempt < 24; attempt += 1) {
+      const turn = attempt < 8 ? 0.35 + this.random() * 0.4 : attempt < 16 ? (0.35 + this.random() * 0.4) * 3 : this.random() * Math.PI;
+      const direction = this.heading + turn * (this.random() < 0.5 ? -1 : 1);
+      const away = between(this.random, PRIZE.chestAway);
+      const x = this.x + Math.sin(direction) * away;
+      const z = this.z - Math.cos(direction) * away;
+      if (fits(x, z)) return this.addPrize('chest', x, z);
+    }
+    // Towards the middle of the world, if nothing else would do.
+    const inward = forwardOf(headingTo(-this.x, -this.z));
+    return this.addPrize('chest', this.x + inward.x * PRIZE.chestAway[0], this.z + inward.z * PRIZE.chestAway[0]);
+  }
+
+  /** Gems spill out, and a power-up, all coming straight over. */
+  openChest(chest) {
+    for (let i = 0; i < PRIZE.chestGems; i += 1) {
+      const angle = (i / PRIZE.chestGems) * Math.PI * 2;
+      this.addPrize('gem', chest.x + Math.cos(angle) * 22, chest.z + Math.sin(angle) * 22, { colour: i % 3 });
+    }
+    const powers = this.bonuses.filter(({ kind }) => kind === 'power');
+    if (powers.length) this.addPrize('power', chest.x, chest.z + 18, { power: powers[Math.floor(this.random() * powers.length)].power });
+  }
+
+  /** A power-up lasts a few seconds. A new one takes over from the one before. It waits while the child rests. */
+  startPower(kind) {
+    const { seconds } = POWERS[kind];
+    this.power = { kind, left: seconds, total: seconds };
+    this.emit('power', { kind });
+  }
+
+  updatePower(dt) {
+    if (!this.power || this.resting) return;
+    this.power.left -= dt;
+    if (this.power.left > 0) return;
+    const { kind } = this.power;
+    this.power = null;
+    this.emit('power-end', { kind });
+  }
+
   moveBoats(dt) {
     for (const boat of this.boats) {
       boat.left -= dt;
@@ -829,7 +1312,12 @@ export class Battle {
 
   landBall(ball) {
     const onHull = !ball.harmless && !this.resting && this.state === 'sailing' && this.distanceFromHull(ball.to.x, ball.to.z) <= HULL.beam + BALL.hitWiden;
-    if (onHull) this.hurt(ball);
+    if (onHull && this.power?.kind === 'shield') {
+      // The shield bubble: it bounces off, and nothing's lost.
+      this.stats.blocked += 1;
+      this.emit('blocked', { x: ball.to.x, z: ball.to.z });
+      this.emit('splash', { x: ball.to.x, z: ball.to.z, size: 0.6 });
+    } else if (onHull) this.hurt(ball);
     else this.emit('splash', { x: ball.to.x, z: ball.to.z, size: 1 });
   }
 
@@ -878,7 +1366,7 @@ export class Battle {
     const { reach } = this.level.zone;
     let nearest = null;
     let least = reach * ASSIST.from;
-    for (const pirate of this.afloat) {
+    for (const pirate of this.targets) {
       const away = Math.hypot(pirate.x - this.x, pirate.z - this.z);
       if (away < least) {
         least = away;
@@ -939,7 +1427,15 @@ export class Battle {
     this.resting = resting;
     if (resting) {
       for (const ball of this.balls) ball.harmless = true;
-      for (const pirate of this.pirates) pirate.burstLeft = 0;
+      for (const pirate of this.pirates) {
+        pirate.burstLeft = 0;
+        // Nothing stays hidden while the child rests, so it's all there when they come back.
+        if (pirate.under) {
+          pirate.under = false;
+          pirate.diveIn = SUB.up;
+          this.emit('surface', { pirate });
+        }
+      }
     } else {
       for (const pirate of this.afloat) pirate.fireIn = Math.max(pirate.fireIn, PIRATE.afterRest);
       this.broadsideIn = Math.max(this.broadsideIn, PIRATE.afterRest);
@@ -994,6 +1490,8 @@ export class Battle {
     this.moveBalls(dt);
     this.moveBoats(dt);
     this.moveCoins(dt);
+    this.movePrizes(dt);
+    this.updatePower(dt);
     if (this.state !== 'sailing') return;
 
     if (this.wonIn !== null) {
@@ -1006,7 +1504,10 @@ export class Battle {
     }
   }
 
-  /** It's all over: what's left carries on quietly and harms nobody, and a winner takes a lap of honour. */
+  /**
+   * It's all over: what's left carries on quietly and harms nobody, and a winner takes a lap of honour.
+   * Prizes still floating over carry on coming, and are picked up as they reach the ship.
+   */
   afterTheEnd(dt) {
     const won = this.state === 'won';
     this.open = false;
@@ -1022,5 +1523,6 @@ export class Battle {
     this.moveShots(dt);
     this.moveBalls(dt);
     this.moveBoats(dt);
+    this.movePrizes(dt);
   }
 }

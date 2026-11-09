@@ -4,6 +4,7 @@
 import * as THREE from '../../vendor/three/three.module.js';
 import { ball, Fighter3D, makePose, mergeParts, outlineMaterial, roundedBox, star, toon } from '../../core/body/characters.js';
 import { byId } from '../../core/body/roster.js';
+import { DIG_SECONDS } from './patrol.js';
 import { groundY } from './valley-map.js';
 
 const INK = '#1d2740';
@@ -390,11 +391,19 @@ const LOOKS = {
   scout: { main: '#ff8a2b', dark: '#d9631a', light: '#ffc04d', length: 6.2, wide: 4.8, eyes: 1 },
   basher: { main: '#ff4f7b', dark: '#d42f5a', light: '#ffa1b8', length: 7.2, wide: 5.4, eyes: 2 },
   heavy: { main: '#9a5cff', dark: '#6f3bd0', light: '#c9a6ff', length: 9.2, wide: 6.8, eyes: 2 },
+  // The kinds the levels bring in, each built on one of the three above, in their own colours.
+  shield: { main: '#16b3a6', dark: '#0f8579', light: '#86e6dc', length: 7.2, wide: 5.4, eyes: 2, base: 'basher' },
+  digger: { main: '#c7792f', dark: '#99561c', light: '#f0b46a', length: 6.2, wide: 4.8, eyes: 1, base: 'scout' },
+  splitter: { main: '#2f9df0', dark: '#1c74c0', light: '#9fd3ff', length: 9.2, wide: 6.8, eyes: 2, base: 'heavy' },
+  mini: { main: '#2f9df0', dark: '#1c74c0', light: '#9fd3ff', length: 6.2, wide: 4.8, eyes: 1, base: 'scout', scale: 0.72 },
+  boss: { main: '#f0b419', dark: '#c48a0c', light: '#ffe08a', length: 9.2, wide: 6.8, eyes: 2, base: 'heavy', scale: 1.3 },
 };
+const baseOf = (kind) => LOOKS[kind].base ?? kind;
 
 function hullParts(kind) {
   const { main, dark, light } = LOOKS[kind];
   const { length, wide } = LOOKS[kind];
+  const base = baseOf(kind);
   const treadAt = wide / 2 - 0.62;
   const parts = [
     { geometry: roundedBox(1.05, 1.1, length - 0.7, 0.45), colour: '#3a3448', at: [-treadAt, 0.7, 0] },
@@ -403,7 +412,7 @@ function hullParts(kind) {
     { geometry: roundedBox(wide + 0.1, 0.3, length + 0.2, 0.14), colour: light, at: [0, 1.6, 0] },
     { geometry: roundedBox(wide - 1, 0.62, length - 1.3, 0.24), colour: main, at: [0, 1.94, 0.1] },
   ];
-  const wheelsPerSide = kind === 'heavy' ? 6 : kind === 'basher' ? 5 : 4;
+  const wheelsPerSide = base === 'heavy' ? 6 : base === 'basher' ? 5 : 4;
   for (const side of [-1, 1]) {
     for (let i = 0; i < wheelsPerSide; i += 1) {
       const z = (i - (wheelsPerSide - 1) / 2) * ((length - 2) / Math.max(1, wheelsPerSide - 1));
@@ -411,23 +420,35 @@ function hullParts(kind) {
       parts.push({ geometry: cylinder(0.2, 0.2, 0.26, 8).rotateZ(Math.PI / 2), colour: light, at: [side * (treadAt + 0.6), 0.72, z] });
     }
   }
-  if (kind === 'scout') {
+  if (kind === 'digger') {
+    // A big round drill on its nose, for digging.
+    parts.push({ geometry: new THREE.ConeGeometry(0.95, 2.2, 12).rotateX(-Math.PI / 2), colour: '#c9d2dc', at: [0, 1.25, -length / 2 - 1] });
+    parts.push({ geometry: cylinder(1, 1, 0.3, 14).rotateX(Math.PI / 2), colour: dark, at: [0, 1.25, -length / 2 + 0.05] });
+  } else if (base === 'scout') {
     parts.push({ geometry: roundedBox(1.6, 0.4, 0.4, 0.12), colour: light, at: [0, 1.5, -length / 2 - 0.1] });
-  } else if (kind === 'basher') {
+  } else if (base === 'basher') {
     // A big friendly bumper with teeth painted on it.
     parts.push({ geometry: roundedBox(wide - 1.4, 0.8, 0.5, 0.15), colour: light, at: [0, 1.2, -length / 2 - 0.15] });
     for (let i = 0; i < 5; i += 1) parts.push({ geometry: roundedBox(0.34, 0.46, 0.14, 0.04), colour: '#ffffff', at: [-1.1 + i * 0.55, 1.2, -length / 2 - 0.4] });
   } else {
-    parts.push({ geometry: roundedBox(1.2, 0.8, length - 3, 0.2), colour: light, at: [-wide / 2 + 1.05, 2.5, 0.2] });
-    parts.push({ geometry: roundedBox(1.2, 0.8, length - 3, 0.2), colour: light, at: [wide / 2 - 1.05, 2.5, 0.2] });
+    if (kind !== 'boss') {
+      parts.push({ geometry: roundedBox(1.2, 0.8, length - 3, 0.2), colour: light, at: [-wide / 2 + 1.05, 2.5, 0.2] });
+      parts.push({ geometry: roundedBox(1.2, 0.8, length - 3, 0.2), colour: light, at: [wide / 2 - 1.05, 2.5, 0.2] });
+    }
     parts.push({ geometry: roundedBox(wide - 1.6, 0.7, 0.6, 0.15), colour: dark, at: [0, 1.25, -length / 2 - 0.1] });
+  }
+  if (kind === 'splitter') {
+    // A white zip down the middle, where it comes apart.
+    parts.push({ geometry: roundedBox(0.34, 0.2, length + 0.1, 0.08), colour: '#ffffff', at: [0, 2.3, 0] });
+    for (let i = 0; i < 7; i += 1) parts.push({ geometry: roundedBox(0.8, 0.16, 0.22, 0.06), colour: '#ffffff', at: [0, 2.3, -length / 2 + 1 + i * ((length - 2) / 6)] });
   }
   return parts;
 }
 
 function turretParts(kind) {
   const { main, dark, light } = LOOKS[kind];
-  if (kind === 'scout') {
+  const base = baseOf(kind);
+  if (base === 'scout') {
     return [
       { geometry: cylinder(1.7, 1.9, 0.3, 20), colour: dark, at: [0, 0, 0] },
       { geometry: ball(1.65, 1.2, 1.65), colour: main, at: [0, 0.42, 0] },
@@ -435,7 +456,7 @@ function turretParts(kind) {
       { geometry: ball(0.22), colour: light, at: [0, 2.9, 0.9] },
     ];
   }
-  if (kind === 'basher') {
+  if (base === 'basher') {
     return [
       { geometry: cylinder(2, 2.2, 0.3, 20), colour: dark, at: [0, 0, 0] },
       { geometry: roundedBox(3.2, 1.7, 3, 0.5), colour: main, at: [0, 0.9, 0] },
@@ -455,8 +476,9 @@ function turretParts(kind) {
 
 function gunParts(kind) {
   const { dark, light } = LOOKS[kind];
-  if (kind === 'scout') return [{ geometry: barrel(0.28, 0.34, 2.2), colour: '#3a3448', at: [0, 0, -1.1] }, { geometry: barrel(0.42, 0.42, 0.4), colour: light, at: [0, 0, -2.2] }];
-  if (kind === 'basher') return [{ geometry: barrel(0.34, 0.42, 2.8), colour: '#3a3448', at: [0, 0, -1.4] }, { geometry: barrel(0.52, 0.52, 0.5), colour: light, at: [0, 0, -2.8] }];
+  const base = baseOf(kind);
+  if (base === 'scout') return [{ geometry: barrel(0.28, 0.34, 2.2), colour: '#3a3448', at: [0, 0, -1.1] }, { geometry: barrel(0.42, 0.42, 0.4), colour: light, at: [0, 0, -2.2] }];
+  if (base === 'basher') return [{ geometry: barrel(0.34, 0.42, 2.8), colour: '#3a3448', at: [0, 0, -1.4] }, { geometry: barrel(0.52, 0.52, 0.5), colour: light, at: [0, 0, -2.8] }];
   return [
     { geometry: barrel(0.3, 0.38, 3.2), colour: '#3a3448', at: [-0.72, 0, -1.6] },
     { geometry: barrel(0.3, 0.38, 3.2), colour: '#3a3448', at: [0.72, 0, -1.6] },
@@ -475,9 +497,10 @@ const darkEye = new THREE.MeshBasicMaterial({ color: '#1c1630' });
  */
 function addEyes(turret, kind, materials) {
   const count = LOOKS[kind].eyes;
-  const size = { scout: 0.98, basher: 0.74, heavy: 0.86 }[kind];
-  const y = { scout: 1.72, basher: 1.98, heavy: 2.3 }[kind];
-  const apart = { scout: 0, basher: 0.84, heavy: 1.04 }[kind];
+  const base = baseOf(kind);
+  const size = { scout: 0.98, basher: 0.74, heavy: 0.86 }[base];
+  const y = { scout: 1.72, basher: 1.98, heavy: 2.3 }[base];
+  const apart = { scout: 0, basher: 0.84, heavy: 1.04 }[base];
   const rig = new THREE.Group();
   rig.position.set(0, y, 0);
   rig.userData.size = size;
@@ -537,10 +560,15 @@ function buildCrew(kind, materials) {
   return group;
 }
 
+const bubbleMaterial = () => new THREE.MeshBasicMaterial({ color: '#bfe8ff', transparent: true, opacity: 0.3, depthWrite: false });
+const bubbleEdge = () => new THREE.MeshBasicMaterial({ color: '#5aa8d8', transparent: true, opacity: 0.55, side: THREE.BackSide, depthWrite: false });
+
 export class RobotTank extends TankBody {
   constructor(enemy, scene, shadow, reducedMotion) {
     const look = LOOKS[enemy.kind];
-    super(look.length, look.wide);
+    const scale = look.scale ?? 1;
+    super(look.length * scale, look.wide * scale);
+    this.scale = scale;
     this.enemy = enemy;
     this.reducedMotion = reducedMotion;
     this.materials = [];
@@ -559,7 +587,8 @@ export class RobotTank extends TankBody {
     inked(this.turret, turretParts(enemy.kind), { materials: this.materials });
     this.gun = new THREE.Group();
     // Low down on the turret, so as not to hide the eyes, and pointing up, for lobbing.
-    this.gun.position.set(0, { scout: 0.15, basher: 0.3, heavy: 0.42 }[enemy.kind], enemy.kind === 'heavy' ? -2.05 : -1.5);
+    const base = baseOf(enemy.kind);
+    this.gun.position.set(0, { scout: 0.15, basher: 0.3, heavy: 0.42 }[base], base === 'heavy' ? -2.05 : -1.5);
     this.gun.rotation.x = 0.24;
     this.turret.add(this.gun);
     inked(this.gun, gunParts(enemy.kind), { materials: this.materials });
@@ -571,13 +600,105 @@ export class RobotTank extends TankBody {
     scene.add(this.crew);
     this.crewStand = null;
 
-    this.shadow = softShadow(shadow, look.wide * 1.7, look.length * 1.4);
+    this.shadow = softShadow(shadow, look.wide * 1.7 * scale, look.length * 1.4 * scale);
     scene.add(this.shadow);
     this.scene = scene;
     scene.add(this.root);
     this.recoil = 0;
     this.wobble = 0;
     this.droop = 0;
+    this.extras = [];
+    if (enemy.kind === 'shield') this.addShield(look);
+    if (enemy.kind === 'boss') this.addBossParts(look);
+    if (enemy.kind === 'digger') this.addMound();
+    this.addBubble();
+    this.float = 0;
+    this.sink = 0;
+  }
+
+  /** A big round shield, which turns on its own to face the child's tank. */
+  addShield(look) {
+    this.shieldTurn = new THREE.Group();
+    this.shieldTurn.position.y = 0.3;
+    this.root.add(this.shieldTurn);
+    const disc = inked(this.shieldTurn, [
+      { geometry: cylinder(2.3, 2.3, 0.36, 28).rotateX(Math.PI / 2), colour: '#ffd23f', at: [0, 2.4, 0] },
+      { geometry: new THREE.TorusGeometry(2.3, 0.26, 10, 28), colour: look.dark, at: [0, 2.4, 0] },
+      { geometry: star(0.95, 0.44, 0.2), colour: '#ffffff', at: [0, 2.4, -0.22] },
+    ], { materials: this.materials });
+    disc.position.z = -(look.length / 2 + 0.9);
+    // Tipped back, to face up at the camera as well as at the child's tank.
+    disc.rotation.x = -0.6;
+    this.shieldDisc = disc;
+    this.shieldDown = 0;
+  }
+
+  /** The boss's two big side cannons and its crown, which come off one at a time. */
+  addBossParts(look) {
+    this.parts = [];
+    for (const side of [-1, 1]) {
+      const cannon = new THREE.Group();
+      cannon.position.set(side * (look.wide / 2 + 0.2), 2.4, 0.2);
+      this.root.add(cannon);
+      inked(cannon, [
+        { geometry: roundedBox(1.3, 1.3, 2.6, 0.4), colour: look.dark, at: [0, 0, 0.4] },
+        { geometry: barrel(0.42, 0.5, 3.2), colour: '#3a3448', at: [0, 0.2, -1.8] },
+        { geometry: barrel(0.62, 0.62, 0.5), colour: look.light, at: [0, 0.2, -3.4] },
+      ], { materials: this.materials });
+      this.parts.push(cannon);
+    }
+    const crown = new THREE.Group();
+    crown.position.set(0, 2.55, 0.2);
+    this.turret.add(crown);
+    const points = [];
+    for (let i = 0; i < 5; i += 1) {
+      const angle = (i / 5) * Math.PI * 2;
+      points.push({ geometry: new THREE.ConeGeometry(0.34, 0.9, 8), colour: '#ffd23f', at: [Math.sin(angle) * 1.05, 0.75, Math.cos(angle) * 1.05] });
+      points.push({ geometry: ball(0.2), colour: '#ff5a6e', at: [Math.sin(angle) * 1.05, 1.25, Math.cos(angle) * 1.05] });
+    }
+    inked(crown, [{ geometry: cylinder(1.25, 1.15, 0.6, 20), colour: '#ffd23f', at: [0, 0.2, 0] }, ...points], { materials: this.materials });
+    this.parts.push(crown);
+    this.partFall = [0, 0, 0];
+  }
+
+  /** A part of the boss comes off: it tips over and shrinks away. */
+  dropPart(index) {
+    if (this.partFall && this.partFall[index - 1] === 0) this.partFall[index - 1] = 0.001;
+  }
+
+  /** The heap of earth that goes along over a digger while it's underground. */
+  addMound() {
+    const mound = new THREE.Group();
+    const earth = inked(mound, [
+      { geometry: ball(3.2, 1.4, 3.2), colour: '#a8743f', at: [0, 0, 0] },
+      { geometry: ball(0.9, 0.6, 0.9), colour: '#7d5430', at: [1.7, 0.7, 0.8] },
+      { geometry: ball(0.7, 0.5, 0.7), colour: '#c99459', at: [-1.5, 0.75, -0.9] },
+      { geometry: ball(0.6, 0.45, 0.6), colour: '#8a5d33', at: [0.2, 1.1, -1.6] },
+    ], { materials: this.materials });
+    earth.position.y = 0;
+    mound.visible = false;
+    this.scene.add(mound);
+    this.mound = mound;
+    this.extras.push(mound);
+  }
+
+  /** The see-through bubble a bubble shot traps it in. */
+  addBubble() {
+    const size = Math.max(this.length, this.wide) * 0.62;
+    const bubble = new THREE.Group();
+    const geometry = new THREE.SphereGeometry(size, 28, 18);
+    const fill = bubbleMaterial();
+    const edge = bubbleEdge();
+    const shine = new THREE.Mesh(ball(size * 0.18, size * 0.1, size * 0.05), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.7 }));
+    shine.position.set(-size * 0.45, size * 0.55, size * 0.5);
+    const rim = new THREE.Mesh(new THREE.SphereGeometry(size * 1.03, 28, 18), edge);
+    bubble.add(new THREE.Mesh(geometry, fill), rim, shine);
+    bubble.visible = false;
+    bubble.userData.materials = [fill, edge, shine.material];
+    this.scene.add(bubble);
+    this.bubble = bubble;
+    this.bubbleShown = 0;
+    this.extras.push(bubble);
   }
 
   /** A lob: the gun kicks and points back up. */
@@ -602,7 +723,7 @@ export class RobotTank extends TankBody {
     const { enemy, reducedMotion } = this;
     this.time += dt;
     this.grown = Math.min(1, this.grown + dt * 2.6);
-    this.root.scale.setScalar(0.6 + 0.4 * easeOut(this.grown));
+    this.root.scale.setScalar((0.6 + 0.4 * easeOut(this.grown)) * this.scale);
     this.place(enemy, dt);
     this.turret.rotation.y = -(enemy.turret - enemy.heading);
     const step = enemy.speed * dt;
@@ -645,8 +766,64 @@ export class RobotTank extends TankBody {
     this.turret.rotation.z = Math.sin(this.time * 27) * shake * 0.4;
     if (!reducedMotion && !stopped) this.root.position.y += Math.sin(this.time * 44) * 0.01;
 
+    this.showExtras(dt);
     this.showCrew(dt);
     this.showFade();
+  }
+
+  /** The shield, the bubble, the heap of earth over a digger, and the boss's parts coming off. */
+  showExtras(dt) {
+    const { enemy, reducedMotion } = this;
+    if (this.shieldTurn) {
+      this.shieldTurn.rotation.y = -(enemy.shieldFacing - enemy.heading);
+      // A tired shield folds down flat onto the ground and stays there.
+      this.shieldDown = damp(this.shieldDown, enemy.shieldUp ? 0 : 1, 3, dt);
+      this.shieldDisc.rotation.x = -0.6 - this.shieldDown * 0.9;
+      this.shieldDisc.position.y = -this.shieldDown * 1.4;
+      this.shieldDisc.scale.setScalar(1 - this.shieldDown * 0.35);
+    }
+    // In a bubble it floats up, turning slowly, and the bubble shrinks away when it's over.
+    const bubbled = enemy.bubbled > 0;
+    this.float = damp(this.float, bubbled ? 2.4 : 0, 3, dt);
+    this.bubbleShown = damp(this.bubbleShown, bubbled ? 1 : 0, bubbled ? 6 : 5, dt);
+    this.bubble.visible = this.bubbleShown > 0.02;
+    if (this.bubble.visible) {
+      const bob = reducedMotion ? 0 : Math.sin(this.time * 2.2) * 0.25;
+      this.bubble.position.set(enemy.x, enemy.y + 2 + this.float + bob, enemy.z);
+      this.bubble.scale.setScalar(0.4 + 0.6 * this.bubbleShown);
+      this.root.position.y += this.float + bob;
+      this.root.rotation.y += reducedMotion ? 0 : Math.sin(this.time * 0.9) * 0.2 * this.bubbleShown;
+    }
+    // A digger sinks into the ground, goes along under it, and comes up again. One stopped on its way up
+    // carries on out of the ground at the same steady rate, and its heap of earth shrinks away.
+    if (this.mound) {
+      const { dig } = enemy;
+      let sink = 0;
+      if (dig?.phase === 'down') sink = 1 - dig.left / DIG_SECONDS.down;
+      else if (dig?.phase === 'under') sink = 1;
+      else if (dig?.phase === 'up') sink = dig.left / DIG_SECONDS.up;
+      this.sink = dig ? clamp(sink, 0, 1) : Math.max(0, this.sink - dt / DIG_SECONDS.up);
+      this.root.position.y -= this.sink * 3.6;
+      this.root.visible = this.sink < 0.98;
+      this.shadow.visible = this.sink < 0.5;
+      const size = dig ? (dig.phase === 'under' ? 1 : 0.35 + 0.65 * this.sink) : Math.max(0, (this.moundSize ?? 0) - dt * 1.5);
+      this.moundSize = size;
+      this.mound.visible = size > 0.02;
+      if (this.mound.visible) {
+        this.mound.position.set(enemy.x, enemy.y + 0.1, enemy.z);
+        this.mound.scale.set(size, size * (1 + (reducedMotion ? 0 : Math.sin(this.time * 7) * 0.08)), size);
+      }
+    }
+    if (this.parts) {
+      this.parts.forEach((part, index) => {
+        if (!this.partFall[index]) return;
+        this.partFall[index] = Math.min(1, this.partFall[index] + dt * 1.6);
+        const share = this.partFall[index];
+        part.rotation.z = (index === 0 ? 1 : -1) * share * 1.2;
+        part.scale.setScalar(Math.max(0.01, 1 - share));
+        part.visible = share < 1;
+      });
+    }
   }
 
   /** Up out of the hatch, down onto the ground, and a big wave. */
@@ -694,8 +871,10 @@ export class RobotTank extends TankBody {
     this.root.removeFromParent();
     this.shadow.removeFromParent();
     this.crew.removeFromParent();
+    for (const extra of this.extras) extra.removeFromParent();
+    for (const material of this.bubble.userData.materials) material.dispose();
     const seen = new Set();
-    for (const part of [this.root, this.shadow, this.crew]) {
+    for (const part of [this.root, this.shadow, this.crew, ...this.extras]) {
       part.traverse((node) => {
         if (node.geometry && !seen.has(node.geometry)) {
           seen.add(node.geometry);

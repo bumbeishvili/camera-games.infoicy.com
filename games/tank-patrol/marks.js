@@ -114,6 +114,37 @@ export class Marks {
     for (const bar of state.bars) this.drawBar(bar);
     for (const sleep of state.sleeping) this.drawSleep(sleep);
     if (state.crosshair) this.drawCrosshair(state.crosshair);
+    for (const label of state.labels ?? []) this.drawLabel(label);
+  }
+
+  /** The name of something new, in a little white bubble with a point at the bottom. */
+  drawLabel({ x, y, words, alpha }) {
+    const { ctx } = this;
+    const size = clamp(this.height * 0.03, 15, 26);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = `600 ${size}px Fredoka, "Noto Sans Georgian", sans-serif`;
+    const wide = ctx.measureText(words).width + size * 1.2;
+    const high = size * 1.7;
+    const top = Math.max(4, y - high - size * 0.5);
+    // Kept on the screen, with its point still under the thing it names.
+    const left = clamp(x - wide / 2, 6, this.width - wide - 6);
+    const point = clamp(x, left + high / 2, left + wide - high / 2);
+    ctx.beginPath();
+    ctx.roundRect(left, top, wide, high, high / 2);
+    ctx.moveTo(point - size * 0.4, top + high);
+    ctx.lineTo(point, top + high + size * 0.5);
+    ctx.lineTo(point + size * 0.4, top + high);
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 3;
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = INK;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(words, left + wide / 2, top + high / 2 + 1);
+    ctx.restore();
   }
 
   /** How far the gun reaches: a ring on the ground round the tank. */

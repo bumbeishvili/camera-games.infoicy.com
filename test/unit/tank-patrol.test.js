@@ -2,8 +2,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { AIM_HELP, GUN, LEVELS, PACES, Patrol, STANDOFF, levelPlan, readHand, shellPoint, tanksFor } from '../../games/tank-patrol/patrol.js';
+import { AIM_HELP, CAGE_SPOTS, GUN, KINDS, LEVELS, NEWS, PACES, POWERS, Patrol, STANDOFF, levelPlan, newsAt, readHand, shellPoint, tanksFor } from '../../games/tank-patrol/patrol.js';
 import { BRIDGES, PLAY, SPAWNS, START, TANK_RADIUS, groundY, heightAt, riverNear, seeded, solidNear, valleyNav } from '../../games/tank-patrol/valley-map.js';
+import { PatrolSound } from '../../games/tank-patrol/patrol-sound.js';
 
 const STEP = 1 / 60;
 const quiet = (settings = {}) => new Patrol({ random: seeded(7), ...settings });
@@ -640,6 +641,9 @@ test('Tank Patrol keeps its talking short, and everything it says has a voice in
 const LEVEL_NUMBERS = Array.from({ length: 10 }, (_, index) => index + 1);
 // Which way is harder for each thing a level changes: up, down, or switched on.
 const HARDER = { enemy: 'up', hold: 'down', standoff: 'up', lobEvery: 'down', shellSeconds: 'down', moreFirst: 'up', moreMost: 'up', inAir: 'up', dash: 'on', pairs: 'on', lead: 'up', retreat: 'on', doubleShell: 'on' };
+// What the levels bring that's new, which once switched on stays on.
+const NEW_THINGS = ['bolts', 'spread', 'shield', 'bubble', 'gems', 'cage', 'digger', 'heart', 'boing', 'magnet', 'sunset', 'splitter', 'slow', 'boss', 'treasure'];
+for (const key of NEW_THINGS) HARDER[key] = 'on';
 
 test('level 1 is the game as it always was, with every speed and difficulty', () => {
   for (const pace of Object.keys(PACES)) {
@@ -657,6 +661,12 @@ test('level 1 is the game as it always was, with every speed and difficulty', ()
   const plan = levelPlan(1);
   assert.deepEqual([plan.standoff, plan.moreFirst, plan.moreMost, plan.dash, plan.pairs, plan.retreat, plan.doubleShell], [0, 0, 0, false, false, false, 0]);
   for (const key of ['enemy', 'hold', 'lobEvery', 'shellSeconds']) assert.equal(plan[key], 1, key);
+  // Exactly the numbers level 1 had before the levels brought anything new, and none of the new things.
+  const before = { enemy: 1, hold: 1, standoff: 0, lobEvery: 1, shellSeconds: 1, moreFirst: 0, moreMost: 0, inAir: 0, dash: false, pairs: false, lead: 0, retreat: false, doubleShell: 0 };
+  assert.deepEqual(plan, { ...before, ...Object.fromEntries(NEW_THINGS.map((key) => [key, false])) });
+  for (const tanks of [6, 10, 15]) assert.deepEqual(tanksFor(tanks, plan), tanksFor(tanks));
+  const patrol = started({ levelNumber: 1, tanks: 6 });
+  assert.deepEqual([patrol.cages.length, patrol.powerOrder.length], [0, 0]);
 });
 
 test('each level is the same or harder than the one before in every way, and harder in at least one', () => {
@@ -848,4 +858,558 @@ test('at level 10, resting still stops it all, and nothing bad happens', () => {
   run(patrol, 30, { hand: 'none', pointer: null });
   assert.deepEqual([log.count('lob'), patrol.hearts, log.count('dash')], [before.lob, before.hearts, before.dash]);
   patrol.rolling.forEach(({ x, z }, index) => assert.ok(Math.hypot(x - where[index][0], z - where[index][1]) < 0.5));
+});
+
+/* ---------- what each level brings that's new ---------- */
+
+/** A robot tank of a kind, alone, this far straight up the valley from the child's tank, staying put. */
+function oneOfKind(patrol, kind, away) {
+  const enemy = oneTankAt(patrol, away);
+  const shape = KINDS[kind];
+  const hp = Math.round(shape.hp * patrol.level.toughness);
+  Object.assign(enemy, { kind, hp, maxHp: hp, size: shape.size, top: shape.speed, leader: null, partner: null });
+  if (kind === 'shield') Object.assign(enemy, { shieldUp: true, shieldFacing: Math.PI, bonks: 0 });
+  if (kind === 'digger') Object.assign(enemy, { dig: null, digs: 0 });
+  if (kind === 'boss') enemy.partsOff = 0;
+  patrol.lobIn = 999;
+  return enemy;
+}
+
+/** Another robot tank, beside the first, for things that go from one to the next. */
+function another(patrol, kind, x, z) {
+  const enemy = patrol.makeEnemy(kind, { x, z });
+  hold(patrol, enemy, x, z);
+  patrol.enemies.push(enemy);
+  patrol.total += 1;
+  return enemy;
+}
+
+/** Fires at a tank with an open hand until it's stopped, or the time's up. */
+function fireAt(patrol, enemy, seconds = 20) {
+  for (let t = 0; t < seconds && enemy.state === 'rolling'; t += STEP) patrol.update(STEP, openAt(enemy.x, enemy.z));
+}
+
+test('level 1 has nothing new, and every other level has something new that it really switches on', () => {
+  assert.deepEqual(newsAt(1), []);
+  for (const level of LEVEL_NUMBERS.slice(1)) {
+    const news = newsAt(level);
+    assert.ok(news.length >= 1, `level ${level}`);
+    for (const { key, mark, name, nameKa } of news) {
+      assert.ok(levelPlan(level)[key], `${key} at level ${level}`);
+      assert.ok(!levelPlan(level - 1)[key], `${key} is already on before level ${level}`);
+      assert.ok(mark && name.split(' ').length <= 3, key);
+      assert.match(nameKa, /[Ⴀ-ჿ]/, key);
+    }
+  }
+  // Everything new is listed at the level it comes in.
+  const listed = Object.values(NEWS).flat().map(({ key }) => key);
+  for (const key of NEW_THINGS) assert.ok(listed.includes(key), key);
+});
+
+test('the new kinds of tank come in at their levels, in place of others, so the number of tanks stays the same', () => {
+  for (const tanks of [6, 10, 15]) {
+    for (const level of LEVEL_NUMBERS) {
+      const line = tanksFor(tanks, levelPlan(level));
+      assert.equal(line.length, tanks);
+      assert.equal(line.includes('shield'), level >= 4, `shield, ${tanks} at ${level}`);
+      assert.equal(line.includes('digger'), level >= 7, `digger, ${tanks} at ${level}`);
+      assert.equal(line.includes('splitter'), level >= 9, `splitter, ${tanks} at ${level}`);
+      assert.equal(line.at(-1), level >= 10 ? 'boss' : 'heavy');
+    }
+  }
+});
+
+test('from level 2, a stopped tank drops bolts that roll over to the child\'s tank and are counted', () => {
+  const patrol = started({ levelNumber: 2 });
+  const log = eventsOf(patrol);
+  const enemy = oneTankAt(patrol, GUN.range - 4);
+  fireAt(patrol, enemy);
+  assert.equal(log.count('prizes'), 1);
+  assert.ok(patrol.prizes.length >= 3);
+  // They bounce where they fell for a moment, and then come over by themselves.
+  run(patrol, 0.4, { hand: 'none', pointer: null });
+  assert.equal(patrol.stats.bolts, 0);
+  run(patrol, 4, { hand: 'none', pointer: null });
+  assert.equal(patrol.prizes.length, 0);
+  assert.equal(patrol.stats.bolts, log.count('prize'));
+  assert.ok(patrol.stats.bolts >= 3);
+
+  const first = started({ levelNumber: 1 });
+  const none = oneTankAt(first, GUN.range - 4);
+  fireAt(first, none);
+  run(first, 4, { hand: 'none', pointer: null });
+  assert.equal(first.stats.bolts + first.prizes.length, 0, 'level 1 is as it always was');
+});
+
+test('from level 5 a heavy drops a gem too, and before then it doesn\'t', () => {
+  for (const [level, gems] of [[4, 0], [5, 1]]) {
+    const patrol = started({ levelNumber: level });
+    const enemy = oneOfKind(patrol, 'heavy', GUN.range - 4);
+    fireAt(patrol, enemy);
+    run(patrol, 5, { hand: 'none', pointer: null });
+    assert.equal(patrol.stats.gems, gems, `level ${level}`);
+  }
+});
+
+test('from level 3 every other tank stopped drops a crate, this level\'s new power-up first, which is picked up by driving near it', () => {
+  const patrol = started({ levelNumber: 3, tanks: 6 });
+  const log = eventsOf(patrol);
+  const enemy = oneTankAt(patrol, GUN.range - 4);
+  fireAt(patrol, enemy);
+  assert.equal(log.count('crate'), 1);
+  const [crate] = patrol.crates;
+  assert.equal(crate.power, 'spread');
+  // Driving to it picks it up, and it's the triple shot for a while.
+  for (let t = 0; t < 6 && patrol.crates.length; t += STEP) patrol.update(STEP, closedAt(crate.x, crate.z));
+  assert.equal(patrol.crates.length, 0);
+  assert.equal(patrol.fireKind, 'spread');
+  assert.equal(patrol.stats.powerUps, 1);
+  assert.deepEqual(patrol.powerOrder, ['spread']);
+});
+
+test('pointing at a crate brings it over, and one that\'s left alone drifts over by itself', () => {
+  const pointed = started({ levelNumber: 8 });
+  const crate = pointed.dropCrate({ x: pointed.tank.x + 30, z: pointed.tank.z - 30 });
+  run(pointed, 0.1, { hand: 'open', pointer: { x: crate.x, z: crate.z } });
+  assert.equal(crate.zip, true);
+  run(pointed, 3, { hand: 'open', pointer: { x: crate.x, z: crate.z } });
+  assert.equal(pointed.crates.length, 0);
+  assert.equal(pointed.fireKind, 'boing');
+
+  const left = started({ levelNumber: 3 });
+  left.dropCrate({ x: left.tank.x + 20, z: left.tank.z - 20 });
+  run(left, 14, closedAt(left.tank.x, left.tank.z));
+  assert.equal(left.crates.length, 0);
+  assert.equal(left.fireKind, 'spread');
+});
+
+test('a power-up runs out, and waits while the child rests', () => {
+  const patrol = started({ levelNumber: 3 });
+  const log = eventsOf(patrol);
+  patrol.powerUp('spread');
+  run(patrol, 4, (t) => closedAt(START.x + Math.sin(t) * 6, START.z - 4));
+  assert.equal(patrol.fireKind, 'spread');
+  run(patrol, 3.2, { hand: 'none', pointer: null });
+  assert.equal(patrol.resting, true);
+  const left = patrol.power.fireLeft;
+  run(patrol, 20, { hand: 'none', pointer: null });
+  assert.equal(patrol.power.fireLeft, left, 'resting keeps it');
+  run(patrol, 12, (t) => closedAt(START.x + Math.sin(t * 2) * 8, START.z - 4));
+  assert.equal(patrol.fireKind, null);
+  assert.equal(log.count('power-off'), 1);
+});
+
+test('the triple shot fires three balls at once, and the side ones hit another tank near the one aimed at', () => {
+  const patrol = started({ levelNumber: 3 });
+  const enemy = oneTankAt(patrol, GUN.range - 6);
+  const near = another(patrol, 'scout', enemy.x + 7, enemy.z);
+  patrol.powerUp('spread');
+  const log = eventsOf(patrol);
+  for (let t = 0; t < 1.5 && !log.count('hit'); t += STEP) patrol.update(STEP, openAt(enemy.x, enemy.z));
+  run(patrol, 0.5, openAt(enemy.x, enemy.z));
+  assert.ok(log.count('shot') >= 3);
+  assert.equal(log.events.filter(({ type, side }) => type === 'shot' && side).length % 2, 0);
+  assert.ok(near.hp < near.maxHp, 'the side ball hit the other tank');
+});
+
+test('a bubble shot traps a tank in a floating bubble: it can\'t move or lob, and every hit counts double', () => {
+  const patrol = started({ levelNumber: 5 });
+  const enemy = oneOfKind(patrol, 'heavy', GUN.range - 4);
+  patrol.powerUp('bubble');
+  const log = eventsOf(patrol);
+  for (let t = 0; t < 3 && !log.count('bubbled'); t += STEP) patrol.update(STEP, openAt(enemy.x, enemy.z));
+  assert.equal(log.count('bubbled'), 1);
+  assert.ok(enemy.bubbled > 0);
+  // Nothing is lobbed from inside a bubble, and it stays where it is.
+  patrol.lobIn = 0;
+  patrol.power.fireLeft = 0;
+  const at = { x: enemy.x, z: enemy.z };
+  enemy.goal = { x: enemy.x + 20, z: enemy.z };
+  const hp = enemy.hp;
+  run(patrol, 0.9, openAt(enemy.x, enemy.z));
+  assert.equal(log.count('lob'), 0);
+  assert.ok(Math.hypot(enemy.x - at.x, enemy.z - at.z) < 0.5);
+  const hits = log.count('hit') - 1;
+  assert.equal(hp - enemy.hp, hits * 2);
+  run(patrol, 5, closedAt(patrol.tank.x, patrol.tank.z));
+  assert.equal(enemy.bubbled, 0, 'the bubble goes');
+});
+
+test('a boing ball bounces on from the tank it hits to the next one, and the next', () => {
+  const patrol = started({ levelNumber: 8 });
+  const first = oneTankAt(patrol, GUN.range - 6);
+  const second = another(patrol, 'scout', first.x + 10, first.z - 4);
+  const third = another(patrol, 'scout', first.x - 10, first.z - 4);
+  patrol.powerUp('boing');
+  const log = eventsOf(patrol);
+  for (let t = 0; t < 1 && !log.count('shot'); t += STEP) patrol.update(STEP, openAt(first.x, first.z));
+  patrol.power.fireLeft = 0; // Just the one ball.
+  run(patrol, 4, closedAt(patrol.tank.x, patrol.tank.z));
+  assert.equal(log.count('bounce'), 2);
+  for (const enemy of [first, second, third]) assert.equal(enemy.maxHp - enemy.hp, 1, enemy.kind);
+});
+
+test('a shield tank\'s shield stops shots from the front, but not from the side, and gets tired after a few', () => {
+  const patrol = started({ levelNumber: 4 });
+  const enemy = oneOfKind(patrol, 'shield', GUN.range - 4);
+  const log = eventsOf(patrol);
+  // Face on, it bonks.
+  enemy.shieldFacing = Math.PI;
+  run(patrol, 1.2, openAt(enemy.x, enemy.z));
+  assert.ok(log.count('bonk') >= 1);
+  assert.equal(enemy.hp, enemy.maxHp);
+  // From the side, it's hit.
+  enemy.shieldFacing = Math.PI / 2;
+  enemy.bonks = 0;
+  run(patrol, 1.2, openAt(enemy.x, enemy.z));
+  assert.ok(enemy.hp < enemy.maxHp);
+  // And from the front for long enough, the shield drops.
+  enemy.shieldFacing = Math.PI;
+  run(patrol, 4, openAt(enemy.x, enemy.z));
+  assert.equal(enemy.shieldUp, false);
+  assert.equal(log.count('shield-down'), 1);
+  fireAt(patrol, enemy);
+  assert.notEqual(enemy.state, 'rolling');
+});
+
+test('a shield turns to face the child\'s tank slowly, more slowly than driving round it, and not while being fired on', () => {
+  const patrol = started({ levelNumber: 4 });
+  const enemy = oneOfKind(patrol, 'shield', GUN.range + 10);
+  enemy.shieldFacing = 0;
+  run(patrol, 1, closedAt(patrol.tank.x, patrol.tank.z));
+  assert.ok(Math.abs(enemy.shieldFacing) > 0.2 && Math.abs(enemy.shieldFacing) < 0.5, `${enemy.shieldFacing}`);
+});
+
+test('a digger digs down, can\'t be seen or fired at underground, and pops up nearer the child\'s tank', () => {
+  const patrol = started({ levelNumber: 7 });
+  const enemy = oneOfKind(patrol, 'digger', GUN.range + 12);
+  const log = eventsOf(patrol);
+  enemy.holdFor = 0;
+  run(patrol, 0.2, openAt(enemy.x, enemy.z));
+  assert.equal(log.count('dig'), 1);
+  run(patrol, 1.5, openAt(enemy.x, enemy.z));
+  assert.equal(patrol.hidden(enemy), true);
+  assert.ok(!patrol.targets.includes(enemy));
+  assert.equal(patrol.firing, false);
+  run(patrol, 3, closedAt(patrol.tank.x, patrol.tank.z));
+  assert.equal(log.count('pop-up'), 1);
+  assert.ok(Math.hypot(enemy.x - patrol.tank.x, enemy.z - patrol.tank.z) < GUN.range + 2, 'up within reach');
+  assert.equal(patrol.hidden(enemy), false);
+  fireAt(patrol, enemy);
+  assert.notEqual(enemy.state, 'rolling');
+});
+
+test('a splitting tank comes apart into two little ones, and counts as stopped when both are', () => {
+  const patrol = started({ levelNumber: 9 });
+  const enemy = oneOfKind(patrol, 'splitter', GUN.range - 4);
+  const log = eventsOf(patrol);
+  fireAt(patrol, enemy);
+  assert.equal(log.count('split'), 1);
+  const halves = patrol.rolling.filter(({ kind }) => kind === 'mini');
+  assert.equal(halves.length, 2);
+  assert.equal(patrol.stopped, 0);
+  fireAt(patrol, halves[0]);
+  assert.equal(patrol.stopped, 0, 'one half isn\'t the whole tank');
+  fireAt(patrol, halves[1]);
+  assert.equal(patrol.stopped, 1);
+  run(patrol, 5, closedAt(patrol.tank.x, patrol.tank.z));
+  assert.equal(patrol.state, 'won');
+});
+
+test('the big boss loses a cannon with each third of its hits, and leaves a treasure chest full of gold stars', () => {
+  const patrol = started({ levelNumber: 10 });
+  const enemy = oneOfKind(patrol, 'boss', GUN.range - 4);
+  enemy.ranOff = true;
+  const log = eventsOf(patrol);
+  fireAt(patrol, enemy, 40);
+  assert.notEqual(enemy.state, 'rolling');
+  assert.deepEqual(log.events.filter(({ type }) => type === 'part-off').map(({ part }) => part), [1, 2]);
+  assert.ok(patrol.prizes.some(({ type }) => type === 'chest'));
+  run(patrol, 5, closedAt(patrol.tank.x, patrol.tank.z));
+  assert.equal(patrol.stats.chests, 1);
+  assert.equal(patrol.stats.stars, 6);
+});
+
+test('from level 6 a friend is in a cage: firing at it lets them out, which counts, and the robots let them go at the end anyway', () => {
+  const patrol = started({ levelNumber: 6 });
+  assert.equal(patrol.cages.length, 1);
+  const [cage] = patrol.cages;
+  assert.ok(patrol.targets.includes(cage));
+  patrol.lobIn = 999;
+  for (const enemy of patrol.rolling) hold(patrol, enemy, enemy.x, enemy.z);
+  const log = eventsOf(patrol);
+  let seconds = 0;
+  while (cage.state === 'closed' && seconds < 30) {
+    const near = Math.hypot(cage.x - patrol.tank.x, cage.z - patrol.tank.z) < GUN.range - 3;
+    patrol.update(STEP, near ? openAt(cage.x, cage.z) : closedAt(cage.x, cage.z));
+    seconds += STEP;
+  }
+  assert.equal(cage.state, 'open');
+  assert.equal(patrol.stats.friends, 1);
+  assert.equal(log.count('freed'), 1);
+  assert.ok(!patrol.targets.includes(cage));
+
+  const other = started({ levelNumber: 6 });
+  const enemy = oneTankAt(other, GUN.range - 4);
+  fireAt(other, enemy);
+  assert.equal(other.cages[0].state, 'open');
+  assert.equal(other.stats.friends, 0, 'only counts if the child did it');
+});
+
+test('a heart crate gives a heart back, and doesn\'t come when no heart has been lost', () => {
+  const patrol = started({ levelNumber: 7, level: 'medium' });
+  assert.ok(!patrol.powerOrder.slice(0, 1).includes('heart') || patrol.powerOrder[0] === 'heart');
+  patrol.cratesDropped = patrol.powerOrder.indexOf('heart');
+  assert.notEqual(patrol.dropCrate({ x: 0, z: 0 }).power, 'heart', 'not with every heart still there');
+  lotsOfHits(patrol, 2);
+  patrol.cratesDropped = patrol.powerOrder.indexOf('heart');
+  assert.equal(patrol.dropCrate({ x: 0, z: 0 }).power, 'heart');
+  const hearts = patrol.hearts;
+  patrol.powerUp('heart');
+  assert.equal(patrol.hearts, hearts + 1);
+});
+
+test('the magnet brings every prize and crate over at once, and slow motion slows the robot tanks and their shells', () => {
+  const patrol = started({ levelNumber: 9 });
+  patrol.dropCrate({ x: patrol.tank.x + 40, z: patrol.tank.z - 40 });
+  patrol.dropPrizes({ x: patrol.tank.x - 40, z: patrol.tank.z - 40 }, 'heavy');
+  patrol.powerUp('magnet');
+  run(patrol, 2.2, closedAt(patrol.tank.x, patrol.tank.z));
+  assert.equal(patrol.crates.length, 0);
+  assert.equal(patrol.prizes.length, 0);
+
+  // The crate was slow motion, which is the new power-up at level 9.
+  assert.equal(patrol.slowing, true);
+  const speed = patrol.pace.enemy * patrol.plan.enemy;
+  assert.ok(Math.abs(patrol.enemySpeed - speed * 0.55) < 1e-9);
+  patrol.powerUp('slow');
+  patrol.shells.push({ share: 0, seconds: 3, blast: 5, from: { x: 0, y: 0, z: 0 }, to: { x: 40, y: 0, z: 0 } });
+  patrol.lobIn = 999;
+  run(patrol, 1, closedAt(patrol.tank.x, patrol.tank.z));
+  assert.ok(Math.abs(patrol.shells[0].share - 0.2) < 0.02, `${patrol.shells[0].share}`);
+});
+
+test('at the end, prizes still on their way are counted, as they were the child\'s', () => {
+  const patrol = started({ levelNumber: 10 });
+  const enemy = oneOfKind(patrol, 'boss', GUN.range - 4);
+  enemy.ranOff = true;
+  fireAt(patrol, enemy, 40);
+  const waiting = patrol.prizes.length;
+  assert.ok(waiting > 0);
+  patrol.finish();
+  assert.equal(patrol.prizes.length, 0);
+  assert.equal(patrol.stats.stars, 6);
+  assert.ok(patrol.stats.bolts >= 6);
+});
+
+test('every level can be played right through at every speed, and Gentle still can\'t be lost with everything new about', () => {
+  for (const levelNumber of LEVEL_NUMBERS.slice(1)) {
+    for (const pace of Object.keys(PACES)) {
+      const patrol = started({ tanks: 10, pace, levelNumber, random: seeded(levelNumber * 7 + pace.length) });
+      const { won } = patrolLikeAChild(patrol);
+      assert.ok(won, `level ${levelNumber} ${pace}: ${patrol.state}`);
+      assert.equal(patrol.stopped, 10);
+      assert.ok(patrol.stats.bolts > 0);
+    }
+  }
+  const patrol = started({ levelNumber: 10, tanks: 15 });
+  patrol.powerUp('spread');
+  lotsOfHits(patrol, 30);
+  assert.equal(patrol.hearts, 1);
+  const { won } = patrolLikeAChild(patrol, { dodge: false });
+  assert.ok(won);
+});
+
+test('resting at level 10 stops diggers digging and power-ups running down, and nothing bad happens', () => {
+  const patrol = started({ levelNumber: 10, tanks: 15 });
+  const log = eventsOf(patrol);
+  patrol.powerUp('slow');
+  run(patrol, 3, (t) => closedAt(START.x + Math.sin(t) * 8, START.z - 3));
+  run(patrol, 5.2, { hand: 'none', pointer: null });
+  assert.equal(patrol.resting, true);
+  const before = { lob: log.count('lob'), dig: log.count('dig'), hearts: patrol.hearts, slow: patrol.power.slowLeft };
+  run(patrol, 30, { hand: 'none', pointer: null });
+  assert.deepEqual([log.count('lob'), log.count('dig'), patrol.hearts, patrol.power.slowLeft], [before.lob, before.dig, before.hearts, before.slow]);
+});
+
+test('the child\'s tank goes round the cage rather than through it, and driving at it stops short, within reach', () => {
+  const quietCage = () => {
+    const patrol = started({ levelNumber: 6 });
+    patrol.lobIn = 999;
+    for (const enemy of patrol.rolling) hold(patrol, enemy, enemy.x, enemy.z);
+    return patrol;
+  };
+  // Driving with a closed hand pointing at the cage stops within reach of the gun.
+  const patrol = quietCage();
+  const [cage] = patrol.cages;
+  run(patrol, 12, closedAt(cage.x, cage.z));
+  const away = Math.hypot(patrol.tank.x - cage.x, patrol.tank.z - cage.z);
+  assert.ok(away <= GUN.range && away > cage.size + 3, `${away} away`);
+  // Driving to somewhere on the far side of it goes round it, and gets there.
+  const other = quietCage();
+  const [box] = other.cages;
+  const beyond = other.nav.nearestFree(box.x + (box.x - START.x) * 0.5, box.z + (box.z - START.z) * 0.5);
+  let closest = Infinity;
+  for (let t = 0; t < 16; t += STEP) {
+    other.update(STEP, closedAt(beyond.x, beyond.z));
+    closest = Math.min(closest, Math.hypot(other.tank.x - box.x, other.tank.z - box.z));
+  }
+  assert.ok(closest >= box.size + 2.9, `came within ${closest}`);
+  assert.ok(Math.hypot(other.tank.x - beyond.x, other.tank.z - beyond.z) < 4, 'and got there');
+});
+
+/* ---------- hearts at the end, the cage, diggers, bubbles and what lands after the end ---------- */
+
+test('once the last heart has gone, a heart crate still on its way puts no heart back, and the round is lost', () => {
+  const patrol = started({ levelNumber: 7, level: 'medium' });
+  oneTankAt(patrol, 40);
+  const log = eventsOf(patrol);
+  lotsOfHits(patrol, LEVELS.medium.hearts);
+  assert.equal(patrol.hearts, 0);
+  // A heart crate right beside the tank, which comes straight over.
+  patrol.crates.push({ id: 9999, power: 'heart', x: patrol.tank.x + 2, z: patrol.tank.z, y: 0, age: 0, zip: true, state: 'waiting' });
+  run(patrol, 1.2, closedAt(patrol.tank.x, patrol.tank.z));
+  assert.equal(log.count('crate-got'), 1);
+  assert.equal(log.count('healed'), 0);
+  assert.equal(patrol.hearts, 0);
+  assert.equal(patrol.state, 'lost');
+});
+
+test('a heart whose turn comes with every heart there waits, and comes in the first crate after one has gone', () => {
+  const patrol = started({ levelNumber: 7, level: 'medium' });
+  oneTankAt(patrol, 40);
+  patrol.cratesDropped = patrol.powerOrder.indexOf('heart');
+  assert.notEqual(patrol.dropCrate({ x: 0, z: 0 }).power, 'heart', 'not with every heart there');
+  lotsOfHits(patrol, 1);
+  assert.equal(patrol.dropCrate({ x: 0, z: 0 }).power, 'heart', 'its turn waited');
+  // Then the others carry on in turn, and the heart comes round again.
+  const next = Array.from({ length: patrol.powerOrder.length }, () => patrol.dropCrate({ x: 0, z: 0 }).power);
+  assert.ok(next.includes('heart'));
+});
+
+/** Random numbers whose first one puts the cage at this one of its places. */
+const cageAt = (spot, seed) => {
+  const rest = seeded(seed);
+  let first = true;
+  return () => {
+    if (!first) return rest();
+    first = false;
+    return (spot + 0.5) / CAGE_SPOTS.length;
+  };
+};
+
+test('wherever the cage is, with it in the way every tank can still get everywhere in the valley', () => {
+  for (let spot = 0; spot < CAGE_SPOTS.length; spot += 1) {
+    const patrol = started({ levelNumber: 6, random: cageAt(spot, 3) });
+    const { nav } = patrol;
+    const seen = new Uint8Array(nav.blocked.length);
+    const stack = [nav.indexOf(START.x, START.z)];
+    seen[stack[0]] = 1;
+    while (stack.length) {
+      const index = stack.pop();
+      const col = index % nav.cols;
+      for (const next of [col > 0 ? index - 1 : -1, col < nav.cols - 1 ? index + 1 : -1, index - nav.cols, index + nav.cols]) {
+        if (next >= 0 && next < seen.length && !seen[next] && !nav.blocked[next]) {
+          seen[next] = 1;
+          stack.push(next);
+        }
+      }
+    }
+    const cutOff = nav.blocked.reduce((count, blocked, index) => count + (!blocked && !seen[index] ? 1 : 0), 0);
+    assert.equal(cutOff, 0, `the cage at ${CAGE_SPOTS[spot].x}, ${CAGE_SPOTS[spot].z} cuts off ${cutOff} squares`);
+  }
+});
+
+test('robot tanks never drive into the closed cage or stop in it, wherever it is, so it can always be aimed at, and the valley\'s own map is left alone', () => {
+  const map = valleyNav().blocked.slice();
+  for (let spot = 0; spot < CAGE_SPOTS.length; spot += 1) {
+    for (const [levelNumber, driving] of [[6, 'closed'], [8, 'auto'], [10, 'closed']]) {
+      const patrol = started({ levelNumber, tanks: 10, driving, random: cageAt(spot, levelNumber * 3 + spot) });
+      const [cage] = patrol.cages;
+      let closest = Infinity;
+      const update = patrol.update.bind(patrol);
+      patrol.update = (dt, input) => {
+        update(dt, input);
+        if (cage.state !== 'closed') return;
+        for (const enemy of patrol.rolling) if (!patrol.hidden(enemy)) closest = Math.min(closest, Math.hypot(enemy.x - cage.x, enemy.z - cage.z) - cage.size);
+      };
+      const { won } = patrolLikeAChild(patrol, { auto: driving === 'auto' });
+      const where = `the cage at ${CAGE_SPOTS[spot].x}, ${CAGE_SPOTS[spot].z}, level ${levelNumber}, driving ${driving}`;
+      assert.ok(won, `${where}: ${patrol.state} after ${patrol.stopped} stopped`);
+      assert.ok(closest > TANK_RADIUS - 0.5, `${where}: a robot tank came within ${closest.toFixed(1)} of the bars`);
+    }
+  }
+  assert.deepEqual(valleyNav().blocked, map);
+  // Once it's open, the way is clear again.
+  const patrol = started({ levelNumber: 6 });
+  const [cage] = patrol.cages;
+  assert.equal(patrol.nav.isFree(cage.x, cage.z), false);
+  patrol.openCage(cage, false);
+  assert.equal(patrol.nav.isFree(cage.x, cage.z), valleyNav().isFree(cage.x, cage.z));
+});
+
+/** A digger popping up out of the ground, halfway. */
+function poppingUp(patrol) {
+  const enemy = oneOfKind(patrol, 'digger', GUN.range - 6);
+  enemy.dig = { phase: 'up', left: 0.4 };
+  return enemy;
+}
+
+test('a digger stopped on its way up comes out of the ground, and one hit hard on its way up runs off once it\'s out', () => {
+  const patrol = started({ levelNumber: 7 });
+  const enemy = poppingUp(patrol);
+  enemy.hp = 1;
+  patrol.hit(enemy, { kind: 'ball' });
+  assert.equal(enemy.state, 'rattling');
+  assert.equal(enemy.dig, null, 'it isn\'t left half in the ground');
+
+  const other = started({ levelNumber: 7 });
+  const digger = poppingUp(other);
+  digger.hp = Math.floor(digger.maxHp / 2) + 1;
+  other.hit(digger, { kind: 'ball' });
+  assert.equal(digger.ranOff, true);
+  run(other, 1, closedAt(other.tank.x, other.tank.z));
+  assert.equal(digger.dig, null);
+  assert.ok(Math.hypot(digger.goal.x - digger.x, digger.goal.z - digger.z) > 5, 'it\'s on its way somewhere else');
+  run(other, 8, closedAt(other.tank.x, other.tank.z));
+  assert.ok(!other.inRange(digger), 'and it got out of range');
+});
+
+test('a bubble waits while the child rests, and another bubble shot keeps it there without a fuss', () => {
+  const patrol = started({ levelNumber: 5 });
+  const enemy = oneOfKind(patrol, 'heavy', GUN.range - 4);
+  enemy.hp = enemy.maxHp = 99;
+  const log = eventsOf(patrol);
+  patrol.hit(enemy, { kind: 'bubble' });
+  patrol.hit(enemy, { kind: 'bubble' });
+  patrol.hit(enemy, { kind: 'bubble' });
+  assert.equal(log.count('bubbled'), 1);
+  run(patrol, 5.2, { hand: 'none', pointer: null });
+  assert.equal(patrol.resting, true);
+  const left = enemy.bubbled;
+  assert.ok(left > 0);
+  run(patrol, 10, { hand: 'none', pointer: null });
+  assert.equal(enemy.bubbled, left);
+});
+
+test('a shot still on its way when the round is over lands on nothing: it can\'t let the friend out after the count', () => {
+  const patrol = started({ levelNumber: 6, level: 'medium' });
+  oneTankAt(patrol, 40);
+  const [cage] = patrol.cages;
+  cage.hp = 1;
+  patrol.shots.push({ target: cage, share: 0.2, seconds: 1, kind: 'ball', origin: { x: patrol.tank.x, z: patrol.tank.z }, from: { x: 0, y: 0, z: 0 } });
+  lotsOfHits(patrol, LEVELS.medium.hearts);
+  patrol.finish();
+  assert.equal(patrol.state, 'lost');
+  run(patrol, 2, { hand: 'none', pointer: null });
+  assert.equal(cage.state, 'closed');
+  assert.equal(patrol.stats.friends, 0);
+});
+
+test('hits landing together, like a triple shot\'s, are heard as one', () => {
+  const sound = new PatrolSound();
+  const played = [];
+  sound.play = (name) => played.push(name);
+  for (let i = 0; i < 3; i += 1) sound.hit();
+  assert.equal(played.filter((name) => name.startsWith('hit')).length, 1);
 });

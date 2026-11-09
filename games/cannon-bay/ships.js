@@ -541,6 +541,22 @@ export class HeroShip extends Ship {
     this.body.add(stand);
     this.cheering = 0;
     this.nod = 0;
+    // The sailors rescued from the pirates' cages, on the higher levels, on deck with the crew.
+    this.rescued = [[-2.2, -7], [2.4, 6.5], [-3.9, -1.2], [3.9, 1.8]].map(([x, z]) => {
+      const parts = [];
+      sailorParts(x, DECK.main, z, '#2f6fed', parts);
+      const sailor = new THREE.Mesh(mergeParts(parts), this.paint);
+      sailor.visible = false;
+      this.body.add(sailor);
+      return sailor;
+    });
+  }
+
+  /** How many rescued sailors are on board. */
+  showRescued(count) {
+    this.rescued.forEach((sailor, index) => {
+      sailor.visible = index < count;
+    });
   }
 
   extraParts(parts) {
@@ -701,5 +717,112 @@ export class Lifeboat {
     Object.assign(pose, { handRX: -0.45 + wave, handRY: 0.72, handRZ: 0.1, handLX: 0.45 + wave, handLY: 0.72, handLZ: 0.1, roll: wave * 0.2 });
     captain.setPose(pose);
     captain.update(dt);
+  }
+}
+
+/* ------------------------------- the higher levels' other boats ------------------------------- */
+
+/** A gold crown, which sits on top of the pirate king's main mast. */
+export function kingsCrown() {
+  const parts = [{ geometry: pole(2.6, 2.3, 2.2, 14), colour: '#f2b830' }];
+  for (let i = 0; i < 6; i += 1) {
+    const angle = (i / 6) * Math.PI * 2;
+    parts.push(
+      { geometry: new THREE.ConeGeometry(0.75, 2.2, 6), colour: '#f2b830', at: [Math.cos(angle) * 2.2, 2, Math.sin(angle) * 2.2] },
+      { geometry: ball(0.5), colour: i % 2 ? '#ff6fae' : '#4cc3ff', at: [Math.cos(angle) * 2.5, 0.2, Math.sin(angle) * 2.5] },
+    );
+  }
+  const geometry = mergeParts(parts);
+  const crown = new THREE.Group();
+  crown.add(new THREE.Mesh(geometry, new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toon() })), new THREE.Mesh(geometry, inkLine(INK, 0.12)));
+  return crown;
+}
+
+/**
+ * A raft of barrels lashed together, with a little square sail in its captain's colours. Nobody's on it.
+ * Built along -z, like the ships.
+ */
+export class Raft {
+  constructor(look) {
+    this.root = new THREE.Group();
+    this.body = new THREE.Group();
+    this.root.add(this.body);
+    const parts = [];
+    for (const x of [-4.8, -1.6, 1.6, 4.8]) {
+      parts.push(
+        { geometry: pole(1.6, 1.6, 15, 12), colour: '#b8743a', at: [x, 0.6, 0], turn: [Math.PI / 2, 0, 0] },
+        { geometry: pole(1.7, 1.7, 0.5, 12), colour: '#5b4636', at: [x, 0.6, -4.5], turn: [Math.PI / 2, 0, 0] },
+        { geometry: pole(1.7, 1.7, 0.5, 12), colour: '#5b4636', at: [x, 0.6, 4.5], turn: [Math.PI / 2, 0, 0] },
+      );
+    }
+    for (const z of [-5.5, 0, 5.5]) parts.push({ geometry: box(13, 0.6, 2.2), colour: WOOD, at: [0, 2.4, z] });
+    parts.push(
+      { geometry: pole(0.3, 0.42, 15, 7), colour: MAST, at: [0, 9.5, 0] },
+      { geometry: pole(0.14, 0.16, 11, 5), colour: MAST, at: [0, 15, -0.3], turn: [0, 0, Math.PI / 2] },
+      { geometry: box(11, 0.8, 1.6), colour: look.trim, at: [0, 3, -7.2] },
+    );
+    const geometry = mergeParts(parts);
+    const paint = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toon(), side: THREE.DoubleSide });
+    this.body.add(new THREE.Mesh(geometry, paint), new THREE.Mesh(geometry, inkLine(INK, 0.1)));
+    this.sailPaint = new THREE.MeshToonMaterial({ map: paintedTexture(look), gradientMap: toon(), side: THREE.DoubleSide });
+    this.sail = new Sail(this.body, [0, 14.8, -0.6], 10, 9.5, this.sailPaint, 1.6);
+    this.flags = [new Flag(this.body, [0, 17.3, 0], 3.6, 2.4, flagTexture(look.flag ?? '#1c1f2b', look.mark ?? 'star', look.flagMark ?? '#ffffff'))];
+    this.root.visible = false;
+  }
+
+  place(x, y, z, { heading = 0, pitch = 0, roll = 0, sails = 1, wind = 1 } = {}) {
+    this.root.position.set(x, 0, z);
+    this.root.rotation.y = -heading;
+    this.body.position.y = y;
+    this.body.rotation.set(pitch, 0, roll, 'YXZ');
+    this.sail.set(sails, wind);
+  }
+
+  updateFlags(dt, wave = 1) {
+    for (const flag of this.flags) flag.update(dt, wave);
+  }
+}
+
+/**
+ * A round little submarine in its captain's colours, with a tower, a periscope and portholes. It's drawn
+ * lower in the water as it dives, until only the periscope shows.
+ */
+export class Submarine {
+  constructor(look) {
+    this.root = new THREE.Group();
+    this.body = new THREE.Group();
+    this.root.add(this.body);
+    const parts = [
+      { geometry: ball(5.2, 4.6, 15), colour: look.hull, at: [0, 0, 0] },
+      { geometry: ball(5.3, 1.3, 15.1), colour: look.upper, at: [0, 0.5, 0] },
+      { geometry: box(5, 5.5, 8), colour: look.hull, at: [0, 5.5, 1] },
+      { geometry: box(5.3, 0.9, 8.3), colour: look.trim, at: [0, 8.2, 1] },
+      { geometry: pole(0.35, 0.35, 7, 6), colour: IRON, at: [0, 11, -1.5] },
+      { geometry: box(0.7, 0.7, 2), colour: IRON, at: [0, 14.3, -2.3] },
+      { geometry: ball(0.6, 1.8, 3), colour: look.trim, at: [0, 0, 15.3] },
+      { geometry: box(0.4, 3.6, 1.2), colour: look.trim, at: [0, 0, 15.8] },
+    ];
+    for (const [x, z] of [[5.05, -6], [5.05, -1], [5.05, 4], [-5.05, -6], [-5.05, -1], [-5.05, 4]]) {
+      parts.push(
+        { geometry: pole(1.25, 1.25, 0.6, 12), colour: look.trim, at: [x, 0.6, z], turn: [0, 0, Math.PI / 2] },
+        { geometry: pole(0.9, 0.9, 0.7, 12), colour: '#bfe7fb', at: [x, 0.6, z], turn: [0, 0, Math.PI / 2] },
+      );
+    }
+    const geometry = mergeParts(parts);
+    const paint = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toon() });
+    this.body.add(new THREE.Mesh(geometry, paint), new THREE.Mesh(geometry, inkLine(INK, 0.1)));
+    this.flags = [new Flag(this.body, [0, 10.6, 3.5], 3.6, 2.4, flagTexture(look.flag ?? '#1c1f2b', look.mark ?? 'star', look.flagMark ?? '#ffffff'))];
+    this.root.visible = false;
+  }
+
+  place(x, y, z, { heading = 0, pitch = 0, roll = 0 } = {}) {
+    this.root.position.set(x, 0, z);
+    this.root.rotation.y = -heading;
+    this.body.position.y = y;
+    this.body.rotation.set(pitch, 0, roll, 'YXZ');
+  }
+
+  updateFlags(dt, wave = 1) {
+    for (const flag of this.flags) flag.update(dt, wave);
   }
 }

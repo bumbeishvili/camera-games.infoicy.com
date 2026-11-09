@@ -1,7 +1,7 @@
 // How Robot Rescue sounds, and what happens when something lets it down. Nothing here may flash.
 import { readFileSync } from 'node:fs';
 import { expect, shot, show, test, waitForHand, waitForScreen } from '../helpers.js';
-import { FIST, GAME, OPEN, clearHere, expectSoon, reachRescue, rescue, startHunting, stayAwake, stopHunting } from './helpers.js';
+import { FIST, GAME, OPEN, clearHere, expectSoon, judge, reachRescue, rescue, startHunting, stayAwake, stopHunting, watchBrightness } from './helpers.js';
 import { openGame } from '../helpers.js';
 
 const OWN_LINES = JSON.parse(readFileSync(new URL('../../../games/robot-rescue/audio/voice/lines.json', import.meta.url)));
@@ -183,67 +183,6 @@ test('a frozen tracker counts as no hand: it stops firing, rather than going on 
   expect((await rescue(page)).stats.shots).toBe(before.stats.shots);
   expect(before.firing).toBe(false);
 });
-
-/**
- * Reads how bright each part of the picture is, frame by frame, with the crosshair and shield drawn
- * over the town, as the child sees it. Runs for a while, doing what's asked meanwhile.
- */
-const watchBrightness = (page, frames) => page.evaluate(async (count) => {
-  const { stage } = window.__game;
-  const [wide, high] = [32, 18];
-  const small = document.createElement('canvas');
-  small.width = wide;
-  small.height = high;
-  const context = small.getContext('2d', { willReadFrequently: true });
-  const reading = [];
-  for (let i = 0; i < count; i += 1) {
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    stage.render();
-    context.drawImage(stage.canvas, 0, 0, wide, high);
-    context.drawImage(stage.sights.canvas, 0, 0, wide, high);
-    const { data } = context.getImageData(0, 0, wide, high);
-    const cells = new Array(wide * high);
-    for (let j = 0; j < cells.length; j += 1) cells[j] = (data[j * 4] + data[j * 4 + 1] + data[j * 4 + 2]) / 3;
-    reading.push({ at: performance.now(), cells });
-  }
-  return reading;
-}, frames);
-
-/** The biggest change of the whole picture between frames, and how much of it is flickering. */
-function judge(reading) {
-  const averages = reading.map(({ cells }) => cells.reduce((sum, value) => sum + value, 0) / cells.length);
-  const biggestStep = Math.max(...averages.slice(1).map((value, index) => Math.abs(value - averages[index])));
-  const seconds = (reading.at(-1).at - reading[0].at) / 1000;
-  // A flash is a big rise and a big fall in one part of the picture. Too many of them, over a big part
-  // of the picture, is what can set off a seizure: more than 3 a second, over more than a quarter.
-  const SWING = 40; // Out of 255.
-  const cellCount = reading[0].cells.length;
-  let flickering = 0;
-  for (let cell = 0; cell < cellCount; cell += 1) {
-    let low = reading[0].cells[cell];
-    let high = low;
-    let going = 0;
-    let swings = 0;
-    for (const { cells } of reading) {
-      const value = cells[cell];
-      low = Math.min(low, value);
-      high = Math.max(high, value);
-      if (going >= 0 && high - value >= SWING) {
-        swings += 1;
-        going = -1;
-        low = value;
-        high = value;
-      } else if (going <= 0 && value - low >= SWING) {
-        swings += 1;
-        going = 1;
-        low = value;
-        high = value;
-      }
-    }
-    if (swings / 2 / seconds > 3) flickering += 1;
-  }
-  return { biggestStep, flickeringShare: flickering / cellCount, seconds, frames: reading.length };
-}
 
 // The same at level 10, where there's the most going on at once: see levelPlan in rescue.js.
 for (const level of [1, 10]) {

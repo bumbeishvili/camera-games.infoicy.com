@@ -4,7 +4,7 @@
 // they've had enough they fall apart into bolts and stars. They're never anything but robots.
 import * as THREE from '../../vendor/three/three.module.js';
 import { Fighter3D, curl, limb, makePose, mergeParts, outlineMaterial, roundedBox, star, toon } from '../../core/body/characters.js';
-import { BIG_SPOTS } from './rescue.js';
+import { BIG_SPOTS, lidIsUp } from './rescue.js';
 
 const INK = '#1d2740';
 const EYE_WHITE = '#ffffff';
@@ -75,11 +75,15 @@ function makeBrow(parent, width, height, depth, x, y, z, turn) {
 /* ---------- shapes, made once and shared ---------- */
 
 const shapes = new Map();
-function shapesFor(kind, paintIndex, make) {
+function shapesFor(kind, paintIndex, make, paint = PAINTS[paintIndex]) {
   const key = `${kind} ${paintIndex}`;
-  if (!shapes.has(key)) shapes.set(key, make(PAINTS[paintIndex]));
+  if (!shapes.has(key)) shapes.set(key, make(paint));
   return shapes.get(key);
 }
+
+// The golden robot with the key, from level 5, and the green one that comes apart, from level 6.
+const GOLD = { tin: '#f2c14a', dark: '#c18a22', trim: '#fff0a8', plate: '#fff8e6', glow: '#ff7a45' };
+const SPLIT = { tin: '#78cf68', dark: '#4c9842', trim: '#ff9fd0', plate: '#f2ffe8', glow: '#ff7eb6' };
 
 function walkerShapes(paint) {
   const { tin, dark, trim, plate, glow } = paint;
@@ -277,6 +281,31 @@ function bigShapes() {
   };
 }
 
+/** The robot king's crown, gold on his shoulders, medal and cape, made once and shared. */
+function kingShapes() {
+  const gold = '#ffc83d';
+  const pale = '#fff1a8';
+  const crown = [{ geometry: new THREE.CylinderGeometry(1.25, 1.15, 0.6, 24, 1, true), colour: gold, at: [0, 0.3, 0] }];
+  for (let i = 0; i < 5; i += 1) {
+    const angle = (i / 5) * Math.PI * 2 + Math.PI / 2;
+    crown.push({ geometry: new THREE.ConeGeometry(0.3, 0.7, 8), colour: gold, at: [Math.cos(angle) * 1.18, 0.9, Math.sin(angle) * 1.18] });
+    crown.push({ geometry: ball(0.15), colour: i % 2 ? '#ff6b9a' : '#59c8ff', at: [Math.cos(angle) * 1.24, 0.32, Math.sin(angle) * 1.24] });
+  }
+  return {
+    crown: joined(crown),
+    epaulette: joined([
+      { geometry: ball(1.3, 0.42, 1.3), colour: gold },
+      ...Array.from({ length: 10 }, (_, i) => ({ geometry: ball(0.13, 0.3, 0.13), colour: pale, at: [Math.cos((i / 10) * Math.PI * 2) * 1.22, -0.3, Math.sin((i / 10) * Math.PI * 2) * 1.22] })),
+    ]),
+    medal: joined([
+      { geometry: roundedBox(0.36, 1, 0.08, 0.04), colour: '#e8505b', at: [0, 0.5, 0] },
+      { geometry: face(0.48, 0.14, 20), colour: gold, at: [0, -0.1, 0.04] },
+      { geometry: star(0.32, 0.15, 0.08), colour: pale, at: [0, -0.1, 0.12] },
+    ]),
+    cape: joined([{ geometry: roundedBox(6.8, 5.8, 0.24, 0.12), colour: '#d9483f' }, { geometry: roundedBox(6.9, 0.4, 0.3, 0.1), colour: gold, at: [0, 2.8, 0] }]),
+  };
+}
+
 /* ---------- a robot on the screen ---------- */
 
 const splatShape = new THREE.SphereGeometry(1, 8, 6);
@@ -322,11 +351,17 @@ class RobotView {
     this.bodyPiece.add(blob);
   }
 
-  /** How the whole robot shakes when it's hit. Off for anyone who prefers reduced motion. */
+  /**
+   * How far the robot reels back while it's being hit, steadying again after. It used to shake quickly
+   * to and fro, which flickered round a robot under steady fire. Off for anyone who prefers reduced
+   * motion.
+   */
   shake() {
-    const { shakeFor } = this.robot;
-    if (shakeFor <= 0 || this.reducedMotion) return 0;
-    return Math.sin(this.time * 46) * shakeFor * 0.5;
+    const dt = this.time - (this.shakeAt ?? this.time);
+    this.shakeAt = this.time;
+    this.reel = damp(this.reel ?? 0, this.robot.shakeFor > 0 ? 1 : 0, 9, dt);
+    if (this.reducedMotion) return 0;
+    return this.reel * 0.09;
   }
 }
 
@@ -334,9 +369,11 @@ class RobotView {
 const towardsTram = (x, z) => Math.atan2(-x, z);
 
 class WalkerView extends RobotView {
-  constructor(robot, reducedMotion) {
+  /** look is a paint of its own, as { key, paint }, for the golden and the green ones. */
+  constructor(robot, reducedMotion, look = null) {
     super(robot, reducedMotion);
-    const shape = shapesFor('walker', robot.paint % PAINTS.length, walkerShapes);
+    const shape = look ? shapesFor('walker', look.key, walkerShapes, look.paint) : shapesFor('walker', robot.paint % PAINTS.length, walkerShapes);
+    this.shape = shape;
     this.aimHeight = 1.5;
     this.splatArea = [1.1, 1.7, 1];
     this.splatSize = 1;
@@ -362,7 +399,8 @@ class WalkerView extends RobotView {
     this.time += dt;
     const walking = robot.state === 'walking' && !resting;
     const stride = walking ? 1 : 0;
-    const step = this.time * 6.2;
+    // An unhurried step: a quicker one swung their legs and arms across the same places too often.
+    const step = this.time * 5;
     const swing = Math.sin(step) * stride * (reducedMotion ? 0.3 : 0.6);
 
     this.root.position.set(robot.x, 0, -robot.z);
@@ -380,7 +418,9 @@ class WalkerView extends RobotView {
     this.legR.rotation.x = swing;
     const shake = this.shake();
     const idle = reducedMotion ? 0 : Math.sin(this.time * 1.9) * 0.035;
-    this.lift.position.y = Math.abs(Math.sin(step)) * stride * (reducedMotion ? 0.02 : 0.1);
+    // A small bob with each step: a bigger one took their eyes up and down across the picture twice a
+    // second, which flickered among a crowd of them.
+    this.lift.position.y = Math.abs(Math.sin(step)) * stride * (reducedMotion ? 0.02 : 0.06);
     this.lift.rotation.z = idle + (walking ? Math.sin(step) * 0.07 : 0) + shake * 0.5;
     this.lift.rotation.x = walking ? 0.08 : shake * 0.4;
     this.head.rotation.y = reducedMotion ? 0 : Math.sin(this.time * 0.8) * 0.16;
@@ -433,11 +473,12 @@ class PeekerView extends RobotView {
     const lift = robot.lift ?? 0;
     this.root.position.set(robot.x, this.coverHeight - 0.72 - down + overshoot + lift, -robot.z);
     this.root.rotation.y = towardsTram(robot.x, robot.z);
-    this.spring.scale.y = 0.72 + (robot.state === 'ready' && !reducedMotion ? Math.sin(this.time * 7) * 0.06 : 0) + overshoot * 0.6;
+    this.spring.scale.y = 0.72 + (robot.state === 'ready' && !reducedMotion ? Math.sin(this.time * 5) * 0.05 : 0) + overshoot * 0.6;
     this.bodyPiece.position.y = this.spring.scale.y;
     this.bodyPiece.rotation.z = sway + this.shake() + (resting && !reducedMotion ? Math.sin(this.time * 6.4) * 0.26 : 0);
     this.bodyPiece.rotation.x = robot.throwing > 0 ? -0.34 : 0;
-    this.aimHeight = this.bodyPiece.position.y + 0.5;
+    // Where it's aimed at doesn't bob with the spring, or the crosshair, which goes with it, would bob too.
+    this.aimHeight = 0.72 + overshoot * 0.6 + 0.5;
   }
 
   handPoint(target) {
@@ -534,13 +575,251 @@ class DroneView extends RobotView {
     this.root.rotation.y = towardsTram(robot.x, robot.z);
     const tilt = reducedMotion ? 0 : Math.sin(this.time * 0.62 + robot.phase) * 0.14;
     this.root.rotation.z = tilt + this.shake() * 0.6 + (resting && !reducedMotion ? Math.sin(this.time * 5) * 0.25 : 0);
-    this.rotor.rotation.y += dt * (reducedMotion ? 6 : 13);
+    // Slowly: its four blades passing any one place more than about twice a second would flicker.
+    this.rotor.rotation.y += dt * (reducedMotion ? 2.5 : 3.6);
   }
 
   handPoint(target) {
     return this.root.localToWorld(target.set(0, -0.7, 0));
   }
 }
+
+/* ---------- the kinds that come on the higher levels ---------- */
+
+const lidShape = joined([
+  { geometry: face(0.8, 0.09, 28), colour: '#62758c' },
+  { geometry: ball(0.72, 0.72, 0.2), colour: '#a9b9ca', at: [0, 0, 0.05] },
+  { geometry: star(0.26, 0.12, 0.06), colour: '#ffd23f', at: [0, 0, 0.22] },
+  { geometry: new THREE.TorusGeometry(0.42, 0.04, 8, 24), colour: '#62758c', at: [0, 0, 0.17] },
+]);
+
+const mixed = (from, to, share) => from + (to - from) * share;
+
+/**
+ * A walker holding up a round tin lid, which shots bonk off. It lowers it to walk and to throw, and
+ * after enough bonks it drops it altogether.
+ */
+class LidView extends WalkerView {
+  constructor(robot, reducedMotion) {
+    super(robot, reducedMotion);
+    // One of its pieces, so that when it falls apart the lid falls with the rest, rather than vanishing.
+    this.lid = this.add(piece(lidShape), 0, 0, 0, this.lift);
+    this.lidShare = lidIsUp(robot) ? 1 : 0;
+    this.bonkedFor = 0;
+    this.tipped = 0;
+    this.update(0);
+  }
+
+  /** A shot has bonked off the lid, which tips back a little for a moment. */
+  bonk() {
+    this.bonkedFor = 0.3;
+  }
+
+  update(dt, options = {}) {
+    super.update(dt, options);
+    if (!this.lid) return;
+    this.lidShare = damp(this.lidShare ?? 0, lidIsUp(this.robot) ? 1 : 0, 9, dt || 1);
+    // Tipped back while it's being hit, and steady again after. It used to wobble with each bonk, which,
+    // with shots bonking off it five times a second, flickered.
+    this.bonkedFor = Math.max(0, (this.bonkedFor ?? 0) - (dt || 0));
+    this.tipped = damp(this.tipped ?? 0, this.bonkedFor > 0 && !this.reducedMotion ? 1 : 0, 8, dt || 1);
+    const share = this.lidShare * (1 - this.waving);
+    // Up, it's in front of the body, facing the tram. Down, it's at the robot's side, edge on.
+    this.lid.position.set(mixed(0.98, 0.05, share), mixed(1.2, 1.5, share), mixed(0.1, 0.82, share));
+    this.lid.rotation.set(-0.16 * this.tipped, mixed(Math.PI / 2, 0, share), 0);
+    this.armL.rotation.x = mixed(this.armL.rotation.x, -1.2, share);
+  }
+}
+
+/** The green one, with a zip down its front, that comes apart into two little ones. */
+const seamShape = joined([
+  { geometry: roundedBox(0.06, 1.08, 0.03, 0.01), colour: '#2a3d2a', at: [0, 1.38, 0.53] },
+  ...[1.02, 1.22, 1.42, 1.62, 1.8].map((y) => ({ geometry: roundedBox(0.2, 0.05, 0.03, 0.01), colour: '#2a3d2a', at: [0, y, 0.54] })),
+]);
+
+class SplitterView extends WalkerView {
+  constructor(robot, reducedMotion) {
+    super(robot, reducedMotion, { key: 'split', paint: SPLIT });
+    this.bodyPiece.add(piece(seamShape));
+  }
+}
+
+/** One of the little ones. */
+class MiniView extends WalkerView {
+  constructor(robot, reducedMotion) {
+    super(robot, reducedMotion, { key: 'split', paint: SPLIT });
+    this.root.scale.setScalar(0.62);
+  }
+}
+
+/** The golden one, with a big key on its back that opens the treasure chest. */
+class KeyView extends WalkerView {
+  constructor(robot, reducedMotion) {
+    super(robot, reducedMotion, { key: 'gold', paint: GOLD });
+    this.key.scale.setScalar(1.9);
+    this.key.position.z = -0.72;
+  }
+
+  update(dt, options = {}) {
+    const before = this.key?.rotation.z ?? 0;
+    super.update(dt, options);
+    // Its big key turns slowly, as a big thing turning quickly flickered.
+    if (this.key) this.key.rotation.z = before + (this.key.rotation.z - before) * 0.35;
+  }
+}
+
+/** A key on its own, flying over to the chest. */
+export function makeKey() {
+  const key = piece(shapesFor('walker', 'gold', walkerShapes, GOLD).key);
+  key.scale.setScalar(1.9);
+  return key;
+}
+
+// A little brass cage: a few pale bars, as a row of thin dark ones going by flickered.
+const smallCageParts = () => {
+  const brass = '#c9a35a';
+  const parts = [
+    { geometry: disc(0.72, 0.12, 20), colour: brass, at: [0, 0.06, 0] },
+    { geometry: disc(0.72, 0.1, 20), colour: brass, at: [0, 1.56, 0] },
+    { geometry: new THREE.ConeGeometry(0.78, 0.5, 20), colour: '#ffc83d', at: [0, 1.86, 0] },
+  ];
+  for (let i = 0; i < 6; i += 1) {
+    const angle = (i / 6) * Math.PI * 2 + 0.5;
+    parts.push({ geometry: limb(0.05, 0.05, 1.46, 6), colour: brass, at: [Math.sin(angle) * 0.7, 1.52, Math.cos(angle) * 0.7] });
+  }
+  return parts;
+};
+const smallCageShape = mergeParts(smallCageParts());
+const FALL_SPEED = 1.1; // Metres a second, under the parachute.
+const smallCageLine = outlineMaterial('#8a6a2f', 0.012);
+const ropeShape = joined([{ geometry: limb(0.035, 0.035, 1.5, 6), colour: '#7a5230' }]);
+
+/**
+ * The friends that drones carry about, made the first time each is needed and kept from then on: making
+ * one in the middle of a fight could hold up a frame.
+ */
+const carried = new Map();
+export function carriedFriend(spec) {
+  if (!carried.has(spec.id)) {
+    const friend = new Fighter3D(spec);
+    friend.root.traverse((node) => {
+      node.castShadow = false;
+    });
+    carried.set(spec.id, friend);
+  }
+  return carried.get(spec.id);
+}
+
+/** A drone carrying one of the friends in a little cage, which floats down when it's dropped. */
+class CarrierView extends DroneView {
+  /** friend is the one it carries, from carriedFriend. */
+  constructor(robot, reducedMotion, friend) {
+    super(robot, reducedMotion);
+    // One of its pieces, with the rope in it, which comes away when it falls apart.
+    this.hanging = this.add(new THREE.Group(), 0, -0.55, 0);
+    this.hanging.add(piece(ropeShape));
+    this.cage = new THREE.Group();
+    this.cage.position.y = -3.6;
+    this.hanging.add(this.cage);
+    this.cage.add(piece(smallCageShape, smallCageLine));
+    this.friend = friend ?? null;
+    this.pose = makePose();
+    if (this.friend) {
+      this.friend.root.removeFromParent();
+      this.friend.root.scale.setScalar(0.6);
+      this.friend.root.position.set(0, 0.12, 0);
+      this.friend.root.rotation.set(0, 0, 0);
+      this.friend.root.visible = true;
+      this.friend.setExpression('dizzy');
+      this.cage.add(this.friend.root);
+    }
+    this.update(0);
+  }
+
+  update(dt, options = {}) {
+    super.update(dt, options);
+    if (!this.hanging) return;
+    // The cage hangs straight down, whichever way the drone tips.
+    this.hanging.rotation.z = -this.root.rotation.z;
+    if (!this.friend || this.cage.parent !== this.hanging) return;
+    const wave = this.reducedMotion ? 0 : Math.sin(this.time * 5.5);
+    Object.assign(this.pose, { handLX: 0.5 + wave * 0.2, handLY: 0.86, handLZ: 0.3, handRX: -0.5, handRY: -0.05, handRZ: 0.6, roll: 0, up: 0 });
+    this.friend.setPose(this.pose);
+    this.friend.update(dt);
+  }
+}
+
+/** The little cage, let go: it floats down under a parachute, and the friend inside cheers. */
+const canopyShape = (() => {
+  const parts = [];
+  // Gentle stripes: bold ones going by flickered.
+  const colours = ['#ff9cc8', '#ffc2dc'];
+  for (let i = 0; i < 8; i += 1) {
+    parts.push({ geometry: new THREE.SphereGeometry(1.5, 6, 6, (i / 8) * Math.PI * 2, Math.PI / 4, 0, Math.PI / 2.4).scale(1, 0.62, 1), colour: colours[i % 2] });
+  }
+  for (const [x, z] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    parts.push({ geometry: new THREE.CylinderGeometry(0.02, 0.02, 1.9, 4).rotateZ(-x * 0.62).rotateX(z * 0.62), colour: '#e9e2d0', at: [x * 0.62, -0.75, z * 0.62] });
+  }
+  return joined(parts);
+})();
+
+export class FloatingCage {
+  /**
+   * land is where it comes down, in its place's own metres: { x, y }, with y the height of the street,
+   * the bridge or the water there. It drifts gently over to x on the way down.
+   */
+  constructor(view, reducedMotion, land = { x: view.cage.position.x, y: 0 }) {
+    this.reducedMotion = reducedMotion;
+    this.root = view.cage;
+    this.friend = view.friend;
+    this.pose = view.pose;
+    this.canopy = piece(canopyShape);
+    this.canopy.position.y = 3.3;
+    this.canopy.scale.setScalar(0.2);
+    this.root.add(this.canopy);
+    this.age = 0;
+    this.land = land;
+    this.from = { x: this.root.position.x, y: Math.max(this.root.position.y, land.y) };
+    this.friend?.setExpression('happy');
+  }
+
+  /** Returns false once it has gone. */
+  update(dt) {
+    this.age += dt;
+    const open = Math.min(1, this.age / 0.5);
+    this.canopy.scale.setScalar(0.2 + 0.8 * open * open * (3 - 2 * open));
+    // Down at a steady rate until it lands, and then it stays there, bobbing gently on the water if that's
+    // where, and swaying less once it's down.
+    const { root, land, from } = this;
+    this.height = Math.max(land.y, (this.height ?? from.y) - dt * FALL_SPEED);
+    const down = from.y > land.y ? (from.y - this.height) / (from.y - land.y) : 1;
+    root.position.x = from.x + (land.x - from.x) * down * down * (3 - 2 * down);
+    this.landedFor = this.height === land.y ? (this.landedFor ?? 0) + dt : 0;
+    const settled = Math.min(1, this.landedFor / 0.6);
+    const bob = land.water && !this.reducedMotion ? Math.sin(this.landedFor * 2.4) * 0.06 * settled : 0;
+    root.position.y = this.height + bob;
+    root.rotation.z = this.reducedMotion ? 0 : Math.sin(this.age * 2.2) * 0.08 * (1 - 0.6 * settled);
+    const cheer = this.reducedMotion ? 0 : Math.sin(this.age * 8) * 0.14;
+    if (this.friend) {
+      Object.assign(this.pose, { handLX: 0.48 + cheer, handLY: 0.9, handLZ: 0.1, handRX: -0.48 - cheer, handRY: 0.9, handRZ: 0.1, roll: 0, up: 0 });
+      this.friend.setPose(this.pose);
+      this.friend.update(dt);
+    }
+    // It shrinks away at the end, rather than vanishing.
+    if (this.age > 3.4) this.root.scale.setScalar(Math.max(0.01, 1 - (this.age - 3.4) / 0.6));
+    if (this.age < 4) return true;
+    this.dispose();
+    return false;
+  }
+
+  /** The friend is kept, for the next time a drone carries them: see carriedFriend. */
+  dispose() {
+    this.friend?.root.removeFromParent();
+    this.root.removeFromParent();
+  }
+}
+
+
 
 class BigView extends RobotView {
   constructor(robot, reducedMotion) {
@@ -568,7 +847,36 @@ class BigView extends RobotView {
     for (const spot of robot.spots) this.addHatch(spot, shape);
     // The ones that this difficulty doesn't use stay as closed hatches, for looks.
     for (const spare of BIG_SPOTS.slice(robot.spots.length)) this.addHatch(spare, shape);
+    this.kingParts = [];
+    if (robot.king) this.dressAsKing();
     this.update(0);
+  }
+
+  /**
+   * At level 10 it's the robot king, with a crown, gold on its shoulders, a medal and a red cape. A bit
+   * comes off with each weak spot that's done, and the crown goes with the rest of him at the end.
+   */
+  dressAsKing() {
+    const dress = shapesFor('king', 0, kingShapes);
+    this.add(piece(dress.crown, bigLine), 0, 2.25, 0, this.head);
+    const left = piece(dress.epaulette, bigLine);
+    left.position.y = 1.05;
+    this.armL.add(left);
+    const right = piece(dress.epaulette, bigLine);
+    right.position.y = 1.05;
+    this.armR.add(right);
+    const medal = piece(dress.medal, bigLine);
+    medal.position.set(-2.05, 6.1, 1.74);
+    this.bodyPiece.add(medal);
+    const cape = piece(dress.cape, bigLine);
+    cape.position.set(0, 4.5, -1.95);
+    this.bodyPiece.add(cape);
+    this.kingParts = [left, right, medal, cape];
+  }
+
+  /** One of the king's bits, to come off now that a weak spot is done. */
+  knockOff() {
+    return this.kingParts.shift() ?? null;
   }
 
   addHatch(spot, shape) {
@@ -641,18 +949,73 @@ class BigView extends RobotView {
 }
 
 /** Makes what the rules have just sent out. coverHeight says how tall its cover is, for a peeker. */
-export function makeRobotView(robot, reducedMotion, coverHeight = 1.5) {
+export function makeRobotView(robot, reducedMotion, coverHeight = 1.5, pal = null) {
   if (robot.kind === 'walker') return new WalkerView(robot, reducedMotion);
+  if (robot.kind === 'lid') return new LidView(robot, reducedMotion);
+  if (robot.kind === 'splitter') return new SplitterView(robot, reducedMotion);
+  if (robot.kind === 'mini') return new MiniView(robot, reducedMotion);
+  if (robot.kind === 'keybot') return new KeyView(robot, reducedMotion);
+  if (robot.kind === 'carrier') return new CarrierView(robot, reducedMotion, pal);
   if (robot.kind === 'roller') return new RollerView(robot, reducedMotion);
   if (robot.kind === 'drone') return new DroneView(robot, reducedMotion);
   if (robot.kind === 'peeker') return new PeekerView(robot, reducedMotion, coverHeight);
   return new BigView(robot, reducedMotion);
 }
 
+/* ---------- the treasure chest, from level 5 ---------- */
+
+const chestShape = joined([
+  { geometry: roundedBox(0.92, 0.5, 0.6, 0.06), colour: '#a8743f', at: [0, 0.25, 0] },
+  { geometry: roundedBox(0.1, 0.54, 0.64, 0.03), colour: '#ffc83d', at: [-0.3, 0.25, 0] },
+  { geometry: roundedBox(0.1, 0.54, 0.64, 0.03), colour: '#ffc83d', at: [0.3, 0.25, 0] },
+  { geometry: roundedBox(0.8, 0.06, 0.5, 0.02), colour: '#ffd95e', at: [0, 0.49, 0] },
+]);
+const chestLidShape = joined([
+  { geometry: new THREE.CylinderGeometry(0.3, 0.3, 0.92, 18, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).scale(1, 0.7, 1), colour: '#bf8a4f', at: [0, 0, 0.3] },
+  { geometry: new THREE.CylinderGeometry(0.31, 0.31, 0.1, 18, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).scale(1, 0.7, 1), colour: '#ffc83d', at: [-0.3, 0, 0.3] },
+  { geometry: new THREE.CylinderGeometry(0.31, 0.31, 0.1, 18, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).scale(1, 0.7, 1), colour: '#ffc83d', at: [0.3, 0, 0.3] },
+]);
+const padlockShape = joined([
+  { geometry: roundedBox(0.24, 0.2, 0.08, 0.04), colour: '#ffc83d' },
+  { geometry: new THREE.TorusGeometry(0.08, 0.025, 6, 12, Math.PI), colour: '#c9d3dd', at: [0, 0.1, 0] },
+  { geometry: ball(0.03), colour: '#3a4557', at: [0, -0.01, 0.045] },
+]);
+
+/** A small treasure chest beside a cage. The golden robot's key opens it. */
+export class Chest {
+  constructor(reducedMotion = false) {
+    this.reducedMotion = reducedMotion;
+    this.root = new THREE.Group();
+    this.root.add(piece(chestShape));
+    this.lid = new THREE.Group();
+    this.lid.position.set(0, 0.5, -0.3);
+    this.lid.add(piece(chestLidShape));
+    this.root.add(this.lid);
+    this.lock = piece(padlockShape);
+    this.lock.position.set(0, 0.4, 0.33);
+    this.root.add(this.lock);
+    this.opened = 0;
+    this.open = false;
+  }
+
+  /** Where prizes come out of, in the world. */
+  topPoint(target) {
+    return this.root.localToWorld(target.set(0, 0.7, 0));
+  }
+
+  update(dt) {
+    if (!this.open) return;
+    this.opened = Math.min(1, this.opened + dt / 0.6);
+    const share = this.opened * this.opened * (3 - 2 * this.opened);
+    this.lid.rotation.x = -share * 1.9;
+    this.lock.scale.setScalar(Math.max(0.01, 1 - share));
+  }
+}
+
 /* ---------- when it all falls apart ---------- */
 
 const GRAVITY = 15;
-const DEBRIS_SECONDS = 1.5;
+const DEBRIS_SECONDS = 1.15;
 
 /** The bits of a robot flying apart and bouncing away. They shrink away rather than disappearing. */
 export class Debris {
@@ -668,18 +1031,27 @@ export class Debris {
   burst(view, power = 1, floor = 0.25 * power) {
     const { root, pieces } = view;
     root.updateWorldMatrix(true, true);
+    // The body and the head fly off, and the smaller bits drop and shrink away where they are: a lot of
+    // bits flying about the middle of the picture, with a few robots falling apart at once, flickered.
+    const flying = new Set([view.bodyPiece, view.head].filter(Boolean));
     for (const bit of pieces) {
       if (bit.parent !== root && bit.parent !== view.lift) continue;
       this.parent.attach(bit);
+      if (!flying.has(bit) && power <= 1) {
+        this.bits.push({ bit, life: 0.45, vx: 0, vy: 0.6, vz: 0, spinX: 0, spinZ: 0, floor, shrink: 0.45 });
+        continue;
+      }
       const away = new THREE.Vector3((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 1.2);
+      // Not far, and tumbling slowly: big bits flying high and turning over quickly flickered in the
+      // middle of the picture, most of all with a few robots falling apart at once.
       this.bits.push({
         bit,
-        life: DEBRIS_SECONDS + Math.random() * 0.5,
-        vx: away.x * 4.6 * power,
-        vy: (3.6 + Math.random() * 3.6) * Math.sqrt(power),
-        vz: away.z * 4.6 * power,
-        spinX: (Math.random() - 0.5) * 9,
-        spinZ: (Math.random() - 0.5) * 9,
+        life: DEBRIS_SECONDS + Math.random() * 0.35,
+        vx: away.x * 2.6 * power,
+        vy: (2.2 + Math.random() * 2) * Math.sqrt(power),
+        vz: away.z * 2.6 * power,
+        spinX: (Math.random() - 0.5) * 4.5,
+        spinZ: (Math.random() - 0.5) * 4.5,
         floor,
       });
     }
@@ -698,13 +1070,18 @@ export class Debris {
       bit.rotation.z += item.spinZ * dt;
       if (bit.position.y < item.floor && item.vy < 0) {
         bit.position.y = item.floor;
-        item.vy *= -0.42;
+        // One bounce, and then it settles, rather than a quick patter of little ones.
+        item.vy = item.vy < -4 ? item.vy * -0.36 : 0;
         item.vx *= 0.65;
         item.vz *= 0.65;
         item.spinX *= 0.6;
         item.spinZ *= 0.6;
       }
-      if (item.life < 0.4) bit.scale.setScalar(Math.max(0.01, item.life / 0.4));
+      // It shrinks away, rather than vanishing, from whatever size it was: a little robot's bits are small
+      // to start with, and the golden robot's key big.
+      item.from ??= bit.scale.clone();
+      const shrink = item.shrink ?? 0.55;
+      if (item.life < shrink) bit.scale.copy(item.from).multiplyScalar(Math.max(0.01, item.life / shrink));
       if (item.life <= 0) bit.removeFromParent();
     }
     this.bits = this.bits.filter(({ life }) => life > 0);

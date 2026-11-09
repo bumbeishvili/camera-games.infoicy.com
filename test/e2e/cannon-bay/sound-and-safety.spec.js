@@ -22,7 +22,7 @@ for (const language of ['en', 'ka']) {
       expect(duration, text).toBeGreaterThan(0.15);
       expect(duration, text).toBeLessThan(6);
     }
-    for (const name of ['cannon', 'splash', 'thud', 'canvas', 'row', 'horn', 'down', 'sparkle']) expect(loaded.sounds[name], name).toBeGreaterThan(0.05);
+    for (const name of ['cannon', 'splash', 'thud', 'canvas', 'row', 'horn', 'down', 'sparkle', 'boing', 'bubble', 'unlock', 'bell']) expect(loaded.sounds[name], name).toBeGreaterThan(0.05);
     for (const name of ['waves', 'wash', 'creak', 'wind', 'gulls', 'music']) expect(loaded.sounds[name], name).toBeGreaterThan(5);
   });
 }
@@ -231,6 +231,105 @@ for (const level of [1, 10]) {
   });
 }
 
+/**
+ * Everything the higher levels bring, at once and close by: every new kind of ship, alongside and in view,
+ * trapped in bubbles, slowed by snow and hiding in smoke, a submarine diving and coming up, each kind of
+ * fire in turn, the shield, and prizes of every kind floating over.
+ */
+const everythingNew = (page) => page.evaluate(() => {
+  const { battle } = window.__game;
+  // Captains of their own, after the four already out, so that no two share a ship.
+  const kinds = ['raft', 'little', 'smoky', 'sub', 'sloop', 'king'];
+  const captains = [4, 5, 6, 9, 7, 8];
+  const extra = kinds.map((kind, index) => {
+    const pirate = battle.makePirate(kind, battle.x, battle.z, captains[index]);
+    pirate.hitsLeft = 1e6;
+    pirate.maxHits = 1e6;
+    pirate.cage = index === 0;
+    pirate.key = index === 2;
+    battle.pirates.push(pirate);
+    return pirate;
+  });
+  // Well apart from each other and from the one held alongside, so that nothing pushes anything about:
+  // each is at a bearing off the bow, in degrees, and a distance. Most are in the firing zones.
+  const spots = [[100, 130], [128, 165], [-60, 85], [-95, 140], [-125, 190], [30, 160]];
+  const fires = ['triple', 'bubble', 'bounce', 'snow', 'shield', 'magnet'];
+  let turn = 0;
+  let next = 0;
+  // They're put in their places as part of each frame, right after the rules, so that they go along
+  // with the child's ship as smoothly as they would by themselves.
+  const update = battle.update;
+  window.__realUpdate = update;
+  battle.update = function everything(dt, input) {
+    update.call(this, dt, input);
+    extra.forEach((pirate, index) => {
+      if (pirate.state !== 'sailing') return;
+      const [bearing, away] = spots[index];
+      const direction = battle.heading + (bearing * Math.PI) / 180;
+      pirate.x = battle.x + Math.sin(direction) * away;
+      pirate.z = battle.z - Math.cos(direction) * away;
+      pirate.heading = battle.heading;
+      pirate.mode = 'away';
+      pirate.spot = { x: pirate.x, z: pirate.z };
+      pirate.modeLeft = 5;
+      pirate.runAt = -1;
+    });
+    next -= dt;
+    if (next > 0) return;
+    next = 1;
+    battle.startPower(fires[turn % fires.length]);
+    turn += 1;
+    extra[2].smoke = extra[2].smoke > 0 ? 0 : 2;
+    extra[3].diveIn = 0;
+    extra[4].bubbled = 3;
+    extra[5].frosted = 4;
+    const ahead = { x: Math.sin(battle.heading), z: -Math.cos(battle.heading) };
+    const right = { x: Math.cos(battle.heading), z: Math.sin(battle.heading) };
+    ['gem', 'heart', 'key', 'cage', 'power', 'gem'].forEach((kind, index) => {
+      const out = (index - 2.5) * 14;
+      battle.addPrize(kind, battle.x + ahead.x * 70 + right.x * out, battle.z + ahead.z * 70 + right.z * out, kind === 'power' ? { power: 'bubble' } : { colour: index });
+    });
+    if (!battle.prizes.some(({ kind }) => kind === 'chest')) battle.showChest();
+  };
+});
+
+const stopEverything = (page) => page.evaluate(() => {
+  window.__game.battle.update = window.__realUpdate;
+});
+
+// At a middle level and at level 10.
+for (const level of [6, 10]) {
+  test(`nothing flashes at level ${level} with every new kind of fire, ship and prize on the screen at once`, async ({ page }) => {
+    test.setTimeout(150_000);
+    await startPlaying(page, { bayShips: 9, levels: { 'cannon-bay': level } });
+    await holdPirate(page, { off: Math.PI * 0.35, away: 70, quiet: false });
+    await everythingNew(page);
+    await page.waitForTimeout(1500);
+    await shot(page, `cannon-bay-level${level}-everything`);
+    const reading = await brightnessOverFrames(page, 240);
+    const steps = biggestStep(reading);
+    console.log(`level ${level}: biggest brightness step with everything new going on`, steps, 'average', reading.reduce((sum, value) => sum + value, 0) / reading.length);
+    expect(steps).toBeLessThan(6);
+    const seen = await page.evaluate(() => {
+      const { battle, bay } = window.__game;
+      return { fired: battle.stats.shots, bubbles: bay.bubbles.some(({ visible }) => visible), prizes: battle.prizes.length, kinds: [...new Set(battle.afloat.map(({ kind }) => kind))].sort() };
+    });
+    console.log('with everything', JSON.stringify(seen));
+    expect(seen.fired).toBeGreaterThan(5);
+    expect(seen.kinds).toEqual(expect.arrayContaining(['king', 'little', 'raft', 'sloop', 'smoky', 'sub']));
+    // And opening and closing the hand, which starts and stops the zones, with all of it going on.
+    await show(page, null, 'fist', { scale: 0.7 });
+    const closing = await brightnessOverFrames(page, 50);
+    await show(page, null, 'open', { scale: 0.7 });
+    const opening = await brightnessOverFrames(page, 50);
+    console.log('biggest brightness step as the cannons stop and start', biggestStep(closing), biggestStep(opening));
+    expect(biggestStep(closing)).toBeLessThan(6);
+    expect(biggestStep(opening)).toBeLessThan(6);
+    await stopEverything(page);
+    await letPirateGo(page);
+  });
+}
+
 test('with reduced motion the battle still works, with calmer waves and a steadier ship', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await startPlaying(page, { bayShips: 4 });
@@ -289,6 +388,7 @@ for (const level of [1, 10]) {
   test(`it runs quickly enough${atLevel}, with everything going on`, async ({ page }) => {
     await startPlaying(page, { bayShips: 9, ...levels });
     await holdPirate(page, { off: Math.PI * 0.4, away: 95, quiet: false });
+    if (level === 10) await everythingNew(page);
     await page.waitForTimeout(2000);
     const rate = await page.evaluate(() => new Promise((done) => {
       let frames = 0;
@@ -302,6 +402,7 @@ for (const level of [1, 10]) {
     }));
     console.log(`level ${level}: frames a second`, rate, 'quality', await page.evaluate(() => window.__game.bay.quality));
     expect(rate).toBeGreaterThan(28);
+    if (level === 10) await stopEverything(page);
     await letPirateGo(page);
   });
 }

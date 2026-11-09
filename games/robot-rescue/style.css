@@ -215,3 +215,34 @@ body[data-hands='left'] .film { left: auto; right: 16px; }
   .film-hand, .film-hand rect, .film-hand path, .film-crosshair, .film-crosshair circle, .film-shots, .film-robot, .film-bits, .film-shield, .film-goo { animation-duration: 12s; }
   .film-shots circle { animation-duration: 0.7s; }
 }
+
+/* What's been picked up, and the power-ups that are on, from level 2, in a row of their own under the
+   progress bar, so the row along the top and the prompt beside it stay as they are. The story box goes
+   down under them, and so does the mirror on a narrow screen. --hud-bottom is set by main.js. */
+.chip[hidden] { display: none; }
+.chips-more:not(:has(.chip:not([hidden]))) { display: none; }
+.chips-more { flex-wrap: wrap; max-width: calc(100vw - 24px); }
+body:has(#chip-haul:not([hidden])) .story { top: max(106px, calc(var(--hud-bottom, 0px) + 10px)); }
+@media (max-width: 760px) {
+  body[data-screen='playing']:has(#chip-haul:not([hidden])) .camera-frame,
+  body[data-screen='countdown']:has(#chip-haul:not([hidden])) .camera-frame { top: max(104px, calc(var(--hud-bottom, 0px) + 10px)); }
+}
+.chip-haul .chip-value { display: flex; gap: 10px; align-items: center; }
+.haul { display: inline-flex; gap: 3px; align-items: center; }
+.haul[hidden] { display: none; }
+.chip-power .chip-value { display: flex; gap: 10px; align-items: center; }
+/* Each power-up's picture with a bar under it, which runs down. */
+.power { display: inline-grid; gap: 3px; justify-items: center; }
+.power-mark { font-size: 0.9em; line-height: 1; }
+.power-bar {
+  display: block;
+  width: 1.9em;
+  height: 0.32em;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: #fff8e8;
+  overflow: hidden;
+}
+.power-bar span { display: block; height: 100%; background: #35c26a; width: 100%; }
+/* One on its way over, shown faintly until it gets there. */
+.power.is-coming { opacity: 0.45; }

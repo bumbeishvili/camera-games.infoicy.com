@@ -39,6 +39,11 @@ const GULLS_LEVEL = 0.2;
 // Some things can happen a lot at once, and all of them together would be noise, and too loud.
 const CLATTER_GAP_SECONDS = 0.16;
 const BOING_GAP_SECONDS = 1.1;
+const PRIZE_GAP_SECONDS = 0.14; // Bolts come in threes, and one twinkle for them is plenty.
+const BONK_GAP_SECONDS = 0.22;
+const BUBBLE_GAP_SECONDS = 0.3;
+const BALL_GAP_SECONDS = 0.35;
+const HIT_GAP_SECONDS = 0.01; // A triple shot's three balls land in the same frame, and make one sound.
 const near = (spread) => 1 + (Math.random() - 0.5) * spread;
 const oneOf = (name, count) => `${name}-${1 + Math.floor(Math.random() * count)}`;
 
@@ -46,7 +51,7 @@ export class RescueSound extends Sound {
   constructor(options) {
     super({ ...options, sounds: RESCUE_SOUNDS });
     this.lost = false;
-    this.lastAt = { clatter: -Infinity, boing: -Infinity };
+    this.lastAt = { clatter: -Infinity, boing: -Infinity, prize: -Infinity, bonk: -Infinity, bubble: -Infinity, ball: -Infinity, hit: -Infinity };
   }
 
   /** Whether a sound that shouldn't pile up on itself can play yet. */
@@ -78,7 +83,7 @@ export class RescueSound extends Sound {
   }
 
   hit() {
-    this.play(oneOf('hit', 3), { gain: 0.34, rate: near(0.2) });
+    if (this.isTimeFor('hit', HIT_GAP_SECONDS)) this.play(oneOf('hit', 3), { gain: 0.34, rate: near(0.2) });
   }
 
   fallApart() {
@@ -131,6 +136,58 @@ export class RescueSound extends Sound {
 
   popUp() {
     if (this.isTimeFor('boing', BOING_GAP_SECONDS)) this.play('boing', { gain: 0.22, rate: near(0.3) });
+  }
+
+  /** Something picked up reaches the crosshair: a soft twinkle, a little brighter for the rarer ones. */
+  prizeIn(kind) {
+    if (kind === 'power') {
+      this.play('reload', { gain: 0.45, rate: 1.15 });
+      this.play('sparkle', { gain: 0.36, rate: 1.1 });
+      return;
+    }
+    if (!this.isTimeFor('prize', PRIZE_GAP_SECONDS)) return;
+    const { gain, rate } = { bolt: { gain: 0.16, rate: 1.35 }, gem: { gain: 0.28, rate: 1.15 }, star: { gain: 0.3, rate: 1 } }[kind] ?? { gain: 0.2, rate: 1.2 };
+    this.play('sparkle', { gain, rate: rate * near(0.06) });
+  }
+
+  heartUp() {
+    this.play('sparkle', { gain: 0.42, rate: 1.25 });
+  }
+
+  /** A shot bonking off a robot's lid. */
+  bonk() {
+    if (this.isTimeFor('bonk', BONK_GAP_SECONDS)) this.play('shieldHit', { gain: 0.3, rate: 1.5 * near(0.1) });
+  }
+
+  lidOff() {
+    this.play(oneOf('clatter', 2), { gain: 0.55, rate: 1.25 });
+  }
+
+  splitApart() {
+    this.play('boing', { gain: 0.32, rate: 1.25 });
+  }
+
+  keyFlies() {
+    this.play('sparkle', { gain: 0.32, rate: 0.9 });
+  }
+
+  chestOpens() {
+    this.play('unlock', { gain: 0.6 });
+    this.play('sparkle', { gain: 0.42 });
+  }
+
+  /** A friend a drone was carrying, floating down. */
+  palFreed() {
+    this.play('bell', { gain: 0.36 });
+    this.play('sparkle', { gain: 0.34 });
+  }
+
+  bubbleUp() {
+    if (this.isTimeFor('bubble', BUBBLE_GAP_SECONDS)) this.play('gooPop', { gain: 0.3, rate: 1.5 * near(0.1) });
+  }
+
+  boingBall() {
+    if (this.isTimeFor('ball', BALL_GAP_SECONDS)) this.play('boing', { gain: 0.26, rate: near(0.25) });
   }
 
   cageOpens() {

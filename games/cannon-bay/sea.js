@@ -10,8 +10,9 @@ import { Sparks } from '../../core/body/sparks.js';
 import { Island } from '../sky-wings/island.js';
 import { SHIP_KINDS, forwardOf, rightOf } from './battle.js';
 import { CHART, getChart } from './chart.js';
+import { POWER_LOOKS, PrizeDrawing } from './prizes.js';
 import { Coins, Dolphins, Floats } from './sea-life.js';
-import { HeroShip, Lifeboat, PirateShip, LOOKS } from './ships.js';
+import { HeroShip, Lifeboat, PirateShip, LOOKS, Raft, Submarine, kingsCrown } from './ships.js';
 
 const SLOW_FRAME_SECONDS = 1 / 40;
 const SLOW_CHECK_FRAMES = 90;
@@ -25,6 +26,51 @@ const SEA = { cells: 150, cell: 7, cellsLow: 90, cellLow: 11 };
 // sooner than that.
 const NEAR_CAPTAIN = [200, 340, 340];
 const WATCH_SECONDS = 4.5;
+// The weather on the higher levels: a light mist from level 7, and the sun going down at level 10, which
+// only change the colours and how far can be seen, and never how bright the picture is from moment to moment.
+const CLEAR = { fog: '#dff4ff', near: 700, far: 2300, sky: '#ffffff', ground: '#9fbf9a', light: 1.9, sun: '#fff3dc', sunLight: 2.1, tint: '#bfe7fb', dome: '#ffffff' };
+const MIST = { fog: '#e3ecef', near: 240, far: 1250, dome: '#edf3f5' };
+const SUNSET = { fog: '#ffd6b3', sky: '#ffeeda', ground: '#b49a7c', light: 1.85, sun: '#ffc085', sunLight: 2.2, tint: '#ffcfa3', dome: '#ffcfa6' };
+const ODD_KINDS = new Set(['raft', 'little', 'sub']);
+// The order the pirate king's sails come down in: the tops first.
+const KING_SAILS = [1, 3, 0, 2];
+const FROST_SAILS = new THREE.Color('#cfe6ff');
+const WHITE = new THREE.Color('#ffffff');
+
+// A soap bubble: nearly clear in the middle and paler towards its edge, with a little shine on it, which
+// is what makes it read as a bubble. Its opacity only ever changes slowly.
+const BUBBLE_VERTEX = `
+varying vec3 vNormal;
+varying vec3 vView;
+void main() {
+  vec4 moved = modelViewMatrix * vec4(position, 1.0);
+  vNormal = normalize(normalMatrix * normal);
+  vView = normalize(-moved.xyz);
+  gl_Position = projectionMatrix * moved;
+}`;
+const BUBBLE_FRAGMENT = `
+uniform vec3 uColour;
+uniform float uOpacity;
+varying vec3 vNormal;
+varying vec3 vView;
+void main() {
+  vec3 normal = normalize(vNormal);
+  float rim = 1.0 - abs(dot(normal, normalize(vView)));
+  float shine = smoothstep(0.93, 0.98, dot(normal, normalize(vec3(-0.45, 0.6, 0.66))));
+  float alpha = (0.12 + 0.55 * pow(rim, 2.2) + 0.45 * shine) * uOpacity;
+  vec3 colour = mix(uColour, vec3(1.0), clamp(pow(rim, 3.0) * 0.5 + shine, 0.0, 1.0));
+  gl_FragColor = vec4(colour, alpha);
+}`;
+
+function bubbleMaterial(colour) {
+  return new THREE.ShaderMaterial({
+    uniforms: { uColour: { value: new THREE.Color(colour) }, uOpacity: { value: 0 } },
+    vertexShader: BUBBLE_VERTEX,
+    fragmentShader: BUBBLE_FRAGMENT,
+    transparent: true,
+    depthWrite: false,
+  });
+}
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const damp = (value, target, rate, dt) => value + (target - value) * (1 - Math.exp(-rate * dt));
@@ -377,10 +423,12 @@ export class Bay {
 
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.Fog('#dff4ff', 700, 2300);
-    this.scene.add(new THREE.HemisphereLight('#ffffff', '#9fbf9a', 1.9));
+    this.skyLight = new THREE.HemisphereLight('#ffffff', '#9fbf9a', 1.9);
+    this.scene.add(this.skyLight);
     const sun = new THREE.DirectionalLight('#fff3dc', 2.1);
     sun.position.set(-0.5, 1, 0.45);
     this.scene.add(sun);
+    this.sun = sun;
     this.sunDirection = sun.position.clone().normalize();
 
     this.camera = new THREE.PerspectiveCamera(FOV, 1, 1.5, 6000);
@@ -427,6 +475,8 @@ export class Bay {
     this.floats = new Floats(this.scene, this.chart, waterHeight);
     this.dolphins = new Dolphins(this.scene, this.chart, waterHeight, (x, z, size) => this.smallSplash(x, z, size));
     this.coins = new Coins(this.scene, waterHeight);
+    this.prizeDrawing = new PrizeDrawing(this.scene, waterHeight, this.reducedMotion);
+    this.buildOddBoats();
     this.gulls = buildGulls(this.scene);
     this.gullMatrix = new THREE.Matrix4();
     this.gullAt = new THREE.Vector3();
@@ -562,7 +612,13 @@ export class Bay {
     const gold = new THREE.MeshBasicMaterial({ color: '#ffd23f' });
     this.theirBalls = new THREE.InstancedMesh(shape, dark, MOST_BALLS);
     this.myBalls = new THREE.InstancedMesh(shape, gold, MOST_BALLS);
-    for (const mesh of [this.theirBalls, this.myBalls]) {
+    // The power-ups' balls: a big orange bouncing one, a see-through bubble and a snowball.
+    this.powerBalls = {
+      bounce: { mesh: new THREE.InstancedMesh(shape, new THREE.MeshLambertMaterial({ color: '#ff9f43' }), MOST_BALLS), size: 2.5 },
+      bubble: { mesh: new THREE.InstancedMesh(shape, new THREE.MeshBasicMaterial({ color: '#a8e2ff', transparent: true, opacity: 0.6, depthWrite: false }), MOST_BALLS), size: 2.7 },
+      snow: { mesh: new THREE.InstancedMesh(shape, new THREE.MeshLambertMaterial({ color: '#eef6ff' }), MOST_BALLS), size: 1.9 },
+    };
+    for (const mesh of [this.theirBalls, this.myBalls, ...Object.values(this.powerBalls).map((each) => each.mesh)]) {
       mesh.frustumCulled = false;
       mesh.count = 0;
       this.scene.add(mesh);
@@ -612,10 +668,79 @@ export class Bay {
     }
     for (const wake of this.wakes.pirates) wake.clear();
     this.wakes.hero.clear();
+    for (const boat of this.oddBoats.values()) boat.root.visible = false;
+    this.oddFor = new Map();
+    for (const bubble of this.bubbles) bubble.visible = false;
     this.shapeZones();
+    this.setWeather(battle?.plan ?? {});
     this.hero.joze.setExpression('happy');
     this.cheering = false;
     if (battle) this.cameraYaw = battle.heading;
+  }
+
+  /** The rafts and submarines of the higher levels, and the bubbles that trap ships, and the child's shield. */
+  buildOddBoats() {
+    this.oddBoats = new Map(); // By what it is and whose it is, as 'raft:kit'.
+    this.oddFor = new Map(); // Which of them each pirate is.
+    const bubbleShape = new THREE.SphereGeometry(1, 24, 16);
+    this.bubbles = Array.from({ length: 8 }, () => {
+      const mesh = new THREE.Mesh(bubbleShape, bubbleMaterial('#9fdcff'));
+      mesh.visible = false;
+      mesh.renderOrder = 2;
+      this.scene.add(mesh);
+      return mesh;
+    });
+    this.shield = new THREE.Mesh(bubbleShape, bubbleMaterial('#7cc8ff'));
+    this.shield.visible = false;
+    this.shield.renderOrder = 2;
+    this.scene.add(this.shield);
+    this.shieldShare = 0;
+    this.bubbleShares = new WeakMap();
+  }
+
+  /** A raft or a submarine in a captain's colours, made the first time it's needed and kept. */
+  oddBoatFor(pirate) {
+    const kind = pirate.kind === 'little' ? 'raft' : pirate.kind;
+    if (!this.oddFor.has(pirate)) {
+      const captain = this.order[pirate.index % this.order.length];
+      // Each little raft needs its own, and there are two of them.
+      const used = new Set(this.oddFor.values());
+      let number = 0;
+      let key = `${kind}:${captain}:${number}`;
+      while (used.has(this.oddBoats.get(key))) {
+        number += 1;
+        key = `${kind}:${captain}:${number}`;
+      }
+      if (!this.oddBoats.has(key)) {
+        const look = LOOKS[captain] ?? LOOKS.kit;
+        const boat = kind === 'sub' ? new Submarine(look) : new Raft(look);
+        boat.rock = { pitch: 0, roll: 0, y: 0 };
+        boat.dive = 0;
+        this.scene.add(boat.root);
+        this.oddBoats.set(key, boat);
+      }
+      this.oddFor.set(pirate, this.oddBoats.get(key));
+    }
+    return this.oddFor.get(pirate);
+  }
+
+  /** The weather the level brings. It's set once for a battle, so the brightness never changes during one. */
+  setWeather({ mist = false, sunset = false } = {}) {
+    const weather = { ...CLEAR, ...(mist ? MIST : {}), ...(sunset ? SUNSET : {}) };
+    if (mist && sunset) weather.dome = SUNSET.dome;
+    this.weather = mist ? (sunset ? 'sunset' : 'mist') : sunset ? 'sunset' : 'clear';
+    this.scene.fog.color.set(weather.fog);
+    this.scene.fog.near = weather.near;
+    this.scene.fog.far = weather.far;
+    this.seaUniforms.uFog.value.set(weather.fog);
+    this.seaUniforms.uFogRange.value.set(weather.near, weather.far);
+    this.seaUniforms.uSkyTint.value.set(weather.tint);
+    this.skyLight.color.set(weather.sky);
+    this.skyLight.groundColor.set(weather.ground);
+    this.skyLight.intensity = weather.light;
+    this.sun.color.set(weather.sun);
+    this.sun.intensity = weather.sunLight;
+    if (this.island.dome?.material) this.island.dome.material.color.set(weather.dome);
   }
 
   shapeZones() {
@@ -726,8 +851,66 @@ export class Bay {
       hurt: () => this.onHurt(event),
       gold: () => this.onGold(event),
       won: () => this.onWon(),
+      prize: () => this.onPrize(event),
+      'little-beaten': () => this.onLittleBeaten(event),
+      split: () => this.pieces(event.pirate, ['#b8743a', '#c99458'], 6),
+      'sail-down': () => this.onSailDown(event),
+      smoke: () => this.puffs({ x: event.pirate.x, y: 10, z: event.pirate.z }, { count: 6, colours: ['#b9b4ad', '#cdc8c1'], size: 9, speed: 4, up: 0.5, life: 1.8, grow: 5, opacity: 0.5 }),
+      dive: () => this.smallSplash(event.pirate.x, event.pirate.z, 1.3),
+      surface: () => this.smallSplash(event.pirate.x, event.pirate.z, 1.3),
+      bubbled: () => this.puffs({ x: event.pirate.x, y: 8, z: event.pirate.z }, { count: 4, shape: 'bubble', colours: ['#ffffff', '#cdeeff'], size: 2.6, speed: 5, up: 1.2, life: 0.9, grow: 1.3, opacity: 0.8 }),
+      frosted: () => this.puffs({ x: event.pirate.x, y: 14, z: event.pirate.z }, { count: 4, shape: 'snow', colours: ['#ffffff', '#e6f4ff'], size: 2.4, speed: 5, up: 1, life: 1, grow: 1, opacity: 0.9, gravity: 4 }),
+      blocked: () => {
+        this.ringAt(event.x, event.z, 10, 0.9);
+        this.puffs({ x: event.x, y: 6, z: event.z }, { count: 3, shape: 'bubble', colours: ['#cdeeff'], size: 2.4, speed: 5, up: 1.2, life: 0.8, grow: 1.2, opacity: 0.75 });
+      },
+      power: () => this.onPower(event),
     };
     handlers[event.type]?.();
+  }
+
+  /** Something picked up: a few small shapes in its own colour, where it was. */
+  onPrize({ prize }) {
+    const colours = { gem: ['#4cc3ff', '#ff6fae', '#62e38a'], heart: ['#f0506e'], key: ['#f2b830'], chest: ['#f2b830', '#4cc3ff'], cage: ['#ffd23f', '#2f6fed'], power: [POWER_LOOKS[prize.power]?.colour ?? '#ffd23f'] }[prize.kind] ?? ['#ffd23f'];
+    const count = prize.kind === 'chest' || prize.kind === 'cage' ? 6 : 3;
+    for (let i = 0; i < (this.reducedMotion ? Math.ceil(count / 2) : count); i += 1) {
+      const angle = (i / count) * Math.PI * 2 + Math.random();
+      this.sparks.emit({ shape: prize.kind === 'heart' ? 'star' : i % 2 ? 'star' : 'spark', colour: colours[i % colours.length], at: { x: prize.x, y: 6, z: prize.z }, velocity: [Math.cos(angle) * 6, between(6, 10), Math.sin(angle) * 6], life: 0.6, size: 2.2, spin: 4, gravity: 10 });
+    }
+    if (prize.kind === 'cage') {
+      this.hero.joze.setExpression('happy');
+      this.cheerLeft = 1.4;
+    }
+  }
+
+  /** Planks and barrels from a raft coming apart: small brown shapes, and a little smoke. */
+  pieces(pirate, colours, count) {
+    for (let i = 0; i < (this.reducedMotion ? Math.ceil(count / 2) : count); i += 1) {
+      const angle = (i / count) * Math.PI * 2 + Math.random();
+      this.sparks.emit({ shape: 'rock', colour: colours[i % colours.length], at: { x: pirate.x, y: 4, z: pirate.z }, velocity: [Math.cos(angle) * 8, between(5, 9), Math.sin(angle) * 8], life: 0.7, size: 2, spin: 4, gravity: 14 });
+    }
+    this.puffs({ x: pirate.x, y: 5, z: pirate.z }, { count: 3, colours: ['#a59e95', '#bdb7ae'], size: 5, speed: 3, life: 1.2, grow: 4, opacity: 0.5 });
+  }
+
+  onLittleBeaten({ pirate }) {
+    this.pieces(pirate, ['#b8743a', '#c99458'], 4);
+    this.hero.joze.setExpression('happy');
+  }
+
+  /** One of the pirate king's sails coming down, in a soft puff of its own colour. */
+  onSailDown({ pirate }) {
+    const look = LOOKS[this.order[pirate.index % this.order.length]];
+    this.puffs({ x: pirate.x, y: 26, z: pirate.z }, { count: 4, colours: [look?.sail[1] ?? '#ffffff', '#ece8e0'], size: 5, speed: 4, up: 0.2, life: 1.2, grow: 3, opacity: 0.6, gravity: 3 });
+  }
+
+  /** A power-up picked up: a few shapes in its colour round the child's ship. */
+  onPower({ kind }) {
+    const { battle } = this;
+    const colour = POWER_LOOKS[kind]?.colour ?? '#ffd23f';
+    for (let i = 0; i < (this.reducedMotion ? 3 : 6); i += 1) {
+      const angle = (i / 6) * Math.PI * 2;
+      this.sparks.emit({ shape: 'star', colour, at: { x: battle.x + Math.cos(angle) * 10, y: 12, z: battle.z + Math.sin(angle) * 10 }, velocity: [Math.cos(angle) * 4, between(5, 8), Math.sin(angle) * 4], life: 0.8, size: 2.4, spin: 3, gravity: 8 });
+    }
   }
 
   onHit({ pirate, x, y, z }) {
@@ -758,6 +941,13 @@ export class Bay {
     if (!ship) return;
     this.watching = pirate;
     this.watchLeft = WATCH_SECONDS;
+    // A raft has nobody on it: it comes apart into two little ones.
+    if (!boat) {
+      this.pieces(pirate, ['#b8743a', '#c99458'], 6);
+      this.hero.joze.setExpression('happy');
+      this.cheerLeft = 1.8;
+      return;
+    }
     ship.lifeboat.board(ship.captain);
     ship.lifeboat.place(boat.x, 0.1, boat.z, boat.heading);
     this.puffs({ x: pirate.x, y: 9, z: pirate.z }, { count: 8, colours: ['#a59e95', '#8a837b', '#bdb7ae'], size: 7, speed: 5, up: 1.2, life: 1.8, grow: 5, opacity: 0.55 });
@@ -838,6 +1028,7 @@ export class Bay {
       wind: 0.45 + way * 0.55,
     });
     hero.updateFlags(dt, 0.4 + 0.6 * calm);
+    hero.showRescued(battle?.stats.sailors ?? 0);
 
     // Joze keeps an eye on whoever's being fired at, and otherwise looks about and back at the child.
     const target = battle?.zones.right.target ?? battle?.zones.left.target ?? null;
@@ -918,7 +1109,23 @@ export class Bay {
     }
     const seen = new Set();
     let wake = 0;
+    let bubble = 0;
     for (const pirate of battle.pirates) {
+      // A bubble grows and fades gently, however often the bubble shot tops it up.
+      const shown = damp(this.bubbleShares.get(pirate) ?? 0, pirate.bubbled > 0.35 && pirate.state === 'sailing' ? 1 : 0, 3, dt);
+      this.bubbleShares.set(pirate, shown);
+      if (shown > 0.01 && bubble < this.bubbles.length) this.placeBubble(this.bubbles[bubble++], pirate, shown);
+      if (pirate.smoke > 0) this.smokeScreen(pirate, dt);
+      if (ODD_KINDS.has(pirate.kind)) {
+        const boat = this.oddBoatFor(pirate);
+        seen.add(boat);
+        this.placeOddBoat(pirate, boat, dt);
+        if (pirate.state === 'sailing' && !pirate.under && wake < this.wakes.pirates.length) {
+          this.wakes.pirates[wake].update(pirate.x, pirate.z, pirate.heading, pirate.speed / battle.pace.speed, dt);
+          wake += 1;
+        }
+        continue;
+      }
       const ship = this.shipFor(pirate);
       if (!ship) continue;
       seen.add(ship);
@@ -937,6 +1144,7 @@ export class Bay {
       });
       // A quick little sloop or a big flagship, on the higher levels.
       ship.root.scale.setScalar(SHIP_KINDS[pirate.kind]?.size ?? 1);
+      this.dressShip(ship, pirate, dt);
 
       const away = Math.hypot(pirate.x - camera.position.x, pirate.z - camera.position.z);
       const near = away < NEAR_CAPTAIN[this.quality];
@@ -960,10 +1168,17 @@ export class Bay {
       }
     }
     for (let i = wake; i < this.wakes.pirates.length; i += 1) this.wakes.pirates[i].clear();
+    for (let i = bubble; i < this.bubbles.length; i += 1) this.bubbles[i].visible = false;
     for (const [id, ship] of this.fleet) {
       if (!seen.has(ship) && ship.root.visible) {
         ship.root.visible = false;
         this.smokeIn.delete(id);
+      }
+    }
+    for (const [pirate, boat] of this.oddFor) {
+      if (!seen.has(boat)) {
+        boat.root.visible = false;
+        this.oddFor.delete(pirate);
       }
     }
     for (const ship of this.fleet.values()) ship.rowing = false;
@@ -971,6 +1186,93 @@ export class Bay {
     for (const ship of this.fleet.values()) {
       if (!ship.rowing) ship.lifeboat.root.visible = false;
     }
+  }
+
+  /**
+   * What the higher levels add to a pirate ship: the king's crown and the sails knocked down one at a
+   * time, and pale sails while it's slowed by snow.
+   */
+  dressShip(ship, pirate, dt) {
+    const king = pirate.kind === 'king';
+    if (king && !ship.crown) {
+      ship.crown = kingsCrown();
+      ship.crown.position.set(0, 44.5, 3.5);
+      ship.body.add(ship.crown);
+    }
+    if (ship.crown) ship.crown.visible = king;
+    if (king) {
+      ship.sailShares ??= [1, 1, 1, 1];
+      const going = pirate.state === 'sinking' ? pirate.sails : 1;
+      KING_SAILS.forEach((sail, order) => {
+        const wanted = order < 4 - pirate.partsLeft ? 0 : going;
+        ship.sailShares[sail] = damp(ship.sailShares[sail], wanted, 2.2, dt);
+        ship.sails[sail]?.set(ship.sailShares[sail], 0.8);
+      });
+    } else {
+      ship.sailShares = null;
+    }
+    ship.sailPaint.color.lerp(pirate.frosted > 0 ? FROST_SAILS : WHITE, 1 - Math.exp(-dt * 3));
+    if (pirate.frosted > 0 && Math.random() < dt * (this.reducedMotion ? 2 : 4)) {
+      this.sparks.emit({ shape: 'snow', colour: '#ffffff', at: { x: pirate.x + between(-8, 8), y: between(14, 30), z: pirate.z + between(-8, 8) }, velocity: [0, -3, 0], life: 1.2, size: 1.6, spin: 1, opacity: 0.9 });
+    }
+  }
+
+  /** A raft, a little raft or a submarine, on the water or under it. */
+  placeOddBoat(pirate, boat, dt) {
+    const { calm, battle } = this;
+    boat.root.visible = true;
+    const sink = pirate.sink;
+    const wobble = pirate.hitLeft > 0 ? Math.sin(this.time * 12) * 0.05 * (pirate.hitLeft / 0.35) * calm : 0;
+    this.rideWaves(boat.rock, pirate.x, pirate.z, pirate.heading, dt, { rollMore: (pirate.turning ?? 0) * 0.06 * calm + wobble + sink * 0.3, pitchMore: sink * 0.2 });
+    boat.dive = damp(boat.dive, pirate.under ? 1 : 0, 1.6, dt);
+    const going = clamp(pirate.speed / battle.pace.speed, 0, 1);
+    const y = boat.rock.y - 0.6 - boat.dive * 11.5 - sink * 4 - sink * sink * sink * 26;
+    boat.place(pirate.x, y, pirate.z, { heading: pirate.heading, pitch: boat.rock.pitch, roll: boat.rock.roll, sails: pirate.state === 'sinking' ? pirate.sails : 1, wind: 0.5 + going * 0.5 });
+    boat.root.scale.setScalar(SHIP_KINDS[pirate.kind]?.size ?? 1);
+    boat.updateFlags(dt, 0.4 + 0.6 * calm);
+    if (boat.sailPaint) boat.sailPaint.color.lerp(pirate.frosted > 0 ? FROST_SAILS : WHITE, 1 - Math.exp(-dt * 3));
+    // Bubbles come up from a submarine under the water, so it can be followed.
+    if (pirate.under && pirate.state === 'sailing') {
+      boat.bubbleIn = (boat.bubbleIn ?? 0) - dt;
+      if (boat.bubbleIn <= 0) {
+        boat.bubbleIn = this.reducedMotion ? 0.5 : 0.25;
+        this.sparks.emit({ shape: 'bubble', colour: '#ffffff', at: { x: pirate.x + between(-4, 4), y: 1.2, z: pirate.z + between(-4, 4) }, velocity: [0, 2.5, 0], life: 0.9, size: 1.8, grow: 1.2, opacity: 0.8 });
+      }
+    }
+    if (pirate.state === 'sinking') this.smokeFrom(pirate, boat, dt);
+  }
+
+  /** A see-through bubble round a ship that's been caught in one, which grows and shrinks gently. */
+  placeBubble(mesh, pirate, share) {
+    const size = SHIP_KINDS[pirate.kind]?.size ?? 1;
+    mesh.visible = true;
+    const bob = Math.sin(this.time * 2) * 0.6 * this.calm;
+    mesh.position.set(pirate.x, 9 * size + bob, pirate.z);
+    mesh.rotation.set(0, -pirate.heading, 0);
+    mesh.scale.set(15 * size * (0.85 + 0.15 * share), 20 * size * (0.85 + 0.15 * share), 25 * size * (0.85 + 0.15 * share));
+    mesh.material.uniforms.uOpacity.value = share;
+  }
+
+  /** A smoke ship's smoke, soft and grey, all round it for a moment. */
+  smokeScreen(pirate, dt) {
+    pirate.smokeIn = (pirate.smokeIn ?? 0) - dt;
+    if (pirate.smokeIn > 0) return;
+    pirate.smokeIn = this.reducedMotion ? 0.2 : 0.1;
+    const size = SHIP_KINDS[pirate.kind]?.size ?? 1;
+    this.puffs({ x: pirate.x + between(-14, 14) * size, y: between(4, 16), z: pirate.z + between(-16, 16) * size }, { count: 1, colours: ['#b9b4ad', '#cdc8c1', '#a8a39c'], size: 9, speed: 1.4, up: 0.6, life: 2, grow: 4, opacity: 0.5 });
+  }
+
+  /** The child's shield bubble, while it lasts. */
+  placeShield(dt) {
+    const { battle, hero } = this;
+    const on = battle?.power?.kind === 'shield' && battle.state === 'sailing';
+    this.shieldShare = damp(this.shieldShare, on ? 1 : 0, 3, dt);
+    this.shield.visible = this.shieldShare > 0.01;
+    if (!this.shield.visible) return;
+    this.shield.position.set(hero.root.position.x, 9 + this.heroRock.y, hero.root.position.z);
+    this.shield.rotation.set(0, -battle.heading, 0);
+    this.shield.scale.set(15, 17, 27);
+    this.shield.material.uniforms.uOpacity.value = 0.85 * this.shieldShare;
   }
 
   /** Soft grey smoke going up from a ship that's going down. */
@@ -1018,15 +1320,22 @@ export class Bay {
     targets.count = theirs;
     theirBalls.instanceMatrix.needsUpdate = true;
     targets.instanceMatrix.needsUpdate = true;
-    const mine = Math.min(shots.length, MOST_BALLS);
-    for (let i = 0; i < mine; i += 1) {
-      const shot = shots[i];
+    const counts = { ball: 0, bounce: 0, bubble: 0, snow: 0 };
+    for (const shot of shots) {
+      const kind = this.powerBalls[shot.fire] ? shot.fire : 'ball';
+      const index = counts[kind];
+      if (index >= MOST_BALLS) continue;
+      counts[kind] += 1;
       ballAt.set(shot.x, shot.y, shot.z);
-      ballSize.setScalar(1.45);
-      myBalls.setMatrixAt(i, ballMatrix.compose(ballAt, ballTurn, ballSize));
+      ballSize.setScalar(kind === 'ball' ? 1.45 : this.powerBalls[kind].size);
+      (kind === 'ball' ? myBalls : this.powerBalls[kind].mesh).setMatrixAt(index, ballMatrix.compose(ballAt, ballTurn, ballSize));
     }
-    myBalls.count = mine;
+    myBalls.count = counts.ball;
     myBalls.instanceMatrix.needsUpdate = true;
+    for (const [kind, { mesh }] of Object.entries(this.powerBalls)) {
+      mesh.count = counts[kind];
+      mesh.instanceMatrix.needsUpdate = true;
+    }
 
     // A little smoke trail, so that their slow high arcs can be followed.
     this.trailIn -= dt;
@@ -1144,6 +1453,14 @@ export class Bay {
     this.floats.placeAll(this.time, this.calm, near, camera.position);
     if (this.dolphins.mesh.visible && this.wantedView === 1) this.dolphins.update(dt, { x: heroAt.x, z: heroAt.z, yaw: this.cameraYaw, calm: this.calm });
     this.coins.update(this.battle?.coins ?? [], this.time, this.calm);
+    const towed = [];
+    for (const pirate of this.battle?.afloat ?? []) {
+      if (!pirate.cage) continue;
+      const back = forwardOf(pirate.heading);
+      towed.push({ x: pirate.x - back.x * 30, z: pirate.z - back.z * 30, phase: pirate.heading });
+    }
+    this.prizeDrawing.update(this.battle?.prizes ?? [], towed, this.time);
+    this.placeShield(dt);
     this.sparks.update(dt);
     island.update(dt, camera, this.reducedMotion);
   }
