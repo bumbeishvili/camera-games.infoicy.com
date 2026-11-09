@@ -10,9 +10,11 @@ const NAME_KEY = 'camera-games-race-name';
 const GONE_AFTER_MS = 4000;
 const byId = (id) => document.getElementById(id);
 const ordinal = (place) => ['1st', '2nd', '3rd', '4th'][place - 1] ?? `${place}th`;
+// To a tenth of a second, as friends often finish within a second of each other: 0:50.3.
 const time = (ms) => {
-  const seconds = Math.round(ms / 1000);
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  const tenths = Math.round(ms / 100);
+  const seconds = Math.floor(tenths / 10);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}.${tenths % 10}`;
 };
 
 function savedName() {
