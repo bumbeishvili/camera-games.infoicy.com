@@ -13,6 +13,7 @@ Movement-based games for children, played in front of a webcam.
 
 - Resting never costs anything.
 - Each game has 10 levels.
+- Race a friend in High Five Racers: press **Race a friend** and send them the link.
 - A grown-up can change the settings under the gear icon.
 - The camera picture stays on your computer.
 

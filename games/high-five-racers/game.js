@@ -18,6 +18,7 @@ import { Particles, SpeedLines } from './effects.js';
 import { CarPowers, Chests, CoinField, GemBalloons, HighTen, PowerUpField, Tractor } from './extras.js';
 import { HAND_COLOURS, HighFiveGates, PALM_HEIGHT } from './gates.js';
 import { canvasTexture, clamp, damp, mod, softCircleTexture } from './kit.js';
+import { CarTrack } from './friends.js';
 import { Ramps, StarField } from './pickups.js';
 import {
   CAR_LENGTH, CAR_WIDTH, CHEST_REACH, COINS, FASTEST_SPEED, FistAndOpen, gateOutcome, HIGH_TEN_BEFORE_LINE, LEAST_REACH, newAt, POWER, PowerUps,
@@ -68,6 +69,14 @@ const IN_SIGHT = [12, 95]; // Metres ahead of the car that something counts as c
 // The giant high ten starts fading in this far ahead of the car, in metres, so it's never suddenly big.
 const HIGH_TEN_SHOWS_FROM = 260;
 const BUBBLE_ROOM = 1.3; // How much further out than the car itself the bubble pushes others away.
+// Friends racing from their own computers: each car's colours, by its place on the grid, and how far apart
+// they line up across the road. The child's own car is the red one, as always.
+const FRIEND_PAINTS = [['#3b82f6', '#ffd23f'], ['#a855f7', '#7ee8ff'], ['#14b8a6', '#ffe0b8'], ['#f59e0b', '#1f2937']];
+const GRID_SPREAD = 3.9;
+// A friend's car close to the child's is shown this far over, so that it's beside it rather than in front of the
+// camera or overlapping, in metres. It's only on this screen: where they really are is up to their own game.
+const FRIEND_ROOM = { along: 12, across: 2.8 };
+export const gridLane = (slot, size) => (size > 1 ? -GRID_SPREAD + (2 * GRID_SPREAD * slot) / (size - 1) : 0);
 const COIN_BURST = { count: 10, shapes: ['coin', 'star'], colours: ['#ffc93c', '#fff1b0'], speed: 3.5, up: 3.5, life: 0.55, size: 0.5 };
 
 const STEERING = {
@@ -156,6 +165,11 @@ export class Race {
     this.garage = [];
     this.rivals = [];
     this.racers = [null]; // In order, with null for the player. See order.
+    // Friends racing from their own computers, who take the place of the others: see setFriends.
+    this.friends = null;
+    this.friendCars = new Map();
+    this.gridSlot = 0;
+    this.gridSize = 1;
     this.stars = new StarField(this.scene, this.track);
     this.ramps = new Ramps(this.scene, this.track);
     this.reach = new ReachEasing(REACH[reach] ?? REACH.medium);
@@ -248,9 +262,9 @@ export class Race {
         this.renderer.compile(rival.car.group, this.camera, this.scene);
       }
     }
-    this.rivals = this.garage.slice(0, plan.rivals);
+    this.rivals = this.friends ?? this.garage.slice(0, plan.rivals);
     this.garage.forEach((rival, index) => {
-      rival.car.group.visible = index < plan.rivals;
+      rival.car.group.visible = !this.friends && index < plan.rivals;
     });
     this.racers = [null, ...this.rivals];
     this.gates.setLayout(plan.gates);
@@ -264,6 +278,52 @@ export class Race {
     // Anything made for a new level is got ready now, so that it can't stutter when it first comes into view.
     // The same level again has nothing new, and getting all of it ready takes a moment.
     if (this.camera && changed) this.renderer.compile(this.scene, this.camera);
+  }
+
+  /**
+   * Friends racing on their own computers, as [{ key, spec, slot }], or null to race the others again. slot is
+   * each one's place on the grid, and mySlot the child's. Their cars go wherever their own games say.
+   */
+  setFriends(friends, mySlot = 0) {
+    this.friends = friends?.map(({ key, spec, slot }) => {
+      let friend = this.friendCars.get(key);
+      if (!friend) {
+        friend = this.makeFriend(spec, slot);
+        this.friendCars.set(key, friend);
+      } else if (friend.spec.id !== spec.id || friend.spec.name !== spec.name) {
+        friend.spec = spec;
+        friend.car.setCharacter(spec);
+        friend.car.setDetail(this.quality.level < 3);
+      }
+      friend.slot = slot;
+      return friend;
+    }) ?? null;
+    for (const friend of this.friendCars.values()) friend.car.group.visible = Boolean(this.friends?.includes(friend));
+    this.gridSlot = mySlot;
+    this.gridSize = (friends?.length ?? 0) + 1;
+    this.setLevel(this.level);
+  }
+
+  makeFriend(spec, slot) {
+    const [paint, trim] = FRIEND_PAINTS[slot % FRIEND_PAINTS.length];
+    const car = new RaceCar({ styleName: RIVAL_STYLES[slot % RIVAL_STYLES.length], paint, trim, spec, environment: this.environment, glowTexture: this.glowTexture });
+    this.scene.add(car.group);
+    if (this.camera) {
+      car.setDetail(this.quality.level < 3);
+      this.renderer.compile(car.group, this.camera, this.scene);
+    }
+    return { car, spec, remote: true, track: new CarTrack(), slot, lane: 0, distance: -START_BEHIND_LINE, lateral: 0, shove: 0, speed: 0, lift: 0, liftSpeed: 0, flying: false, turboLeft: 0, turboIn: Infinity, bumpWait: 0, wishPhase: 0, wanderPhase: 0 };
+  }
+
+  /** A friend who has gone, whose car goes too. */
+  dropFriend(key) {
+    const friend = this.friendCars.get(key);
+    if (!friend || !this.friends?.includes(friend)) return;
+    friend.car.group.visible = false;
+    this.friends = this.friends.filter((each) => each !== friend);
+    this.rivals = this.friends;
+    this.racers = this.racers.filter((each) => each !== friend);
+    this.place = 1 + this.friends.filter((each) => each.wasAhead).length;
   }
 
   paintsFor(spec, index) {
@@ -348,6 +408,20 @@ export class Race {
       // Spread out, so they take turns.
       rival.turboIn = this.plan.rivalTurboEvery * (0.5 + index * 0.37);
     });
+    // Racing friends, everyone lines up side by side, in the same order on every computer.
+    if (this.friends) {
+      this.lateral = gridLane(this.gridSlot, this.gridSize);
+      for (const friend of this.friends) {
+        friend.distance = -START_BEHIND_LINE;
+        friend.lateral = gridLane(friend.slot, this.gridSize);
+        friend.wasAhead = friend.slot < this.gridSlot;
+        friend.turboLeft = 0;
+        friend.nudge = 0;
+        friend.roomSide = 0;
+        friend.track.clear();
+      }
+      this.place = 1 + this.friends.filter((friend) => friend.wasAhead).length;
+    }
     this.stars.reset();
     this.snapCamera = true;
   }
@@ -763,6 +837,10 @@ export class Race {
     let anyTurbo = this.rivals.some((rival) => rival.turboLeft > 0);
 
     this.rivals.forEach((rival, index) => {
+      if (rival.remote) {
+        this.followFriend(rival, dt);
+        return;
+      }
       const gap = rival.distance - this.distance;
       let wanted = RIVAL_CRUISE * 0.5;
       if (chasing) {
@@ -835,6 +913,49 @@ export class Race {
       rival.car.look = resting && gap > 0 ? -2.4 : looking;
       if (resting && gap > 0 && this.restingFor > 1.5 && rival.car.wave <= 0 && Math.sin(this.time * 0.7 + index) > 0.8) rival.car.wave = 2.2;
     });
+  }
+
+  /** A friend's car goes where their own game says it is, a moment ago, so that it moves smoothly. */
+  followFriend(friend, dt) {
+    const at = friend.track.at(performance.now());
+    if (!at) return;
+    const { lateral, lift } = friend;
+    // Close by, it goes over to one side, keeping to that side until it's clear, and to the edge of the road
+    // while the child's car flies, as the others do.
+    const gap = at.d - this.distance;
+    let wanted = at.x;
+    if (this.mode === 'race' && this.soaring && Math.abs(gap) < SOARING_MAKES_ROOM) {
+      wanted = (at.x >= this.lateral ? 1 : -1) * LANE_LIMIT;
+    } else if (Math.abs(gap) < FRIEND_ROOM.along && Math.abs(at.x - this.lateral) < FRIEND_ROOM.across) {
+      if (!friend.roomSide) {
+        const side = at.x >= this.lateral ? 1 : -1;
+        friend.roomSide = Math.abs(this.lateral + side * FRIEND_ROOM.across) <= LANE_LIMIT ? side : -side;
+      }
+      wanted = this.lateral + friend.roomSide * FRIEND_ROOM.across;
+    } else {
+      friend.roomSide = 0;
+    }
+    friend.nudge = damp(friend.nudge ?? 0, clamp(wanted, -LANE_LIMIT, LANE_LIMIT) - at.x, 4, dt);
+    friend.distance = at.d;
+    friend.lateral = clamp(at.x + friend.nudge, -LANE_LIMIT, LANE_LIMIT);
+    friend.speed = at.s;
+    friend.lift = at.l;
+    friend.flying = Boolean(at.f);
+    friend.turboLeft = at.b ? 1 : 0;
+    friend.lateralVelocity = (friend.lateral - lateral) / Math.max(dt, 0.001);
+    friend.liftSpeed = (friend.lift - lift) / Math.max(dt, 0.001);
+  }
+
+  /** Where the child's car is, for friends' games to show: see friends.js. */
+  get carState() {
+    return {
+      d: this.distance,
+      x: this.lateral,
+      s: this.speed,
+      l: this.lift,
+      f: this.flying ? 1 : 0,
+      b: this.mode === 'race' && (this.turbo.active || this.boostLeft > 0) ? 1 : 0,
+    };
   }
 
   /** The others take the ramps too, rather than driving through them. */
@@ -1078,10 +1199,12 @@ export class Race {
       }
       case 'car4':
       case 'car5': {
+        if (this.friends) return undefined;
         const rival = this.rivals[id === 'car4' ? 3 : 4];
         return rival && near(rival.distance - this.distance) ? above(rival.car.group, 4.6) : undefined;
       }
       case 'rivalTurbo': {
+        if (this.friends) return undefined;
         // Only once it's in the picture: beside the car or ahead of it, as one behind may be behind the camera.
         const rival = this.rivals.find((each) => each.turboLeft > 0 && each.distance - this.distance > -4 && each.distance - this.distance < IN_SIGHT[1]);
         return rival ? above(rival.car.group, 4.6) : undefined;
@@ -1405,6 +1528,7 @@ export class Race {
     const full = this.quality.level < 3;
     this.player.setDetail(full);
     for (const rival of this.garage) rival.car.setDetail(full);
+    for (const friend of this.friendCars.values()) friend.car.setDetail(full);
   }
 
   /**

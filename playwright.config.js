@@ -23,9 +23,17 @@ export default defineConfig({
       ],
     },
   },
-  webServer: {
-    command: 'python3 tools/serve.py',
-    url: 'http://localhost:8642/index.html',
-    reuseExistingServer: true,
-  },
+  webServer: [
+    {
+      command: 'python3 tools/serve.py',
+      url: 'http://localhost:8642/index.html',
+      reuseExistingServer: true,
+    },
+    // For racing friends in High Five Racers: the same rules as the server on Cloudflare.
+    {
+      command: 'node tools/race-server.mjs',
+      port: 8643,
+      reuseExistingServer: true,
+    },
+  ],
 });

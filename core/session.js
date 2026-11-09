@@ -9,7 +9,8 @@
 //   idle(dt, snapshot)        one frame of anything else: title, check, countdown, finish
 //   render()                  draw
 //   prompt(snapshot, dt)      what to tell the child during play, or null
-//   summary()                 { hero, noun, rows } for the finish card, and won: false if it was lost
+//   summary()                 { hero, noun, rows } for the finish card, and won: false if it was lost, or
+//                             countsForLevel: false for a round that doesn't move the game's level on
 //
 // and optionally:
 //
@@ -19,6 +20,8 @@
 //   setHands(side)            the hand in play has changed
 //   settingChanged(change)    one of the game's own settings has changed
 //   newAt(level)              what's new at a level, as [{ mark, name, nameKa }] (see core/levels.js)
+//   holdStart(go)             true to wait on the 'waiting' screen after the hand check rather than count down
+//                             at once, as High Five Racers does for friends: the game calls go() when it's time
 //   chimeOnOpen               chime whenever the hand in play opens
 //   debug                     extra things for the automated tests to read
 import { CameraProblem, TrackingCamera } from './camera.js';
@@ -281,8 +284,21 @@ export class GameSession {
       this.game.resume?.();
       this.setScreen('playing');
     } else {
-      this.beginCountdown(PRAISE_PAUSE_SECONDS);
+      this.countdownOrWait(PRAISE_PAUSE_SECONDS);
     }
+  }
+
+  /** The countdown, unless the game wants to wait for something first. */
+  countdownOrWait(wait = 0) {
+    const go = () => {
+      if (this.screen === 'waiting') this.beginCountdown(PRAISE_PAUSE_SECONDS);
+    };
+    if (this.game.holdStart?.(go)) {
+      this.hud.prompt.clear();
+      this.setScreen('waiting');
+      return;
+    }
+    this.beginCountdown(wait);
   }
 
   beginCountdown(wait = 0) {
@@ -359,13 +375,18 @@ export class GameSession {
     this.hud.setCount('');
     const summary = this.game.summary();
     this.hud.showSummary(this.stats, this.monitor.side, summary);
-    this.levelUi.showResult(this.levels.complete(summary.won !== false, this.level));
+    if (summary.countsForLevel === false) {
+      this.levels.last = null;
+      this.levelUi.refresh();
+    } else {
+      this.levelUi.showResult(this.levels.complete(summary.won !== false, this.level));
+    }
     this.setScreen('finish');
   }
 
   playAgain() {
     this.hud.hideSummary();
-    this.openCameraThen(() => this.beginCountdown());
+    this.openCameraThen(() => this.countdownOrWait());
   }
 
   recheckHands() {

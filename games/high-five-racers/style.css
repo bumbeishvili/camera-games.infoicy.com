@@ -454,3 +454,172 @@ body[data-five-film='left'] .five-film svg { transform: scaleX(-1); }
   0%, 85% { opacity: 1; transform: translate(-50%, 0); }
   100% { opacity: 0; transform: translate(-50%, 0); }
 }
+
+/* ---------- racing friends ---------- */
+/* "Race a friend" on the title card, which opens a little box for making or joining a race. */
+.friends {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.friends-toggle,
+.friends-button {
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--surface);
+  font-size: 20px;
+  font-weight: 700;
+  padding: 10px 26px 12px;
+  box-shadow: 0 5px 0 #1d5aa6;
+}
+
+.friends-toggle:active,
+.friends-button:active {
+  transform: translateY(4px);
+  box-shadow: 0 1px 0 #1d5aa6;
+}
+
+.friends-box {
+  width: 100%;
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  padding: 16px;
+  border-radius: 24px;
+  background: var(--surface-soft);
+}
+
+.friends-box[hidden],
+.friends-out[hidden],
+.friends-in[hidden] { display: none; }
+
+.friends-out,
+.friends-in,
+.friends-join {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+}
+
+.friends-field {
+  display: grid;
+  gap: 6px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.friends-field input {
+  font: inherit;
+  font-size: 22px;
+  color: var(--ink);
+  text-align: center;
+  width: min(280px, 70vw);
+  padding: 8px 12px;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+#friends-code { text-transform: uppercase; letter-spacing: 0.12em; }
+
+.friends-code-line { font-size: 20px; }
+
+.friends-code-line strong {
+  display: block;
+  font-size: 40px;
+  letter-spacing: 0.14em;
+}
+
+.friends-here {
+  list-style: none;
+  display: grid;
+  gap: 8px;
+  width: min(360px, 100%);
+}
+
+.friends-here li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px 6px 6px;
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 20px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.friends-here img {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--surface-soft);
+}
+
+.friends-here .friends-who { flex: 1; }
+
+.friends-mark {
+  font-size: 15px;
+  color: var(--ink-soft);
+}
+
+.friends-here li.is-ready .friends-mark { color: var(--good); }
+
+.friends-how,
+.friends-status {
+  font-size: 17px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+
+.friends-status:empty { display: none; }
+
+.friends-link {
+  border: 0;
+  background: none;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-decoration: underline;
+}
+
+/* Waiting on the grid for friends, after the hand check. */
+body[data-screen='waiting'] #screen-friends { display: grid; }
+
+#friends-now[hidden] { display: none; }
+
+/* Who came where, on the finish card of a race with friends. */
+.friends-results {
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  width: min(380px, 100%);
+}
+
+.friends-results[hidden] { display: none; }
+
+.friends-results li {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 6px 16px;
+  border-radius: 14px;
+  background: var(--surface-soft);
+  font-size: 20px;
+}
+
+.friends-results li.is-you { background: var(--sun); font-weight: 700; }
+.friends-results li.is-racing { color: var(--ink-soft); }
+.friends-results .friends-place { width: 2.6em; font-weight: 700; text-align: left; }
+.friends-results .friends-who { flex: 1; text-align: left; }
+
+/* A race with friends is on the host's course, so this game's own level isn't what's being played. */
+body[data-friends-race][data-screen] .level-now,
+body[data-friends-race][data-screen] .level-new-now,
+body[data-friends-race][data-screen] .level-done { display: none; }
+
+.order-row.is-friend { box-shadow: 0 0 0 3px var(--accent); }

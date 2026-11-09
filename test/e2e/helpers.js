@@ -24,15 +24,18 @@ export const test = base.extend({
   ],
 });
 
-/** Opens a game ready for testing, with sound and voice off unless a test turns them on. */
-export async function openGame(page, settings = {}, game = 'high-five-racers') {
+/**
+ * Opens a game ready for testing, with sound and voice off unless a test turns them on. hash is anything
+ * after # in the address, as in a link to race a friend.
+ */
+export async function openGame(page, settings = {}, game = 'high-five-racers', hash = '') {
   await page.addInitScript({ path: fakeCamera });
   await page.addInitScript((saved) => {
     if (!localStorage.getItem('camera-games-settings')) {
       localStorage.setItem('camera-games-settings', JSON.stringify(saved));
     }
   }, { voice: false, sound: false, ...settings });
-  await page.goto(`/games/${game}/index.html?debug`);
+  await page.goto(`/games/${game}/index.html?debug${hash}`);
   await expect(page.locator('#start')).toBeVisible();
 }
 

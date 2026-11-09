@@ -2,7 +2,7 @@
 
 Camera games for children with hemiplegia, played by moving in front of a webcam. Opening the hand is what they practise. The right hand is the default, and the left can be chosen instead under the gear icon.
 
-They need a computer with a webcam, Google Chrome and Python 3, which runs the small local server they're played from. They work offline, and the camera picture never leaves the computer. Each game has ten levels, and a grown-up can set how open the hand has to be, how far to reach and how big a move has to be. See [Run it](#run-it) to start.
+They're played at <https://hemi.infoicy.com> in Google Chrome, on a computer with a webcam, or from this folder (see [Run it](#run-it)). The camera picture never leaves the computer, and once loaded they work offline, apart from racing a friend in High Five Racers. Each game has ten levels, and a grown-up can set how open the hand has to be, how far to reach and how big a move has to be.
 
 - **High Five Racers:** the car only drives while the hand is open. Steering over to a giant hand at the roadside high fives it for a boost, and keeping the hand open fills up turbo. Nobody can crash or lose: if the hand closes, the car coasts to a stop and waits. See [below](#high-five-racers).
 - **Balloon Pop:** balloons float up and drift around, and the open hand pops them. A closed hand just bumps them. Missing a balloon costs nothing. A grown-up can turn on a maths challenge, where the wrong answer burns the glove.
@@ -28,7 +28,7 @@ cd camera-games.infoicy.com
 npm start
 ```
 
-Then open <http://localhost:8642> in Chrome and choose a game. Chrome only allows the camera on `localhost` or HTTPS, so opening `index.html` directly won't work.
+Then open <http://localhost:8642> in Chrome and choose a game. Chrome only allows the camera on `localhost` or HTTPS, so opening `index.html` directly won't work. To race friends from here, also run `npm run race-server`, which needs Node.
 
 ## How the folder is organised
 
@@ -66,7 +66,8 @@ games/
   spider-catcher/       its rules and levels, the garden, the spiders and webs, and its sounds
   smoothie-stand/       its customers and orders, the fair and its sounds
   lighthouse/           its storm and ships, the lamp room and its sounds
-tools/                  the local server, and what prepares voices and sounds
+tools/                  the local server, the local race server, and what prepares voices and sounds
+server/                 the server for racing friends in High Five Racers: its rules, and the Cloudflare Worker that runs them
 vendor/                 libraries, the tracking model and fonts
 test/                   unit tests, and Playwright tests for the hub and each game
 ```
@@ -182,6 +183,19 @@ A race round a lap with grandstands, a village, a tunnel, a farm, a lake, a fore
 | 10 | **The golden lap:** the last lap's stars turn gold and each counts twice. **A giant high ten** stands at the finish line, worth ten coins to an open hand. |
 
 Coins are counted at the top from level 2, and on the finish card with any gems, chests and the high ten. However many spill out at once, each lands at least 14 m past the last, so fewer than three are picked up a second. Missing one, or a power-up or a prize, costs nothing. Power-ups only run down while the hand is open, like turbo, so resting never wastes one, and a hand check in the middle of a race takes nothing away. A side's reach only eases by how far over the car really was, so a high five that came with closer hands doesn't make that side harder afterwards. The first time each new thing comes into sight, a small label goes up beside it for about three seconds, in the language the voice speaks, clear of the camera's picture and the prompt, and nothing new is said aloud. A label that couldn't be seen comes again later. The giant hands start fading in 260 m ahead and stand right at the finish, so the camera following the car never comes near them, and they aren't in the view of the finish. The rainbow trail is a few little rainbows a second that fade before they reach the camera, with none at all with reduced motion. At level 10 there are 19 big hands a lap instead of 13, but two on opposite sides are never less than 62 m apart, which leaves at least 70% of the time to get across. The car's speed, the laps, how far to reach, steering help and the hand never change with the level. The others still ease off at the end so the child wins, nobody uses turbo while a child rests, and while the car flies, the others make room at the edges of the road. The numbers are in `racePlan` in `rules.js`.
+
+**Racing friends.** Up to 4 children can race each other, each on their own computer with their own camera.
+
+- **Making a race:** under **Race a friend** on the title card, a grown-up types a name, presses **Make a race** and sends the link it makes, or its 6-letter code.
+- **Joining:** the friend opens the link, or types the code and presses **Join**.
+- **Starting:** everyone presses **Let’s race!**. After the hand check, each waits on the grid until everyone is ready, and then all count down together. Whoever made the race can press **Start now** instead, and anyone can choose to race on their own.
+- **The course** is the host's: their level and race length. Friends' cars take the place of the other cars, with each friend's name over theirs. A friend's car close to the child's is shown a little to one side, as the other cars keep out of the way, so it never sits in front of the camera.
+- **The finish card** says who came where, and fills in as the others get there.
+- **Levels and settings:** a race with friends doesn't move anyone's own level on, and every setting a grown-up chose for the hand stays as it was.
+
+**What's sent, and where.** Nothing is sent unless a grown-up makes or joins a race. Then the game sends the name typed, who drives, the host's level and race length, and where the car is on the road 10 times a second: how far along and across, its speed, and whether it's in the air or on turbo. Nothing from the camera is ever sent. It all goes through a small server on Cloudflare ([server/](server/)), which passes it straight on to the others in the race and keeps nothing once they've gone. The code in a link comes after `#`, which browsers don't send to the web server the games come from.
+
+**How it works.** Each race is one Durable Object on Cloudflare, named by its code, and each player keeps one WebSocket open to it. Each game drives its own car and shows the others' cars 120 ms behind what they last sent, so they move smoothly between messages. The same rules run on this computer in [tools/race-server.mjs](tools/race-server.mjs) for the tests. To put the server online, run `npx wrangler login` once, then `npx wrangler deploy --config server/wrangler.jsonc`. It's served at `hemi-race.infoicy.com`.
 
 ## Mighty Moves
 
@@ -495,7 +509,7 @@ Where each sound came from is in [CREDITS.md](CREDITS.md).
 
 ## Privacy
 
-Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
+Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, except that High Five Racers may reach its race server, which it only does once a grown-up makes or joins a race (see [Racing friends](#high-five-racers)), and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
 
 ## Tests
 

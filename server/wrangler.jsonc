@@ -1,0 +1,14 @@
+// The server for racing friends in High Five Racers: one Worker, and one Durable Object for each room
+// (free plan: SQLite-backed). It serves nothing else: the games themselves are static files.
+//   Try it here:  npx wrangler dev --config server/wrangler.jsonc
+//   Put it online: npx wrangler deploy --config server/wrangler.jsonc
+{
+  "name": "hemi-race",
+  "main": "worker.js",
+  "compatibility_date": "2026-09-01",
+  "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "Room" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  "observability": { "enabled": true },
+  "workers_dev": true,
+  "routes": [{ "pattern": "hemi-race.infoicy.com", "custom_domain": true }]
+}

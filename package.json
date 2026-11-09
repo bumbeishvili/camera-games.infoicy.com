@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "python3 tools/serve.py",
+    "race-server": "node tools/race-server.mjs",
     "voice": "arch -arm64 $HOME/.cache/explainer-video/venv/bin/python tools/render_voice.py",
     "voice:import": "python3 tools/import_voice.py",
     "test": "npm run test:unit && npm run test:e2e",

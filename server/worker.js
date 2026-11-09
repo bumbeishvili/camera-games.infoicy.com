@@ -1,0 +1,100 @@
+// The server for racing friends in High Five Racers, on Cloudflare. It only passes messages between the
+// players in a room: see race-room.js for what they are. Each room is one Durable Object, named by its
+// code, and each player keeps one WebSocket open to it. The sockets hibernate while nothing's being said,
+// and the runtime answers the players' keep-alive pings itself, so a quiet room costs nothing.
+//
+//   wss://<this server>/room/<CODE>
+//
+// Deploy with: npx wrangler deploy --config server/wrangler.jsonc
+import { DurableObject } from 'cloudflare:workers';
+import { RaceRoom, validCode } from './race-room.js';
+
+// Only the games' own pages may use it.
+const ALLOWED_ORIGINS = ['https://hemi.infoicy.com', 'http://localhost:8642', 'http://127.0.0.1:8642'];
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    const [, kind, code] = url.pathname.split('/');
+    if (kind !== 'room' || !validCode(code)) return new Response('Not found', { status: 404 });
+    if (request.headers.get('Upgrade') !== 'websocket') return new Response('WebSocket only', { status: 426 });
+    if (!ALLOWED_ORIGINS.includes(request.headers.get('Origin'))) return new Response('Not allowed', { status: 403 });
+    return env.ROOMS.get(env.ROOMS.idFromName(code)).fetch(request);
+  },
+};
+
+const newId = () => {
+  const bytes = crypto.getRandomValues(new Uint8Array(9));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_');
+};
+
+export class Room extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+    this.rules = new RaceRoom({ players: () => this.players() });
+  }
+
+  /** Everyone still connected, as race-room.js wants them. */
+  players(leaving = null) {
+    return this.ctx.getWebSockets().filter((ws) => ws !== leaving && ws.readyState === WebSocket.OPEN).map((ws) => this.player(ws));
+  }
+
+  player(ws) {
+    if (!this.seen) this.seen = new WeakMap();
+    let player = this.seen.get(ws);
+    if (!player) {
+      player = {
+        ws,
+        get meta() {
+          return ws.deserializeAttachment();
+        },
+        setMeta(meta) {
+          ws.serializeAttachment(meta);
+        },
+        send(message) {
+          try {
+            ws.send(JSON.stringify(message));
+          } catch {
+            // It's closing.
+          }
+        },
+      };
+      this.seen.set(ws, player);
+    }
+    return player;
+  }
+
+  async fetch() {
+    const [client, server] = Object.values(new WebSocketPair());
+    this.ctx.acceptWebSocket(server);
+    if (!this.rules.arrive(this.player(server), newId())) server.close(1000, 'full');
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  webSocketMessage(ws, message) {
+    if (typeof message === 'string') this.rules.hear(this.player(ws), message);
+  }
+
+  webSocketClose(ws, code) {
+    this.goodbye(ws);
+    try {
+      ws.close(code, 'bye');
+    } catch {
+      // Already closed.
+    }
+  }
+
+  webSocketError(ws) {
+    this.goodbye(ws);
+  }
+
+  /** A closing socket is no longer open, so it's left out of everyone the others are told about. */
+  goodbye(ws) {
+    try {
+      this.rules.leave(this.player(ws));
+    } catch {
+      // Its record had already gone with it.
+    }
+  }
+}

@@ -6,6 +6,7 @@ import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
 import { GameSession, SPOKEN as SPOKEN_EVERYWHERE } from '../../core/session.js';
 import { CarSound } from './car-sound.js';
 import { drawPowerIcon } from './extras.js';
+import { FriendsRace } from './friends-ui.js';
 import { Race } from './game.js';
 import { newAt, POWER_KINDS, racePlan, TOP_SPEED } from './rules.js';
 
@@ -160,7 +161,10 @@ class RaceGame {
       },
       onLanded: () => sound.landed(),
       onCrowd: () => sound.crowd(),
-      onFinish: () => session.finish(),
+      onFinish: () => {
+        this.friends.crossed(session.playSeconds * 1000);
+        session.finish();
+      },
     }, { ...this.cast, reach: session.settings.reach, level: session.level });
     this.race.setMode('attract');
     this.showSteering(session.settings.steering);
@@ -183,6 +187,8 @@ class RaceGame {
     this.finishPrizes.id = 'finish-prizes';
     this.finishPrizes.className = 'finish-prizes';
     document.querySelector('#screen-finish .finish-hero')?.after(this.finishPrizes);
+    // Racing friends on their own computers, if a grown-up makes or joins a race.
+    this.friends = new FriendsRace(this);
     // Otherwise it would play again whenever the race's screen comes back.
     this.toastBox.addEventListener('animationend', () => this.toastBox.classList.remove('is-showing'));
     const game = this;
@@ -349,6 +355,7 @@ class RaceGame {
       row.className = 'order-row';
       row.dataset.who = spec.id;
       if (spec === this.cast.driver) row.classList.add('is-you');
+      if (spec.key) row.classList.add('is-friend');
       const face = document.createElement('img');
       face.alt = '';
       face.src = this.session.portraits?.[spec.id] ?? '';
@@ -356,7 +363,7 @@ class RaceGame {
       number.className = 'order-number';
       row.append(number, face);
       list.append(row);
-      this.orderRows.set(spec.id, { row, number });
+      this.orderRows.set(spec.key ?? spec.id, { row, number });
     }
   }
 
@@ -406,7 +413,7 @@ class RaceGame {
     this.speedShown.textContent = String(Math.round(speed * TOP_SPEED * SPEED_SHOWN_PER_METRE));
 
     race.order.forEach((spec, index) => {
-      const entry = this.orderRows.get(spec.id);
+      const entry = this.orderRows.get(spec.key ?? spec.id);
       if (!entry) return;
       entry.row.style.setProperty('--slot', String(index));
       entry.number.textContent = String(index + 1);
@@ -425,6 +432,18 @@ class RaceGame {
       this.race.setDrivers(this.cast.driver, this.cast.rivals);
       this.buildOrder();
     }
+    if (('fighter' in change || 'laps' in change) && this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
+  }
+
+  /** With friends, the start waits on the grid until they're ready too. */
+  holdStart(go) {
+    return this.friends.holdStart(go);
+  }
+
+  /** A friend has gone in the middle of a race, and their car with them. */
+  friendGone(key) {
+    this.race.dropFriend(key);
+    this.buildOrder();
   }
 
   enterCheck() {
@@ -437,12 +456,17 @@ class RaceGame {
 
   /** Higher levels have more cars, more big hands and ramps, and keener racing: see racePlan in rules.js. */
   prepare(level) {
-    this.race.setLevel(level);
+    // Racing friends, everyone races on the host's course, which doesn't move anyone's own level on.
+    const friendly = this.friends.current;
+    document.body.toggleAttribute('data-friends-race', Boolean(friendly));
+    this.race.setFriends(friendly?.friends ?? null, friendly?.mySlot ?? 0);
+    this.friends.carsReady(this.race);
+    this.race.setLevel(friendly?.level ?? level);
     // Coins are counted from level 2, where they come in.
     this.coinsBox.hidden = !this.race.plan.coins;
     this.clearToast();
     this.buildOrder();
-    this.race.reset(this.session.settings.laps);
+    this.race.reset(friendly?.laps ?? this.session.settings.laps);
     this.race.setMode('grid');
     this.race.world.places.startLights.set(0);
     this.missesInARow = 0;
@@ -477,6 +501,7 @@ class RaceGame {
     });
     const { speed, turboOn, boosting } = race.info;
     session.sound.engine(speed, snapshot.drive > 0, turboOn || boosting ? 1 : 0);
+    this.friends.sendCar(race.carState, session.playSeconds * 1000);
     this.showProgress();
     this.showFlyFilm(dt);
   }
@@ -548,12 +573,15 @@ class RaceGame {
   summary() {
     const { race } = this;
     this.finishPrizes.textContent = this.prizesWords();
+    this.friends.showResults();
     const fives = `${race.fives} of ${race.gatesMet}`;
     const sides = `Left ${race.fivesLeft}, right ${race.fivesRight}`;
     return {
       hero: race.info.stars,
       noun: 'race',
       rows: { fives: { left: fives, right: fives }, sides: { left: sides, right: sides } },
+      // A race with friends is on the host's course, so it doesn't move the child's own level on.
+      countsForLevel: !this.friends.current,
     };
   }
 }
