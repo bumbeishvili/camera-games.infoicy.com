@@ -76,6 +76,31 @@ body.hub {
 
 .game-card:hover { transform: translateY(-5px); }
 
+/* The games that can be played with friends, each on their own computer: a little badge on the picture. */
+.game-card { position: relative; }
+
+.game-friends {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px 4px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 2px 8px rgba(18, 48, 77, 0.18);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.game-friends svg {
+  width: 18px;
+  height: 18px;
+  fill: var(--accent);
+}
+
 .game-card h2 { margin-top: 16px; }
 
 .game-card p {
