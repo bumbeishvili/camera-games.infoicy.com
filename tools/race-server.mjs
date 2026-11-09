@@ -5,21 +5,21 @@
 //   node tools/race-server.mjs
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
-import { idFor, RaceRoom, takeOver, validCode } from '../server/race-room.js';
+import { idFor, mostPlayersIn, RaceRoom, takeOver, validCode } from '../server/race-room.js';
 
 const PORT = Number(process.env.RACE_PORT ?? 8643);
 // The games' pages on this computer, on whichever port they're served from.
 const allowed = (origin) => /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin ?? '');
-const GAMES = ['sky-wings', 'balloon-pop']; // As on Cloudflare: High Five Racers' rooms are just the code.
+const GAMES = ['sky-wings', 'balloon-pop', 'bounce-back']; // As on Cloudflare: High Five Racers' rooms are just the code.
 const MAGIC = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
 const rooms = new Map(); // code: { players: Set, rules }
 
-function roomFor(code) {
+function roomFor(code, game = '') {
   let room = rooms.get(code);
   if (!room) {
     const players = new Set();
-    room = { players, rules: new RaceRoom({ players: () => [...players] }) };
+    room = { players, rules: new RaceRoom({ players: () => [...players] }, undefined, { most: mostPlayersIn(game) }) };
     rooms.set(code, room);
   }
   return room;
@@ -81,7 +81,7 @@ server.on('upgrade', (request, socket) => {
   socket.setNoDelay(true);
 
   const name = game ? `${game}:${code}` : code;
-  const room = roomFor(name);
+  const room = roomFor(name, game);
   let open = true;
   let meta = null;
   const player = {

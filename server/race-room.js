@@ -1,5 +1,5 @@
-// Playing with friends, in High Five Racers, Sky Wings and Balloon Pop: who's in a room, and what they pass to
-// each other.
+// Playing with friends, in High Five Racers, Sky Wings, Balloon Pop and Bounce Back: who's in a room, and what
+// they pass to each other.
 // The same rules run on Cloudflare (server/worker.js) and on this computer for the tests
 // (tools/race-server.mjs). Each game has rooms of its own. Nothing here is kept once everyone has gone, and no
 // camera picture ever comes here: only where each car or plane is, the name a player typed, and which
@@ -21,17 +21,30 @@
 //   world  { ms, b, q, qa }                the host's balloons in Balloon Pop, which everyone plays with:
 //                                      each [id, x, y, r, colour, number, flags], and the sum being asked
 //   claim  { k }                           this player's hand got to balloon k: the first to says so has it
+//   racket { ms, x, y, v, o, r, g, p }     where their racket is in Bounce Back, along the court and how high,
+//                                      whether it can be seen and is open, how big it is, how much it draws the
+//                                      ball in, and p, their glove's 21 points, as in hand
+//   ball   { ms, x, y, vx, vy, s, k, a, b, n, f, l, sv, g, r, w }   the host's ball in Bounce Back: where it is
+//                                      and how it's going, what it's doing, which shot it is, the two scores,
+//                                      the hits in a row, its kind, who hit it last, who served, who has won,
+//                                      whether it's rolling, and whether the game is over
+//   hit    { ms, k, x, y, vx, vy }         in Bounce Back, this player hit shot k, from there and that way. Only
+//                                      the host's game hears it, as the host's game runs the ball
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
 // The room sends:
 //   room   { you, members: [{ id, name, driver, ready, racing, host }] }   whenever that changes
 //   go     { level, length, laps, mode, racers }   the countdown starts now, on the host's course (laps is length)
-//   car, plane, score, hand, world { from, ... } and done { from, ms, n, w }   passed on from the others
+//   car, plane, score, hand, world, racket, ball, hit { from, ... } and done { from, ms, n, w }   passed on from the others
 //   claimed { k, by }                      balloon k went to player by, sent to everyone, them too
-//   full   {}                              there are already MAX_RACERS in the room
+//   full   {}                              there are already as many as the game has room for: MAX_RACERS, or
+//                                      fewer for a game in MOST_PLAYERS
 
 export const MAX_RACERS = 4;
+// Games with room for fewer. Bounce Back is one child on each side of the net.
+export const MOST_PLAYERS = { 'bounce-back': 2 };
+export const mostPlayersIn = (game) => MOST_PLAYERS[game] ?? MAX_RACERS;
 export const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // No 0, O, 1, I or L, which look alike.
 export const CODE_LENGTH = 6;
 export const MOST_BYTES = 1800; // A message bigger than this is ignored. The host's balloons are the biggest.
@@ -134,6 +147,55 @@ export function cleanWorld(message) {
   return { ms: number(message.ms, 0, 3_600_000, 0), b, q, qa: message.qa ? 1 : 0 };
 }
 
+/** Only what a racket message should hold, rounded, with its glove's 21 points or none. */
+export function cleanRacket(message) {
+  const points = Array.isArray(message.p) && message.p.length === 42 ? message.p.map((value) => number(value, -4, 4, 2)) : [];
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    x: number(message.x, -2, 2, 3),
+    y: number(message.y, -0.5, 3, 3),
+    v: message.v ? 1 : 0,
+    o: message.v && message.o ? 1 : 0,
+    r: number(message.r, 0, 0.6, 3),
+    g: number(message.g, 0, 2, 2),
+    p: points,
+  };
+}
+
+/** Only what the host's ball should hold, rounded. */
+export function cleanBall(message) {
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    x: number(message.x, -2, 2, 3),
+    y: number(message.y, -0.5, 3, 3),
+    vx: number(message.vx, -6, 6, 3),
+    vy: number(message.vy, -6, 6, 3),
+    s: number(message.s, 0, 3, 0),
+    k: number(message.k, 0, 1_000_000, 0),
+    a: number(message.a, 0, 99, 0),
+    b: number(message.b, 0, 99, 0),
+    n: number(message.n, 0, 999, 0),
+    f: number(message.f, 0, 7, 0),
+    l: number(message.l, 0, 2, 0),
+    sv: number(message.sv, 0, 2, 0),
+    g: number(message.g, 0, 2, 0),
+    r: message.r ? 1 : 0,
+    w: message.w ? 1 : 0,
+  };
+}
+
+/** Only what a hit should hold, rounded. */
+export function cleanHit(message) {
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    k: number(message.k, 0, 1_000_000, 0),
+    x: number(message.x, -2, 2, 3),
+    y: number(message.y, -0.5, 3, 3),
+    vx: number(message.vx, -6, 6, 3),
+    vy: number(message.vy, -6, 6, 3),
+  };
+}
+
 /** Only what a car message should hold, rounded, so nothing else can be passed on. */
 export function cleanCar(message) {
   return {
@@ -157,12 +219,14 @@ function hostOf(players) {
 /**
  * The rules of one room. room.players() is everyone connected now, each as { meta, setMeta(meta), send(message) },
  * where meta is what's kept about them: { id, joined, name, driver, level, laps, ready, racing }. now() is the time
- * in milliseconds. Nothing is kept here between calls, so it works the same on a server that sleeps in between.
+ * in milliseconds, and most how many players the room has room for. Nothing is kept here between calls, so it
+ * works the same on a server that sleeps in between.
  */
 export class RaceRoom {
-  constructor(room, now = () => Date.now()) {
+  constructor(room, now = () => Date.now(), { most = MAX_RACERS } = {}) {
     this.room = room;
     this.now = now;
+    this.most = most;
     this.counts = new Map(); // id: { second, count }, to drop a flood of messages. Fine to lose.
     this.recent = new Map(); // id: { meta, at }, for those who have just gone: see cameBack. Fine to lose too.
     this.claims = new Map(); // Balloon Pop: which balloon went to whom, this game. Cleared as each one starts.
@@ -189,7 +253,7 @@ export class RaceRoom {
       return true;
     }
     const others = this.room.players().filter((each) => each !== player && each.meta?.id);
-    if (others.length >= MAX_RACERS) {
+    if (others.length >= this.most) {
       player.send({ t: 'full' });
       return false;
     }
@@ -247,10 +311,23 @@ export class RaceRoom {
         for (const each of players) each.send({ t: 'claimed', k, by: meta.id });
         break;
       }
+      case 'ball':
+        // Only the host's ball is everyone's.
+        if (hostOf(players) !== player) return;
+        for (const other of others) other.send({ t: 'ball', from: meta.id, ...cleanBall(message) });
+        break;
+      case 'hit': {
+        // Only the host's game runs the ball, so only it hears a hit, and only from someone playing.
+        const host = hostOf(players);
+        if (!meta.racing || host === player || !host) return;
+        host.send({ t: 'hit', from: meta.id, ...cleanHit(message) });
+        break;
+      }
       case 'car':
       case 'plane':
-      case 'hand': {
-        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand }[message.t](message);
+      case 'hand':
+      case 'racket': {
+        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand, racket: cleanRacket }[message.t](message);
         for (const other of others) other.send({ t: message.t, from: meta.id, ...moved });
         break;
       }

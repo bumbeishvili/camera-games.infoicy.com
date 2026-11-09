@@ -8,12 +8,12 @@
 //
 // Deploy with: npx wrangler deploy --config server/wrangler.jsonc
 import { DurableObject } from 'cloudflare:workers';
-import { idFor, RaceRoom, takeOver, validCode } from './race-room.js';
+import { idFor, mostPlayersIn, RaceRoom, takeOver, validCode } from './race-room.js';
 
 // Only the games' own pages may use it.
 const ALLOWED_ORIGINS = ['https://hemi.infoicy.com', 'http://localhost:8642', 'http://127.0.0.1:8642'];
 // The games with rooms of their own. High Five Racers' are just the code, as they came first.
-const GAMES = ['sky-wings', 'balloon-pop'];
+const GAMES = ['sky-wings', 'balloon-pop', 'bounce-back'];
 
 export default {
   async fetch(request, env) {
@@ -78,7 +78,11 @@ export class Room extends DurableObject {
   }
 
   async fetch(request) {
-    const was = new URL(request.url).searchParams.get('was');
+    const url = new URL(request.url);
+    const was = url.searchParams.get('was');
+    // Each room is one game's, so its path says how many it has room for: /room/<game>/<CODE>.
+    const [, , ...rest] = url.pathname.split('/');
+    this.rules.most = mostPlayersIn(rest.length === 2 ? rest[0] : '');
     // Taking over a connection that died without closing, or back within moments of one that did close.
     const kept = takeOver(this.players(), was) ?? this.rules.cameBack(was);
     const id = kept ? was : idFor(this.players(), was, newId);
