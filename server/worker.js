@@ -1,4 +1,4 @@
-// The server for racing friends in High Five Racers, on Cloudflare. It only passes messages between the
+// The server for playing with friends, on Cloudflare. It only passes messages between the
 // players in a room: see race-room.js for what they are. Each room is one Durable Object, named by its
 // code, and each player keeps one WebSocket open to it. The sockets hibernate while nothing's being said,
 // and the runtime answers the players' keep-alive pings itself, so a quiet room costs nothing.
@@ -8,12 +8,12 @@
 //
 // Deploy with: npx wrangler deploy --config server/wrangler.jsonc
 import { DurableObject } from 'cloudflare:workers';
-import { idFor, RaceRoom, takeOver, validCode } from './race-room.js';
+import { idFor, mostIn, RaceRoom, takeOver, validCode } from './race-room.js';
 
 // Only the games' own pages may use it.
 const ALLOWED_ORIGINS = ['https://hemi.infoicy.com', 'http://localhost:8642', 'http://127.0.0.1:8642'];
 // The games with rooms of their own. High Five Racers' are just the code, as they came first.
-const GAMES = ['sky-wings', 'balloon-pop'];
+const GAMES = ['sky-wings', 'balloon-pop', 'mighty-moves'];
 
 export default {
   async fetch(request, env) {
@@ -78,13 +78,16 @@ export class Room extends DurableObject {
   }
 
   async fetch(request) {
-    const was = new URL(request.url).searchParams.get('was');
+    const url = new URL(request.url);
+    const was = url.searchParams.get('was');
+    // /room/<game>/<CODE>, as the worker checked: a fight holds two.
+    const [, , game, code] = url.pathname.split('/');
     // Taking over a connection that died without closing, or back within moments of one that did close.
     const kept = takeOver(this.players(), was) ?? this.rules.cameBack(was);
     const id = kept ? was : idFor(this.players(), was, newId);
     const [client, server] = Object.values(new WebSocketPair());
     this.ctx.acceptWebSocket(server);
-    if (!this.rules.arrive(this.player(server), id, kept)) server.close(1000, 'full');
+    if (!this.rules.arrive(this.player(server), id, kept, mostIn(code ? game : ''))) server.close(1000, 'full');
     return new Response(null, { status: 101, webSocket: client });
   }
 

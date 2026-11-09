@@ -32,26 +32,6 @@ body[data-screen='fight'] .coach.is-visible { display: flex; }
 body[data-screen='break'] .break-card { display: grid; }
 
 /* ---------- who to fight ---------- */
-.fight-mode {
-  border: 0;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 4px;
-  font-size: 17px;
-  font-weight: 500;
-}
-
-.fight-mode label { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.is-soon { color: var(--ink-soft); }
-
-.soon {
-  font-size: 13px;
-  background: var(--surface-soft);
-  border-radius: 999px;
-  padding: 1px 10px;
-}
-
 .opponent {
   border: 2px solid var(--line);
   background: var(--surface);
@@ -67,7 +47,20 @@ body[data-screen='break'] .break-card { display: grid; }
 
 .opponent:hover { background: var(--surface-soft); }
 .opponent img { width: 66px; height: 66px; display: block; }
+.opponent img[hidden] { display: none; }
 .opponent-change { font-size: 13px; color: var(--accent); }
+
+/* Fighting a friend, the opponent is the friend, as whoever they've chosen, and can't be changed. */
+.opponent.is-friend { cursor: default; border-color: var(--accent); }
+.opponent.is-friend:hover { background: var(--surface); }
+.opponent.is-friend .opponent-change { color: var(--ink-soft); }
+
+/* A friend's fighter's move, over them, smaller than the child's own. */
+.callout.is-friend {
+  font-size: clamp(22px, 3.2vw, 42px);
+  color: #ffc9e0;
+  animation: big-word 1.3s ease-out forwards;
+}
 
 /* ---------- the top of the fight ---------- */
 .fight-top {
@@ -219,7 +212,6 @@ body[data-screen='break'] .break-card { display: grid; }
 
 @media (max-width: 820px), (max-height: 520px) {
   .opponent img { width: 44px; height: 44px; }
-  .fight-mode { font-size: 14px; }
 }
 
 @media (max-width: 620px) {

@@ -1,5 +1,5 @@
-// What playing with friends looks like, in High Five Racers, Sky Wings and Balloon Pop: a box on the title card
-// for making or joining a race, a flight or a game, the screen for waiting at the start, and how everyone did on the
+// What playing with friends looks like, in High Five Racers, Sky Wings, Balloon Pop and Mighty Moves: a box on the
+// title card for making or joining a race, a flight, a game or a fight, the screen for waiting at the start, and how everyone did on the
 // finish card. Each game gives its own words, and what's sent and shown about each friend. The connection
 // itself is in friends.js.
 //
@@ -89,11 +89,12 @@ export class FriendsPanel {
    *                        said, where they are goes to the track follow() gave for them
    *   rank(a, b)       which of two results is better, less than 0 for a: unless said, those who won by
    *                    time, then the rest by how many they dropped. Equal ones share a place
+   *   onRoom()         who's here has changed, as when a friend comes or chooses another character
    * titles is { first, other }, the finish card's title for coming first or not, or null to leave it be.
    * startAfter, waitingBefore and resultsAfter are where the box, the waiting screen and the results go.
    */
-  constructor({ game = '', linkKey = 'race', words, hello, screen, portraits, onGone = () => {}, onMove = null, rank = null, resultText, titles = null, startAfter, waitingBefore, resultsAfter, finishTitle }) {
-    Object.assign(this, { linkKey, words, helloFor: hello, screen, portraits, onGone, resultText, titles });
+  constructor({ game = '', linkKey = 'race', words, hello, screen, portraits, onGone = () => {}, onMove = null, onRoom = () => {}, rank = null, resultText, titles = null, startAfter, waitingBefore, resultsAfter, finishTitle }) {
+    Object.assign(this, { linkKey, words, helloFor: hello, screen, portraits, onGone, onRoom, resultText, titles });
     this.rank = rank ?? ((a, b) => Number(b.won) - Number(a.won) || (a.won ? a.ms - b.ms : b.dropped - a.dropped || a.ms - b.ms));
     this.current = null; // The race or flight with friends being played, once it has started: see start().
     this.results = new Map(); // id: { ms, won, dropped }, how each friend did.
@@ -269,9 +270,14 @@ export class FriendsPanel {
     if (this.current && this.room.inRoom) this.room.sendMove(kind, state, ms);
   }
 
-  /** Balloon Pop: the child's hand got to balloon k first, as far as this computer can tell. */
+  /** Balloon Pop: the child's hand got to balloon k first, as far as this computer can tell. Mighty Moves: round k. */
   claim(k) {
     if (this.current && this.room.inRoom) this.room.claim(k);
+  }
+
+  /** Mighty Moves: the child's fighter made a move at their friend's, this long after "GO!". */
+  sendHit(hit, ms) {
+    if (this.current && this.room.inRoom) this.room.sendHit(hit, ms);
   }
 
   /** The child's score so far, popped or right, for friends' scoreboards. */
@@ -353,6 +359,7 @@ export class FriendsPanel {
     byId('friends-wait-status').textContent = waiting ? text : '';
 
     if (this.current) this.watchForGone();
+    this.onRoom();
   }
 
   /**

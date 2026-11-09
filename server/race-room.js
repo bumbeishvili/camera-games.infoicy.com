@@ -1,9 +1,9 @@
-// Playing with friends, in High Five Racers, Sky Wings and Balloon Pop: who's in a room, and what they pass to
-// each other.
+// Playing with friends, in High Five Racers, Sky Wings, Balloon Pop and Mighty Moves: who's in a room, and what
+// they pass to each other.
 // The same rules run on Cloudflare (server/worker.js) and on this computer for the tests
 // (tools/race-server.mjs). Each game has rooms of its own. Nothing here is kept once everyone has gone, and no
-// camera picture ever comes here: only where each car or plane is, the name a player typed, and which
-// character drives or flies.
+// camera picture ever comes here: only where each car or plane is, the moves a fighter makes, the name a player
+// typed, and which character drives, flies or fights.
 //
 // A player sends JSON messages, each { t, ... }:
 //   hi     { name, driver, level, length, mode, racing }   first, after connecting, and again if any of it
@@ -20,18 +20,25 @@
 //                                      points from the middle of the palm, as x, y, x, y..., in palms
 //   world  { ms, b, q, qa }                the host's balloons in Balloon Pop, which everyone plays with:
 //                                      each [id, x, y, r, colour, number, flags], and the sum being asked
-//   claim  { k }                           this player's hand got to balloon k: the first to says so has it
+//   claim  { k }                           this player's hand got to balloon k: the first to says so has it.
+//                                      In Mighty Moves, k is a round this player's fighter has just won
+//   hit    { r, m, d, tot, sm, sg, sd }    Mighty Moves: their fighter makes move m in round r, doing d, and
+//                                      tot in all this round. sm is 1 for a small hit and sg for their
+//                                      fighter's own finishing move, and sd the side, l or r, if it has one
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
 // The room sends:
 //   room   { you, members: [{ id, name, driver, ready, racing, host }] }   whenever that changes
 //   go     { level, length, laps, mode, racers }   the countdown starts now, on the host's course (laps is length)
-//   car, plane, score, hand, world { from, ... } and done { from, ms, n, w }   passed on from the others
-//   claimed { k, by }                      balloon k went to player by, sent to everyone, them too
-//   full   {}                              there are already MAX_RACERS in the room
+//   car, plane, score, hand, world, hit { from, ... } and done { from, ms, n, w }   passed on from the others
+//   claimed { k, by }                      balloon k, or round k, went to player by, sent to everyone, them too
+//   full   {}                              the room already has as many as it holds: see mostIn
 
 export const MAX_RACERS = 4;
+// A fight is two fighters. Every other game's room holds MAX_RACERS.
+const MOST_IN = { 'mighty-moves': 2 };
+export const mostIn = (game) => MOST_IN[game] ?? MAX_RACERS;
 export const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // No 0, O, 1, I or L, which look alike.
 export const CODE_LENGTH = 6;
 export const MOST_BYTES = 1800; // A message bigger than this is ignored. The host's balloons are the biggest.
@@ -88,6 +95,7 @@ export function cleanName(value) {
 }
 
 const cleanDriver = (value) => (typeof value === 'string' && /^[a-z][a-z-]{0,23}$/.test(value) ? value : '');
+const cleanMove = (value) => (typeof value === 'string' && /^[a-zA-Z]{1,16}$/.test(value) ? value : '');
 const cleanMode = (value) => (typeof value === 'string' && /^[A-Za-z]{1,12}$/.test(value) ? value : '');
 
 /** Only what a plane message should hold, rounded. h is which way it heads, p and r its pitch and roll. */
@@ -132,6 +140,20 @@ export function cleanWorld(message) {
   ]);
   const q = typeof message.q === 'string' ? message.q.replace(/[^0-9+\-−×÷=? ]/g, '').slice(0, 24) : '';
   return { ms: number(message.ms, 0, 3_600_000, 0), b, q, qa: message.qa ? 1 : 0 };
+}
+
+/** Only what a fighter's move should hold, in Mighty Moves. A move that isn't one is passed on as none. */
+export function cleanHit(message) {
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    r: number(message.r, 1, 9, 0),
+    m: cleanMove(message.m),
+    d: number(message.d, 0, 200, 2),
+    tot: number(message.tot, 0, 1000, 2),
+    sm: message.sm ? 1 : 0,
+    sg: message.sg ? 1 : 0,
+    sd: message.sd === 'l' || message.sd === 'r' ? message.sd : '',
+  };
 }
 
 /** Only what a car message should hold, rounded, so nothing else can be passed on. */
@@ -180,16 +202,16 @@ export class RaceRoom {
 
   /**
    * A new player has connected. They're given an id and a seat, or told the room is full. kept is what was
-   * kept about them from a connection they're taking over: see takeOver.
+   * kept about them from a connection they're taking over: see takeOver. most is how many the room holds.
    */
-  arrive(player, id, kept = null) {
+  arrive(player, id, kept = null, most = MAX_RACERS) {
     if (kept) {
       player.setMeta({ ...kept, id });
       this.tellEveryone();
       return true;
     }
     const others = this.room.players().filter((each) => each !== player && each.meta?.id);
-    if (others.length >= MAX_RACERS) {
+    if (others.length >= most) {
       player.send({ t: 'full' });
       return false;
     }
@@ -247,6 +269,10 @@ export class RaceRoom {
         for (const each of players) each.send({ t: 'claimed', k, by: meta.id });
         break;
       }
+      case 'hit':
+        if (!meta.racing) return;
+        for (const other of others) other.send({ t: 'hit', from: meta.id, ...cleanHit(message) });
+        break;
       case 'car':
       case 'plane':
       case 'hand': {

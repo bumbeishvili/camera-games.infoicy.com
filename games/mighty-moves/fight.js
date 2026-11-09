@@ -1,12 +1,20 @@
 // The rules of a fight. No screen, camera or sound in this file: moves come in, and what happened
 // comes out as events, so it all runs in the unit tests.
 //
-// A fighter is driven only through perform(), setGuard() and setDodge(). Today coach.js makes those
-// calls for both sides. Playing over a network later means sending those same calls across, without
-// changing anything in here.
+// A fighter is driven only through perform(), setGuard() and setDodge(). Against the computer, coach.js
+// makes those calls for both sides.
+//
+// Against a friend, on their own computer, the other corner is the friend's fighter: each of the friend's moves
+// comes across as perform('npc', ...), with what it did on their computer. Every big move lands, as the
+// child did what was asked, and there are no computer's turns. What a move does is settled as it starts, so
+// it's the same on both computers, and each fighter's health is all the other's moves have done to it this
+// round. A knockout waits for the server to say whose round it is, in case both got there at once: see
+// settleRound.
 import { COMBOS, COMBO_SECONDS, EXERCISES, MOVES, PRIZE_ORDER, RULES, fightLevel } from './moves.js';
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
+// To the hundredth, as the server passes it on, so both computers add up the same.
+const round2 = (value) => Math.round(value * 100) / 100;
 const other = (who) => (who === 'player' ? 'npc' : 'player');
 
 const emptyStats = () => ({
@@ -64,11 +72,21 @@ export class Fight {
    * level is the computer's strength in moves.js. focusSide is the side being worked on.
    * levelNumber is the level, from 1 to 10: see fightLevel in moves.js, which the coach follows.
    */
-  constructor({ rounds = 3, level, levelNumber = 1, focusSide = 'right', onEvent = () => {} }) {
+  constructor({ rounds = 3, level, levelNumber = 1, focusSide = 'right', friend = false, onEvent = () => {} }) {
     this.totalRounds = rounds;
     this.level = level;
     this.levelNumber = levelNumber;
-    this.levelRules = fightLevel(levelNumber);
+    this.friend = friend;
+    const rules = fightLevel(levelNumber);
+    // A friend isn't the champion, and there's no trophy for beating them. Gems are for getting out of the way
+    // of the computer's moves, which a friend's fighter doesn't make. A shield bubble would stop a hit that only
+    // this computer knew had been stopped, so it doesn't come.
+    this.levelRules = friend ? {
+      ...rules,
+      champion: false,
+      prizes: rules.prizes.filter((kind) => kind !== 'gem' && kind !== 'trophy'),
+      powerUps: rules.powerUps.filter((kind) => kind !== 'shield'),
+    } : rules;
     this.focusSide = focusSide;
     this.onEvent = onEvent;
 
@@ -81,6 +99,7 @@ export class Fight {
     this.winner = null;
     this.idleSeconds = 0;
     this.bigMovesLanded = 0;
+    this.dealt = 0; // Against a friend: all the child's fighter has done to the friend's this round.
   }
 
   corner(who) {
@@ -95,6 +114,7 @@ export class Fight {
     this.round += 1;
     this.player.freshRound();
     this.npc.freshRound();
+    this.dealt = 0;
     this.idleSeconds = 0;
     this.state = 'fighting';
     this.emit('round-start', { round: this.round, last: this.isLastRound() });
@@ -185,12 +205,16 @@ export class Fight {
    * 'open', 'closed' or null for not known. exercise is the exercise that earned it. small makes
    * it a small hit, from something the coach didn't ask for. reps is how many times the child did
    * it, as some moves are asked for twice on the higher levels.
+   *
+   * A friend's move says what it did on their computer: damage, and total, all their moves have done this
+   * round, with signature for their fighter's own finishing move.
    */
-  perform(who, move, { side = null, hand = null, exercise = null, small = false, reps = 1 } = {}) {
+  perform(who, move, { side = null, hand = null, exercise = null, small = false, reps = 1, damage = 0, total = damage, signature = false } = {}) {
     if (this.state !== 'fighting') return null;
     const definition = MOVES[move];
+    if (!definition) return null;
     const corner = this.corner(who);
-    const times = corner.who === 'player' ? this.scoreMove(corner, move, definition, { side, hand, exercise, small, reps }) : { value: 1, reasons: [], signature: false };
+    const times = corner.who === 'player' ? this.scoreMove(corner, move, definition, { side, hand, exercise, small, reps }) : { value: 1, reasons: [], signature: this.friend && signature };
 
     const action = {
       who,
@@ -205,9 +229,28 @@ export class Fight {
       startedAt: this.time,
       hitAt: this.time + definition.hitAt,
     };
+    if (this.friend) {
+      if (who === 'player') {
+        action.damage = this.damageOf(corner, action, definition);
+        this.dealt = round2(this.dealt + action.damage);
+        action.total = this.dealt;
+      } else {
+        action.damage = damage;
+        action.total = total;
+      }
+    }
     corner.pending.push(action);
-    this.emit('move', { who, move, side, hand, exercise, small, times: times.value, reasons: times.reasons, signature: times.signature, hitAt: definition.hitAt });
+    this.emit('move', { who, move, side, hand, exercise, small, times: times.value, reasons: times.reasons, signature: times.signature, hitAt: definition.hitAt, damage: action.damage, total: action.total });
     return action;
+  }
+
+  /** Against a friend: what the child's move does, settled as it starts. Small hits still only go so far. */
+  damageOf(attacker, action, definition) {
+    if (definition.damage === 0) return 0;
+    if (!action.small) return round2(definition.damage * action.times);
+    const damage = Math.max(0, Math.min(RULES.smallHit * action.times, RULES.smallHitsMost - attacker.smallHitsDealt));
+    attacker.smallHitsDealt += damage;
+    return round2(damage);
   }
 
   /** Everything that makes the child's move stronger, all of it earned. */
@@ -298,6 +341,10 @@ export class Fight {
   }
 
   resolve(action) {
+    if (this.friend) {
+      this.resolveWithFriend(action);
+      return;
+    }
     const attacker = this.corner(action.who);
     const target = this.corner(other(action.who));
     const definition = MOVES[action.move];
@@ -357,6 +404,64 @@ export class Fight {
     });
     if (target.hp <= 0) this.endRound(action.who);
     else if (action.who === 'player' && !action.small) this.countBigMove();
+  }
+
+  /**
+   * Against a friend, every move lands, and does what it did on the computer it came from. A fighter's health
+   * is what's left after all the other's moves this round, so one missed while the connection was down is
+   * made up by the next.
+   */
+  resolveWithFriend(action) {
+    const attacker = this.corner(action.who);
+    const target = this.corner(other(action.who));
+    if (MOVES[action.move].damage === 0) return;
+    const details = { attacker: action.who, target: target.who, move: action.move, side: action.side, small: action.small, times: action.times, reasons: action.reasons, signature: action.signature };
+    if (action.small && action.damage <= 0) {
+      if (action.who === 'player') this.emit('small-hits-spent');
+      this.emit('hit', { ...details, damage: 0, blocked: true });
+      return;
+    }
+    target.hp = Math.min(target.hp, clamp(RULES.maxHp - action.total, 0, RULES.maxHp));
+    if (action.who === 'player') {
+      this.stats.damage += action.damage;
+      if (!action.small) {
+        this.addPower(attacker, RULES.powerPerHit);
+        this.award('coin', action.signature || action.reasons.includes('team') ? 3 : 1);
+      }
+    }
+    this.emit('hit', { ...details, damage: action.damage, blocked: false });
+    if (target.hp <= 0) this.knockedOut(action.who);
+    else if (action.who === 'player' && !action.small) this.countBigMove();
+  }
+
+  /** Against a friend, a knockout waits, with nothing moving, for the server to say whose round it is. */
+  knockedOut(winner) {
+    this.state = 'knockout';
+    this.player.pending = [];
+    this.npc.pending = [];
+    this.emit('knockout', { winner });
+  }
+
+  /**
+   * Against a friend: whose round it is, as the server says, which is whoever's knockout got there first. The
+   * other fighter is out, whatever this computer saw.
+   */
+  settleRound(winner) {
+    if (this.state !== 'fighting' && this.state !== 'knockout') return;
+    this.corner(other(winner)).hp = 0;
+    this.endRound(winner);
+  }
+
+  /** Against a friend who has gone: with nobody to fight, it's over, and it's the child's. */
+  friendGone() {
+    if (this.state === 'over') return;
+    this.state = 'over';
+    this.player.pending = [];
+    this.npc.pending = [];
+    this.player.warning = null;
+    this.npc.warning = null;
+    this.winner = 'player';
+    this.emit('fight-end', { winner: 'player', walkover: true });
   }
 
   endRound(winner) {

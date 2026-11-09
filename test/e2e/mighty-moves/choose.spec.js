@@ -66,11 +66,12 @@ test('the opponent is never your own fighter, and it can be changed', async ({ p
   await expect(page.locator('#opponent-name')).not.toHaveText(current);
 });
 
-test('the computer is the opponent for now, with a friend online shown as still to come', async ({ page }) => {
+test('on their own, the opponent is the computer\'s fighter, and a friend can be fought from the title card', async ({ page }) => {
   await openMoves(page);
+  await expect(page.locator('#friends-toggle')).toHaveText('Fight a friend');
   await toChoosing(page);
-  await expect(page.locator('input[name="opponent-kind"][value="computer"]')).toBeChecked();
-  await expect(page.locator('input[name="opponent-kind"][value="friend"]')).toBeDisabled();
+  await expect(page.locator('#next-opponent')).toBeEnabled();
+  await expect(page.locator('#opponent-change')).toHaveText('Tap to change');
 });
 
 test('a fight won\'t start until the camera sees the whole body', async ({ page }) => {

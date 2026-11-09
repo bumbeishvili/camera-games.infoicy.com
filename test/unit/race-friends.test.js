@@ -2,12 +2,12 @@
 // is moved smoothly from what their game sends.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanCar, cleanHand, cleanName, idFor, makeCode, MAX_RACERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
+import { cleanCar, cleanHand, cleanName, idFor, makeCode, MAX_RACERS, mostIn, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
 import { Track } from '../../core/friends.js';
 import { CarTrack, codeInLink } from '../../games/high-five-racers/friends.js';
 
-/** A room with players who keep what they're sent, as the server's sockets would pass it on. */
-function makeRoom() {
+/** A room with players who keep what they're sent, as the server's sockets would pass it on. most is how many it holds. */
+function makeRoom(most = MAX_RACERS) {
   const players = [];
   let clock = 1000;
   const rules = new RaceRoom({ players: () => players }, () => clock);
@@ -30,7 +30,7 @@ function makeRoom() {
     };
     players.push(player);
     clock += 10;
-    const inside = rules.arrive(player, id);
+    const inside = rules.arrive(player, id, null, most);
     return inside ? player : null;
   };
   const leave = (player) => {
@@ -340,4 +340,33 @@ test('in Balloon Pop, only the host\'s balloons go to everyone, and each balloon
   friend.say({ t: 'ready' });
   friend.say({ t: 'claim', k: 3 });
   assert.deepEqual(host.last('claimed'), { t: 'claimed', k: 3, by: 'bbbbbbbb' });
+});
+
+test('in Mighty Moves, a fight holds two, and each fighter\'s moves go to the other, with only what a move should hold', () => {
+  assert.equal(mostIn('mighty-moves'), 2);
+  assert.equal(mostIn('sky-wings'), MAX_RACERS);
+  assert.equal(mostIn(''), MAX_RACERS);
+  const { join } = makeRoom(mostIn('mighty-moves'));
+  const ana = join('aaaaaaaa');
+  const ben = join('bbbbbbbb');
+  assert.equal(join('cccccccc'), null, 'a third is told the fight is full');
+  ana.say({ t: 'hit', r: 1, m: 'stomp', d: 14, tot: 14 });
+  assert.equal(ben.last('hit'), undefined, 'nothing goes before the fight has started');
+
+  ana.say({ t: 'ready' });
+  ben.say({ t: 'ready' });
+  ana.say({ t: 'hit', ms: 1500.4, r: 1, m: 'stomp', d: 16.8049, tot: 30.8049, sm: 0, sg: true, sd: 'r', picture: 'not this' });
+  assert.deepEqual(ben.last('hit'), { t: 'hit', from: 'aaaaaaaa', ms: 1500, r: 1, m: 'stomp', d: 16.8, tot: 30.8, sm: 0, sg: 1, sd: 'r' });
+  assert.equal(ana.last('hit'), undefined, 'nobody hears their own');
+  ben.say({ t: 'hit', r: 12, m: '<b>stomp</b>', d: 999, tot: -5, sd: 'up' });
+  assert.deepEqual(ana.last('hit'), { t: 'hit', from: 'bbbbbbbb', ms: 0, r: 9, m: '', d: 200, tot: 0, sm: 0, sg: 0, sd: '' });
+
+  // Both knock the other out at once: the round is whoever's claim got there first, and both are told, once.
+  ben.say({ t: 'claim', k: 1 });
+  ana.say({ t: 'claim', k: 1 });
+  for (const player of [ana, ben]) {
+    assert.deepEqual(player.heard.filter(({ t }) => t === 'claimed'), [{ t: 'claimed', k: 1, by: 'bbbbbbbb' }]);
+  }
+  ana.say({ t: 'claim', k: 2 });
+  assert.deepEqual(ben.last('claimed'), { t: 'claimed', k: 2, by: 'aaaaaaaa' });
 });

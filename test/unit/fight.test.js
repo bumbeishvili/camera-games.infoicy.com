@@ -1209,3 +1209,118 @@ test('a ball caught at the very last moment is still held a moment before it\'s 
   });
   assert.ok(thrownAt - caughtAt >= RULES.holdCaughtBall - 0.05, `held for ${thrownAt - caughtAt} seconds`);
 });
+
+/** Two fights, one on each friend's computer, passing each other's moves as the server would. */
+function friendlyFight(options = {}) {
+  const make = () => {
+    const events = [];
+    const fight = new Fight({ level: { ...NPC_LEVELS.gentle, damage: 1, mercy: 0 }, friend: true, rounds: 1, onEvent: (event) => events.push(event), ...options });
+    fight.beginRound();
+    return { fight, events };
+  };
+  const ana = make();
+  const ben = make();
+  // What each one's fighter does goes to the other, as the friend's fighter's move.
+  const pass = (from, to) => {
+    for (const { type, who, move, side, small, signature, damage, total } of from.events.splice(0)) {
+      if (type === 'move' && who === 'player') to.fight.perform('npc', move, { side, small, signature, damage, total });
+    }
+  };
+  return { ana, ben, pass };
+}
+
+test('against a friend, a big move does what it did on the friend\'s computer, and every one lands', () => {
+  const { ana, ben, pass } = friendlyFight();
+  ana.fight.perform('player', 'stomp', { exercise: 'squat', side: 'right' });
+  ana.fight.perform('player', 'palm', { exercise: 'push', hand: 'open', side: 'right' });
+  const sent = ana.events.filter(({ type }) => type === 'move').map(({ damage, total }) => ({ damage, total }));
+  // The right side is the one being worked on, and an open hand makes a push stronger.
+  assert.deepEqual(sent, [{ damage: 16.8, total: 16.8 }, { damage: 15.12, total: 31.92 }]);
+  pass(ana, ben);
+  // The friend's fighter isn't blocked or leaned away from: there are no computer's turns, and no shield.
+  ben.fight.setGuard('player', true);
+  run(ana.fight, 1);
+  run(ben.fight, 1);
+  assert.equal(ana.fight.npc.hp, RULES.maxHp - 31.92);
+  assert.equal(ben.fight.player.hp, RULES.maxHp - 31.92, 'the same on both computers');
+  assert.equal(ben.events.filter(({ type, attacker }) => type === 'hit' && attacker === 'npc').length, 2);
+  assert.ok(!ana.fight.levelRules.champion);
+  assert.ok(!ana.fight.levelRules.powerUps.includes('shield'));
+});
+
+test('against a friend, there are no gems, as those are for getting out of the way, and no champion\'s trophy', () => {
+  const champion = new Fight({ level: MEDIUM, levelNumber: 10, friend: true });
+  assert.ok(fightLevel(10).prizes.includes('gem'));
+  assert.deepEqual(champion.levelRules.prizes, fightLevel(10).prizes.filter((kind) => kind !== 'gem' && kind !== 'trophy'));
+  assert.equal(champion.levelRules.champion, false);
+  assert.deepEqual(new Fight({ level: MEDIUM, levelNumber: 10 }).levelRules, fightLevel(10), 'against the computer, it\'s as it was');
+});
+
+test('against a friend, a move missed while the connection was down is made up by the next', () => {
+  const { ana, ben, pass } = friendlyFight();
+  ana.fight.perform('player', 'stomp', { exercise: 'squat' });
+  ana.events.splice(0);
+  ana.fight.perform('player', 'flying', { exercise: 'jump' });
+  pass(ana, ben);
+  run(ana.fight, 1);
+  run(ben.fight, 1);
+  assert.ok(ana.fight.npc.hp < RULES.maxHp - 14 - 15, 'both moves, the second as a combo');
+  assert.equal(ben.fight.player.hp, ana.fight.npc.hp);
+});
+
+test('against a friend, small hits still only go so far', () => {
+  const { ana } = friendlyFight();
+  for (let i = 0; i < 30; i += 1) ana.fight.perform('player', 'punch', { side: 'left', small: true });
+  const done = ana.events.filter(({ type }) => type === 'move').map(({ damage }) => damage);
+  assert.equal(done.reduce((sum, damage) => sum + damage, 0), RULES.smallHitsMost);
+  run(ana.fight, 1);
+  assert.equal(ana.fight.npc.hp, RULES.maxHp - RULES.smallHitsMost);
+});
+
+test('against a friend, a knockout waits for whose round the server says it is, even when both got there at once', () => {
+  const { ana, ben, pass } = friendlyFight({ rounds: 3 });
+  for (const each of [ana, ben]) {
+    for (let i = 0; i < 7; i += 1) each.fight.perform('player', 'flying', { exercise: 'jump' });
+  }
+  pass(ana, ben);
+  pass(ben, ana);
+  run(ana.fight, 1);
+  run(ben.fight, 1);
+  // Each saw their own fighter knock the other out, and nothing more happens until it's settled.
+  for (const each of [ana, ben]) {
+    assert.equal(each.fight.state, 'knockout');
+    assert.ok(each.events.some(({ type }) => type === 'knockout'));
+    assert.equal(each.fight.perform('player', 'stomp', { exercise: 'squat' }), null);
+  }
+  // Ben's claim got to the server first.
+  ana.fight.settleRound('npc');
+  ben.fight.settleRound('player');
+  assert.deepEqual([ana.fight.player.roundsWon, ana.fight.npc.roundsWon], [0, 1]);
+  assert.deepEqual([ben.fight.player.roundsWon, ben.fight.npc.roundsWon], [1, 0]);
+  assert.equal(ana.fight.player.hp, 0);
+  assert.equal(ana.fight.state, 'break');
+  ana.fight.beginRound();
+  assert.equal(ana.fight.dealt, 0);
+  assert.equal(ana.fight.npc.hp, RULES.maxHp);
+});
+
+test('against a friend who has gone, the fight is over, and it\'s the child\'s', () => {
+  const { ana } = friendlyFight();
+  ana.fight.friendGone();
+  assert.equal(ana.fight.state, 'over');
+  assert.deepEqual(ana.events.at(-1), { type: 'fight-end', winner: 'player', walkover: true });
+  assert.equal(ana.fight.perform('player', 'stomp', { exercise: 'squat' }), null);
+});
+
+test('the coach never gives a friend\'s fighter a turn of its own', () => {
+  const { fight } = setup({ friend: true, level: { ...NPC_LEVELS.gentle, every: Infinity, damage: 1, mercy: 0 } });
+  const coach = new Coach({ fight, reader: fakeReader({ moving: true }) });
+  coach.beginRound();
+  for (let t = 0; t < 120; t += 0.1) {
+    fight.noteActivity(0.1);
+    coach.update(0.1);
+    fight.update(0.1);
+  }
+  assert.notEqual(coach.phase, 'defending');
+  assert.equal(coach.defences, 0);
+});

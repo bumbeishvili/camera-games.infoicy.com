@@ -6,7 +6,7 @@ They're played at <https://hemi.infoicy.com> in Google Chrome, on a computer wit
 
 - **High Five Racers:** the car only drives while the hand is open. Steering over to a giant hand at the roadside high fives it for a boost, and keeping the hand open fills up turbo. Nobody can crash or lose: if the hand closes, the car coasts to a stop and waits. See [below](#high-five-racers).
 - **Balloon Pop:** balloons float up and drift around, and the open hand pops them. A closed hand just bumps them. Missing a balloon costs nothing. A grown-up can turn on a maths challenge, where the wrong answer burns the glove.
-- **Mighty Moves:** a fighting game against the computer, played with the whole body. The coach shows concrete moves to do, like a clap, a squat, a jump or a hand circle, and only those can win. Ordinary punches and kicks are small hits. See [below](#mighty-moves).
+- **Mighty Moves:** a fighting game against the computer, or a friend on their own computer, played with the whole body. The coach shows concrete moves to do, like a clap, a squat, a jump or a hand circle, and only those can win. Ordinary punches and kicks are small hits. See [below](#mighty-moves).
 - **Leap Trail:** a fast run down a country path in 3D, jumping over what's in the way and stepping from side to side between three lanes to grab lines of stars, with the child's real body. See [below](#leap-trail).
 - **Sky Wings:** a dogfight over a 3D island, with both arms as wings. Tipping them banks and turns the plane, and raising or lowering them flies it up and down. Sky pirates hunt the child and the child hunts them: the guns fire by themselves at any plane inside the ring, until they've all been dropped.
 - **Robot Rescue:** robots have caught the friends from the other games, and the child rides a little tram through a seaside town to free them. An open hand fires at whatever is in the crosshair, and a closed hand raises a shield and reloads. See [below](#robot-rescue).
@@ -68,7 +68,7 @@ games/
   smoothie-stand/       its customers and orders, the fair and its sounds
   lighthouse/           its storm and ships, the lamp room and its sounds
 tools/                  the local server, the local race server, and what prepares voices and sounds
-server/                 the server for playing with friends in High Five Racers, Sky Wings and Balloon Pop: its rules, and the Cloudflare Worker that runs them
+server/                 the server for playing with friends in High Five Racers, Sky Wings, Balloon Pop and Mighty Moves: its rules, and the Cloudflare Worker that runs them
 vendor/                 libraries, the tracking model and fonts
 test/                   unit tests, and Playwright tests for the hub and each game
 ```
@@ -202,7 +202,7 @@ Coins are counted at the top from level 2, and on the finish card with any gems,
 
 **Racing friends.** Up to 4 children can race each other, each on their own computer with their own camera.
 
-- **Making a race:** a grown-up presses **Race a friend** on the title card, types a name, presses **Make a race** and sends the link it makes, or its 6-letter code. While making or joining a race, the title card shows only that, over the game dimmed and blurred, and **Let’s race!** comes under who's here. **Back** goes back to the usual title card. It's the same in Sky Wings and Balloon Pop.
+- **Making a race:** a grown-up presses **Race a friend** on the title card, types a name, presses **Make a race** and sends the link it makes, or its 6-letter code. While making or joining a race, the title card shows only that, over the game dimmed and blurred, and **Let’s race!** comes under who's here. **Back** goes back to the usual title card. It's the same in Sky Wings, Balloon Pop and Mighty Moves.
 - **Joining:** the friend opens the link, or types the code and presses **Join**.
 - **Starting:** everyone presses **Let’s race!**. After the hand check, each waits on the grid until everyone is ready, and then all count down together. Whoever made the race can press **Start now** instead, and anyone can choose to race on their own.
 - **The course** is the host's: their level and race length. Friends' cars take the place of the other cars, with each friend's name over theirs. A friend's car close to the child's is shown a little to one side, as the other cars keep out of the way, so it never sits in front of the camera.
@@ -251,13 +251,22 @@ Saying the moves in this order makes two combos come up by themselves, a squat t
 - **How big a movement has to be** can be set, because a small movement may be a big effort. *Small* is the default, and there one arm is enough for the moves that otherwise take two.
 - **Side to work on** uses the same hand choice as the other games, and moves on that side do 20% more. The summary counts each side separately.
 - **Jumps can be turned off,** so the coach never asks for them when balance makes them unsafe.
-- **Resting is always fine.** A child standing still is never hit. The coach waits, and the computer waves until they carry on.
+- **Resting is always fine.** Against the computer, a child standing still is never hit. The coach waits, and the computer waves until they carry on. Against a friend, the friend's moves still land, as a friend's car keeps going in a race.
 - **On *Gentle*, the default,** the computer gives four seconds' warning and can't knock a child out.
 - **Nothing flashes.** Measured through big hits, brightness changed by less than 2% from one frame to the next. Fighters get dizzy rather than hurt.
 
 **The fighters** are ten original characters in [core/body/roster.js](core/body/roster.js), each with their own voice and finishing move, built from simple shapes in [characters.js](core/body/characters.js). All ten share one skeleton, so any move works on any of them. To add one, add an entry to the roster with its colours and a `dress` function, and its lines to [core/body/voice/lines.json](core/body/voice/lines.json) and [the game's own](games/mighty-moves/audio/voice/lines.json). To add a film of a move, add it to [core/body/demos.js](core/body/demos.js).
 
-**Playing over a network** isn't built yet, but it's been kept in mind. The rules in [fight.js](games/mighty-moves/fight.js) have no screen or camera in them, and a fighter is only driven through `perform()`, `setGuard()` and `setDodge()`. [coach.js](games/mighty-moves/coach.js) makes those calls for both sides today, so another player's moves can arrive over a connection in the computer's place. Only moves would need sending, never camera pictures.
+**Fighting a friend.** Two children can fight each other, each on their own computer with their own camera.
+
+- **Making a fight:** a grown-up presses **Fight a friend** on the title card, types a name, presses **Make a fight** and sends the link or the code. The friend opens it, or types the code and presses **Join**. A fight holds two.
+- **Starting:** each chooses their own fighter, and sees the other's as their opponent, then presses **Fight!**. After the body check, each waits until the other is ready, and then both start together, on the host's level and number of rounds.
+- **The fight:** each child's coach asks them for their own moves, with their own settings. Every big move a child makes lands on their friend's fighter, on both screens, with the friend's fighter making the friend's moves and its name over it. There are no computer's turns, and every big move lands, as the child did what was asked. A round is whoever knocks the other out first.
+- **Fair on both computers:** what a move does is worked out on the computer of the child who made it, and sent with it, so both screens show the same health. Each move also carries all that child's moves have done that round, so one missed while the connection was down is made up by the next. A knockout is checked with the server, so if both happen at once, the round is whoever's got there first. Gems, the shield bubble and the champion's trophy don't come in a fight with a friend, as they're about the computer's moves.
+- **A friend who goes** in the middle leaves the fight to the one still there.
+- **Levels and settings:** a fight with a friend doesn't move anyone's own level on, and nobody's settings change.
+
+**What's sent.** Only the name typed, which fighter, the host's level and number of rounds, and each of the fighter's moves: which one, how much it does, and whether it's a small hit or the finishing move. Nothing from the camera is ever sent. It goes through the same server as racing friends ([server/](server/)), whose fight rooms hold two. The rules in [fight.js](games/mighty-moves/fight.js) have no screen or camera in them: against a friend, the other corner is driven by the friend's moves as they come in, through the same `perform()` the coach uses for the computer.
 
 **Levels.** Levels go from 1 to 10, one fight each, and winning a fight moves on a level, while losing one stays. The computer's strength stays the grown-ups' choice: a level never makes it hit harder, and on Gentle it still can't knock a child out. Higher levels bring its turns a little more often, with a warning down to 80% as long, and a shorter pause between moves, and from levels 4 and 7 it has more moves. Every level from 2 also brings something new, which stays for the levels after it:
 
@@ -535,7 +544,7 @@ Where each sound came from is in [CREDITS.md](CREDITS.md).
 
 ## Privacy
 
-Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, except that High Five Racers, Sky Wings and Balloon Pop may reach the server for playing with friends, which they only do once a grown-up makes or joins a race, a flight or a game (see [Racing friends](#high-five-racers)), and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
+Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, except that High Five Racers, Sky Wings, Balloon Pop and Mighty Moves may reach the server for playing with friends, which they only do once a grown-up makes or joins a race, a flight, a game or a fight (see [Racing friends](#high-five-racers)), and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
 
 ## Tests
 

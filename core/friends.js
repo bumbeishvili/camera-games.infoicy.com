@@ -224,7 +224,7 @@ export class FriendsRoom {
       this.events.onChange?.();
     } else if (message.t === 'go') {
       this.events.onGo?.(message);
-    } else if (['car', 'plane', 'score', 'hand', 'world', 'claimed'].includes(message.t)) {
+    } else if (['car', 'plane', 'score', 'hand', 'world', 'claimed', 'hit'].includes(message.t)) {
       this.events.onMove?.(message.from, message);
     } else if (message.t === 'done') {
       this.events.onDone?.(message.from, message);
@@ -262,9 +262,17 @@ export class FriendsRoom {
     this.say({ t: kind, ms: Math.round(ms), ...state });
   }
 
-  /** Balloon Pop: this player's hand got to balloon k. Whoever's claim reaches the server first has it. */
+  /**
+   * Balloon Pop: this player's hand got to balloon k. Mighty Moves: their fighter has won round k. Whoever's
+   * claim reaches the server first has it.
+   */
   claim(k) {
     this.say({ t: 'claim', k });
+  }
+
+  /** Mighty Moves: their fighter's move, every one, as each lands on the friend's fighter: see cleanHit. */
+  sendHit(hit, ms) {
+    this.say({ t: 'hit', ms: Math.round(ms), ...hit });
   }
 
   /** How many popped, or got right, so far, this long after "GO!". Only sent when it changes. */
