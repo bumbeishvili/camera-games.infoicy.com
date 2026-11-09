@@ -685,6 +685,9 @@ class BounceGame {
       .filter(([, count]) => count > 0)
       .map(([kind, count]) => `${PRIZE_MARKS[kind]} ${count}`)
       .join('   ');
+    // "1 hit", and otherwise "hits".
+    const noun = byId('finish-hero')?.nextSibling;
+    if (noun?.nodeType === Node.TEXT_NODE) noun.textContent = this.stats.hits === 1 ? ' hit' : ' hits';
     return {
       hero: this.stats.hits,
       noun: 'game',

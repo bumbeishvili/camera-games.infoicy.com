@@ -744,6 +744,13 @@ export class Court {
   pose(side) {
     const player = this.players[side];
     const { art } = player;
+    if (!art) {
+      // Without its picture, as when the 3D drawing failed: an arm from where its shoulder would be.
+      const feet = this.at(player.u, player.hop, FEET);
+      const facing = feet.x < this.cx ? 1 : -1;
+      const unit = CHARACTER * this.scale;
+      return { frame: null, size: 0, feet, facing, shoulder: { x: feet.x + facing * unit * 0.2, y: feet.y - unit * 1.45 }, head: { x: feet.x, y: feet.y - unit * 2.1 } };
+    }
     let name = 'ready';
     if (player.mood) name = player.mood;
     else if (player.moving > 0.12) name = RUN_FRAMES[Math.floor(player.stride / STRIDE) % RUN_FRAMES.length];
@@ -886,9 +893,10 @@ export class Court {
     const { ctx } = this;
     const player = this.players[side];
     const { glove, racket } = player;
-    const { shoulder, facing, size } = this.pose(side);
+    const { shoulder, facing } = this.pose(side);
     const colours = player.art?.arm ?? { skin: '#f5c451', sleeve: '#f5c451', hand: '#ffffff', ink: INK };
-    const thick = Math.max(6, 0.19 * size * (player.art?.body ?? 1) / BODY);
+    // As thick as the characters' own arms.
+    const thick = Math.max(6, 0.19 * CHARACTER * this.scale);
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -1079,11 +1087,6 @@ export class Court {
       ctx.stroke();
       ctx.restore();
     }
-  }
-
-  /** Where the middle of the flags is, for the trophy a full row gives. */
-  get flagsMiddle() {
-    return { u: 0, h: 0.75 };
   }
 
   drawWindsock() {
