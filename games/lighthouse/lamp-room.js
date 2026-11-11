@@ -7,6 +7,10 @@
 // Splats, seaweed and starfish from the higher levels are small, and arrive and leave over a moment.
 // Treasure, crabs, power-ups and the gull move slowly and are small too, and the first time each one
 // comes in a game, a little label with its name fades in beside it and out again.
+//
+// With friends, each friend's glove is on the glass too, in light grey with their name over it, where
+// their hand is on their own window, and the mud their hand wipes comes off here as well, a patch at a
+// time, softly, as the server says it was theirs.
 import { Glove, INK, mixColours } from '../../core/glove.js';
 import { NEW_THINGS, POWER_SECONDS, PRIZE_READY_SECONDS } from './storm.js';
 
@@ -28,6 +32,11 @@ const LABEL_SECONDS = 2.4; // A new thing's name, beside it the first time it co
 const LABEL_WAIT = 3; // How long an older thing's name waits its turn before it's let go.
 const GULL_SECONDS = 2.6; // The gull flying across the window.
 const GULL_WIPE = 0.2; // How wide the gull's wipe is, as a share of the screen's height.
+// A friend's patch comes off as a soft round wipe over it: clear right out to its corners, and fading
+// out a little way past them, as cells across and down.
+const PATCH_CLEAR = 0.72;
+const PATCH_EDGE = 0.95;
+const FRIEND_GLOVE = { fill: '#e3e8ee', ink: '#9aa8b6' };
 const BOUNCE_SECONDS = 0.9; // A splat bouncing off the bubble shield.
 const PRIZE_SHARE = 0.042; // A prize's size, as a share of the screen's height.
 // The stars in the night sky, as shares of the window, always in the same places.
@@ -71,6 +80,7 @@ export class LampRoom {
     this.bounces = []; // Mud bouncing off the bubble shield.
     this.sparkles = [];
     this.gull = null;
+    this.friendGloves = []; // With friends, each one's glove, as [{ glove, name, fade }]: main.js keeps them up to date.
     this.tallyAt = { x: 80, y: 40 }; // Where the treasure count is on the screen.
     this.sprites = { shell: paintPrize('shell'), pearl: paintPrize('pearl'), coin: paintPrize('coin') };
     window.addEventListener('resize', () => this.resize());
@@ -104,8 +114,11 @@ export class LampRoom {
     };
   }
 
-  /** Fresh mud on the window, from the storm. */
-  muddy() {
+  /**
+   * Fresh mud on the window, from the storm. random lays out its lumps: with friends, it's the same on
+   * every computer, so everyone's mud looks the same.
+   */
+  muddy(random = Math.random) {
     const { window: glass, ratio } = this;
     const mud = document.createElement('canvas');
     mud.width = Math.round(glass.width * ratio);
@@ -116,7 +129,7 @@ export class LampRoom {
     for (let i = 0; i < 170; i += 1) {
       ctx.fillStyle = ['#7c5733', '#5e3f24', '#876139', '#553820'][i % 4];
       ctx.beginPath();
-      ctx.arc(Math.random() * mud.width, Math.random() * mud.height, 10 + Math.random() * mud.height * 0.07, 0, Math.PI * 2);
+      ctx.arc(random() * mud.width, random() * mud.height, 10 + random() * mud.height * 0.07, 0, Math.PI * 2);
       ctx.fill();
     }
     this.mud = mud;
@@ -262,6 +275,33 @@ export class LampRoom {
       ctx.arc(cx + Math.cos(angle) * rx * 0.62, cy + Math.sin(angle) * ry * 0.62, Math.min(rx, ry) * 0.3, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+
+  /**
+   * With friends: the mud gone from patches a friend's hand wiped, given as cells of the rules' grid,
+   * columns across and rows down. Each comes off as a soft round wipe, right out to its corners, so
+   * nothing the rules count as clean still looks muddy.
+   */
+  clearPatches(cells, columns, rows) {
+    if (!this.mud || !cells.length) return;
+    const ctx = this.mud.getContext('2d');
+    const wide = this.mud.width / columns;
+    const high = this.mud.height / rows;
+    const reach = wide * PATCH_EDGE;
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    const soft = ctx.createRadialGradient(0, 0, 0, 0, 0, reach);
+    soft.addColorStop(0, '#000');
+    soft.addColorStop(PATCH_CLEAR / PATCH_EDGE, '#000');
+    soft.addColorStop(1, 'rgb(0 0 0 / 0)');
+    ctx.fillStyle = soft;
+    for (const cell of cells) {
+      ctx.setTransform(1, 0, 0, high / wide, ((cell % columns) + 0.5) * wide, (Math.floor(cell / columns) + 0.5) * high);
+      ctx.beginPath();
+      ctx.arc(0, 0, reach, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   /** Seaweed or a starfish lets go of the glass, and slides off it into the sea. */
@@ -705,10 +745,41 @@ export class LampRoom {
     this.drawShield(ctx);
     this.drawGull(ctx);
     this.drawLanternGlow(ctx);
+    this.drawFriendsGloves(ctx);
     this.gloves.left.draw(ctx, this.palmSize);
     this.gloves.right.draw(ctx, this.palmSize);
     this.drawFlying(ctx);
     this.drawLabels(ctx);
+  }
+
+  /**
+   * Friends' gloves, wiping on their own computers, where their hands are on their own windows, in light
+   * grey under the child's own, with each friend's name over theirs. They're only there to see: the mud
+   * a friend wipes comes off as the server says it was theirs, with clearPatches.
+   */
+  drawFriendsGloves(ctx) {
+    const { palmSize, height } = this;
+    for (const { glove, name, fade } of this.friendGloves) {
+      if (!glove.visible || fade < 0.02) continue;
+      // Solid, as a see-through one shows its outline through itself, and only fading as it comes and goes.
+      glove.draw(ctx, palmSize, { ...FRIEND_GLOVE, alpha: fade });
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.font = `700 ${Math.round(palmSize * 0.32)}px Fredoka, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      // Over the glove, or under it near the top, where the camera's picture is.
+      const above = glove.y - palmSize * 1.55;
+      const y = above - palmSize * 0.42 < height * 0.24 ? glove.y + palmSize * 1.2 : above;
+      const wide = ctx.measureText(name).width + palmSize * 0.4;
+      ctx.fillStyle = 'rgb(18 48 77 / 0.72)';
+      ctx.beginPath();
+      ctx.roundRect(glove.x - wide / 2, y - palmSize * 0.42, wide, palmSize * 0.48, palmSize * 0.24);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(name, glove.x, y);
+      ctx.restore();
+    }
   }
 
   /**

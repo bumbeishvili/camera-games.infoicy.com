@@ -14,6 +14,40 @@ body[data-hands='right'] .hands-bar { justify-content: flex-end; }
 body[data-hands='left'] .hands-bar { justify-content: flex-start; }
 .meter-caption { font-size: clamp(11px, 1vw, 13px); }
 
+/* With friends: how much of the glass each one has cleaned, the most first, along the bottom under the window,
+   between the film and the hand meter, so it covers none of the glass. */
+.light-scores {
+  position: fixed;
+  z-index: 3;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.light-scores[hidden] { display: none; }
+
+.light-scores li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px 3px 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 4px 14px rgba(18, 48, 77, 0.18);
+  font-size: clamp(14px, 1.4vw, 17px);
+  font-weight: 700;
+}
+.light-scores li.is-you { background: var(--sun); }
+.light-scores img { width: 30px; height: 30px; border-radius: 50%; background: var(--surface-soft); }
+.light-score-name { max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.light-score { margin-left: 4px; font-variant-numeric: tabular-nums; }
+
 /* A little film: an open hand wiping mud off glass, from side to side. */
 .film-glass { fill: #8fd2fa; }
 .film-mud { fill: #6b4a2b; animation: film-mud 5s ease-in-out infinite; }

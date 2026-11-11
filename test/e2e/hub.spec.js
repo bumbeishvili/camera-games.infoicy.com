@@ -293,7 +293,7 @@ test('filters in one group add games, the groups narrow each other, and the sear
   // Both of these, not either.
   await filterNamed(page, 'Sitting down').check();
   await filterNamed(page, 'With friends').check();
-  await expectGames(page, ['Balloon Pop', 'Bounce Back', 'High Five Racers', 'Sky Wings'], ['Mighty Moves', 'Tank Patrol', 'The Lighthouse Keeper']);
+  await expectGames(page, ['Balloon Pop', 'Bounce Back', 'High Five Racers', 'Sky Wings', 'The Lighthouse Keeper'], ['Mighty Moves', 'Tank Patrol']);
   await page.locator('#hub-filters-clear').click();
 
   // The search and a filter together.

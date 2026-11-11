@@ -1,6 +1,11 @@
 // The story of The Lighthouse Keeper. A storm has covered the lighthouse windows with mud, and ships
 // out at sea can't see the light. Each window the child wipes clean with an open hand brings one of
 // them home. There's no screen in this file, so it runs in the unit tests.
+//
+// With friends, everyone wipes the same windows, each on their own computer. Every game has the same
+// plain storm, and keeps the patches of mud its child's hand wipes for the game to claim. Each patch is
+// whoever's hand wiped it first, which the server decides, and a friend's patches come off the glass
+// here too, so every game has the same mud left, and its windows come clean together.
 import { clampLevel, ramp, stepsAt } from '../../core/levels.js';
 
 export const SHIPS = [
@@ -11,6 +16,10 @@ export const SHIPS = [
 ];
 
 export const CLEAN_ENOUGH = 0.88; // The last bits fall away by themselves after this.
+// How the mud on a window is counted: patches, across and down. With friends, these are what's claimed,
+// and the server knows how many there are: see WINDOW_PATCHES in server/race-room.js.
+export const GRID = { columns: 14, rows: 9 };
+export const PATCHES = GRID.columns * GRID.rows;
 
 // Where on the window the storm throws things, as shares of its width and height. Never the corners,
 // which may be out of reach.
@@ -118,9 +127,17 @@ export function stormAt(level) {
   };
 }
 
+/**
+ * The storm friends share: the host's level, without anything the levels bring that's new, as each of
+ * those would need sharing. It's all mud, so the level only makes the sea outside a little wilder.
+ */
+export function plainStorm(level) {
+  return { ...stormAt(level), splats: 0, shells: 0, crabs: 0, lumps: [], powers: [], night: false, chest: false };
+}
+
 /** How much of a window has been wiped, in a grid, as a share of its width and height. */
 export class Mud {
-  constructor(columns = 14, rows = 9) {
+  constructor(columns = GRID.columns, rows = GRID.rows) {
     this.columns = columns;
     this.rows = rows;
     this.cells = new Uint8Array(columns * rows);
@@ -139,16 +156,32 @@ export class Mud {
     }
   }
 
-  /** A wipe around a point, with its size given as a share of the window's width and height. */
-  wipe(x, y, sizeX, sizeY) {
+  /**
+   * A wipe around a point, with its size given as a share of the window's width and height. Each cell it
+   * cleans that wasn't clean already goes into wiped, if there's a list for them.
+   */
+  wipe(x, y, sizeX, sizeY, wiped = null) {
     let added = 0;
     this.eachIn(x, y, sizeX, sizeY, (index) => {
       if (!this.cells[index]) {
         this.cells[index] = 1;
         added += 1;
+        wiped?.push(index);
       }
     });
     this.wiped += added;
+    return added;
+  }
+
+  /** These cells clean, as when a friend wiped them. Returns the ones that weren't clean already. */
+  wipeCells(cells) {
+    const added = [];
+    for (const index of cells) {
+      if (!Number.isInteger(index) || index < 0 || index >= this.cells.length || this.cells[index]) continue;
+      this.cells[index] = 1;
+      added.push(index);
+    }
+    this.wiped += added.length;
     return added;
   }
 
@@ -208,11 +241,17 @@ const within = (thing, hand, rx, ry, times = 1) => {
 };
 
 export class Storm {
-  /** ships says how many come in, and level is from 1 to 10. */
-  constructor({ ships = SHIPS.length, level = 1, random = Math.random, onEvent = () => {} } = {}) {
+  /**
+   * ships says how many come in, and level is from 1 to 10. shared is with friends: the plain storm, and
+   * the patches the hand wipes are kept for the game to claim (see takeWiped), while a friend's come off
+   * with wipePatches.
+   */
+  constructor({ ships = SHIPS.length, level = 1, shared = false, random = Math.random, onEvent = () => {} } = {}) {
     // Always the last one too, as that's where the story ends.
     this.ships = ships >= SHIPS.length ? SHIPS : [...SHIPS.slice(0, ships - 1), SHIPS.at(-1)];
-    this.level = stormAt(level);
+    this.level = shared ? plainStorm(level) : stormAt(level);
+    this.shared = shared;
+    this.wiped = []; // With friends, the patches of this window the hand has wiped, waiting to be claimed.
     this.random = random;
     this.onEvent = onEvent;
     this.index = -1;
@@ -260,6 +299,8 @@ export class Storm {
     }
     this.mud = new Mud();
     this.clean = false;
+    // Never another window's: they're taken every frame, and none are left by the time the next ship comes.
+    this.wiped = [];
     this.lumps = [];
     this.crabs = [];
     this.powers = [];
@@ -310,9 +351,36 @@ export class Storm {
    */
   wipe(x, y, sizeX, sizeY, moved = 0, { byHand = true } = {}) {
     if (!this.mud || this.clean) return 0;
-    const added = this.mud.wipe(x, y, sizeX, sizeY);
+    const added = this.mud.wipe(x, y, sizeX, sizeY, this.shared ? this.wiped : null);
     if (byHand) this.lastWipe = { x, y };
     if (moved > 0) this.rub(x, y, sizeX, sizeY, moved);
+    this.afterWipe();
+    return added;
+  }
+
+  /**
+   * With friends: the patches of this window the hand has wiped since this was last asked, as { w, c }, w
+   * being which window. The game asks every frame, so they're always this window's.
+   */
+  takeWiped() {
+    const c = this.wiped;
+    this.wiped = [];
+    return { w: this.index, c };
+  }
+
+  /**
+   * With friends: patches of this window a friend's hand wiped, as the server says. They're clean here
+   * too, and can make the window clean enough. Returns the ones that weren't clean here already.
+   */
+  wipePatches(cells) {
+    if (!this.mud || this.clean) return [];
+    const added = this.mud.wipeCells(cells);
+    if (added.length) this.afterWipe();
+    return added;
+  }
+
+  /** What follows a wipe: what it uncovers, what the storm throws as the window gets cleaner, and whether it's clean. */
+  afterWipe() {
     for (const prize of this.prizes) {
       if (prize.hidden && this.mud.isClean(prize.x, prize.y)) {
         prize.hidden = false;
@@ -328,7 +396,6 @@ export class Storm {
       else this.addLump(what);
     }
     this.checkClean();
-    return added;
   }
 
   rub(x, y, sizeX, sizeY, moved) {
