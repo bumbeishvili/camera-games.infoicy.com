@@ -205,7 +205,8 @@ test('on their own, nothing connects anywhere, and the page may only reach the s
   expect(sockets).toEqual([]);
   expect(requests.filter((url) => !url.startsWith(baseURL) && !url.startsWith('data:') && !url.startsWith('blob:'))).toEqual([]);
   const policy = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
-  expect(policy).toContain("connect-src 'self' wss://hemi-race.infoicy.com ws://localhost:*;");
+  // Then only Google's, for counting visits, which test/unit/pages.test.js checks on every page.
+  expect(policy).toMatch(/connect-src 'self' wss:\/\/hemi-race\.infoicy\.com ws:\/\/localhost:\*[ ;]/);
   expect(policy).toContain("default-src 'self'");
 });
 
