@@ -43,6 +43,39 @@ body[data-screen='playing'] .order { display: flex; }
 .order-item img { width: clamp(40px, 5.4vw, 72px); height: clamp(40px, 5.4vw, 72px); display: block; }
 .order-item.is-done { background: #c9f5d8; }
 
+/* With friends, everyone's points, the most first, top right under the gear. */
+.stand-scores {
+  position: fixed;
+  z-index: 3;
+  right: 16px;
+  top: 76px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  width: max-content;
+}
+
+.stand-scores[hidden] { display: none; }
+
+.stand-scores li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px 3px 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.stand-scores li.is-you { background: var(--sun); }
+.stand-scores img { width: 30px; height: 30px; border-radius: 50%; background: var(--surface-soft); }
+.stand-score-name { min-width: 4em; max-width: 8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stand-score { margin-left: auto; font-variant-numeric: tabular-nums; }
+
 /* A little film: an open hand swiping up through an apple, which falls in two. */
 .film-apple circle { fill: #e8433f; stroke: var(--ink); stroke-width: 4; }
 .film-apple path { fill: none; stroke: var(--ink); stroke-width: 4; stroke-linecap: round; }
