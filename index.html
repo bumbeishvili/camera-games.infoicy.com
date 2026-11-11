@@ -25,8 +25,64 @@
     <h1>Choose a game</h1>
     <p class="hub-lead">Pick a game. You play it by moving in front of the camera.</p>
 
+    <form class="hub-search" role="search" autocomplete="off">
+      <div class="hub-search-row">
+        <div class="hub-search-box">
+          <label class="visually-hidden" for="hub-search">Search the games</label>
+          <svg class="hub-search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.4 15.4l5.1 5.1" /></svg>
+          <input id="hub-search" type="search" placeholder="Search games" enterkeyhint="search" spellcheck="false" autocapitalize="off">
+        </div>
+        <button class="hub-filters-toggle" id="hub-filters-toggle" type="button" aria-expanded="false" aria-controls="hub-filters">
+          <svg class="hub-filters-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7h9.5M17.5 7h3M3.5 17h3M11 17h9.5" /><circle cx="15.2" cy="7" r="2.3" /><circle cx="8.8" cy="17" r="2.3" /></svg>
+          Filters
+          <span class="hub-filters-on" hidden><span id="hub-filters-count">0</span><span class="visually-hidden"> chosen</span></span>
+          <svg class="hub-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 9.5l5.5 5.5 5.5-5.5" /></svg>
+        </button>
+      </div>
+
+      <!-- Each filter's value is the tag on the cards it finds (data-tags), and its data-words are more words that
+           find those cards in the search. In a group with data-any, a card only needs one of the filters chosen. -->
+      <div class="hub-filters" id="hub-filters" hidden>
+        <fieldset data-any>
+          <legend>Kind of game</legend>
+          <label class="hub-chip"><input type="checkbox" value="shooting" data-words="shooter fire aim"> Shooting</label>
+          <label class="hub-chip"><input type="checkbox" value="racing" data-words="race racer flight fast"> Racing, running and flying</label>
+          <label class="hub-chip"><input type="checkbox" value="sports"> Sports</label>
+          <label class="hub-chip"><input type="checkbox" value="fighting" data-words="fighter"> Fighting</label>
+          <label class="hub-chip"><input type="checkbox" value="puzzles"> Puzzles and thinking</label>
+          <label class="hub-chip"><input type="checkbox" value="stories" data-words="story"> Stories and missions</label>
+          <label class="hub-chip"><input type="checkbox" value="catching" data-words="grab"> Catching and popping</label>
+        </fieldset>
+        <fieldset data-any>
+          <legend>Played with</legend>
+          <label class="hub-chip"><input type="checkbox" value="hand"> One hand</label>
+          <label class="hub-chip"><input type="checkbox" value="arms"> Both arms</label>
+          <label class="hub-chip"><input type="checkbox" value="body" data-words="standing"> Whole body</label>
+        </fieldset>
+        <fieldset>
+          <legend>Can be played</legend>
+          <label class="hub-chip"><input type="checkbox" value="sitting" data-words="seated chair wheelchair"> Sitting down</label>
+          <label class="hub-chip"><input type="checkbox" value="friends" data-words="together multiplayer"> With friends</label>
+        </fieldset>
+        <div class="hub-filters-end">
+          <button class="soft-button" id="hub-filters-clear" type="button" hidden>Clear filters</button>
+          <button class="panel-close" id="hub-filters-done" type="button">Done</button>
+        </div>
+      </div>
+    </form>
+
+    <div class="hub-found-line">
+      <p id="hub-found" role="status">All games</p>
+      <button class="hub-show-all" type="button" hidden>Show all games</button>
+    </div>
+    <div class="hub-none" id="hub-none" hidden>
+      <p class="hub-none-title" aria-hidden="true">No games match</p>
+      <p>Try another word, or fewer filters.</p>
+      <button class="panel-close hub-show-all" type="button">Show all games</button>
+    </div>
+
     <div class="game-cards">
-      <a class="game-card" href="games/high-five-racers/index.html" data-game="high-five-racers">
+      <a class="game-card" href="games/high-five-racers/index.html" data-game="high-five-racers" data-tags="racing hand sitting" data-words="car driving">
         <div class="game-art game-art-racers" aria-hidden="true">
           <svg viewBox="0 0 320 180">
             <path class="art-hill" d="M0 112c50-30 90-34 140-14s110 14 180-14v96H0z" />
@@ -47,7 +103,7 @@
         <p>Keep your hand open to drive, and high five the big hands.</p>
       </a>
 
-      <a class="game-card" href="games/balloon-pop/index.html" data-game="balloon-pop">
+      <a class="game-card" href="games/balloon-pop/index.html" data-game="balloon-pop" data-tags="catching puzzles hand sitting" data-words="maths sums numbers">
         <div class="game-art game-art-balloons" aria-hidden="true">
           <svg viewBox="0 0 320 180">
             <path class="art-string" d="M84 112c-6 14 6 24 0 40M162 82c6 16-6 28 0 44M240 104c-6 14 6 26 0 42" />
@@ -61,7 +117,7 @@
         <p>Pop the balloons with your open hand.</p>
       </a>
 
-      <a class="game-card" href="games/mighty-moves/index.html" data-game="mighty-moves">
+      <a class="game-card" href="games/mighty-moves/index.html" data-game="mighty-moves" data-tags="fighting body" data-words="kick punch">
         <div class="game-art game-art-moves" aria-hidden="true">
           <svg viewBox="0 0 320 180">
             <path class="art-mat" d="M20 150c70-22 210-22 280 0l-12 30H32z" />
@@ -88,7 +144,7 @@
         <p>Clap, squat and jump when the coach says, to win a fight with your whole body.</p>
       </a>
 
-      <a class="game-card" href="games/leap-trail/index.html" data-game="leap-trail">
+      <a class="game-card" href="games/leap-trail/index.html" data-game="leap-trail" data-tags="racing body sitting" data-words="obstacles">
         <div class="game-art game-art-trail" aria-hidden="true">
           <svg viewBox="0 0 320 180">
             <path class="art-hill" d="M0 118c60-30 110-30 170-12s100 12 150-8v82H0z" />
@@ -111,7 +167,7 @@
         <p>Run down the trail, jumping and squatting past whatever’s in the way.</p>
       </a>
 
-      <a class="game-card" href="games/sky-wings/index.html" data-game="sky-wings">
+      <a class="game-card" href="games/sky-wings/index.html" data-game="sky-wings" data-tags="racing shooting arms sitting" data-words="plane aeroplane airplane">
         <div class="game-art game-art-sky" aria-hidden="true">
           <svg viewBox="0 0 320 180">
             <path class="art-sky-sea" d="M0 120h320v60H0z" />
@@ -137,7 +193,7 @@
         <p>Sky pirates are hunting you over the island. Fly with your arms, and drop them all.</p>
       </a>
 
-      <a class="game-card" href="games/robot-rescue/index.html" data-game="robot-rescue">
+      <a class="game-card" href="games/robot-rescue/index.html" data-game="robot-rescue" data-tags="shooting stories hand sitting" data-words="tram paint">
         <div class="game-art game-art-rescue" aria-hidden="true">
           <svg viewBox="0 0 320 180">
             <g class="art-town">
@@ -199,7 +255,7 @@
         <p>Robots have caught your friends! Open your hand to fire, and close it for your shield.</p>
       </a>
 
-      <a class="game-card" href="games/tank-patrol/index.html" data-game="tank-patrol">
+      <a class="game-card" href="games/tank-patrol/index.html" data-game="tank-patrol" data-tags="shooting stories hand sitting">
         <div class="game-art game-art-tanks" aria-hidden="true">
           <svg viewBox="0 0 320 180">
             <path class="art-hill" d="M0 84c52-22 110-28 166-12s104 14 154-8v116H0z" />
@@ -245,7 +301,7 @@
         <p>Robot tanks are rolling into the giraffe’s valley. Close your hand to drive, and open it to fire.</p>
       </a>
 
-      <a class="game-card" href="games/cannon-bay/index.html" data-game="cannon-bay">
+      <a class="game-card" href="games/cannon-bay/index.html" data-game="cannon-bay" data-tags="shooting stories hand sitting" data-words="ship boat sea sailing">
         <div class="game-art game-art-bay" aria-hidden="true">
           <svg viewBox="0 0 320 180">
             <ellipse class="art-bay-cloud" cx="56" cy="28" rx="36" ry="12" />
@@ -286,7 +342,7 @@
         <p>Pirates want the treasure! Open your hand to set sail, and steer beside them.</p>
       </a>
 
-      <a class="game-card" href="games/giraffe-walk/index.html" data-game="giraffe-walk">
+      <a class="game-card" href="games/giraffe-walk/index.html" data-game="giraffe-walk" data-tags="stories catching hand sitting" data-words="carry grasp feeding">
         <div class="game-art game-art-walk" aria-hidden="true">
           <svg viewBox="0 0 320 180">
             <path class="art-hill" d="M0 122c60-26 120-30 170-14s100 10 150-10v82H0z" />
@@ -312,7 +368,7 @@
         <p>The giraffe is lost! Pick fruit and feed him, all the way back to his family.</p>
       </a>
 
-      <a class="game-card" href="games/spider-catcher/index.html" data-game="spider-catcher">
+      <a class="game-card" href="games/spider-catcher/index.html" data-game="spider-catcher" data-tags="catching stories hand sitting" data-words="grasp">
         <div class="game-art game-art-spiders" aria-hidden="true">
           <svg viewBox="0 0 320 180">
             <path class="art-hill" d="M0 128c60-24 120-28 170-12s100 8 150-10v74H0z" />
@@ -348,7 +404,7 @@
         <p>The giraffe’s little spiders ran off! Catch each one and carry it home to its web.</p>
       </a>
 
-      <a class="game-card" href="games/smoothie-stand/index.html" data-game="smoothie-stand">
+      <a class="game-card" href="games/smoothie-stand/index.html" data-game="smoothie-stand" data-tags="catching stories hand sitting" data-words="fruit slicing">
         <div class="game-art game-art-smoothie" aria-hidden="true">
           <svg viewBox="0 0 320 180">
             <path class="art-stand" d="M0 148h320v32H0z" />
@@ -369,7 +425,7 @@
         <p>It’s the Harvest Fair. Slice what each customer orders, with an open hand.</p>
       </a>
 
-      <a class="game-card" href="games/lighthouse/index.html" data-game="lighthouse">
+      <a class="game-card" href="games/lighthouse/index.html" data-game="lighthouse" data-tags="stories hand sitting" data-words="cleaning wiping boats">
         <div class="game-art game-art-lighthouse" aria-hidden="true">
           <svg viewBox="0 0 320 180">
             <path class="art-beam" d="M92 50L320 18V96z" />
@@ -389,7 +445,7 @@
         <p>Ships are lost in a storm. Wipe the mud off the windows to bring them home.</p>
       </a>
 
-      <a class="game-card" href="games/bounce-back/index.html" data-game="bounce-back">
+      <a class="game-card" href="games/bounce-back/index.html" data-game="bounce-back" data-tags="sports hand sitting" data-words="tennis racket">
         <div class="game-art game-art-bounce" aria-hidden="true">
           <svg viewBox="0 0 320 180">
             <path class="art-bounce-sea" d="M0 76h320v44H0z" />

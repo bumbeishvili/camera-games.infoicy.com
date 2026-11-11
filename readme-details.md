@@ -20,6 +20,8 @@ They're played at <https://hemi.infoicy.com> in Google Chrome, on a computer wit
 
 Every game's grown-ups' panel, under the gear icon, has a way back to all the games. On the page for choosing a game, each game's card plays a film of it being played, with just its name, and pointing at a card shows a line about the game. With reduced motion turned on in the computer's settings, a film only plays while its card is pointed at.
 
+**Finding a game.** At the top of that page, typing in the search box finds games by their name, what they're about or what kind of game they are, so "shoot", "tennis" or "maths" each find the right ones, whatever the capitals or accents. **Filters** opens a panel for choosing the kind of game (shooting; racing, running and flying; sports; fighting; puzzles and thinking; stories and missions; catching and popping), what it's played with (one hand, both arms or the whole body), and whether it can be played sitting down or with friends. Two kinds chosen show games of either kind, and the same goes for what they're played with, while sitting down and with friends each have to fit. Leap Trail counts as playable sitting down, by raising an open hand under **How to get over things**. The line above the cards says how many are showing, with **Show all games** to clear the search and filters, and when nothing fits, a box says so, with the same button. A card that's hidden stops its film, and doesn't fetch it until it's back. The search and filters are kept in the page's address, so going back to the page from a game brings them back, while **All games** in a game always shows every game.
+
 ## Run it
 
 You need Google Chrome, Python 3 and a webcam. Chrome is the only browser these games target. Nothing else to install.
@@ -34,7 +36,7 @@ Then open <http://localhost:8642> in Chrome and choose a game. Chrome only allow
 ## How the folder is organised
 
 ```
-index.html, hub.css, hub.js    the page for choosing a game
+index.html, hub.css, hub.js    the page for choosing a game, with its search and filters
 demos/                  the films of each game on that page, made with tools/record_demos.mjs
 core/                   what every game shares
   hands.js              decides whether a hand is open
@@ -76,6 +78,8 @@ test/                   unit tests, and Playwright tests for the hub and each ga
 ```
 
 **To add a game,** make a folder in `games/` with an `index.html` (copy one) and a `main.js`. That file gives `GameSession` the game's words and settings, plus an object with a few methods: `prepare`, `begin`, `update`, `idle`, `render`, `prompt` and `summary`. They're described at the top of [core/session.js](core/session.js), and [games/balloon-pop/main.js](games/balloon-pop/main.js) is a short example. Then add a card to the root `index.html`. Hand tracking, the hand check, voice, pausing and the panel all come with it.
+
+**A card's tags,** for the search and filters, go on its first line. `data-tags` lists the filters that find it: at least one kind of game (`shooting`, `racing`, `sports`, `fighting`, `puzzles`, `stories` or `catching`), what it's played with (`hand`, `arms` or `body`), and `sitting` if it can be played sitting down. `data-words` adds any other words to find it by, such as `tennis` for Bounce Back. A maze played with one hand would be `data-tags="puzzles hand sitting" data-words="maze"`. A game played with friends has the friends badge on its card, and the badge is what puts it under **With friends**. The filters themselves are the checkboxes in the page's **Filters** panel, each with the tag it finds as its value and more words that find it, so a new kind of game is one more of those. The hub's tests check that every card has a kind and what it's played with, and no tag the filters don't know.
 
 **To add a whole-body game,** extend `BodyGame` in [core/body/game.js](core/body/game.js), whose top lists what a game has to fill in, and call `mountBodyShell` for the screens. [games/leap-trail/main.js](games/leap-trail/main.js) is an example. The camera, the check that it can see the child, the ten characters and the panel all come with it.
 

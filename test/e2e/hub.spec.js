@@ -160,3 +160,367 @@ test('the hub makes no requests off this computer', async ({ page, baseURL }) =>
   const offsite = requests.filter((url) => !url.startsWith(baseURL) && !url.startsWith('data:'));
   expect(offsite).toEqual([]);
 });
+
+// ---------- the search, and its filters ----------
+
+/** The names of the games whose cards are showing, in the order they're in. */
+const showing = (page) => page.locator('.game-card:not([hidden]) h2').allTextContents();
+const filterNamed = (page, name) => page.locator('#hub-filters').getByLabel(name, { exact: true });
+const total = (page) => page.locator('.game-card').count();
+
+/** Waits until every game in wanted is showing and none in unwanted is. */
+async function expectGames(page, wanted, unwanted = []) {
+  await expect.poll(async () => {
+    const names = await showing(page);
+    return { missing: wanted.filter((name) => !names.includes(name)), shouldnt: unwanted.filter((name) => names.includes(name)) };
+  }, { timeout: 5000 }).toEqual({ missing: [], shouldnt: [] });
+}
+
+/** Waits for exactly these games to be showing. */
+const expectOnly = (page, names) => expect.poll(() => showing(page), { timeout: 5000 }).toEqual(names);
+
+const noSidewaysScroll = (page) => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+
+test('typing in the search finds games by their name, what they\'re about and what kind they are', async ({ page }) => {
+  await page.goto('/');
+  const all = await total(page);
+  await expect(page.locator('#hub-found')).toHaveText('All games');
+  await expect(page.locator('.hub-found-line .hub-show-all')).toBeHidden();
+  await shot(page, 'h7-search');
+
+  const box = page.locator('#hub-search');
+  const cases = [
+    // A kind of game, and the start of one.
+    ['shoot', ['Sky Wings', 'Robot Rescue', 'Tank Patrol', 'Cannon Bay']],
+    ['racing', ['High Five Racers', 'Leap Trail', 'Sky Wings']],
+    // The game's own words.
+    ['tennis', ['Bounce Back']],
+    ['maths', ['Balloon Pop']],
+    // What it's about, and its name.
+    ['pirates', ['Sky Wings', 'Cannon Bay']],
+    ['fruit', ['Giraffe’s Long Walk Home', 'Giraffe’s Smoothie Stand']],
+    ['lighthouse', ['The Lighthouse Keeper']],
+    // Capitals, accents and apostrophes don't matter, and every word has to fit.
+    ['TÉNNIS', ['Bounce Back']],
+    ['giraffe\'s smoothie', ['Giraffe’s Smoothie Stand']],
+    ['  Spider   catcher ', ['Spider Catcher']],
+    // A plural finds what it's a plural of: Bounce Back's ball, and Balloon Pop's balloons.
+    ['balls', ['Balloon Pop', 'Bounce Back']],
+  ];
+  for (const [typed, names] of cases) {
+    await test.step(typed, async () => {
+      await box.fill(typed);
+      await expectOnly(page, names);
+      await expect(page.locator('#hub-found')).toHaveText(`${names.length} of ${all} games`);
+      await expect(page.locator('.hub-found-line .hub-show-all')).toBeVisible();
+    });
+  }
+  // Every game that can be played sitting down, which is all but Mighty Moves.
+  await box.fill('wheelchair');
+  await expectGames(page, ['Balloon Pop', 'Sky Wings', 'Tank Patrol', 'Bounce Back', 'Leap Trail'], ['Mighty Moves']);
+  await box.fill('');
+  await expect.poll(() => showing(page)).toHaveLength(all);
+  await expect(page.locator('#hub-found')).toHaveText('All games');
+});
+
+test('each filter narrows the games to the ones it\'s about', async ({ page }) => {
+  await page.goto('/');
+  const all = await total(page);
+  const toggle = page.locator('#hub-filters-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#hub-filters')).toBeHidden();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('#hub-filters')).toBeVisible();
+  await page.waitForTimeout(200);
+  await shot(page, 'h8-filters');
+
+  // Some of the games each one finds, and some it mustn't.
+  const FILTERS = [
+    ['Shooting', ['Robot Rescue', 'Tank Patrol', 'Cannon Bay', 'Sky Wings'], ['Balloon Pop', 'Bounce Back', 'Mighty Moves', 'Spider Catcher']],
+    ['Racing, running and flying', ['High Five Racers', 'Leap Trail', 'Sky Wings'], ['Tank Patrol', 'Bounce Back', 'Balloon Pop']],
+    ['Sports', ['Bounce Back'], ['High Five Racers', 'Mighty Moves', 'Balloon Pop']],
+    ['Fighting', ['Mighty Moves'], ['Robot Rescue', 'Bounce Back', 'Tank Patrol']],
+    ['Puzzles and thinking', ['Balloon Pop'], ['Spider Catcher', 'Tank Patrol', 'Mighty Moves']],
+    ['Stories and missions', ['Giraffe’s Long Walk Home', 'The Lighthouse Keeper', 'Spider Catcher', 'Giraffe’s Smoothie Stand', 'Robot Rescue'],
+      ['Balloon Pop', 'Bounce Back', 'Mighty Moves', 'High Five Racers']],
+    ['Catching and popping', ['Balloon Pop', 'Spider Catcher', 'Giraffe’s Smoothie Stand', 'Giraffe’s Long Walk Home'], ['The Lighthouse Keeper', 'Tank Patrol', 'Sky Wings']],
+    ['One hand', ['Balloon Pop', 'Tank Patrol', 'Bounce Back', 'High Five Racers'], ['Sky Wings', 'Mighty Moves', 'Leap Trail']],
+    ['Both arms', ['Sky Wings'], ['Balloon Pop', 'Mighty Moves', 'Leap Trail']],
+    ['Whole body', ['Mighty Moves', 'Leap Trail'], ['Sky Wings', 'Balloon Pop', 'Bounce Back']],
+    ['Sitting down', ['Balloon Pop', 'Sky Wings', 'Tank Patrol', 'Bounce Back'], ['Mighty Moves']],
+  ];
+  for (const [name, wanted, unwanted] of FILTERS) {
+    await test.step(name, async () => {
+      const filter = filterNamed(page, name);
+      await filter.check();
+      await expectGames(page, wanted, unwanted);
+      await expect(page.locator('#hub-filters-count')).toHaveText('1');
+      await expect(page.locator('#hub-found')).toHaveText(`${(await showing(page)).length} of ${all} games`);
+      await filter.uncheck();
+      await expect.poll(() => showing(page)).toHaveLength(all);
+      await expect(page.locator('.hub-filters-on')).toBeHidden();
+    });
+  }
+
+  await test.step('With friends: just the cards with the friends badge', async () => {
+    const withBadge = await page.locator('.game-card:has(.game-friends) h2').allTextContents();
+    expect(withBadge).toEqual(expect.arrayContaining(['High Five Racers', 'Balloon Pop', 'Mighty Moves', 'Sky Wings', 'Bounce Back']));
+    await filterNamed(page, 'With friends').check();
+    await expectOnly(page, withBadge);
+    await filterNamed(page, 'With friends').uncheck();
+  });
+});
+
+test('filters in one group add games, the groups narrow each other, and the search narrows them too', async ({ page }) => {
+  await page.goto('/');
+  const all = await total(page);
+  await page.locator('#hub-filters-toggle').click();
+
+  // Either kind.
+  await filterNamed(page, 'Shooting').check();
+  await filterNamed(page, 'Sports').check();
+  await expectGames(page, ['Bounce Back', 'Tank Patrol', 'Sky Wings'], ['Mighty Moves', 'Balloon Pop']);
+  await expect(page.locator('#hub-filters-count')).toHaveText('2');
+  // Played with both arms, of those.
+  await filterNamed(page, 'Both arms').check();
+  await expectOnly(page, ['Sky Wings']);
+  await page.locator('#hub-filters-clear').click();
+  await expect.poll(() => showing(page)).toHaveLength(all);
+  await expect(page.locator('#hub-filters-clear')).toBeHidden();
+
+  // Both of these, not either.
+  await filterNamed(page, 'Sitting down').check();
+  await filterNamed(page, 'With friends').check();
+  await expectGames(page, ['Balloon Pop', 'Bounce Back', 'High Five Racers', 'Sky Wings'], ['Mighty Moves', 'Tank Patrol', 'The Lighthouse Keeper']);
+  await page.locator('#hub-filters-clear').click();
+
+  // The search and a filter together.
+  await page.locator('#hub-search').fill('ships');
+  await expectOnly(page, ['Cannon Bay', 'The Lighthouse Keeper']);
+  await filterNamed(page, 'Shooting').check();
+  await expectOnly(page, ['Cannon Bay']);
+  await expect(page.locator('#hub-found')).toHaveText(`1 of ${all} games`);
+  await page.locator('#hub-filters-done').click();
+  await page.waitForTimeout(300);
+  await shot(page, 'h9-filtered');
+  // Another kind brings back its games that fit the search.
+  await page.locator('#hub-filters-toggle').click();
+  await filterNamed(page, 'Stories and missions').check();
+  await expectOnly(page, ['Cannon Bay', 'The Lighthouse Keeper']);
+  // They're in the address, for going back to.
+  await expect.poll(() => new URL(page.url()).search).toBe('?search=ships&filter=shooting&filter=stories');
+});
+
+test('when no game matches, it says so, and one press shows them all again', async ({ page }) => {
+  await page.goto('/');
+  const all = await total(page);
+  const none = page.locator('#hub-none');
+  await expect(none).toBeHidden();
+
+  await page.locator('#hub-search').fill('zebra');
+  await expect(none).toBeVisible();
+  await expect(none).toContainText('No games match');
+  await expect.poll(() => showing(page)).toEqual([]);
+  // The line above the cards says it too, for a screen reader, and only the box shows.
+  await expect(page.locator('#hub-found')).toHaveText('No games match');
+  await expect(page.locator('#hub-found')).toHaveClass(/visually-hidden/);
+  await expect(page.locator('.hub-found-line .hub-show-all')).toBeHidden();
+  await shot(page, 'h9-no-match');
+  await none.getByRole('button', { name: 'Show all games' }).click();
+  await expect.poll(() => showing(page)).toHaveLength(all);
+  await expect(none).toBeHidden();
+  await expect(page.locator('#hub-search')).toHaveValue('');
+  await expect(page.locator('#hub-found')).toHaveText('All games');
+  await expect.poll(() => new URL(page.url()).search).toBe('');
+
+  // Filters that nothing fits: Mighty Moves can't be played sitting down.
+  await page.locator('#hub-filters-toggle').click();
+  await filterNamed(page, 'Fighting').check();
+  await filterNamed(page, 'Sitting down').check();
+  await expect(none).toBeVisible();
+  await page.locator('#hub-filters-clear').click();
+  await expect(none).toBeHidden();
+  await expect.poll(() => showing(page)).toHaveLength(all);
+  await expect(filterNamed(page, 'Fighting')).not.toBeChecked();
+
+  // And from the line above the cards, which clears the search and the filters together.
+  await filterNamed(page, 'Sports').check();
+  await page.locator('#hub-search').fill('ball');
+  await expectOnly(page, ['Bounce Back']);
+  await page.locator('.hub-found-line .hub-show-all').click();
+  await expect.poll(() => showing(page)).toHaveLength(all);
+  await expect(filterNamed(page, 'Sports')).not.toBeChecked();
+  await expect(page.locator('#hub-search')).toHaveValue('');
+});
+
+test('the search and filters work from the keyboard', async ({ page }) => {
+  await page.goto('/');
+  const all = await total(page);
+  const toggle = page.locator('#hub-filters-toggle');
+
+  await page.keyboard.press('Tab');
+  await expect(page.locator('.hub-github')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#hub-search')).toBeFocused();
+  await page.keyboard.type('ball');
+  await expectOnly(page, ['Balloon Pop', 'Bounce Back']);
+  // Escape empties the search box.
+  await page.keyboard.press('Escape');
+  await expect.poll(() => showing(page)).toHaveLength(all);
+  await page.keyboard.type('ball');
+  await expectOnly(page, ['Balloon Pop', 'Bounce Back']);
+
+  await page.keyboard.press('Tab');
+  await expect(toggle).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Tab');
+  await expect(filterNamed(page, 'Shooting')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await expect(filterNamed(page, 'Sports')).toBeFocused();
+  await page.keyboard.press('Space');
+  await expect(filterNamed(page, 'Sports')).toBeChecked();
+  await expectOnly(page, ['Bounce Back']);
+  // Enter chooses one too.
+  await page.keyboard.press('Tab');
+  await expect(filterNamed(page, 'Fighting')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(filterNamed(page, 'Fighting')).toBeChecked();
+  await expect(page.locator('#hub-filters-count')).toHaveText('2');
+  await page.keyboard.press('Enter');
+  await expect(filterNamed(page, 'Fighting')).not.toBeChecked();
+  await shot(page, 'h8-filters-keyboard');
+
+  // Escape closes the filters and goes back to their button.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#hub-filters')).toBeHidden();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(toggle).toBeFocused();
+  await expect(toggle).toHaveAccessibleName('Filters 1 chosen');
+
+  // After the button, past the closed filters, comes "Show all games", and then the games themselves.
+  await page.keyboard.press('Tab');
+  await expect(page.locator('.hub-found-line .hub-show-all')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect.poll(() => showing(page)).toHaveLength(all);
+  await expect(page.locator('#hub-search')).toBeFocused();
+  await expect(filterNamed(page, 'Sports')).not.toBeChecked();
+
+  // A hidden game can't be reached with Tab.
+  await page.keyboard.type('tennis');
+  await expectOnly(page, ['Bounce Back']);
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await expect(page.locator('.game-card[data-game="bounce-back"]')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/games\/bounce-back\//);
+});
+
+test('the search and its filters fit a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  const row = page.locator('.hub-search-row');
+  const height = (await row.boundingBox()).height;
+  expect(await noSidewaysScroll(page)).toBeLessThanOrEqual(0);
+
+  await page.locator('#hub-filters-toggle').click();
+  await expect(page.locator('#hub-filters')).toBeVisible();
+  expect(await noSidewaysScroll(page)).toBeLessThanOrEqual(0);
+  await shot(page, 'h8-filters-phone');
+  await filterNamed(page, 'One hand').check();
+  await filterNamed(page, 'With friends').check();
+  // The count on the button doesn't push anything onto another line.
+  expect((await row.boundingBox()).height).toBe(height);
+  expect(await noSidewaysScroll(page)).toBeLessThanOrEqual(0);
+  await page.locator('#hub-filters-done').click();
+  await expect(page.locator('#hub-filters')).toBeHidden();
+  await expectGames(page, ['High Five Racers', 'Balloon Pop', 'Bounce Back'], ['Sky Wings', 'Mighty Moves']);
+  await shot(page, 'h9-filtered-phone');
+
+  await page.locator('#hub-search').fill('zebra');
+  await expect(page.locator('#hub-none')).toBeVisible();
+  expect(await noSidewaysScroll(page)).toBeLessThanOrEqual(0);
+  await shot(page, 'h9-no-match-phone');
+});
+
+test('a card the search hides stops its film, and doesn\'t fetch it, until it comes back', async ({ page }) => {
+  // Slow enough that the first films are still on their way when their cards are hidden.
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Network.enable');
+  await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: 60_000, uploadThroughput: 60_000 });
+  await page.goto('/');
+  const card = (game) => page.locator(`.game-card[data-game="${game}"]`);
+  const film = (game) => card(game).evaluate((each) => {
+    const video = each.querySelector('.game-film');
+    return { src: video.getAttribute('src'), loading: video.networkState === video.NETWORK_LOADING, paused: video.paused, time: video.currentTime };
+  });
+  await expect.poll(async () => (await film('high-five-racers')).loading, { timeout: 10_000 }).toBe(true);
+
+  await page.locator('#hub-search').fill('tennis');
+  await expectOnly(page, ['Bounce Back']);
+  // Stopped, and no longer fetching, with its picture showing again.
+  await expect.poll(() => film('high-five-racers')).toEqual({ src: null, loading: false, paused: true, time: 0 });
+  await expect(card('high-five-racers')).not.toHaveClass(/is-playing/);
+  await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  // The one left, now at the top, plays. One that was never on the screen never fetches its film, even with
+  // the page scrolled to where it was.
+  await expect.poll(async () => (await film('bounce-back')).time, { timeout: 10_000 }).toBeGreaterThan(0.3);
+  await page.mouse.wheel(0, 3000);
+  await page.waitForTimeout(800);
+  expect((await film('lighthouse')).src).toBeNull();
+  expect((await film('high-five-racers')).src).toBeNull();
+
+  // Back again, the first one plays once more, and one off the screen still waits.
+  await page.locator('.hub-found-line .hub-show-all').click();
+  await page.evaluate(() => scrollTo(0, 0));
+  await expect.poll(async () => (await film('high-five-racers')).time, { timeout: 10_000 }).toBeGreaterThan(0.3);
+  await expect(card('high-five-racers')).toHaveClass(/is-playing/);
+  expect((await film('lighthouse')).src).toBeNull();
+});
+
+test('going back to the hub brings the search back, and "All games" in a game shows them all', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#hub-search').fill('tennis');
+  await page.locator('#hub-filters-toggle').click();
+  await filterNamed(page, 'Sitting down').check();
+  await expect.poll(() => new URL(page.url()).search).toBe('?search=tennis&filter=sitting');
+
+  await page.locator('.game-card', { hasText: 'Bounce Back' }).click();
+  await expect(page).toHaveURL(/\/games\/bounce-back\//);
+  await page.goBack();
+  await expect(page.locator('h1')).toHaveText('Choose a game');
+  await expect(page.locator('#hub-search')).toHaveValue('tennis');
+  await expect(filterNamed(page, 'Sitting down')).toBeChecked();
+  await expectOnly(page, ['Bounce Back']);
+
+  // A link with a search in it opens with it.
+  await page.goto('/?search=pirates&filter=arms');
+  await expectOnly(page, ['Sky Wings']);
+  await expect(page.locator('#hub-filters-count')).toHaveText('1');
+
+  await page.locator('.game-card', { hasText: 'Sky Wings' }).click();
+  await page.locator('#screen-welcome .all-games').click();
+  await expect(page.locator('h1')).toHaveText('Choose a game');
+  await expect(page.locator('#hub-search')).toHaveValue('');
+  await expect.poll(() => showing(page)).toHaveLength(await total(page));
+});
+
+test('every card has tags the filters know: a kind of game, and what it\'s played with', async ({ page }) => {
+  await page.goto('/');
+  const groups = await page.locator('#hub-filters fieldset').evaluateAll((sets) => Object.fromEntries(sets.map((set) => [
+    set.querySelector('legend').textContent, [...set.querySelectorAll('input')].map((input) => input.value)])));
+  const known = Object.values(groups).flat();
+  const cards = await page.locator('.game-card').evaluateAll((all) => all.map((card) => ({
+    game: card.dataset.game, tags: (card.dataset.tags ?? '').split(/\s+/).filter(Boolean),
+  })));
+  for (const { game, tags } of cards) {
+    expect(tags.filter((tag) => !known.includes(tag)), `${game}'s tags that no filter has`).toEqual([]);
+    expect(tags.some((tag) => groups['Kind of game'].includes(tag)), `${game} has a kind of game`).toBe(true);
+    expect(tags.some((tag) => groups['Played with'].includes(tag)), `${game} says what it's played with`).toBe(true);
+    // The friends badge says that, so the tag isn't needed, and could disagree with the badge.
+    expect(tags, `${game}'s badge says whether it's played with friends`).not.toContain('friends');
+  }
+});
