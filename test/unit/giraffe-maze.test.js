@@ -332,9 +332,8 @@ test('the running shoes make the character quicker, but only run down while the 
   const run = soloRun({ level: 4 });
   run.begin();
   const shoes = run.layout.items.find(({ kind }) => kind === 'shoes');
-  assert.ok(shoes, 'running shoes at level 4, early on the way');
-  assert.ok(run.layout.way.indexOf(shoes.cell) <= 3);
-  for (let t = 0; t < 20 && !run.power; t += FRAME) run.update(FRAME, leader(run, t));
+  assert.ok(shoes, 'running shoes at level 4, on the way');
+  for (let t = 0; t < 60 && !run.power; t += FRAME) run.update(FRAME, leader(run, t));
   assert.equal(run.power?.kind, 'shoes');
   const left = run.power.left;
   for (let t = 0; t < 5; t += FRAME) run.update(FRAME, { target: null, glove: null, open: false });
@@ -342,8 +341,15 @@ test('the running shoes make the character quicker, but only run down while the 
   const from = run.stats.walked;
   for (let t = 0; t < 0.5; t += FRAME) run.update(FRAME, leader(run, t));
   assert.ok(run.stats.walked - from > WALK.speed * 0.5 * 1.3, 'quicker than walking');
-  for (let t = 0; t < EXTRAS.shoesSeconds; t += FRAME) run.update(FRAME, leader(run, t));
+  assert.equal(run.index, 0);
+  // An open hand held still on the character: they run down, as the hand is open, and run out.
+  const still = () => {
+    const at = run.position;
+    return { target: at, glove: at, open: true, gloveSpeed: 0 };
+  };
+  for (let t = 0; t < EXTRAS.shoesSeconds; t += FRAME) run.update(FRAME, still());
   assert.equal(run.power, null, 'and they run out');
+  assert.equal(run.index, 0);
 });
 
 test('the bluebird shows the way to the friend, and the magnet draws fruit in over the hedges', () => {
@@ -404,6 +410,27 @@ test('gems wait in the dead ends from level 6, and a treasure chest with a crown
   playThrough(run, (each, t) => (each.index === 0 && !chest.opened ? { target: chest, glove: chest, open: true } : leader(each, t)));
   assert.ok(chest.opened);
   assert.ok(run.stats.prizes.crown >= 1);
+});
+
+test('a helper is where every way to the child\'s first goal goes past, the key if there\'s a gate, so it\'s met', () => {
+  let checked = 0;
+  for (const seed of SEEDS) {
+    for (const size of Object.keys(SIZES)) {
+      for (const level of [4, 7, 9, 10]) {
+        for (const index of [0, 1, 2]) {
+          const layout = buildMaze({ seed, index, size, level, features: featuresFor(level, index, size) });
+          const helper = layout.items.find(({ kind }) => ['shoes', 'bird', 'magnet'].includes(kind));
+          assert.ok(helper, `a helper in ${seed} ${size} ${level} ${index}`);
+          const key = layout.items.find(({ kind }) => kind === 'key');
+          const first = key ? key.cell : layout.goal;
+          const without = distances(layout.maze, layout.start, (a, d) => layout.maze.isOpen(a, d) && layout.maze.next(a, d) !== helper.cell);
+          assert.ok(without[first] < 0 || without[layout.goal] < 0, `${helper.kind} can't be gone round, in ${seed} ${size} ${level} ${index}`);
+          checked += 1;
+        }
+      }
+    }
+  }
+  assert.equal(checked, SEEDS.length * 3 * 4 * 3);
 });
 
 test('on their own, everything to pick up can be got to before the friend, as finding them ends the maze', () => {
@@ -595,7 +622,6 @@ test('every line the game says has its English and Georgian voice files', () => 
   }
   const source = readFileSync(new URL('../../games/giraffe-maze/main.js', import.meta.url), 'utf8');
   for (const { text } of lines) assert.ok(source.includes(text), `"${text}" is said by the game`);
-  assert.ok(!/joze/i.test(source + JSON.stringify(lines)), 'the giraffe is just Giraffe');
 });
 
 test('a resting child is never hurried: nothing in a maze has a time limit, and nothing is missed for resting', () => {

@@ -448,12 +448,14 @@ export function buildMaze({ seed, index = 0, size = 'medium', level = 1, feature
   });
 
   // A few ways round, but none round anything in the way.
-  const blocked = new Set(blockers.map(({ a, b }) => edgeKey(a, b)));
   const stillTheOnlyWay = () => blockers.every(({ a, b }) => {
     const without = distances(maze, start, (from, d) => maze.isOpen(from, d) && edgeKey(from, maze.next(from, d)) !== edgeKey(a, b));
     return without[b] < 0;
   });
   addLoops(maze, Math.round(maze.count * mazeLevel(level).loops), random, () => stillTheOnlyWay());
+  // The way to the friend in the finished maze, which a way round may have made shorter.
+  const open = (a, d) => maze.isOpen(a, d);
+  way.splice(0, way.length, ...wayBetween(maze, start, goal, open));
 
   // On their own, finding the friend ends the maze, so nothing goes where it could only be got to past them.
   const beforeFriend = distances(maze, start, (a, d) => maze.isOpen(a, d) && a !== goal);
@@ -512,10 +514,22 @@ export function buildMaze({ seed, index = 0, size = 'medium', level = 1, feature
     else blockers.splice(blockers.indexOf(gate), 1);
   }
 
-  // A helper early on the way, so it's met.
+  // A helper early on, where every way to where the child goes first passes, so it's met: the key, if there's a
+  // gate, and otherwise the friend.
   if (features.helper) {
-    const early = way.slice(1, 4).filter((id) => !taken.has(id));
-    if (early.length) add(features.helper, early[0]);
+    const key = items.find(({ kind }) => kind === 'key');
+    const routes = (key ? [key.cell, goal] : [goal]).map((first) => ({
+      first,
+      free: wayBetween(maze, start, first, open).slice(1, -1).filter((id) => !taken.has(id)),
+    }));
+    let cell;
+    for (const { first, free } of routes) {
+      const mustPass = (id) => distances(maze, start, (a, d) => open(a, d) && maze.next(a, d) !== id)[first] < 0;
+      cell = free.slice(0, 4).find(mustPass) ?? free.find(mustPass);
+      if (cell !== undefined) break;
+    }
+    cell ??= routes.find(({ free }) => free.length)?.free[0];
+    if (cell !== undefined) add(features.helper, cell);
   }
 
   // Gems, and a treasure chest, in the dead ends, or down the side paths when there aren't enough dead ends free,
