@@ -51,6 +51,39 @@ body[data-prizes='on'] .chip-berries { display: grid; }
 .finish-prizes:empty { display: none; }
 body:not([data-prizes='on']) tr:has(#sum-left-berries) { display: none; }
 
+/* With friends: how many each has brought home, the most first, beside how many are home in all, and all of it clear
+   of the camera's picture in the middle. */
+body[data-friends-race] .hud-top { max-width: calc(50vw - var(--camera-small) / 2 - 16px); }
+.hud-top .chips { align-items: flex-start; }
+.spider-scores {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.spider-scores[hidden] { display: none; }
+
+.spider-scores li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px 3px 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 4px 14px rgba(18, 48, 77, 0.18);
+  font-size: clamp(14px, 1.4vw, 17px);
+  font-weight: 700;
+}
+.spider-scores li.is-you { background: var(--sun); }
+.spider-scores img { width: 30px; height: 30px; border-radius: 50%; background: var(--surface-soft); }
+.spider-score-name { max-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spider-score { margin-left: 4px; font-variant-numeric: tabular-nums; }
+
 /* One dot for each spider, filled in as each comes home. */
 .spider-dots {
   display: none;

@@ -5,8 +5,12 @@ import { existsSync, readFileSync } from 'node:fs';
 import { LAST_LEVEL } from '../../core/levels.js';
 import {
   BASKET_HOLDS, BERRY, BUTTERFLY, CATCH_REACH, CHEST_SECONDS, Catching, GRAB_WINDOW, Gathering, PLACES, SLEEP_MOST, SPIDER_SIZE, WAKE_SECONDS,
-  gardenAt, newsIsOn, pathFor, placesAt, spiderAt, spiderNewAt, spidersFor, spotFor, visitorsAt, webAt,
+  friendsGardenAt, gardenAt, newsIsOn, pathFor, placesAt, spiderAt, spiderNewAt, spidersFor, spotFor, visitorsAt, webAt,
 } from '../../games/spider-catcher/spiders.js';
+import {
+  MOST_AT_A_PLACE, SPIDERS_BAND, acrossGardens, answerFor, catchKey, homeBits, placeRandom, readFriend, readKey,
+} from '../../games/spider-catcher/friends.js';
+import { cleanCatcher, MAX_RACERS, MOST_BYTES, mostIn, RaceRoom } from '../../server/race-room.js';
 
 const LEVELS = Array.from({ length: LAST_LEVEL }, (_, index) => index + 1);
 const eventsOf = () => {
@@ -468,6 +472,174 @@ test('the talking is short, and everything said has a voice in both languages', 
 });
 
 test('the rules have no screen in them, so they can run here', () => {
-  const rules = readFileSync(new URL('../../games/spider-catcher/spiders.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(rules, /document|window\.|canvas/);
+  for (const file of ['spiders.js', 'friends.js']) {
+    const rules = readFileSync(new URL(`../../games/spider-catcher/${file}`, import.meta.url), 'utf8');
+    assert.doesNotMatch(rules, /document|window\.|canvas/, file);
+  }
+});
+
+/* ---------- playing with friends ---------- */
+
+test('with friends, the garden is the plain one at the host\'s level: as many spiders, as quick, and nothing new', () => {
+  for (const level of LEVELS) {
+    const [own, shared] = [gardenAt(level), friendsGardenAt(level)];
+    for (const key of ['more', 'atOnce', 'speed', 'wander', 'swing', 'twist']) assert.equal(shared[key], own[key], `${key} at level ${level}`);
+    for (const key of ['berries', 'ladybird', 'butterfly', 'basket', 'chest', 'boats', 'golden']) assert.equal(shared[key], false, `${key} at level ${level}`);
+    for (const key of ['shy', 'sleepy', 'pairs', 'webSway']) assert.equal(shared[key], 0, `${key} at level ${level}`);
+    assert.equal(shared.webs, 1);
+    // Spiders that go round their paths, and nothing that would be one child's and not another's.
+    for (const { count } of placesAt(level)) {
+      const plans = spidersFor(count, level, () => 0.5, { at: shared });
+      assert.equal(plans.length, count);
+      assert.ok(plans.every(({ kind, shy, sleepy, pair, golden, web }) => ['scuttle', 'dangle'].includes(kind) && !shy && !sleepy && pair === null && !golden && web === 0));
+    }
+  }
+});
+
+test('every friend\'s game makes the same spiders at each place, from the seed they\'re all given', () => {
+  const plansAt = (seed, place, level = 7) => spidersFor(placesAt(level)[place].count, level, placeRandom(seed, place), { at: friendsGardenAt(level) });
+  for (const seed of [0, 1, 123_456, 2 ** 31 - 1]) {
+    for (let place = 0; place < PLACES.length; place += 1) assert.deepEqual(plansAt(seed, place), plansAt(seed, place));
+  }
+  const phases = (plans) => plans.map(({ phase }) => phase).join();
+  assert.notEqual(phases(plansAt(77, 0)), phases(plansAt(77, 1)), 'each place has its own');
+  assert.notEqual(phases(plansAt(77, 0)), phases(plansAt(78, 0)), 'each game has its own');
+  // And the same paths, so they're in the same places at the same moment on every screen.
+  const [one, two] = [plansAt(5, 2), plansAt(5, 2)];
+  one.forEach((plan, index) => {
+    const path = (each) => pathFor({ kind: each.kind, centre: spotFor(index), phase: each.phase, level: 7 });
+    assert.deepEqual(spiderAt(path(plan), 12.34), spiderAt(path(two[index]), 12.34));
+  });
+});
+
+test('a spider is known by its place and where it comes in the line, and each time it\'s caught is a new claim', () => {
+  const seen = new Set();
+  for (let place = 0; place < PLACES.length; place += 1) {
+    for (let index = 0; index < MOST_AT_A_PLACE; index += 1) {
+      for (const catches of [0, 1, 2, 999]) {
+        const k = catchKey(place, index, catches);
+        assert.deepEqual(readKey(k), { place, index, catches });
+        assert.ok(Number.isInteger(k) && k >= 0 && k < 1_000_000, 'within what the server passes on');
+        assert.ok(!seen.has(k));
+        seen.add(k);
+      }
+    }
+  }
+  // There's room in a place for everyone the levels bring.
+  for (const level of LEVELS) assert.ok(placesAt(level).every(({ count }) => count <= MOST_AT_A_PLACE));
+});
+
+test('the server\'s answer to a claim: the first hand to close on a spider has it, and an old claim changes nothing', () => {
+  const me = 'aaaaaaaa';
+  const friend = 'bbbbbbbb';
+  const spider = (change = {}) => ({ state: 'playing', holder: null, catches: 0, ...change });
+  // This child's own catch, still in their glove.
+  assert.equal(answerFor(spider({ state: 'held', holder: me }), 0, me, me), 'mine');
+  // Both closed on it: the friend's claim got there first, so it goes from this glove to theirs.
+  assert.equal(answerFor(spider({ state: 'held', holder: me }), 0, friend, me), 'theirs');
+  assert.equal(answerFor(spider(), 0, friend, me), 'theirs');
+  // A friend let go of it and caught it again before this game heard: the newer claim is what counts.
+  assert.equal(answerFor(spider({ state: 'held', holder: friend, catches: 1 }), 2, friend, me), 'theirs');
+  // Caught here and let go before the server answered: it was this child's, and they let it go.
+  assert.equal(answerFor(spider({ state: 'returning' }), 0, me, me), 'gone');
+  // From before it was last let go, or for a spider already home: nothing changes.
+  assert.equal(answerFor(spider({ catches: 3 }), 2, friend, me), 'old');
+  assert.equal(answerFor(spider({ state: 'landing' }), 0, friend, me), 'old');
+  assert.equal(answerFor(spider({ state: 'home' }), 0, me, me), 'old');
+});
+
+test('a friend\'s message brings home what\'s home on their screen, and lets go of what isn\'t in their glove any more', () => {
+  const ben = 'bbbbbbbb';
+  const cara = 'cccccccc';
+  const place = 2;
+  const spiders = [
+    { index: 0, state: 'home', holder: null, catches: 0 },
+    { index: 1, state: 'held', holder: ben, catches: 1 },
+    { index: 2, state: 'playing', holder: null, catches: 0 },
+    { index: 3, state: 'held', holder: cara, catches: 0 },
+  ];
+  const holding = catchKey(place, 1, 1);
+  // Still in his glove, with the claim it was caught with: nothing changes.
+  assert.deepEqual(readFriend(spiders, place, ben, { h: holding, m: 1 }), { home: [], letGo: [] });
+  // Not in his glove any more, and not home: he let it go.
+  assert.deepEqual(readFriend(spiders, place, ben, { h: -1, m: 1 }).letGo, [spiders[1]]);
+  // In his glove, but caught again since: that's a new catch, so the one this game had has been let go.
+  assert.deepEqual(readFriend(spiders, place, ben, { h: catchKey(place, 1, 2), m: 1 }).letGo, [spiders[1]]);
+  // Home on his screen: it comes home here, whoever brought it, and isn't also let go.
+  assert.deepEqual(readFriend(spiders, place, ben, { h: -1, m: 0b0110 }), { home: [spiders[1], spiders[2]], letGo: [] });
+  // Cara's spider is hers, whatever Ben's glove has in it, and one home already doesn't come home again.
+  assert.deepEqual(readFriend(spiders, place, ben, { h: -1, m: 0b0001 }).home, []);
+  assert.ok(!readFriend(spiders, place, ben, { h: -1, m: 0 }).letGo.includes(spiders[3]));
+  // Which are home on this screen, for friends: a bit each, for where they come in the line.
+  assert.equal(homeBits(spiders), 0b0001);
+  assert.equal(homeBits([...spiders, { index: 5, state: 'landing' }]), 0b100001);
+});
+
+test('a friend\'s glove is by the same spider on every screen, and at the web when it\'s at theirs', () => {
+  // How far the middle of the garden is from the web, in screen heights: on a wide screen with each reach help, and on
+  // a narrower one.
+  const middles = [0.38, 0.32, 0.26].map((share) => share * (16 / 9)).concat([0.26 * (4 / 3)]);
+  for (const from of middles) {
+    for (const to of middles) {
+      const across = (distance) => acrossGardens(distance, from, to);
+      // The web is the web, and the middle of the garden the middle.
+      assert.ok(Math.abs(across(0)) < 1e-9, `the web, ${from} to ${to}`);
+      assert.ok(Math.abs(across(from) - to) < 1e-9);
+      // Where the spiders play, it keeps its distance from the middle.
+      for (const offset of [-SPIDERS_BAND, -0.1, 0, 0.13, 0.4]) assert.ok(Math.abs(across(from + offset) - (to + offset)) < 1e-9);
+      // Back again is where it was, and nearer the web here is nearer it there.
+      for (let distance = -0.6; distance <= 1.2; distance += 0.05) {
+        assert.ok(Math.abs(acrossGardens(across(distance), to, from) - distance) < 1e-9);
+        assert.ok(across(distance + 0.01) > across(distance));
+        // With no jump anywhere along the way.
+        assert.ok(Math.abs(across(distance + 1e-6) - across(distance)) < 1e-4);
+      }
+    }
+  }
+});
+
+test('the server passes on a friend\'s glove in Spider Catcher, with only what it should hold', () => {
+  const players = [];
+  const rules = new RaceRoom({ players: () => players }, () => 1000);
+  const join = (id) => {
+    const player = { meta: null, heard: [], setMeta(meta) { this.meta = meta; }, send(message) { this.heard.push(message); } };
+    players.push(player);
+    assert.ok(rules.arrive(player, id, null, { most: mostIn('spider-catcher') }));
+    return player;
+  };
+  assert.equal(mostIn('spider-catcher'), MAX_RACERS);
+  const [ana, ben, cara] = ['aaaaaaaa', 'bbbbbbbb', 'cccccccc'].map(join);
+  for (const each of [ana, ben, cara]) rules.hear(each, JSON.stringify({ t: 'ready' }));
+  const points = Array.from({ length: 42 }, (_, index) => (index % 2 ? 0.123456 : -9));
+  rules.hear(ben, JSON.stringify({ t: 'catcher', ms: 900.4, x: 0.51234, y: 2, v: 1, o: 1, p: points, z: 3.4, h: 32001, m: 5, n: 7, picture: 'not this' }));
+  const heard = ana.heard.at(-1);
+  assert.deepEqual(Object.keys(heard), ['t', 'from', 'ms', 'x', 'y', 'v', 'o', 'p', 'z', 'h', 'm', 'n']);
+  assert.deepEqual({ ...heard, p: heard.p.slice(0, 2) }, { t: 'catcher', from: 'bbbbbbbb', ms: 900, x: 0.512, y: 1.5, v: 1, o: 1, p: [-4, 0.12], z: 3, h: 32001, m: 5, n: 7 });
+  assert.deepEqual(cara.heard.at(-1), heard, 'everyone else hears it');
+  assert.equal(ben.heard.filter(({ t }) => t === 'catcher').length, 0, 'nobody hears their own');
+  // A glove that can't be seen has no points, and anything that isn't a number for what's in it is nothing.
+  assert.deepEqual(cleanCatcher({ v: 1, o: 1, p: [1, 2, 3], h: 'x', m: 5000, n: -3, z: 99 }), { ms: 0, x: 0, y: 0, v: 0, o: 0, p: [], z: 20, h: -1, m: 1023, n: 0 });
+  assert.deepEqual(cleanCatcher({ v: 0, p: points, h: null }).p, []);
+  assert.equal(cleanCatcher({ h: -50 }).h, -1);
+  const biggest = JSON.stringify({ t: 'catcher', from: 'abcdefghijkl', ...cleanCatcher({ ms: 3_599_999, x: -0.499, y: -0.499, v: 1, o: 1, p: Array(42).fill(-3.99), z: 20, h: 999_999, m: 1023, n: 1000 }) });
+  assert.ok(biggest.length < MOST_BYTES / 4, `${biggest.length} characters at most`);
+  // Catching: whoever's claim for a spider reaches the server first has it, and everyone is told.
+  rules.hear(cara, JSON.stringify({ t: 'claim', k: catchKey(0, 1, 0) }));
+  rules.hear(ana, JSON.stringify({ t: 'claim', k: catchKey(0, 1, 0) }));
+  for (const each of [ana, ben, cara]) assert.deepEqual(each.heard.filter(({ t }) => t === 'claimed'), [{ t: 'claimed', k: catchKey(0, 1, 0), by: 'cccccccc' }]);
+  // Let go and caught again, it's a new claim.
+  rules.hear(ana, JSON.stringify({ t: 'claim', k: catchKey(0, 1, 1) }));
+  assert.deepEqual(ben.heard.at(-1), { t: 'claimed', k: catchKey(0, 1, 1), by: 'aaaaaaaa' });
+});
+
+test('Spider Catcher\'s rooms are known to both servers, and a friend\'s glove is passed on to the game', () => {
+  for (const file of ['../../server/worker.js', '../../tools/race-server.mjs']) {
+    const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+    assert.match(source, /const GAMES = \[[^\]]*'spider-catcher'/, file);
+  }
+  const friends = readFileSync(new URL('../../core/friends.js', import.meta.url), 'utf8');
+  assert.match(friends, /\[[^\]]*'catcher'[^\]]*\]\.includes\(message\.t\)/);
+  // The page may reach the friends server, and nothing else new.
+  const page = readFileSync(new URL('../../games/spider-catcher/index.html', import.meta.url), 'utf8');
+  assert.match(page, /connect-src 'self' wss:\/\/hemi-race\.infoicy\.com ws:\/\/localhost:\* /);
 });
