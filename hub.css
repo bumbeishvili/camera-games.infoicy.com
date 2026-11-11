@@ -19,7 +19,8 @@ body.hub {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  /* From the top, so the title and search stay where they are however few games the search finds. */
+  justify-content: flex-start;
   gap: 8px;
   text-align: center;
 }
@@ -54,13 +55,288 @@ body.hub {
   font-weight: 500;
 }
 
+/* ---------- the search, under the title, and its filters: hub.js ---------- */
+.hub-search {
+  width: min(640px, 100%);
+  margin-top: clamp(10px, 2vh, 20px);
+  display: grid;
+  gap: 12px;
+}
+
+/* On one line at any width, so choosing a filter, which adds its count to the button, never moves anything. */
+.hub-search-row {
+  display: flex;
+  gap: 10px;
+}
+
+.hub-search-box {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* 18px or more, so a phone doesn't zoom in when it's tapped. */
+.hub-search-box input {
+  width: 100%;
+  height: 54px;
+  padding: 0 12px 0 50px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font: inherit;
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--ink);
+  appearance: none;
+}
+
+.hub-search-box input::placeholder {
+  color: var(--ink-soft);
+  opacity: 1;
+}
+
+.hub-search-box input::-webkit-search-cancel-button {
+  appearance: none;
+  width: 30px;
+  height: 30px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: var(--surface-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7.5 7.5l9 9M16.5 7.5l-9 9' fill='none' stroke='%2346607c' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E") center / 20px no-repeat;
+  cursor: pointer;
+}
+
+/* Only there with something to clear, so it doesn't take the placeholder's room. */
+.hub-search-box input:placeholder-shown::-webkit-search-cancel-button { display: none; }
+
+.hub-search-icon {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  transform: translateY(-50%);
+  fill: none;
+  stroke: var(--ink-soft);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.hub-filters-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 54px;
+  padding: 0 16px 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 20px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.hub-filters-toggle:hover { background: var(--surface-soft); }
+
+.hub-filters-toggle[aria-expanded='true'] { box-shadow: inset 0 0 0 3px var(--accent), var(--shadow); }
+
+.hub-filters-toggle svg {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.hub-filters-icon { stroke: var(--accent); }
+.hub-chevron { stroke: var(--ink-soft); }
+.hub-filters-toggle[aria-expanded='true'] .hub-chevron { transform: rotate(180deg); }
+
+/* How many filters are chosen. */
+.hub-filters-on {
+  display: grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 13px;
+  background: var(--accent);
+  color: var(--surface);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.hub-filters-on[hidden] { display: none; }
+
+.hub-filters {
+  display: grid;
+  padding: 10px 22px 16px;
+  background: var(--surface);
+  border-radius: 28px;
+  box-shadow: var(--shadow);
+  text-align: left;
+}
+
+.hub-filters[hidden] { display: none; }
+
+.hub-filters fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 12px 0 14px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hub-filters legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+/* Each filter is a checkbox, in a pill that fills in blue while it's chosen. */
+.hub-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 9px 12px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  box-shadow: inset 0 0 0 2px var(--line);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.15;
+  cursor: pointer;
+  user-select: none;
+}
+
+.hub-chip:hover { box-shadow: inset 0 0 0 2px var(--neutral); }
+
+.hub-chip input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.hub-chip:has(input:checked) {
+  background: var(--accent-track);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.hub-chip input:focus-visible { outline: none; }
+.hub-chip:has(input:focus-visible) { outline: 4px solid var(--accent); outline-offset: 2px; }
+
+.hub-filters-end {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 14px;
+}
+
+.hub-filters-end .soft-button { margin-right: auto; }
+.hub-filters-end [hidden] { display: none; }
+
+/* How many games are showing, just above them. */
+.hub-found-line {
+  min-height: 34px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 4px 14px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.hub-found-line .hub-show-all {
+  border: 0;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.8);
+  padding: 4px 14px 5px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.hub-found-line .hub-show-all:hover { background: var(--surface); }
+.hub-found-line [hidden] { display: none; }
+
+/* When nothing matches. */
+.hub-none {
+  width: min(560px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 26px 22px 28px;
+  background: var(--surface);
+  border-radius: 28px;
+  box-shadow: var(--shadow);
+}
+
+.hub-none[hidden] { display: none; }
+
+.hub-none-title {
+  font-size: clamp(26px, 3.4vw, 34px);
+  font-weight: 700;
+}
+
+.hub-none p:not(.hub-none-title) {
+  font-size: 18px;
+  color: var(--ink-soft);
+}
+
+.hub-none .hub-show-all {
+  margin-top: 8px;
+  font-size: 20px;
+  font-weight: 700;
+  padding: 11px 28px 12px;
+}
+
+/* With the computer's high contrast colours, which leave out shadows, the boxes and buttons keep an edge. */
+@media (forced-colors: active) {
+  .hub-search-box input,
+  .hub-filters-toggle,
+  .hub-filters,
+  .hub-chip,
+  .hub-found-line .hub-show-all,
+  .hub-none { border: 2px solid CanvasText; }
+}
+
+@media (max-width: 480px) {
+  .hub-search-box input { font-size: 18px; padding-left: 46px; }
+  .hub-search-icon { left: 16px; }
+  .hub-filters-toggle { font-size: 18px; padding: 0 14px; gap: 6px; }
+  .hub-chevron { display: none; }
+  .hub-filters { padding: 6px 16px 14px; }
+  .hub-chip { font-size: 16px; padding: 7px 14px 8px 11px; }
+  .hub-chip input { width: 18px; height: 18px; }
+}
+
+/* auto-fill keeps the columns when the search leaves only a game or two, so a card stays the size it was. */
 .game-cards {
   width: 100%;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: clamp(16px, 3vw, 28px);
-  margin: clamp(16px, 3vh, 32px) 0 clamp(14px, 2vh, 24px);
+  margin: clamp(6px, 1.2vh, 14px) 0 clamp(14px, 2vh, 24px);
 }
+
+.game-card[hidden] { display: none; }
 
 .game-card {
   display: flex;
