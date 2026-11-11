@@ -902,7 +902,8 @@ test('everything is on this computer', () => {
 test('the page keeps the same security as the other games, with no styles written into it', () => {
   const page = readFileSync(new URL('index.html', FOLDER), 'utf8');
   const other = readFileSync(new URL('../lighthouse/index.html', FOLDER), 'utf8');
-  const policy = (html) => html.match(/Content-Security-Policy" content="([^"]+)"/)[1];
+  // Leaving aside the server for playing with friends, which only a game played with friends can reach.
+  const policy = (html) => html.match(/Content-Security-Policy" content="([^"]+)"/)[1].replace(' wss://hemi-race.infoicy.com ws://localhost:*', '');
   assert.equal(policy(page), policy(other));
   assert.ok(!/ style=/.test(page));
   assert.ok(!/<style/.test(page));

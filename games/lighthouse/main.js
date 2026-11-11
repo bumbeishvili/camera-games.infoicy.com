@@ -1,13 +1,21 @@
 // The Lighthouse Keeper: a storm has muddied the lighthouse windows and ships are lost at sea. Wiping
 // a window clean with an open hand lets the light out, and brings one of them home. The story is in
 // storm.js, and the room and the sea are in lamp-room.js.
+//
+// On their own, or with friends, each on their own computer, all wiping the same windows. Each patch of
+// mud is whoever's hand wiped it first, as the server decides: each game claims the patches its child's
+// hand wipes, and hears whose each one is (wiped). A friend's come off the glass here too, so every game
+// has the same mud left, its windows come clean together, and everyone counts everyone's share the same.
 import { renderPortraits } from '../../core/body/portraits.js';
-import { ROSTER } from '../../core/body/roster.js';
+import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
+import { seededRandom, Track } from '../../core/friends.js';
+import { FriendsPanel } from '../../core/friends-ui.js';
+import { Glove } from '../../core/glove.js';
 import { GameSession } from '../../core/session.js';
 import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { LampRoom } from './lamp-room.js';
-import { Storm, newAt } from './storm.js';
+import { GRID, PATCHES, SHIPS, Storm, newAt } from './storm.js';
 
 const OPEN_TO_WIPE = 'Open your hand to wipe!';
 const FINISH = 'You saved every ship!';
@@ -18,6 +26,34 @@ const FILM_SECONDS = 16;
 const CLOSED_PROMPT_SECONDS = 1.2;
 const WAVES_LEVEL = 0.4;
 const WIPE_LEVEL = 0.7;
+
+// Playing with friends, each on their own computer. See core/friends-ui.js for what each of these is.
+const LIGHT_WORDS = {
+  toggle: 'Play with friends',
+  make: 'Make a game',
+  codeLabel: 'A friend’s game code',
+  codeName: 'Game code',
+  how: 'Tell your friends the code. Then you all press <b>Climb the lighthouse</b>.',
+  leave: 'Leave this game',
+  privacy: 'Only your name, who you play as, where your glove is on the window and which bits of it you wipe go to your friends. The camera picture stays on this computer.',
+  alone: 'Play on your own',
+  full: 'That game already has 4 players.',
+  lost: 'Can’t reach the game. Check the internet, then try again.',
+  left: 'You’ve left the game.',
+  badCode: 'A game code is 3 letters and numbers.',
+  busy: 'Playing',
+  still: 'still wiping',
+};
+const SHIP_CHOICES = [2, 4];
+// A friend's glove between what their game sends: where it is on the window, and its points, which go smoothly
+// from one to the next. Whether it can be seen and is open change half way.
+const HAND_TRACK = { lerp: ['x', 'y'], lists: ['p'], steps: ['v', 'o'] };
+const GLOVE_FADE_RATE = 8; // How quickly a friend's glove fades in and out, as their hand comes and goes.
+const HAND_QUIET_MS = 1500; // A friend's glove nothing has come from for this long, as in their hand check, fades away.
+const CLAIM_EVERY_MS = 100; // Patches wiped are claimed at most 10 times a second, all of those since the last time.
+const CLAIM_AGAIN_MS = 1500; // One with no answer by then is claimed again, as the connection may have lost it.
+const round2 = (value) => Math.round(value * 100) / 100;
+const round3 = (value) => Math.round(value * 1000) / 1000;
 
 const byId = (id) => document.getElementById(id);
 
@@ -31,13 +67,38 @@ class LighthouseGame {
     this.timer = 0;
     this.after = null;
     this.closedFor = 0;
+    this.mode = 'solo';
+    this.goAt = 0;
     this.room = new LampRoom(byId('game'), { onSailed: () => this.onSailed() });
     this.applySettings();
+    this.startFriends(null);
+    // Playing with friends, if a grown-up makes or joins a game.
+    this.friends = new FriendsPanel({
+      game: 'lighthouse',
+      linkKey: 'light',
+      words: LIGHT_WORDS,
+      hello: () => ({ driver: session.settings.fighter ?? '', level: session.levels.current, length: session.settings.ships }),
+      screen: () => session.screen,
+      portraits: () => session.portraits,
+      onMove: (id, message) => this.fromFriend(id, message),
+      onGone: (friend) => this.friendGone(friend),
+      // Whoever cleaned the most of the glass, as it's shown, and equal amounts share a place.
+      rank: (a, b) => this.shareOf(b.dropped) - this.shareOf(a.dropped),
+      resultText: ({ dropped }) => `${this.shareOf(dropped)}% cleaned`,
+      titles: { first: 'You cleaned the most!', other: 'Great wiping!' },
+      startAfter: byId('start'),
+      waitingBefore: byId('screen-finish'),
+      resultsAfter: document.querySelector('#screen-finish .finish-hero'),
+      finishTitle: document.querySelector('#screen-finish h2'),
+    });
     const game = this;
     this.debug = {
       room: this.room,
       get storm() {
         return game.storm;
+      },
+      get game() {
+        return game;
       },
     };
   }
@@ -69,6 +130,11 @@ class LighthouseGame {
 
   /** A new storm, at this level: see stormAt in storm.js for what each level brings. */
   prepare(level) {
+    // With friends, everyone has the host's ships, in the plain storm at the host's level, which doesn't move
+    // anyone's own level on. Each child keeps their own hand and size of window.
+    const friendly = this.friends.current;
+    this.mode = friendly ? 'friends' : 'solo';
+    document.body.toggleAttribute('data-friends-race', Boolean(friendly));
     this.applySettings();
     this.story.hide();
     this.room.restart();
@@ -77,23 +143,62 @@ class LighthouseGame {
     this.room.boat = null;
     this.room.calm = 0;
     this.room.shownCalm = 0;
+    const ships = friendly ? (SHIP_CHOICES.includes(friendly.length) ? friendly.length : SHIPS.length) : this.session.settings.ships;
     this.storm = new Storm({
-      ships: this.session.settings.ships,
-      level,
+      ships,
+      level: friendly?.level ?? level,
+      shared: Boolean(friendly),
       onEvent: (event) => this.onStorm(event),
     });
     this.room.swell = this.storm.level.swell;
     this.room.lumps = this.storm.lumps;
     this.room.storm = this.storm;
     this.room.night = this.storm.level.night;
-    this.room.fresh = new Set(newAt(level).map(({ key }) => key));
+    this.room.fresh = new Set(friendly ? [] : newAt(level).map(({ key }) => key));
+    this.startFriends(friendly);
     // Treasure only comes from level 2, so level 1 looks as it always did.
     const treasure = this.storm.level.shells > 0;
     byId('chip-treasure-box').hidden = !treasure;
     byId('sum-left-treasure').closest('tr').hidden = !treasure;
     this.showProgress();
+    this.showScores();
   }
 
+  /**
+   * A game with friends starts with nothing wiped or claimed, and a grey glove for each friend. On their own,
+   * there's none of it.
+   */
+  startFriends(friendly) {
+    this.patches = new Map(); // Each window's patches that have gone to someone, and whose they are: window: Map(patch: id).
+    this.tally = new Map((friendly?.racers ?? []).map((id) => [id, 0])); // How many patches each one wiped first.
+    this.toClaim = new Set(); // Patches this hand has wiped, to claim, each as its window * PATCHES + itself.
+    this.unanswered = new Map(); // Patches claimed and not answered yet, the same way, with when.
+    this.claimedAt = -Infinity;
+    this.glass = (this.storm?.ships.length ?? SHIPS.length) * PATCHES; // Every patch of every window.
+    this.seed = friendly?.seed ?? 0;
+    this.friendGloves = (friendly?.friends ?? []).map((friend) => ({ id: friend.id, name: friend.spec.name, glove: new Glove('right'), track: new Track(HAND_TRACK), fade: 0, heardAt: -Infinity }));
+    this.room.friendGloves = this.friendGloves;
+  }
+
+  /** How the mud on a window is laid out: with friends, from the seed everyone has, so it looks the same for all. */
+  mudLook(index) {
+    return this.mode === 'friends' ? seededRandom((this.seed + (index + 1) * 7919) >>> 0) : Math.random;
+  }
+
+  /** How much of all the glass so many patches is, in whole percent, as it's shown. */
+  shareOf(patches) {
+    return Math.round((100 * patches) / this.glass);
+  }
+
+  /** With friends, the start waits until they're ready too. */
+  holdStart(go) {
+    return this.friends.holdStart(go);
+  }
+
+  /** How long since "GO!", by the clock on the wall, for friends' games. */
+  get sinceGo() {
+    return performance.now() - this.goAt;
+  }
 
   /**
    * Where collected things fly to: the count at the top. It's looked up as they fly, as the count is still
@@ -118,9 +223,10 @@ class LighthouseGame {
 
   begin() {
     const { sound } = this.session;
+    this.goAt = performance.now();
     sound.startLoop('waves', WAVES_LEVEL);
     sound.startLoop('wipe', 0);
-    this.room.muddy();
+    this.room.muddy(this.mudLook(0));
     this.keepTallyMeasured(byId('chip-treasure'), this.room);
     this.storm.nextShip();
   }
@@ -182,12 +288,14 @@ class LighthouseGame {
     handlers[event.type]?.();
   }
 
-  onShip({ ship }) {
-    if (!this.room.mud) this.room.muddy();
+  onShip({ ship, index }) {
+    if (!this.room.mud) this.room.muddy(this.mudLook(index));
     this.room.setBoat(ship.boat);
     this.room.lumps = this.storm.lumps;
     this.story.say(ship.who, ship.ask);
     this.showProgress();
+    // With friends, what they've wiped of this window already, if their game got to it a moment sooner.
+    if (this.mode === 'friends') this.wipeTheirs(index, [...(this.patches.get(index)?.keys() ?? [])]);
   }
 
   onWindowClean() {
@@ -243,6 +351,12 @@ class LighthouseGame {
     storm.update(dt, { still: room.reducedMotion, hand: wiping ? room.handOnGlass() : null });
     room.update(dt, snapshot, { aspect: this.session.camera.aspect, wiping, showHands: true, wipe: this.wipe });
     this.session.sound.setLoopLevel('wipe', wiping ? room.wipeSpeed * WIPE_LEVEL : 0);
+    // With friends, the patches just wiped are claimed, and everyone sees everyone's glove.
+    if (this.mode === 'friends' && this.session.screen === 'playing') {
+      this.claimWiped();
+      this.friends.sendMove('hand', this.handState(), this.sinceGo);
+      this.showFriendsGloves(dt);
+    }
     this.showProgress();
     const glove = room.gloves[room.side];
     this.closedFor = wiping && glove.visible && glove.status !== 'open' ? this.closedFor + dt : 0;
@@ -260,6 +374,159 @@ class LighthouseGame {
     }
     const counting = this.session.screen === 'countdown';
     this.room.update(dt, snapshot, { aspect: this.session.camera.aspect, showHands: counting });
+    // Checking the hand again in the middle, friends' gloves still come and go.
+    if (this.mode === 'friends' && this.session.screen === 'check') this.showFriendsGloves(dt);
+  }
+
+  /* ---------- with friends ---------- */
+
+  /**
+   * The patches this child's hand has wiped, claimed at most 10 times a second, all of those since the last
+   * time, and any claimed a while ago with no answer yet, again. The server says whose each one is: see wiped.
+   */
+  claimWiped(now = performance.now()) {
+    const { w, c } = this.storm.takeWiped();
+    for (const patch of c) this.toClaim.add(w * PATCHES + patch);
+    for (const [key, at] of this.unanswered) if (now - at >= CLAIM_AGAIN_MS) this.toClaim.add(key);
+    if (!this.toClaim.size || now - this.claimedAt < CLAIM_EVERY_MS) return;
+    this.claimedAt = now;
+    const byPane = new Map();
+    for (const key of this.toClaim) {
+      const pane = Math.floor(key / PATCHES);
+      if (!byPane.has(pane)) byPane.set(pane, []);
+      byPane.get(pane).push(key % PATCHES);
+      this.unanswered.set(key, now);
+    }
+    this.toClaim.clear();
+    const { friends } = this;
+    if (!friends.current || !friends.room.inRoom) return;
+    for (const [pane, patches] of byPane) friends.room.say({ t: 'wipe', w: pane, c: patches });
+  }
+
+  /**
+   * Patches c of window w went to whoever wiped them first, as the server says: they count for them, the same
+   * on every computer, and the mud there is gone here too.
+   */
+  wiped({ w, c, by }) {
+    if (this.mode !== 'friends' || !this.friends.current?.racers.includes(by) || !Array.isArray(c)) return;
+    if (!this.patches.has(w)) this.patches.set(w, new Map());
+    const owners = this.patches.get(w);
+    const fresh = [];
+    for (const patch of c) {
+      this.unanswered.delete(w * PATCHES + patch);
+      if (!Number.isInteger(patch) || owners.has(patch)) continue;
+      owners.set(patch, by);
+      fresh.push(patch);
+    }
+    if (!fresh.length) return;
+    this.tally.set(by, (this.tally.get(by) ?? 0) + fresh.length);
+    this.wipeTheirs(w, fresh);
+    this.showScores();
+  }
+
+  /**
+   * Patches of window w gone to someone come off the glass here, if it's the window here now, and can make it
+   * clean. Any this child's own hand wiped are clean here already.
+   */
+  wipeTheirs(w, patches) {
+    const { storm, room } = this;
+    if (w !== storm.index || !patches.length) return;
+    room.clearPatches(storm.wipePatches(patches), GRID.columns, GRID.rows);
+    this.showProgress();
+  }
+
+  /** Something from a friend's game: where their glove is, or whose some patches are. */
+  fromFriend(id, message) {
+    if (message.t === 'wiped') {
+      this.wiped(message);
+      return;
+    }
+    if (message.t !== 'hand') return;
+    const each = this.friendGloves.find((glove) => glove.id === id);
+    if (!each) return;
+    each.track.push(message, performance.now());
+    each.heardAt = performance.now();
+  }
+
+  /** A friend has gone, and their glove with them. What they wiped stays wiped, and stays theirs. */
+  friendGone(friend) {
+    this.friendGloves = this.friendGloves.filter((each) => each.id !== friend.id);
+    this.room.friendGloves = this.friendGloves;
+    this.showScores();
+  }
+
+  /** Where the child's glove is, for friends' games: across and down the window, and its points in palms. */
+  handState() {
+    const { room } = this;
+    const glove = room.gloves[room.side];
+    if (!glove.visible) return { x: 0, y: 0, v: 0, o: 0, p: [] };
+    const { window: glass, palmSize } = room;
+    return {
+      x: round3((glove.x - glass.x) / glass.width),
+      y: round3((glove.y - glass.y) / glass.height),
+      v: 1,
+      o: glove.status === 'open' ? 1 : 0,
+      p: glove.points.flatMap(({ x, y }) => [round2(x / palmSize), round2(y / palmSize)]),
+    };
+  }
+
+  /**
+   * Each friend's glove where their hand is on their window, a moment ago, on this window, fading in and out as
+   * it comes and goes, and away once they've finished.
+   */
+  showFriendsGloves(dt) {
+    const { room } = this;
+    const now = performance.now();
+    for (const each of this.friendGloves) {
+      const at = each.track.at(now);
+      const seen = Boolean(at?.v && at.p?.length === 42) && now - each.heardAt < HAND_QUIET_MS && !this.friends.results.has(each.id);
+      each.fade += ((seen ? 1 : 0) - each.fade) * (1 - Math.exp(-dt * GLOVE_FADE_RATE));
+      if (!seen) {
+        if (each.fade < 0.02) each.glove.visible = false;
+        continue;
+      }
+      const { glove } = each;
+      glove.visible = true;
+      glove.status = at.o ? 'open' : 'closed';
+      const spot = room.onScreen(at);
+      glove.x = spot.x;
+      glove.y = spot.y;
+      glove.points.forEach((point, index) => {
+        point.x = at.p[index * 2] * room.palmSize;
+        point.y = at.p[index * 2 + 1] * room.palmSize;
+      });
+    }
+  }
+
+  /** With friends, how much of all the glass each one has cleaned so far, the most first. */
+  showScores() {
+    const list = byId('light-scores');
+    const { current } = this.friends;
+    list.hidden = this.mode !== 'friends' || !current;
+    if (list.hidden) return;
+    const portraits = this.session.portraits ?? {};
+    const you = this.friends.room.you;
+    const mine = { id: you, name: 'You', who: (characterWithId(this.session.settings.fighter) ?? ROSTER[0]).id };
+    const theirs = current.friends.filter((friend) => !friend.gone).map((friend) => ({ id: friend.id, name: friend.spec.name, who: friend.spec.id }));
+    const everyone = [mine, ...theirs].map((each) => ({ ...each, share: this.shareOf(this.tally.get(each.id) ?? 0) })).sort((a, b) => b.share - a.share);
+    const key = everyone.map(({ id, share }) => `${id}:${share}`).join(',');
+    if (list.dataset.key === key) return;
+    list.dataset.key = key;
+    list.replaceChildren(...everyone.map((each) => {
+      const row = document.createElement('li');
+      row.classList.toggle('is-you', each.id === you);
+      const face = document.createElement('img');
+      face.alt = '';
+      face.src = portraits[each.who] ?? '';
+      const name = document.createElement('span');
+      name.className = 'light-score-name';
+      name.textContent = each.name;
+      const share = document.createElement('span');
+      share.className = 'light-score';
+      share.textContent = `${each.share}%`;
+      row.append(face, name, share);
+      return row;
+    }));
   }
 
   render() {
@@ -280,13 +547,18 @@ class LighthouseGame {
     sound.stopLoop('wipe');
     this.story.hide();
     this.room.labels = [];
+    // With friends, how much this child's hand wiped first, which every computer has counted the same.
+    if (this.mode === 'friends') this.friends.finished(this.sinceGo, { n: this.tally.get(this.friends.room.you) ?? 0, w: 1 });
+    for (const each of this.friendGloves) each.glove.visible = false;
   }
 
   summary() {
     const { home, treasure } = this.storm;
     const { hands } = this.session.settings;
     const byHand = (count) => ({ left: hands === 'left' ? count : 0, right: hands === 'right' ? count : 0 });
-    return { hero: home, noun: 'storm', rows: { ships: byHand(home), treasure: byHand(treasure) } };
+    this.friends.showResults();
+    // A game with friends is on the host's level, so it doesn't move the child's own level on.
+    return { hero: home, noun: 'storm', rows: { ships: byHand(home), treasure: byHand(treasure) }, countsForLevel: !this.friends.current };
   }
 }
 
@@ -308,6 +580,7 @@ new GameSession({
           <div id="chip-treasure-box" class="chip" hidden><span class="chip-label">Treasure</span><span id="chip-treasure" class="chip-value">🐚 0</span></div>
         </div>
         <div class="race-progress" aria-hidden="true"><div id="race-progress-fill" class="race-progress-fill"></div></div>
+        <ol id="light-scores" class="light-scores" aria-label="How much each one has cleaned" hidden></ol>
       </div>
       ${STORY_BOX}
       <div class="film" aria-hidden="true">

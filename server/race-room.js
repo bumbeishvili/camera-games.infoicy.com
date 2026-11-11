@@ -10,6 +10,7 @@
 //                                      changes. length is the race's laps, a flight's planes to drop, or how
 //                                      many balloons a game of Balloon Pop has, and mode its maths challenge.
 //                                      In Giraffe's Maze, length is how many mazes, and mode their size and seed.
+//                                      In The Lighthouse Keeper, length is how many ships there are to bring home.
 //                                      racing says they're in the middle of one, for someone back mid-race
 //   ready  {}                              they're waiting at the start
 //   go     {}                              the host starts with whoever is ready
@@ -18,7 +19,8 @@
 //   score  { ms, n }                       how many they've popped, or got right, so far
 //   hand   { ms, x, y, v, o, p }           where their glove is in Balloon Pop, from 0 to 1 across and down
 //                                      the screen, whether it can be seen and is open, and p, its 21
-//                                      points from the middle of the palm, as x, y, x, y..., in palms
+//                                      points from the middle of the palm, as x, y, x, y..., in palms. In The
+//                                      Lighthouse Keeper, x and y are across and down the window instead
 //   world  { ms, b, q, qa }                the host's balloons in Balloon Pop, which everyone plays with:
 //                                      each [id, x, y, r, colour, number, flags], and the sum being asked
 //   claim  { k }                           this player's hand got to balloon k: the first to says so has it.
@@ -46,6 +48,10 @@
 //                                      glove can be seen and is open, where it is, and p, its 21 points, as in hand.
 //                                      Everyone makes the same mazes from the host's mode, its size and a seed, and
 //                                      claims the fruit and lost friends it reaches
+//   wipe   { w, c }                        The Lighthouse Keeper: their hand has wiped patches c of window w, each
+//                                      a whole number from 0 to WINDOW_PATCHES - 1, all of those since the last
+//                                      wipe, sent at most 10 times a second. Each patch is the first hand's to wipe
+//                                      it. A wipe with no answer is sent again, so a patch can come more than once
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
@@ -56,6 +62,9 @@
 //   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker { from, ... } and done { from, ms, n, w }   passed on
 //                                      from the others: ball only from the host, and shot only to the host
 //   claimed { k, by }                      balloon k, or round k, went to player by, sent to everyone, them too
+//   wiped  { w, c, by }                    patches c of window w went to player by, as theirs wiped them first,
+//                                      sent to everyone, them too. Those in a wipe that had gone to someone else
+//                                      already are said again only to the one who sent it, with whose they are
 //   full   {}                              the room already has as many as it holds: see mostIn
 //   taken  {}                              making a new game, that code is already in use: choose another
 //   nobody {}                              joining by a code, there's no game with it just now
@@ -71,6 +80,10 @@ export const CODE_LENGTH = 3;
 const OLD_CODE_LENGTH = 6; // Links from before codes were 3 long still open their game.
 export const MOST_BYTES = 1800; // A message bigger than this is ignored. The host's balloons are the biggest.
 const MOST_BALLOONS = 24;
+// The Lighthouse Keeper's windows: each is 14 by 9 patches of mud (see GRID in games/lighthouse/storm.js), and a
+// storm has at most four of them, with room to spare.
+export const WINDOW_PATCHES = 126;
+const MOST_WINDOWS = 10;
 const MOST_A_SECOND = 40; // Messages a player can send in a second; more are dropped, apart from ALWAYS_HEARD.
 const ALWAYS_HEARD = new Set(['ready', 'go', 'done', 'leave']);
 // A player who goes and comes back as soon as this carries on as before, as when a laptop wakes up again.
@@ -277,6 +290,19 @@ export function cleanWalker(message) {
   };
 }
 
+/**
+ * Only what a wipe in The Lighthouse Keeper should hold: which window, and which of its patches, each a whole
+ * number from 0 to WINDOW_PATCHES - 1, rounded, and each once. Anything else in the list is left out.
+ */
+export function cleanWipe(message) {
+  const c = [];
+  for (const value of Array.isArray(message.c) ? message.c : []) {
+    const patch = typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : -1;
+    if (patch >= 0 && patch < WINDOW_PATCHES && !c.includes(patch)) c.push(patch);
+  }
+  return { w: number(message.w, 0, MOST_WINDOWS - 1, 0), c };
+}
+
 /** Only what a car message should hold, rounded, so nothing else can be passed on. */
 export function cleanCar(message) {
   return {
@@ -311,6 +337,7 @@ export class RaceRoom {
     this.counts = new Map(); // id: { second, count }, to drop a flood of messages. Fine to lose.
     this.recent = new Map(); // id: { meta, at }, for those who have just gone: see cameBack. Fine to lose too.
     this.claims = new Map(); // Balloon Pop: which balloon went to whom, this game. Cleared as each one starts.
+    this.patches = new Map(); // The Lighthouse Keeper: which patch of which window went to whom, this game. The same.
   }
 
   /** What was kept about a player who went a moment ago and is back with their id, or null. */
@@ -413,6 +440,29 @@ export class RaceRoom {
         for (const each of players) each.send({ t: 'claimed', k, by: meta.id });
         break;
       }
+      case 'wipe': {
+        // The first hand to wipe a patch has it, and everyone is told which this player got. Those that had gone
+        // to someone already are said again, only to this player, so a game that missed hearing it, as when the
+        // connection dropped, still learns whose they are.
+        if (!meta.racing) return;
+        const { w, c } = cleanWipe(message);
+        const got = [];
+        const theirs = new Map();
+        for (const patch of c) {
+          const key = w * WINDOW_PATCHES + patch;
+          const owner = this.patches.get(key);
+          if (owner === undefined) {
+            this.patches.set(key, meta.id);
+            got.push(patch);
+          } else {
+            if (!theirs.has(owner)) theirs.set(owner, []);
+            theirs.get(owner).push(patch);
+          }
+        }
+        if (got.length) for (const each of players) each.send({ t: 'wiped', w, c: got, by: meta.id });
+        for (const [by, patches] of theirs) player.send({ t: 'wiped', w, c: patches, by });
+        break;
+      }
       case 'hit':
         if (!meta.racing) return;
         for (const other of others) other.send({ t: 'hit', from: meta.id, ...cleanHit(message) });
@@ -479,6 +529,7 @@ export class RaceRoom {
     if (!host || !racers.length) return;
     for (const racer of racers) racer.setMeta({ ...racer.meta, ready: false, racing: true });
     this.claims.clear();
+    this.patches.clear();
     const { level, length, mode } = host.meta;
     // One seed for everyone, so a game laid out by chance is laid out the same on every computer.
     const seed = Math.floor(Math.random() * 2 ** 31);
