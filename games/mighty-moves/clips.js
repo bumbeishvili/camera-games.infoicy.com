@@ -8,14 +8,8 @@
 // way the child's own movement went.
 import { makePose, mirrorPose } from '../../core/body/characters.js';
 
-/**
- * What a fighter copies of a child: their arms and hands, how they lean and turn, how far they sink, their legs
- * and their jumps. A friend's computer sends these, in this order.
- */
-export const BODY_KEYS = [
-  'handLX', 'handLY', 'handLZ', 'handRX', 'handRY', 'handRZ', 'wristL', 'wristR', 'openL', 'openR',
-  'hipDrop', 'up', 'pitch', 'roll', 'twist', 'footLX', 'footLY', 'footLZ', 'footRX', 'footRY', 'footRZ',
-];
+// What a fighter copies of a child, which a friend's computer sends: see BODY_KEYS in core/body/characters.js.
+export { BODY_KEYS } from '../../core/body/characters.js';
 
 const REST = makePose();
 

@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
+import { seededRandom } from '../../core/friends.js';
 import { Practice } from '../../games/leap-trail/practice.js';
 import { LANE_STEP, LaneReader, bodyAcross } from '../../games/leap-trail/lanes.js';
 import { ARCH_STARS, CHEST_COINS, GEM_COINS, GOLD_STARS, LANES, NEW_THINGS, OBSTACLES, PACES, POWERS, Run, fills, layCourse, newAt, newThingsAt, paceAt, powersFor, trailLevel } from '../../games/leap-trail/run.js';
@@ -1263,4 +1264,56 @@ test('a perfect run at level 10 can catch every prize the trail has', () => {
     assert.ok(result.chests >= 1, `${seed}: a chest opened`);
     assert.ok(result.coins >= 20, `${seed}: ${result.coins} coins`);
   }
+});
+
+/* ---------- running with friends ---------- */
+
+
+const friendsRun = (seed, options = {}) => {
+  const events = [];
+  const run = new Run({ obstacles: 20, pace: 'slow', lanes: true, levelNumber: 9, random: seededRandom(seed), friends: true, onEvent: (event) => events.push(event), ...options });
+  return { run, events };
+};
+const layout = (run) => JSON.stringify({ course: run.course.map(({ kind, at, lanes }) => ({ kind, at, lanes })), stars: run.starLines.map(({ at, lane }) => ({ at, lane })) });
+
+test('with friends, the same seed lays out the same trail on every computer, and another seed another', () => {
+  assert.equal(layout(friendsRun(1234).run), layout(friendsRun(1234).run));
+  assert.notEqual(layout(friendsRun(1234).run), layout(friendsRun(99).run));
+  // However each child gets over things, which is theirs.
+  assert.equal(layout(friendsRun(1234).run), layout(friendsRun(1234, { whenMissed: 'stumble' }).run));
+});
+
+test('with friends, the trail has the level\'s obstacles, but none of the extras that would need sharing out', () => {
+  const { run } = friendsRun(5);
+  assert.ok(run.course.some(({ kind }) => ['fence', 'bale', 'ducks', 'sheep'].includes(kind)), 'the level\'s obstacles');
+  assert.deepEqual(run.pickups, [], 'no power-ups or keys');
+  assert.deepEqual(run.chests, []);
+  assert.ok(run.course.every(({ gold, spring }) => !gold && !spring), 'no golden stars or trampolines');
+  assert.equal(run.levelRules.place, 'autumn');
+  assert.equal(run.levelRules.coins, true);
+});
+
+test('with friends, a star reached is asked for, and it\'s whoever\'s the server says, gone from the trail if a friend\'s', () => {
+  const { run, events } = friendsRun(77, { lanes: false });
+  run.begin();
+  for (let t = 0; t < 30 && !events.some(({ type }) => type === 'star-asked'); t += 0.05) {
+    run.update(0.05);
+    if (run.mustJump) run.jump();
+  }
+  const asked = events.filter(({ type }) => type === 'star-asked').map(({ star }) => star.index);
+  assert.ok(asked.length >= 1);
+  assert.equal(run.stats.linedStars, 0, 'not had until the server says');
+  run.settleStar(asked[0], true);
+  assert.equal(run.stats.linedStars, 1);
+  run.settleStar(asked[0], false);
+  assert.equal(run.stats.linedStars, 1, 'once had, it stays had');
+  // A star further on, which a friend got to first: gone, and never asked for.
+  const later = run.starLines.find(({ index, asked: wasAsked }) => index > asked[0] && !wasAsked);
+  run.settleStar(later.index, false);
+  assert.equal(later.gone, true);
+  for (let t = 0; t < 40 && run.nextStar <= later.index; t += 0.05) {
+    run.update(0.05);
+    if (run.mustJump) run.jump();
+  }
+  assert.ok(!events.some(({ type, star }) => type === 'star-asked' && star.index === later.index));
 });

@@ -3,8 +3,14 @@
 // child never has to tell a squat from a jump. This file runs it from start to finish, on top of
 // what the body games share in core/body/game.js. The rules are in run.js, the lanes are read in
 // lanes.js, and the world is in world.js.
+//
+// Friends can run together, each on their own computer: everyone runs the same trail, sees the others' runners
+// beside them, copying their children, and a star on the trail is had by whoever gets to it first.
+import { BODY_KEYS, bodyFrom, bodyList } from '../../core/body/characters.js';
 import { BODY_SAY, BodyGame, byElementId } from '../../core/body/game.js';
 import { mountBodyShell } from '../../core/body/shell.js';
+import { seededRandom, Track } from '../../core/friends.js';
+import { FriendsPanel } from '../../core/friends-ui.js';
 import { bodyAcross, LaneReader } from './lanes.js';
 import { Practice } from './practice.js';
 import { ARCH_STARS, GEM_COINS, GOLD_STARS, POWERS, Run, newAt as newAtLevel, newThingsAt } from './run.js';
@@ -35,6 +41,36 @@ const DEFAULTS = {
   fighter: 'giraffe',
 };
 const CHOICES = { jumpWith: String, pace: String, obstacles: Number, onMissed: String, trailLanes: String };
+const LENGTHS = [10, 20, 40];
+
+// Running with friends, each on their own computer: see core/friends-ui.js for what each of these is.
+const RUN_WORDS = {
+  toggle: 'Run with a friend',
+  make: 'Make a run',
+  codeLabel: 'A friend’s run code',
+  codeName: 'Run code',
+  how: 'Tell your friend the code. Then you both choose a runner and press <b>Let’s run!</b>',
+  leave: 'Leave this run',
+  privacy: 'Only your name, who runs, where your runner is and how it moves go to your friends. The camera picture stays on this computer.',
+  alone: 'Run on your own',
+  full: 'That run already has 4 runners.',
+  lost: 'Can’t reach the run. Check the internet, then try again.',
+  left: 'You’ve left the run.',
+  badCode: 'A run code is 3 letters and numbers.',
+  busy: 'Running',
+  still: 'still running',
+};
+// Each friend's runner as their game sends it, a moment behind, and going on the way it was between messages.
+const RUNNER_TRACK = { lerp: ['d', 'x', 'y', 's'], steps: ['j', 'w', 'b'], guess: (last, seconds) => ({ d: last.d + last.s * seconds }) };
+const BODY_TRACK = { lists: ['p'] };
+const SHOWN_BEHIND_SECONDS = 0.12; // How far behind a friend's runner is shown, which their speed makes up.
+const STAR_ANSWER_MS = 1500; // A star asked for with no answer from the server, as when it can't be reached, is had.
+// The host's pace and lanes, for everyone's trail, in a word: slowL is slow with lanes.
+const runMode = (pace, lanes) => `${pace}${lanes ? 'L' : 'N'}`;
+const fromMode = (mode) => {
+  const [, pace, lanes] = /^(slow|medium|fast)([LN])$/.exec(mode ?? '') ?? [];
+  return pace ? { pace, lanes: lanes === 'L' } : null;
+};
 
 // Every one of these has a rendered voice file: see audio/voice/lines.json.
 const SAY = {
@@ -140,6 +176,28 @@ class LeapTrail extends BodyGame {
       this.setScreen('choose');
     });
     byElementId('practice-skip').addEventListener('click', () => this.endPractice());
+    // Running with friends, if a grown-up makes or joins a run.
+    this.mates = [];
+    this.asked = new Map(); // Stars asked for, by index: when.
+    this.markMates = [];
+    this.friends = new FriendsPanel({
+      game: 'leap-trail',
+      linkKey: 'run',
+      words: RUN_WORDS,
+      hello: () => ({ driver: this.chosen?.id ?? this.settings.fighter, level: this.levels.current, length: this.settings.obstacles, mode: runMode(this.settings.pace, this.hasLanes) }),
+      screen: () => this.screen,
+      portraits: () => this.portraits,
+      onGone: (friend) => this.friendGone(friend),
+      onMove: (id, message) => this.fromFriend(id, message),
+      // Whoever caught the most stars. Equal ones share a place.
+      rank: (a, b) => b.dropped - a.dropped,
+      resultText: ({ dropped }) => `${dropped} ${dropped === 1 ? 'star' : 'stars'}`,
+      titles: { first: 'You caught the most stars!', other: 'Great running!' },
+      startAfter: byElementId('start'),
+      waitingBefore: byElementId('screen-finish'),
+      resultsAfter: document.querySelector('#screen-finish .finish-hero'),
+      finishTitle: byElementId('finish-title'),
+    });
     byElementId('recheck').addEventListener('click', () => {
       byElementId('panel').close();
       this.practised = false;
@@ -154,6 +212,12 @@ class LeapTrail extends BodyGame {
       world: this.world,
       get run() {
         return game.run;
+      },
+      get friends() {
+        return game.friends;
+      },
+      get mates() {
+        return game.mates;
       },
     };
   }
@@ -372,17 +436,39 @@ class LeapTrail extends BodyGame {
     else this.beginPractice();
   }
 
+  /** Ready to run. With friends, everyone waits for the others first, and then all count down together. */
   beginCountdown() {
+    const go = () => {
+      if (this.screen === 'waiting') this.countDown();
+    };
+    if (this.friends.holdStart(go)) {
+      this.hideCoach();
+      this.prompt.clear();
+      this.setScreen('waiting');
+      return;
+    }
+    this.countDown();
+  }
+
+  countDown() {
     const { settings, world } = this;
-    const levelNumber = this.startLevel();
+    // With friends, everyone runs the host's trail: their level, length, pace and lanes, laid out from the same
+    // seed. It doesn't move anyone's own level on, and each child keeps their own way of getting over things.
+    const friendly = this.friends.current;
+    document.body.toggleAttribute('data-friends-race', Boolean(friendly));
+    const levelNumber = friendly ? friendly.level : this.startLevel();
+    const host = friendly ? fromMode(friendly.mode) : null;
     this.run = new Run({
-      obstacles: settings.obstacles,
-      pace: settings.pace,
-      lanes: this.hasLanes,
+      obstacles: friendly && LENGTHS.includes(friendly.length) ? friendly.length : settings.obstacles,
+      pace: host?.pace ?? settings.pace,
+      lanes: host ? host.lanes : this.hasLanes,
       whenMissed: settings.onMissed,
       levelNumber,
+      random: friendly ? seededRandom(friendly.seed) : Math.random,
+      friends: Boolean(friendly),
       onEvent: (event) => this.onRunEvent(event),
     });
+    this.setUpMates(friendly);
     world.won = false;
     world.setRun(this.run);
     world.setLane(0);
@@ -421,7 +507,124 @@ class LeapTrail extends BodyGame {
     }
   }
 
+  /** Friends' runners, each following what their own game sends, and their names over them. */
+  setUpMates(friendly) {
+    this.mates = (friendly?.friends ?? []).map((friend) => ({ friend, track: new Track(RUNNER_TRACK), body: new Track(BODY_TRACK), stars: 0, gone: false }));
+    this.asked = new Map();
+    this.world.setMates(this.mates.map(({ friend }) => friend.spec));
+    for (const mark of this.markMates) mark.root.remove();
+    this.markMates = this.mates.map(({ friend }) => {
+      const root = document.createElement('div');
+      root.className = 'runner-mark';
+      root.dataset.where = 'none';
+      const face = document.createElement('img');
+      face.className = 'runner-mark-face';
+      face.alt = '';
+      face.src = this.portraits[friend.spec.id] ?? '';
+      const name = document.createElement('span');
+      name.className = 'runner-mark-name';
+      name.textContent = friend.spec.name;
+      root.append(face, name);
+      document.body.append(root);
+      return { root };
+    });
+    this.showScores();
+  }
+
+  /** Where each friend is now, a moment behind what their game says, so that they move smoothly. */
+  updateMates(now) {
+    const wheres = this.mates.map((mate) => {
+      if (mate.gone) return null;
+      const at = mate.track.at(now);
+      if (!at) return null;
+      const body = mate.body.at(now);
+      return { ...at, d: at.d + at.s * SHOWN_BEHIND_SECONDS, live: body?.p?.length === BODY_KEYS.length ? bodyFrom(body.p) : null };
+    });
+    this.world.placeMates(wheres);
+    // Their names over them, while they can be seen, on the trail.
+    const running = ['countdown', 'run', 'finishing'].includes(this.screen);
+    this.world.mates.forEach((shown, index) => {
+      const mark = this.markMates[index];
+      if (!mark) return;
+      const seen = running && shown.shown ? this.world.project(shown.x, 2.15, shown.z) : null;
+      const onScreen = seen && !seen.behind && seen.x > 0 && seen.x < innerWidth && seen.y > 0 && seen.y < innerHeight;
+      mark.root.dataset.where = onScreen ? 'on' : 'none';
+      if (onScreen) mark.root.style.transform = `translate(${Math.round(seen.x)}px, ${Math.round(seen.y)}px)`;
+    });
+  }
+
+  /** Where this child's runner is, and their body, for friends' games, timed from "GO!". */
+  sendRunner(now) {
+    const { run, world, reader } = this;
+    if (!this.friends.current || !run || run.state === 'ready') return;
+    const since = now - this.goAt;
+    this.friends.sendMove('runner', { d: run.distance, x: world.runnerX, y: run.air.height, s: run.speed, j: run.move?.kind === 'jump' ? 1 : 0, w: run.waiting ? 1 : 0, b: run.stats.bumps }, since);
+    // An empty list says the camera can't see this child, so their runner stops copying them.
+    this.friends.sendMove('pose', { p: reader.hasPose && !this.bodyLost() ? bodyList(reader.pose) : [] }, since);
+  }
+
+  /** Something from a friend's game: where their runner is, their body, their stars, or whose a star is. */
+  fromFriend(id, message) {
+    if (message.t === 'claimed') {
+      this.asked.delete(message.k);
+      this.run?.settleStar(message.k, message.by === this.friends.room.you);
+      return;
+    }
+    const mate = this.mates.find(({ friend }) => friend.id === id);
+    if (!mate) return;
+    if (message.t === 'runner') mate.track.push(message, performance.now());
+    else if (message.t === 'pose') mate.body.push(message, performance.now());
+    else if (message.t === 'score') {
+      mate.stars = message.n;
+      this.showScores();
+    }
+  }
+
+  /** A star this runner has reached: the server says whose it is, as a friend may have got there first. */
+  askForStar({ star }) {
+    this.asked.set(star.index, performance.now());
+    this.friends.claim(star.index);
+  }
+
+  /** With no answer about a star for a while, as when the server can't be reached, it's this runner's. */
+  settleUnanswered(now) {
+    for (const [index, at] of this.asked) {
+      if (now - at < STAR_ANSWER_MS) continue;
+      this.asked.delete(index);
+      this.run.settleStar(index, true);
+    }
+  }
+
+  /** Everyone's stars, top right, with friends: the most first. */
+  showScores() {
+    const board = byElementId('run-scores');
+    const friendly = this.mates.length > 0;
+    board.hidden = !friendly;
+    if (!friendly) return;
+    const rows = [{ name: 'You', stars: this.run?.starTotal ?? 0, you: true }, ...this.mates.filter(({ gone }) => !gone).map(({ friend, stars }) => ({ name: friend.spec.name, stars, you: false }))];
+    rows.sort((a, b) => b.stars - a.stars);
+    board.replaceChildren(...rows.map(({ name, stars, you }) => {
+      const row = document.createElement('li');
+      if (you) row.className = 'is-you';
+      const who = document.createElement('span');
+      who.textContent = name;
+      const count = document.createElement('strong');
+      count.textContent = String(stars);
+      row.append(who, count);
+      return row;
+    }));
+  }
+
+  /** A friend has gone in the middle, and their runner with them. */
+  friendGone(friend) {
+    const mate = this.mates.find((each) => each.friend.id === friend.id);
+    if (!mate) return;
+    mate.gone = true;
+    this.showScores();
+  }
+
   beginRun() {
+    this.goAt = performance.now();
     this.setCount(this.translate('Go!'));
     this.sound.go();
     this.sound.startMusic();
@@ -559,6 +762,11 @@ class LeapTrail extends BodyGame {
     }
     const { streak, coins } = run.stats;
     const stars = run.starTotal;
+    // Friends' scoreboards hear about every star.
+    if (lastNumbers.stars !== stars && this.friends.current) {
+      this.friends.sendScore(stars, performance.now() - this.goAt);
+      this.showScores();
+    }
     if (lastNumbers.coins !== coins) {
       lastNumbers.coins = coins;
       byElementId('coins').textContent = String(coins);
@@ -608,6 +816,7 @@ class LeapTrail extends BodyGame {
     const handlers = {
       ask: () => this.onAsk(event),
       'star-line': () => this.onStarLine(event),
+      'star-asked': () => this.askForStar(event),
       gold: () => this.onGold(event),
       bounce: () => this.onBounce(event),
       power: () => this.onPower(event),
@@ -742,6 +951,8 @@ class LeapTrail extends BodyGame {
 
   onFinished() {
     const { world, sound } = this;
+    // Friends' finish cards fill in with how this child did.
+    if (this.friends.current) this.friends.finished(performance.now() - this.goAt, { w: 1, n: this.run.starTotal });
     world.setLive(null);
     this.camera.stop();
     this.reader.forget();
@@ -781,8 +992,15 @@ class LeapTrail extends BodyGame {
       { name: 'streak', icon: 'starJump', label: 'Most in a row', value: stats.bestStreak },
     ].filter(({ name }) => this.hasLanes || name !== 'across');
     this.fillTallyCards(byElementId('finish-tally'), entries);
-    // Nobody fails a run, so every finished run moves on a level.
-    this.finishLevel(true);
+    // Nobody fails a run, so every finished run moves on a level. Running with friends is on the host's
+    // level, so it doesn't move anyone's own level on.
+    if (this.friends.current) {
+      this.levels.last = null;
+      this.levelUi.refresh();
+    } else {
+      this.finishLevel(true);
+    }
+    this.friends.showResults();
     this.confetti.start();
     this.setScreen('finish');
   }
@@ -815,6 +1033,11 @@ class LeapTrail extends BodyGame {
 
   frame(dt, now) {
     if (this.run) this.updateNew(dt);
+    if (this.mates.length) this.updateMates(now);
+    if (this.screen === 'run' || this.screen === 'finishing') {
+      this.sendRunner(now);
+      if (this.asked.size) this.settleUnanswered(now);
+    }
     switch (this.screen) {
       case 'practice':
         this.updatePractice(dt, now);
@@ -867,6 +1090,7 @@ mountBodyShell({
     </div>
   </header>
   <div id="power-row" class="power-row" aria-hidden="true"></div>
+  <ol id="run-scores" class="run-scores" aria-label="Stars" hidden></ol>
   <div id="trail-new" class="trail-new" aria-hidden="true"></div>`,
   finishBody: `
       <h2 id="finish-title">You made it!</h2>

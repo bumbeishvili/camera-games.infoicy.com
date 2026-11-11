@@ -96,7 +96,9 @@ test('the first in hosts, everyone hears who\'s here, and the host\'s course is 
   assert.equal(friend.last('go'), undefined, 'not until everyone is ready');
   friend.say({ t: 'ready' });
   for (const player of [host, friend]) {
-    assert.deepEqual(player.last('go'), { t: 'go', level: 7, length: 1, laps: 1, mode: '', racers: ['aaaaaaaa', 'bbbbbbbb'] });
+    const { seed, ...go } = player.last('go');
+    assert.deepEqual(go, { t: 'go', level: 7, length: 1, laps: 1, mode: '', racers: ['aaaaaaaa', 'bbbbbbbb'] });
+    assert.ok(Number.isInteger(seed), 'a seed, for a game laid out by chance');
   }
   const after = host.last('room').members;
   assert.ok(after.every(({ ready, racing }) => !ready && racing), 'everyone is racing, and has to be ready again for the next');
@@ -313,7 +315,9 @@ test('in Balloon Pop, scores go to the others, and the host\'s number of balloon
   friend.say({ t: 'hi', name: 'Ben', level: 1, length: 20, mode: 'add<script>' });
   host.say({ t: 'ready' });
   friend.say({ t: 'ready' });
-  assert.deepEqual(friend.last('go'), { t: 'go', level: 3, length: 60, laps: 60, mode: 'times', racers: ['aaaaaaaa', 'bbbbbbbb'] });
+  const { seed, ...go } = friend.last('go');
+  assert.deepEqual(go, { t: 'go', level: 3, length: 60, laps: 60, mode: 'times', racers: ['aaaaaaaa', 'bbbbbbbb'] });
+  assert.equal(seed, host.last('go').seed, 'the same seed for everyone');
   host.say({ t: 'score', ms: 4000, n: 7, extra: 'not this' });
   assert.deepEqual(friend.last('score'), { t: 'score', from: 'aaaaaaaa', ms: 4000, n: 7 });
   friend.say({ t: 'done', ms: 60000, n: 12, w: 1 });
@@ -519,4 +523,18 @@ test('a connection that has said nothing for a long while gives up its place, so
   // And they can still come back as themselves.
   assert.equal(rules.cameBack('bbbbbbbb').id, 'bbbbbbbb');
   assert.ok(host.meta);
+});
+
+test('in Leap Trail, each runner goes to the others, with only what a runner message should hold, and everyone starts from the same seed', () => {
+  const { join } = makeRoom();
+  const ana = join('aaaaaaaa');
+  const ben = join('bbbbbbbb');
+  ana.say({ t: 'ready' });
+  ben.say({ t: 'ready' });
+  assert.equal(ana.last('go').seed, ben.last('go').seed);
+  ana.say({ t: 'runner', ms: 1200.6, d: 123.4567, x: -1.756, y: 2.3456, s: 14.04, j: true, w: 0, b: 2.4, picture: 'not this' });
+  assert.deepEqual(ben.last('runner'), { t: 'runner', from: 'aaaaaaaa', ms: 1201, d: 123.46, x: -1.76, y: 2.35, s: 14, j: 1, w: 0, b: 2 });
+  ana.say({ t: 'runner', d: 'far', x: 99, y: -3, s: 500 });
+  assert.deepEqual(ben.last('runner'), { t: 'runner', from: 'aaaaaaaa', ms: 0, d: 0, x: 5, y: 0, s: 60, j: 0, w: 0, b: 0 });
+  assert.equal(ana.last('runner'), undefined, 'nobody hears their own');
 });

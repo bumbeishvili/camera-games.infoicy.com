@@ -1,5 +1,5 @@
-// Playing with friends, in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves and Bounce Back: who's in a room,
-// and what they pass to each other.
+// Playing with friends, in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back and Leap Trail: who's
+// in a room, and what they pass to each other.
 // The same rules run on Cloudflare (server/worker.js) and on this computer for the tests
 // (tools/race-server.mjs). Each game has rooms of its own. Nothing here is kept once everyone has gone, and no
 // camera picture ever comes here: only where each car or plane is, the moves a fighter makes and how it stands,
@@ -37,13 +37,17 @@
 //                                      whether it's rolling, and whether the game is over
 //   shot   { ms, k, x, y, vx, vy }         in Bounce Back, this player hit shot k, from there and that way. Only
 //                                      the host's game hears it, as the host's game runs the ball
+//   runner { ms, d, x, y, s, j, w, b }     where their runner is in Leap Trail: how far along, how far across,
+//                                      how high, how fast, whether it's jumping or waiting, and how many times
+//                                      it has stumbled
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
 // The room sends:
 //   room   { you, members: [{ id, name, driver, ready, racing, host }] }   whenever that changes
-//   go     { level, length, laps, mode, racers }   the countdown starts now, on the host's course (laps is length)
-//   car, plane, score, hand, world, hit, pose, racket, ball, shot { from, ... } and done { from, ms, n, w }   passed on
+//   go     { level, length, laps, mode, racers, seed }   the countdown starts now, on the host's course (laps is
+//                                      length). seed is the same for everyone, for a game laid out by chance
+//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner { from, ... } and done { from, ms, n, w }   passed on
 //                                      from the others: ball only from the host, and shot only to the host
 //   claimed { k, by }                      balloon k, or round k, went to player by, sent to everyone, them too
 //   full   {}                              the room already has as many as it holds: see mostIn
@@ -182,6 +186,20 @@ export function cleanHit(message) {
     sm: message.sm ? 1 : 0,
     sg: message.sg ? 1 : 0,
     sd: message.sd === 'l' || message.sd === 'r' ? message.sd : '',
+  };
+}
+
+/** Only what a runner message should hold, in Leap Trail, rounded. */
+export function cleanRunner(message) {
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    d: number(message.d, -100, 100_000, 2),
+    x: number(message.x, -5, 5, 2),
+    y: number(message.y, 0, 10, 2),
+    s: number(message.s, 0, 60, 1),
+    j: message.j ? 1 : 0,
+    w: message.w ? 1 : 0,
+    b: number(message.b, 0, 999, 0),
   };
 }
 
@@ -388,8 +406,9 @@ export class RaceRoom {
       case 'plane':
       case 'hand':
       case 'pose':
-      case 'racket': {
-        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand, pose: cleanPose, racket: cleanRacket }[message.t](message);
+      case 'racket':
+      case 'runner': {
+        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand, pose: cleanPose, racket: cleanRacket, runner: cleanRunner }[message.t](message);
         for (const other of others) other.send({ t: message.t, from: meta.id, ...moved });
         break;
       }
@@ -433,7 +452,9 @@ export class RaceRoom {
     for (const racer of racers) racer.setMeta({ ...racer.meta, ready: false, racing: true });
     this.claims.clear();
     const { level, length, mode } = host.meta;
-    const go = { t: 'go', level, length, laps: length, mode, racers: racers.map((each) => each.meta.id) };
+    // One seed for everyone, so a game laid out by chance is laid out the same on every computer.
+    const seed = Math.floor(Math.random() * 2 ** 31);
+    const go = { t: 'go', level, length, laps: length, mode, racers: racers.map((each) => each.meta.id), seed };
     for (const player of players) player.send(go);
     this.tellEveryone();
   }

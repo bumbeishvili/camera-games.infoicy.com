@@ -254,7 +254,7 @@ export class FriendsPanel {
    * It starts, for those in it, on the host's course. Each friend is { id, key, spec, slot }, spec being the
    * character they chose with their own name, and slot their place in the order everyone has.
    */
-  start({ level, laps, length, mode, racers }) {
+  start({ level, laps, length, mode, racers, seed = 0 }) {
     if (!this.go || !racers.includes(this.room.you) || this.screen() !== 'waiting') return;
     const others = racers.filter((id) => id !== this.room.you);
     const friends = others.map((id) => {
@@ -266,7 +266,7 @@ export class FriendsPanel {
     const size = length ?? laps;
     // Who hosts as it starts, as Balloon Pop's host runs the balloons everyone plays with.
     const host = this.room.members.find((member) => member.host)?.id ?? racers[0];
-    this.current = { level, length: size, laps: size, mode, friends, mySlot: racers.indexOf(this.room.you), racers, host, hosting: host === this.room.you, tracks: new Map() };
+    this.current = { level, length: size, laps: size, mode, seed, friends, mySlot: racers.indexOf(this.room.you), racers, host, hosting: host === this.room.you, tracks: new Map() };
     this.results = new Map();
     this.room.racing = true;
     const { go } = this;

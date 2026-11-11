@@ -13,7 +13,7 @@ import { mountBodyShell } from '../../core/body/shell.js';
 import { Track } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
 import { Arena } from './arena.js';
-import { BODY_KEYS } from './clips.js';
+import { BODY_KEYS, bodyFrom, bodyList } from '../../core/body/characters.js';
 import { Coach } from './coach.js';
 import { FightSound } from './fight-sound.js';
 import { Fight } from './fight.js';
@@ -61,8 +61,6 @@ const KNOCKOUT_WAIT_MS = 3000;
 // Fighting a friend, each child's body goes to the other's computer, for their fighter there to copy them.
 const SEND_BODY_SCREENS = new Set(['intro', 'countdown', 'fight', 'roundend', 'break']);
 const FRIEND_BODY = { lists: ['p'] };
-const bodyList = (pose) => BODY_KEYS.map((key) => Math.round(pose[key] * 100) / 100);
-const bodyFrom = (list) => Object.fromEntries(BODY_KEYS.map((key, index) => [key, list[index]]));
 
 // Every one of these has a rendered voice file: see audio/voice/lines.json.
 const SAY = {

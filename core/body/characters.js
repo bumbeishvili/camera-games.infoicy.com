@@ -265,6 +265,20 @@ export function makePose() {
   };
 }
 
+/**
+ * What a character copies of a child: their arms and hands, how they lean and turn, how far they sink, their legs
+ * and their jumps. Playing with friends, a child's computer sends these, in this order, for their character on
+ * the friend's screen to copy them too.
+ */
+export const BODY_KEYS = [
+  'handLX', 'handLY', 'handLZ', 'handRX', 'handRY', 'handRZ', 'wristL', 'wristR', 'openL', 'openR',
+  'hipDrop', 'up', 'pitch', 'roll', 'twist', 'footLX', 'footLY', 'footLZ', 'footRX', 'footRY', 'footRZ',
+];
+
+/** A body as a list of numbers to send, rounded, and back again. */
+export const bodyList = (pose) => BODY_KEYS.map((key) => Math.round(pose[key] * 100) / 100);
+export const bodyFrom = (list) => Object.fromEntries(BODY_KEYS.map((key, index) => [key, list[index]]));
+
 export function mixPose(out, a, b, amount) {
   for (const key of Object.keys(out)) out[key] = a[key] + (b[key] - a[key]) * amount;
   return out;

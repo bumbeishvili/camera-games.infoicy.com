@@ -7,7 +7,7 @@ They're played at <https://hemi.infoicy.com> in Google Chrome, on a computer wit
 - **High Five Racers:** the car only drives while the hand is open. Steering over to a giant hand at the roadside high fives it for a boost, and keeping the hand open fills up turbo. Nobody can crash or lose: if the hand closes, the car coasts to a stop and waits. See [below](#high-five-racers).
 - **Balloon Pop:** balloons float up and drift around, and the open hand pops them. A closed hand just bumps them. Missing a balloon costs nothing. A grown-up can turn on a maths challenge, where the wrong answer burns the glove.
 - **Mighty Moves:** a fighting game against the computer, or a friend on their own computer, played with the whole body. The coach shows concrete moves to do, like a clap, a squat, a jump or a hand circle, and only those can win. Ordinary punches and kicks are small hits. See [below](#mighty-moves).
-- **Leap Trail:** a fast run down a country path in 3D, jumping over what's in the way and stepping from side to side between three lanes to grab lines of stars, with the child's real body. See [below](#leap-trail).
+- **Leap Trail:** a fast run down a country path in 3D, on your own or with friends, jumping over what's in the way and stepping from side to side between three lanes to grab lines of stars, with the child's real body. See [below](#leap-trail).
 - **Sky Wings:** a dogfight over a 3D island, with both arms as wings. Tipping them banks and turns the plane, and raising or lowering them flies it up and down. Sky pirates hunt the child and the child hunts them: the guns fire by themselves at any plane inside the ring, until they've all been dropped.
 - **Robot Rescue:** robots have caught the friends from the other games, and the child rides a little tram through a seaside town to free them. An open hand fires at whatever is in the crosshair, and a closed hand raises a shield and reloads. See [below](#robot-rescue).
 - **Tank Patrol:** robot tanks are rolling into Giraffe's valley, and he rides along with his long neck sticking out of the hatch. With one hand: closing it drives the tank to where it points, and opening it fires at any robot tank under the crosshair that the gun can reach. See [below](#tank-patrol).
@@ -70,7 +70,7 @@ games/
   lighthouse/           its storm and ships, the lamp room and its sounds
   bounce-back/          its rules and levels, the court, the players' pictures, and the ball on a friend's computer
 tools/                  the local server, the local race server, and what prepares voices and sounds
-server/                 the server for playing with friends in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves and Bounce Back: its rules, and the Cloudflare Worker that runs them
+server/                 the server for playing with friends in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back and Leap Trail: its rules, and the Cloudflare Worker that runs them
 vendor/                 libraries, the tracking model and fonts
 test/                   unit tests, and Playwright tests for the hub and each game
 ```
@@ -327,6 +327,16 @@ The character runs fast down the trail by itself, through a village, past fences
 | 10 | **An autumn sunset**, and **a gem** at the top of each trampoline's arch. |
 
 What a level brings comes at least once on every trail, however short. Power-ups only run down while the runner is going, so resting, or waiting for a move, never uses them up, and a missed star, coin, power-up, key or chest costs nothing. The first time each new thing comes into view in a run, a small label at the top names it for a moment, in the language the voice speaks, and it waits while the grown-ups' panel is open; nothing new is said aloud. With **Moving from side to side** turned off there's no magnet and no lines crossing lanes, as both are about the lanes, so level 5 brings nothing new, and with the runner set to stop and wait there's no bubble shield, as it never runs into anything. The title card only says what the settings really bring. Anything left behind on the trail, such as a missed trampoline's arch, a golden star or a power-up, and the falling leaves, fades before it gets near the camera. Choosing a runner and practising are always on a summer's day. With reduced motion, no leaves fall, the ducks don't waddle, and a bounce lifts the camera no more than a jump does. Finishing a run moves on a level, as nobody loses one. The numbers are in `trailLevel` in `run.js`.
+
+**Running with friends.** Up to 4 children can run together, each on their own computer with their own camera.
+
+- **Making and joining:** a grown-up presses **Run with a friend** on the title card, then **Make a run**, and tells their friend the 3-letter code, or sends the link. The friend types the code, or opens the link, and is in.
+- **The same trail:** everyone runs the host's trail, laid out the same on every computer from one seed the server gives at the start: their level, pace, length and lanes, with the level's obstacles, places and coins, but without power-ups, trampolines, golden stars, keys or chests, which would each need sharing out. Each child keeps their own way over things, their own move size, and whether their runner waits or stumbles.
+- **Seeing each other:** each friend's runner is on the trail, as far ahead as they really are, in their lane, jumping when they jump and stumbling when they stumble, copying their child's body, with their name and face over them. One just behind is shown at the child's runner's shoulder, never between it and the camera, and one level with it in its lane a step to the side, so both are always seen.
+- **The stars are shared:** a star on the trail is had by whoever gets to it first, as the server says, and it's gone from everyone else's trail. The stars for clearing an obstacle are each child's own. Everyone's stars are shown top right, and the finish card ranks them, the most first.
+- **Levels and settings:** a run with friends doesn't move anyone's own level on, and nobody's settings change.
+
+**What's sent.** Only the name typed, which runner, the host's level, length, pace and lanes, where the runner is about 10 times a second (how far along and across, how high, how fast, whether jumping or waiting, and how many stumbles), the 21 numbers it copies of the child's body, the stars caught so far, and which stars on the trail they've reached. Nothing from the camera is ever sent.
 
 ## Sky Wings
 
@@ -597,7 +607,7 @@ Where each sound came from is in [CREDITS.md](CREDITS.md).
 
 ## Privacy
 
-Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, except that High Five Racers, Sky Wings, Balloon Pop, Mighty Moves and Bounce Back may reach the server for playing with friends, which they only do once a grown-up makes or joins a race, a flight, a game or a fight (see [Racing friends](#high-five-racers)), and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
+Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, except that High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back and Leap Trail may reach the server for playing with friends, which they only do once a grown-up makes or joins a race, a flight, a game, a fight or a run (see [Racing friends](#high-five-racers)), and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
 
 ## Tests
 

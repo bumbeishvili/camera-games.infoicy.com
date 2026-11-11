@@ -11,6 +11,11 @@
 // fighter to wait for it, or costs a stumble, and a missed star costs nothing.
 //
 // Each level, from 1 to 10, is a little harder than the one before: see trailLevel below.
+//
+// Running with friends, everyone runs the same trail, laid out from the same seed: the host's level, pace,
+// length and lanes, with its obstacles and lines of stars, but none of the extras a level adds, which would
+// each need sharing out. A star on the trail is only had by one runner: whoever the server says got to it
+// first. The stars for clearing an obstacle are each runner's own.
 import { clampLevel, ramp, stepsAt } from '../../core/levels.js';
 
 export const PACES = {
@@ -139,6 +144,9 @@ export function trailLevel(level = 1) {
     place: stepsAt(level, { 1: 'day', 7: 'autumn', 10: 'sunset' }),
   };
 }
+
+/** A level, run with friends: the same obstacles, places and coins, without the extras that would need sharing. */
+export const withFriends = (rules) => ({ ...rules, gold: 0, spring: 0, gems: false, powers: [], powerEvery: 0, keyEvery: 0 });
 
 /** A pace, as a level plays it. At level 1 it's the pace itself. */
 export function paceAt(pace, level = 1) {
@@ -374,8 +382,8 @@ function layExtras(course, starLines, lanes, random, rules) {
  * Lays out a trail, at a level. Exported so the tests can look at one. whenMissed is the runner's, as a
  * power-up with nothing to do with these settings isn't laid: see powersFor.
  */
-export function layCourse({ obstacles, pace, lanes = true, whenMissed = 'stumble', random = Math.random, levelNumber = 1 }) {
-  const rules = trailLevel(levelNumber);
+export function layCourse({ obstacles, pace, lanes = true, whenMissed = 'stumble', random = Math.random, levelNumber = 1, friends = false }) {
+  const rules = friends ? withFriends(trailLevel(levelNumber)) : trailLevel(levelNumber);
   const { speed, every } = paceAt(pace, levelNumber);
   const course = [];
   let at = speed * FIRST_OBSTACLE_SECONDS;
@@ -399,6 +407,9 @@ export function layCourse({ obstacles, pace, lanes = true, whenMissed = 'stumble
   const end = at - speed * between(random, every) + speed * AFTER_LAST_SECONDS;
   layWidths(course, lanes, random, rules);
   const starLines = layStarLines(course, speed, lanes, random, rules);
+  starLines.forEach((star, index) => {
+    star.index = index;
+  });
   return { course, starLines, end, ...layExtras(course, starLines, lanes, random, { ...rules, powers: powersFor(rules, { lanes, whenMissed }) }) };
 }
 
@@ -430,7 +441,9 @@ export class Run {
   /**
    * obstacles is how many there are, pace is one of PACES. lanes says whether the lines of stars
    * move between lanes, or all stay in the middle. whenMissed is 'wait' to stop and wait for the
-   * move, or 'stumble' to run into it. levelNumber is the level, from 1 to 10: see trailLevel.
+   * move, or 'stumble' to run into it. levelNumber is the level, from 1 to 10: see trailLevel. friends is
+   * running with friends, on a trail from their shared random, where a star reached is asked for: see
+   * settleStar.
    */
   constructor({
     obstacles = 20,
@@ -439,14 +452,16 @@ export class Run {
     whenMissed = 'wait',
     levelNumber = 1,
     random = Math.random,
+    friends = false,
     onEvent = () => {},
   } = {}) {
     this.levelNumber = levelNumber;
-    this.levelRules = trailLevel(levelNumber);
+    this.friends = friends;
+    this.levelRules = friends ? withFriends(trailLevel(levelNumber)) : trailLevel(levelNumber);
     this.settings = paceAt(pace, levelNumber);
     this.whenMissed = whenMissed;
     this.onEvent = onEvent;
-    const { course, starLines, end, pickups, chests } = layCourse({ obstacles, pace, lanes, whenMissed, random, levelNumber });
+    const { course, starLines, end, pickups, chests } = layCourse({ obstacles, pace, lanes, whenMissed, random, levelNumber, friends });
     this.course = course;
     this.starLines = starLines;
     this.pickups = pickups; // Power-ups and keys, on the line of stars.
@@ -700,12 +715,35 @@ export class Run {
         star.missed = true;
         continue;
       }
-      star.taken = true;
-      star.pulled = star.lane !== this.lane;
-      stats.linedStars += 1;
-      const friend = this.power.friend > 0;
-      if (friend) stats.friendStars += 1;
-      this.emit('star-line', { star, pulled: star.pulled, friend });
+      // With friends, one a friend got to first is gone, and one reached is asked for.
+      if (this.friends) {
+        if (star.gone) continue;
+        star.asked = true;
+        this.emit('star-asked', { star });
+        continue;
+      }
+      this.takeStar(star);
+    }
+  }
+
+  takeStar(star) {
+    const { stats } = this;
+    star.taken = true;
+    star.pulled = star.lane !== this.lane;
+    stats.linedStars += 1;
+    const friend = this.power.friend > 0;
+    if (friend) stats.friendStars += 1;
+    this.emit('star-line', { star, pulled: star.pulled, friend });
+  }
+
+  /** With friends: whose star this is, as the server says. Theirs, and it's gone from the trail. */
+  settleStar(index, mine) {
+    const star = this.starLines[index];
+    if (!star || star.taken || star.gone) return;
+    if (mine) this.takeStar(star);
+    else {
+      star.gone = true;
+      this.emit('star-gone', { star });
     }
   }
 

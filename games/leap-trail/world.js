@@ -34,6 +34,13 @@ const GRASS_BAND = 12;
 const PATH_REPEAT = 8;
 const SEEN_AHEAD = 110;
 const SEEN_BEHIND = 12;
+// Friends' runners: one further behind than this is behind the camera, and one just behind is shown at the
+// shoulder, this far back. Level with the child's runner and in its lane, one is shown a step to the side.
+const MATE_BEHIND = 5;
+const MATE_SHOULDER = -0.8;
+const MATE_NEAR = 4;
+const MATE_ASIDE = 1.15;
+const MATE_SIZE = 0.9;
 const STARS_SHOWN = 26;
 const STARS_SEEN_AHEAD = 75;
 const STREAKS = 46; // Lines rushing past, to show the speed.
@@ -1049,6 +1056,7 @@ export class World {
     });
 
     this.friend = null;
+    this.mates = []; // Friends running on their own computers: see setMates.
     this.friendIn = 0; // 0 is out of sight behind, 1 is running alongside.
     this.friendWanted = 0;
   }
@@ -1459,6 +1467,7 @@ export class World {
     if (this.runner) this.runner.body.root.position.x = this.runnerX;
 
     if (run) this.updateTrail(dt, distance);
+    this.updateMates(dt);
     this.updateOnRunner(dt);
     this.updateLeaves(dt);
     this.updateStarLines(distance);
@@ -1783,6 +1792,71 @@ export class World {
     this.flyCoin(new THREE.Vector3(laneX(lane), 1.25, -0.4), { map: this.starMap, size: 0.7, lift: 0.4 });
   }
 
+  /* ---------- friends, each running on their own computer ---------- */
+
+  /** Friends' runners, one for each friend running, as the characters they chose. */
+  setMates(specs) {
+    for (const mate of this.mates) {
+      this.scene.remove(mate.runner.body.root);
+      mate.runner.body.dispose();
+    }
+    this.mates = specs.map((spec) => {
+      const runner = new Runner(spec);
+      // A little smaller than the child's own runner, which stays the one that stands out.
+      runner.body.root.scale.setScalar(MATE_SIZE);
+      runner.body.root.visible = false;
+      this.scene.add(runner.body.root);
+      return { spec, runner, x: 0, z: 0, bumps: 0, where: null, shown: false, ahead: 0 };
+    });
+  }
+
+  /**
+   * Where each friend is, from what their game says: { d, x, y, s, j, w, b, live } for how far along, how far
+   * across and how high, how fast, whether jumping or waiting, how many times they've stumbled, and their
+   * body to copy, or null when it's not known.
+   */
+  placeMates(wheres) {
+    this.mates.forEach((mate, index) => {
+      mate.where = wheres[index] ?? null;
+    });
+  }
+
+  /**
+   * Each friend's runner, on the same trail, as far ahead as they really are. One just behind is shown at the
+   * child's runner's shoulder, never between it and the camera, and one level with it, in its lane, a step to
+   * the side, so both are always seen.
+   */
+  updateMates(dt) {
+    const { run } = this;
+    for (const mate of this.mates) {
+      const { where } = mate;
+      const { root } = mate.runner.body;
+      mate.ahead = where && run ? where.d - run.distance : 0;
+      mate.shown = Boolean(this.view === 'run' && where && mate.ahead > -MATE_BEHIND && mate.ahead < SEEN_AHEAD);
+      root.visible = mate.shown;
+      if (!mate.shown) continue;
+      let x = where.x;
+      if (mate.ahead < MATE_NEAR && Math.abs(x - this.runnerX) < LANE_WIDTH * 0.75) x = this.runnerX + (this.runnerX > 0 ? -1 : 1) * MATE_ASIDE;
+      mate.x = damp(mate.x, x, 10, dt);
+      mate.z = -Math.max(mate.ahead, MATE_SHOULDER);
+      root.position.set(mate.x, 0, mate.z);
+      if (where.b > mate.bumps) {
+        mate.runner.stumble = 1;
+        mate.runner.body.setExpression('hurt', 1);
+      }
+      mate.bumps = where.b;
+      mate.runner.live = where.live ?? null;
+      mate.runner.update(dt, { speed: where.s, top: run.settings.speed, height: where.y, through: where.j ? 0.4 : 0, jumping: Boolean(where.j), waiting: Boolean(where.w) }, this.reducedMotion);
+    }
+  }
+
+  /** Where a point on the trail is on the screen, for a friend's name over their runner. */
+  project(x, y, z) {
+    const at = (this.projecting ??= new THREE.Vector3()).set(x, y, z);
+    at.project(this.camera);
+    return { x: ((at.x + 1) / 2) * window.innerWidth, y: ((1 - at.y) / 2) * window.innerHeight, behind: at.z > 1 };
+  }
+
   /** The runner's friend, who runs alongside on the grass from level 9: Giraffe, or Truffle if Giraffe is running. */
   makeFriend() {
     const id = this.runner?.spec.id === 'giraffe' ? 'truffle' : 'giraffe';
@@ -1901,6 +1975,8 @@ export class World {
       for (let i = run.nextStar; i < run.starLines.length && used < lineSprites.length; i += 1) {
         const ahead = run.starLines[i].at - distance;
         if (ahead > STARS_SEEN_AHEAD) break;
+        // A friend got to it first.
+        if (run.starLines[i].gone) continue;
         if (run.starLines[i].crosses && ahead < ANNOUNCE_AHEAD) this.seen('zigzag');
         const bob = this.reducedMotion ? 0 : Math.sin(this.time * 4 + i * 0.7) * 0.1;
         lineSprites[used].position.set(laneX(run.starLines[i].lane ?? 0), 1.25 + bob, -ahead);
