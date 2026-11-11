@@ -2,12 +2,18 @@
 // them. A closed hand drives the tank to where it points, and an open hand fires at any robot tank under
 // the crosshair that the gun can reach. The story and rules are in patrol.js, the valley is in valley.js,
 // and the picture is in field.js.
+//
+// Or a battle with a friend on their own computer, tank against tank, with no robot tanks at all: see duel.js
+// for its rules and core/friends-ui.js for making and joining a game.
 import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterById } from '../../core/body/roster.js';
+import { Track } from '../../core/friends.js';
+import { FriendsPanel } from '../../core/friends-ui.js';
 import { GameSession, SPOKEN } from '../../core/session.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
+import { Duel, battleSeconds, wrap } from './duel.js';
 import { Field } from './field.js';
-import { POWERS, PRIZES, Patrol, newsAt, readHand } from './patrol.js';
+import { PACES, POWERS, PRIZES, Patrol, newsAt, readHand } from './patrol.js';
 import { PatrolSound } from './patrol-sound.js';
 
 // Each of these has a rendered voice file: see audio/voice/lines.json.
@@ -15,12 +21,15 @@ const GIRAFFE_ASKS = 'Robot tanks in my valley! Let’s stop them!';
 const GIRAFFE_WAVING = 'Look! The little robot’s waving!';
 const GIRAFFE_TICKLES = 'Ooh, that tickles!';
 const GIRAFFE_ONE_MORE = 'One more tank!';
+const GIRAFFE_BATTLE = 'A friendly battle! Hit your friend’s tank!';
 const FINISH = 'You saved the valley!';
 const SO_CLOSE = 'So close!';
 const CLOSE_TO_DRIVE = 'Close your hand to drive!';
 const OPEN_TO_FIRE = 'Open your hand to fire!';
 const TOO_FAR = 'Too far! Close your hand and drive closer!';
 const LOOK_OUT = 'Look out! Drive away from the ring!';
+// The end of a battle with a friend, whoever made the most hits: one of the lines every game shares.
+const BATTLE_OVER = 'Great job!';
 
 const STORY_SECONDS = 3.2; // How long a character's picture stays up after speaking.
 const FILM_AT_MOST_SECONDS = 45;
@@ -34,8 +43,46 @@ const SPOKEN_AT_MOST = 2; // Each prompt is spoken this many times in a game, an
 const TICKLES_AT_MOST = 2; // Giraffe only says this now and then.
 const NAMES_AFTER_SECONDS = 1.3; // Names of new things wait until "GO!" has gone.
 
+// A battle with a friend, each on their own computer: see core/friends-ui.js for what each of these is.
+const TANK_WORDS = {
+  toggle: 'Play with a friend',
+  make: 'Make a game',
+  codeLabel: 'A friend’s game code',
+  codeName: 'Game code',
+  how: 'Tell your friend the code. Then you both press <b>Climb aboard</b>.',
+  leave: 'Leave this game',
+  privacy: 'Only your name, where your tank is and which way it points, when it fires, how many hits it makes, and whether your hand is open or resting go to your friend. The camera picture stays on this computer.',
+  alone: 'Play on your own',
+  full: 'That game already has 2 players.',
+  lost: 'Can’t reach the game. Check the internet, then try again.',
+  left: 'You’ve left the game.',
+  badCode: 'A game code is 3 letters and numbers.',
+  busy: 'Playing',
+  still: 'still playing',
+};
+// The friend's tank between what their game sends: where it is and how fast it goes, which go smoothly from one
+// to the next, which way it faces and its turret points, which go the short way round, and whether their child
+// is resting, whether their hand is open and how many shots it has fired, which change half way. With nothing
+// new for a moment, it carries on a little way as it was going.
+const TANK_TRACK = {
+  lerp: ['x', 'z', 's'],
+  angles: ['h', 'a'],
+  steps: ['r', 'o', 'n'],
+  guess: (last, seconds) => {
+    const ahead = Math.min(seconds, 0.25) * last.s;
+    return { x: last.x + Math.sin(last.h) * ahead, z: last.z - Math.cos(last.h) * ahead };
+  },
+};
+const round = (value, places) => Math.round(value * 10 ** places) / 10 ** places;
+const clock = (seconds) => {
+  const whole = Math.max(0, Math.ceil(seconds));
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+};
+
 const byId = (id) => document.getElementById(id);
 const HEART = '<svg class="heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21C5 15.500 2 12 2 8a5.500 5.500 0 0 1 10-3 5.500 5.500 0 0 1 10 3c0 4-3 7.500-10 13z"/></svg>';
+// A little tank, in the colour of the child's own or their friend's, beside each score in a battle.
+const TANK_MARK = '<svg class="battle-tank" viewBox="0 0 26 16" aria-hidden="true"><rect class="battle-tread" x="1.5" y="10" width="21" height="5" rx="2.5"/><rect x="3" y="5.5" width="18" height="6" rx="2.6"/><path class="battle-gun" d="M13.5 5.5L24 2.5"/><circle cx="12" cy="5.5" r="3.6"/></svg>';
 
 class TankGame {
   chimeOnOpen = false; // Hands open and close all the time here, so a chime would be noise.
@@ -45,6 +92,8 @@ class TankGame {
     this.story = new StoryBox(session);
     this.field = new Field(byId('game'), byId('marks'));
     this.patrol = null;
+    this.battle = null; // A battle with a friend, while there is one: see prepare().
+    this.goAt = 0;
     this.storyFor = 0;
     this.filming = false;
     this.sinceAction = 0;
@@ -57,6 +106,27 @@ class TankGame {
     this.applySettings();
     this.startPreview();
     window.addEventListener('resize', () => this.measureTop());
+    // A battle with a friend, if a grown-up makes or joins a game.
+    const { settings } = session;
+    this.friends = new FriendsPanel({
+      game: 'tank-patrol',
+      linkKey: 'tanks',
+      words: TANK_WORDS,
+      // Everyone here rides with Giraffe. The host's number of tanks says how long a battle lasts, and their speed how fast both tanks go.
+      hello: () => ({ driver: 'giraffe', level: session.levels.current, length: settings.tanks, mode: settings.pace }),
+      screen: () => session.screen,
+      portraits: () => session.portraits,
+      onMove: (id, message) => this.fromFriend(id, message),
+      onGone: (friend) => this.friendGone(friend),
+      // Whoever made the most hits, and equal ones share the win.
+      rank: (a, b) => b.dropped - a.dropped,
+      resultText: ({ dropped }) => (this.battle ? `${dropped} ${dropped === 1 ? 'hit' : 'hits'}` : `${dropped} stopped`),
+      startAfter: byId('start'),
+      waitingBefore: byId('screen-finish'),
+      resultsAfter: document.querySelector('#screen-finish .finish-hero'),
+    });
+    // Both scores, big, on the finish card of a battle.
+    document.querySelector('#screen-finish .finish-hero').insertAdjacentHTML('afterend', '<p id="finish-score" class="finish-score" hidden></p>');
     const game = this;
     this.debug = {
       field: this.field,
@@ -65,6 +135,9 @@ class TankGame {
       },
       get game() {
         return game;
+      },
+      get friends() {
+        return game.friends;
       },
     };
   }
@@ -86,7 +159,9 @@ class TankGame {
     this.field.configure({ side: hands, language });
     if (this.patrol) {
       const { reach, pace, tankLevel, driving } = this.session.settings;
-      this.patrol.configure({ help: reach, pace, level: tankLevel, driving });
+      // In a battle, both tanks go at the host's speed, and there's nothing to make harder.
+      if (this.battle) this.patrol.configure({ help: reach, driving });
+      else this.patrol.configure({ help: reach, pace, level: tankLevel, driving });
       this.showHearts();
     }
   }
@@ -96,9 +171,21 @@ class TankGame {
   }
 
   /** Everything but the number of tanks can change in the middle of a game, which is for the next one. */
-  settingChanged() {
+  settingChanged(change) {
+    // A friend's game hears the host's number of tanks and speed, for the next battle.
+    if (('tanks' in change || 'pace' in change) && this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
     if (this.preview) return;
     this.applySettings();
+  }
+
+  /** With a friend, the start waits until they're ready too. */
+  holdStart(go) {
+    return this.friends.holdStart(go);
+  }
+
+  /** How long since "GO!", by the clock on the wall, for the friend's game. */
+  get sinceGo() {
+    return performance.now() - this.goAt;
   }
 
   /* ---------- a new game ---------- */
@@ -106,6 +193,9 @@ class TankGame {
   /**
    * The robot tanks are on their way before the countdown has finished, so there's nothing to wait for.
    * level, from 1 to 10, makes it harder within the grown-up's choices: see levelPlan in patrol.js.
+   *
+   * With a friend it's a battle instead, tank against tank, for as long as the host's game says, at the host's
+   * speed, with this child's own reach help and driving. It doesn't move anyone's own level on.
    */
   prepare(level = 1) {
     const { settings, sound } = this.session;
@@ -120,15 +210,34 @@ class TankGame {
     this.saidWaving = false;
     this.preview = false;
     sound.lost = false;
-    this.patrol = new Patrol({
-      tanks: settings.tanks,
-      pace: settings.pace,
-      level: settings.tankLevel,
-      levelNumber: level,
-      help: settings.reach,
-      driving: settings.driving,
-      onEvent: (event) => this.onEvent(event),
-    });
+    const friendly = this.friends.current;
+    const rival = friendly?.friends[0] ?? null;
+    this.battle = null;
+    if (rival) {
+      this.battle = { seconds: battleSeconds(friendly.length), rival, track: new Track(TANK_TRACK), shown: null, endShown: null };
+      this.patrol = new Duel({
+        slot: friendly.mySlot,
+        pace: PACES[friendly.mode] ? friendly.mode : 'slow',
+        help: settings.reach,
+        driving: settings.driving,
+        onEvent: (event) => this.onEvent(event),
+      });
+      this.field.friendName = rival.spec.name;
+      byId('battle-name').textContent = rival.spec.name;
+    } else {
+      this.patrol = new Patrol({
+        tanks: settings.tanks,
+        pace: settings.pace,
+        level: settings.tankLevel,
+        levelNumber: level,
+        help: settings.reach,
+        driving: settings.driving,
+        onEvent: (event) => this.onEvent(event),
+      });
+    }
+    document.body.toggleAttribute('data-friends-race', Boolean(friendly));
+    document.body.toggleAttribute('data-battle', Boolean(this.battle));
+    for (const id of ['chip-mine', 'chip-theirs', 'chip-time-box']) byId(id).hidden = !this.battle;
     this.field.configure({ side: settings.hands, language: settings.language });
     this.field.reset(this.patrol);
     this.field.showMarks = true;
@@ -137,13 +246,15 @@ class TankGame {
     this.showProgress();
     this.showHaul();
     this.showPower();
+    if (this.battle) this.showBattle(this.battle.seconds);
   }
 
   begin() {
     const { sound } = this.session;
+    this.goAt = performance.now();
     this.patrol.begin();
     sound.startPatrol();
-    this.story.say('giraffe', GIRAFFE_ASKS);
+    this.story.say('giraffe', this.battle ? GIRAFFE_BATTLE : GIRAFFE_ASKS);
     this.storyFor = STORY_SECONDS;
     this.field.child.cheer(1.6);
   }
@@ -189,6 +300,9 @@ class TankGame {
         if (event.byChild) sound.crew();
         this.showHaul();
       },
+      'friend-hit': () => this.onFriendHit(event),
+      'friend-bonk': () => sound.bump(),
+      'hit-by': () => this.onHitBy(),
     };
     handlers[event.type]?.();
     this.showProgress();
@@ -301,7 +415,7 @@ class TankGame {
 
   showProgress() {
     const { patrol } = this;
-    if (!patrol || this.preview) return;
+    if (!patrol || this.preview || this.battle) return;
     byId('chip-left').textContent = String(patrol.left);
     byId('chip-stopped').textContent = String(patrol.stopped);
     byId('race-progress-fill').style.width = `${Math.round((patrol.stopped / patrol.total) * 100)}%`;
@@ -314,6 +428,119 @@ class TankGame {
     const most = patrol.level.hearts;
     if (box.children.length !== most) box.innerHTML = HEART.repeat(most);
     [...box.children].forEach((heart, index) => heart.classList.toggle('is-gone', index >= hearts));
+  }
+
+  /* ---------- a battle with a friend ---------- */
+
+  /** Something from the friend's game: where their tank is, or how many times its shots have hit this child's. */
+  fromFriend(id, message) {
+    const { battle, session } = this;
+    if (!battle || id !== battle.rival.id) return;
+    if (message.t === 'tank' && session.screen === 'playing') battle.track.push(message, performance.now());
+    // Their hits were decided by their game, which fired the shots. One that comes just after the end still counts.
+    else if (message.t === 'hit' && ['playing', 'finish'].includes(session.screen)) this.patrol.hitBy(message.tot);
+  }
+
+  /** The friend's tank where their game says it is, a moment ago, and any shots it has fired coming over. */
+  followFriend(dt) {
+    const { battle, patrol, field } = this;
+    const fired = patrol.placeFriend(battle.track.at(performance.now()), dt);
+    if (!fired) return;
+    field.friendFired(fired);
+    this.session.sound.shot({ friend: true });
+  }
+
+  /** Where the child's tank is, for the friend's game, and the time running out. */
+  updateBattle() {
+    const { battle, patrol, session } = this;
+    if (patrol.state === 'playing') this.friends.sendMove('tank', this.tankState(), this.sinceGo);
+    const left = Math.max(0, battle.seconds - this.sinceGo / 1000);
+    this.showBattle(left);
+    if ((left <= 0 || patrol.friend.state === 'gone') && session.screen === 'playing') this.endBattle();
+  }
+
+  /** The child's tank, for the friend's game: where it is, which way it faces and its turret points, its speed, how many shots it has fired, whether the child is resting, and whether their hand is open. */
+  tankState() {
+    const { tank, stats, resting } = this.patrol;
+    return { x: round(tank.x, 2), z: round(tank.z, 2), h: round(wrap(tank.heading), 3), a: round(wrap(tank.turret), 3), s: round(tank.speed, 1), n: stats.shots, r: resting ? 1 : 0, o: this.handShown === 'open' ? 1 : 0 };
+  }
+
+  /** A shot of the child's has hit their friend's tank, as this game decides: a point, and their game is told. */
+  onFriendHit({ hits }) {
+    this.session.sound.hit();
+    this.friends.sendHit({ r: 1, m: 'ball', d: 1, tot: hits, sm: 0, sg: 0, sd: '' }, this.sinceGo);
+    this.showBattle(null);
+    this.bump('chip-mine');
+  }
+
+  /** The friend's shot has hit the child's tank, as their game says: their point, and it tickles. Nothing is lost. */
+  onHitBy() {
+    const { sound } = this.session;
+    sound.tickled();
+    this.showBattle(null);
+    this.bump('chip-theirs');
+    if (this.ticklesSaid < TICKLES_AT_MOST && !sound.currentVoice) {
+      this.ticklesSaid += 1;
+      this.sayAsGiraffe(GIRAFFE_TICKLES);
+    }
+  }
+
+  /** The scores, and the time left. left is null when only a score has changed. */
+  showBattle(left) {
+    const { battle, patrol } = this;
+    if (left !== null) battle.left = left;
+    const { mine, theirs } = patrol.score;
+    const key = `${mine}:${theirs}:${Math.ceil(battle.left)}`;
+    if (key === battle.shown) return;
+    battle.shown = key;
+    byId('battle-mine').textContent = String(mine);
+    byId('battle-theirs').textContent = String(theirs);
+    byId('chip-time').textContent = clock(battle.left);
+    byId('race-progress-fill').style.width = `${Math.round((1 - battle.left / battle.seconds) * 100)}%`;
+  }
+
+  /** A score that's gone up grows a little and settles, a move rather than a flash. */
+  bump(id) {
+    const chip = byId(id);
+    chip.classList.remove('is-up');
+    void chip.offsetWidth;
+    chip.classList.add('is-up');
+  }
+
+  /** The time is up, or the friend has gone: the battle is over, and each child has the hits they made. */
+  endBattle() {
+    const { session } = this;
+    this.patrol.endBattle();
+    session.finishLine = BATTLE_OVER;
+    session.finish();
+  }
+
+  /** The friend has gone in the middle: their tank goes too, and the battle is over for the one still here. */
+  friendGone(friend) {
+    const { battle, patrol, session } = this;
+    if (!battle || friend.id !== battle.rival.id) return;
+    patrol.friendGone();
+    this.field.friendTank?.setVisible(false);
+    if (session.screen === 'playing') this.endBattle();
+  }
+
+  /** Who won, with both scores, on the finish card. The friend's last hits can come in a moment later. */
+  showBattleEnd() {
+    const { battle, patrol } = this;
+    const mine = patrol.score.mine;
+    const theirs = Math.max(patrol.score.theirs, this.friends.results.get(battle.rival.id)?.dropped ?? 0);
+    const key = `${mine}:${theirs}`;
+    if (key === battle.endShown) return;
+    battle.endShown = key;
+    document.querySelector('#screen-finish h2').textContent = mine > theirs ? 'You won!' : mine === theirs ? 'You both won!' : 'Great game!';
+    const line = byId('finish-score');
+    line.hidden = false;
+    line.innerHTML = `<span class="finish-side is-mine">${TANK_MARK}<span class="finish-who">You</span><span class="finish-points"></span></span><span class="finish-dash" aria-hidden="true">:</span><span class="finish-side is-friend"><span class="finish-points"></span><span class="finish-who"></span>${TANK_MARK}</span>`;
+    // Names go in as text, never as markup.
+    const [me, them] = line.querySelectorAll('.finish-side');
+    me.querySelector('.finish-points').textContent = String(mine);
+    them.querySelector('.finish-points').textContent = String(theirs);
+    them.querySelector('.finish-who').textContent = battle.rival.spec.name;
   }
 
   /* ---------- every frame ---------- */
@@ -333,7 +560,9 @@ class TankGame {
     const hand = this.readTheHand(snapshot);
     field.aspect = session.camera.aspect;
     const pointer = field.steer(dt, snapshot);
+    if (this.battle) this.followFriend(dt);
     patrol.update(dt, { hand, pointer });
+    if (this.battle) this.updateBattle();
     // The game may have just finished.
     if (session.screen !== 'playing') return;
     field.showMarks = true;
@@ -384,6 +613,8 @@ class TankGame {
     if (this.preview || counting) patrol.warmUp(dt);
     // Behind the finish, the crews carry on waving and Giraffe carries on cheering.
     else if (session.screen === 'finish') patrol.update(dt);
+    // After a battle, the friend's last hits, which can come a moment later, go on the finish card.
+    if (this.battle && session.screen === 'finish') this.showBattleEnd();
     field.showMarks = counting;
     if (counting) {
       field.aspect = session.camera.aspect;
@@ -423,7 +654,7 @@ class TankGame {
     if (patrol.resting && hand === 'closed') return this.once('resting', SPOKEN.resting);
     if (!patrol.autoDrive && this.farFor > TOO_FAR_PROMPT_SECONDS) return this.once('far', TOO_FAR);
     // What the gun can fire at, as it fires: robot tanks that can be seen, and the cage, but not a
-    // digger under the ground.
+    // digger under the ground. In a battle, it's the friend's tank.
     const nearOne = patrol.targets.some((target) => patrol.inRange(target));
     if (hand === 'closed' && nearOne && !patrol.driving && this.closedFor > OPEN_PROMPT_SECONDS) return this.once('fire', OPEN_TO_FIRE, 'open');
     if (!patrol.autoDrive && hand === 'open' && !nearOne && this.openFor > CLOSE_PROMPT_SECONDS) return this.once('drive', CLOSE_TO_DRIVE);
@@ -437,20 +668,38 @@ class TankGame {
     this.story.hide();
     this.field.showMarks = false;
     this.field.update(0, 'none');
+    // The friend's finish card fills in with how this child did.
+    if (this.friends.current) this.friends.finished(this.sinceGo, { n: this.battle ? this.patrol.score.mine : this.patrol.stopped, w: 1 });
   }
 
   summary() {
     const { stats } = this.patrol;
     const { hands } = this.session.settings;
     const onHand = (value, other = 0) => ({ left: hands === 'left' ? value : other, right: hands === 'right' ? value : other });
+    const rowOf = (id) => byId(`sum-left-${id}`).closest('tr');
+    this.friends.showResults();
+    rowOf('tanks').hidden = Boolean(this.battle);
+    rowOf('hits').hidden = !this.battle;
+    byId('finish-score').hidden = !this.battle;
+    if (this.battle) {
+      // A battle: the hits each child made, and who won. It doesn't move anyone's own level on.
+      const { mine } = this.patrol.score;
+      rowOf('prizes').hidden = true;
+      rowOf('friends').hidden = true;
+      document.querySelector('.finish-hero').lastChild.textContent = mine === 1 ? ' hit' : ' hits';
+      this.battle.endShown = null;
+      this.showBattleEnd();
+      return { hero: mine, noun: 'battle', rows: { hits: onHand(mine) }, won: true, countsForLevel: false };
+    }
     // What was picked up, from level 2 on, and any friend let out of a cage, from level 6.
     const { plan } = this.patrol;
     const haul = Object.entries(this.patrol.haul).filter(([key, value]) => key !== 'friends' && (value > 0 || key === 'bolts'));
     const prizes = haul.map(([key, value]) => `${PRIZES[key.slice(0, -1)].mark} ${value}`).join('  ');
-    byId('sum-left-prizes').closest('tr').hidden = !plan.bolts;
-    byId('sum-left-friends').closest('tr').hidden = !plan.cage;
-    // Running out of hearts, which only Medium and Tough allow, means trying the same level again.
-    return { hero: stats.stopped, noun: 'patrol', rows: { tanks: onHand(stats.stopped), prizes: onHand(plan.bolts ? prizes : '', ''), friends: onHand(stats.friends) }, won: this.patrol.state !== 'lost' };
+    rowOf('prizes').hidden = !plan.bolts;
+    rowOf('friends').hidden = !plan.cage;
+    // Running out of hearts, which only Medium and Tough allow, means trying the same level again. A patrol
+    // started with friends, with nobody else ready, is on the host's level, so it doesn't move it on either.
+    return { hero: stats.stopped, noun: 'patrol', rows: { tanks: onHand(stats.stopped), prizes: onHand(plan.bolts ? prizes : '', ''), friends: onHand(stats.friends) }, won: this.patrol.state !== 'lost', countsForLevel: !this.friends.current };
   }
 }
 
@@ -466,13 +715,16 @@ new GameSession({
     finishTitle: FINISH,
     heroMark: '⭐',
     heroNoun: 'tanks stopped',
-    extraRows: [{ id: 'tanks', label: 'Tanks stopped' }, { id: 'prizes', label: 'Prizes' }, { id: 'friends', label: 'Friends freed' }],
+    extraRows: [{ id: 'tanks', label: 'Tanks stopped' }, { id: 'hits', label: 'Hits on the other tank' }, { id: 'prizes', label: 'Prizes' }, { id: 'friends', label: 'Friends freed' }],
     hudTop: `
       <div class="hud-top">
         <div class="chips">
-          <div class="chip"><span class="chip-label">Tanks left</span><span id="chip-left" class="chip-value">6</span></div>
-          <div class="chip"><span class="chip-label">Stopped</span><span id="chip-stopped" class="chip-value">0</span></div>
-          <div class="chip chip-hearts"><span class="chip-label">Hearts</span><span id="chip-hearts" class="chip-value"></span></div>
+          <div class="chip chip-solo"><span class="chip-label">Tanks left</span><span id="chip-left" class="chip-value">6</span></div>
+          <div class="chip chip-solo"><span class="chip-label">Stopped</span><span id="chip-stopped" class="chip-value">0</span></div>
+          <div class="chip chip-hearts chip-solo"><span class="chip-label">Hearts</span><span id="chip-hearts" class="chip-value"></span></div>
+          <div id="chip-mine" class="chip chip-battle is-mine" hidden><span class="chip-label">${TANK_MARK}You</span><span id="battle-mine" class="chip-value">0</span></div>
+          <div id="chip-theirs" class="chip chip-battle is-friend" hidden><span class="chip-label">${TANK_MARK}<span id="battle-name" class="battle-name"></span></span><span id="battle-theirs" class="chip-value">0</span></div>
+          <div id="chip-time-box" class="chip chip-time" hidden><span class="chip-label">Time</span><span id="chip-time" class="chip-value">2:00</span></div>
         </div>
         <div class="race-progress" aria-hidden="true"><div id="race-progress-fill" class="race-progress-fill"></div></div>
         <div class="chips chips-more">
@@ -552,7 +804,7 @@ new GameSession({
         ${choice('tankLevel', 'tough', 'Tough')}
       </fieldset>
       <fieldset class="choice">
-        <legend>Robot tanks to stop</legend>
+        <legend>Robot tanks to stop (with a friend, the battle lasts 2, 3 or 4 minutes)</legend>
         ${choice('tanks', '6', '6')}
         ${choice('tanks', '10', '10')}
         ${choice('tanks', '15', '15')}

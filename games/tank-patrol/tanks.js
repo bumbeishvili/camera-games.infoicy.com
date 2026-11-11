@@ -12,6 +12,8 @@ const OUTLINE = 0.055;
 const GIRAFFE_SIZE = 2.7;
 const EXTRA_NECK = 0.46; // He's riding with his neck stuck up out of the hatch, so it's even longer than usual.
 const PADS_PER_SIDE = 26;
+const BUBBLE_SIZE = 5.4; // Round the child's tank and Giraffe's neck, after a friend's hit.
+const BUBBLE_UP = 3.4;
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const damp = (value, target, rate, dt) => value + (target - value) * (1 - Math.exp(-rate * dt));
@@ -190,13 +192,18 @@ function longNeckedGiraffe() {
   };
 }
 
+// The child's own tank is blue. A friend's, playing on their own computer, is the same tank in red, with their
+// Giraffe in it, so the two can't be mixed up.
+export const PAINTS = {
+  mine: { main: '#2f6fed', light: '#6fa4ff', trim: '#ffd23f', dark: '#26508f' },
+  friend: { main: '#e0533a', light: '#ff9d82', trim: '#ffd23f', dark: '#a4321f' },
+};
+
 export class ChildTank extends TankBody {
-  constructor(scene, shadow, reducedMotion) {
+  constructor(scene, shadow, reducedMotion, paint = PAINTS.mine) {
     super(7.8, 5.4);
     this.reducedMotion = reducedMotion;
-    const main = '#2f6fed';
-    const light = '#6fa4ff';
-    const trim = '#ffd23f';
+    const { main, light, trim, dark } = paint;
     const steel = '#3a4a68';
 
     this.treads = new Treads(this.root, { length: 7.8, high: 1.55, wide: 1.2, apart: 2.1, colour: '#26303f' });
@@ -221,7 +228,7 @@ export class ChildTank extends TankBody {
       { geometry: ball(0.38), colour: '#fff3b0', at: [-1.7, 2.1, -3.2] },
       { geometry: ball(0.38), colour: '#fff3b0', at: [1.7, 2.1, -3.2] },
       { geometry: roundedBox(2, 0.5, 0.5, 0.15), colour: trim, at: [0, 1.5, -3.85] },
-      { geometry: roundedBox(1.5, 0.6, 0.8, 0.12), colour: '#26508f', at: [-1.35, 2.6, 2.9] },
+      { geometry: roundedBox(1.5, 0.6, 0.8, 0.12), colour: dark, at: [-1.35, 2.6, 2.9] },
       { geometry: cylinder(0.24, 0.3, 1, 10), colour: steel, at: [1.7, 2.7, 3] },
       { geometry: cylinder(0.32, 0.26, 0.2, 10), colour: '#1d2740', at: [1.7, 3.2, 3] },
     ]);
@@ -282,6 +289,21 @@ export class ChildTank extends TankBody {
     this.shadow = softShadow(shadow, 9.4, 11);
     scene.add(this.shadow);
     scene.add(this.root);
+    // In a battle with a friend, the bubble round it for a moment after one of their shots has hit it.
+    this.bubble = bubbleOf(BUBBLE_SIZE);
+    scene.add(this.bubble);
+    this.bubbleShown = 0;
+  }
+
+  get visible() {
+    return this.root.visible;
+  }
+
+  /** A friend's tank is only there in a battle with them. */
+  setVisible(on) {
+    this.root.visible = on;
+    this.shadow.visible = on;
+    if (!on) this.bubble.visible = false;
   }
 
   /** The gun kicks back, and the neck goes with it. */
@@ -307,8 +329,11 @@ export class ChildTank extends TankBody {
     return this.gun.localToWorld(out.set(0, 0, -4));
   }
 
-  /** dt, and what the rules say. handOpen is his hands copying the child's. lookAt is where to look. */
-  update(dt, { tank, hand, lookAt, speedShare, celebrating = false }) {
+  /**
+   * dt, and what the rules say. hand is his hands copying the child's. lookAt is where to look. safe is whether
+   * it's in its bubble, after a friend's hit.
+   */
+  update(dt, { tank, hand, lookAt, speedShare, celebrating = false, safe = false }) {
     this.time += dt;
     const { x, z, heading, speed, turnRate } = tank;
     this.place(tank, dt);
@@ -381,6 +406,21 @@ export class ChildTank extends TankBody {
     if (!this.reducedMotion) this.root.position.y += Math.sin(this.time * 52) * 0.012 * (0.5 + speedShare);
     this.flag.rotation.y = Math.PI * 0.5 * clamp(speedShare, 0, 1) * -1 + Math.sin(this.time * 7) * (this.reducedMotion ? 0 : 0.22);
     this.kick = damp(this.kick, Math.hypot(ax, az) > 2 ? -Math.sign(ax * vx + az * vz) : 0, 6, dt);
+    this.showBubble(dt, tank, safe);
+  }
+
+  /** The bubble grows in and fades, and shrinks away again at the end rather than popping. */
+  showBubble(dt, tank, safe) {
+    const { bubble } = this;
+    this.bubbleShown = damp(this.bubbleShown, safe ? 1 : 0, safe ? 6 : 4, dt);
+    bubble.visible = this.root.visible && this.bubbleShown > 0.02;
+    if (!bubble.visible) return;
+    const bob = this.reducedMotion ? 0 : Math.sin(this.time * 2.2) * 0.2;
+    bubble.position.set(tank.x, tank.y + BUBBLE_UP + bob, tank.z);
+    bubble.scale.setScalar(0.6 + 0.4 * this.bubbleShown);
+    bubble.userData.materials.forEach((material, index) => {
+      material.opacity = bubble.userData.opacity[index] * this.bubbleShown;
+    });
   }
 }
 
@@ -563,6 +603,21 @@ function buildCrew(kind, materials) {
 const bubbleMaterial = () => new THREE.MeshBasicMaterial({ color: '#bfe8ff', transparent: true, opacity: 0.3, depthWrite: false });
 const bubbleEdge = () => new THREE.MeshBasicMaterial({ color: '#5aa8d8', transparent: true, opacity: 0.55, side: THREE.BackSide, depthWrite: false });
 
+/** A see-through bubble, with a rim and a shine. Its materials are in userData, with how see-through each is. */
+function bubbleOf(size) {
+  const bubble = new THREE.Group();
+  const fill = bubbleMaterial();
+  const edge = bubbleEdge();
+  const shine = new THREE.Mesh(ball(size * 0.18, size * 0.1, size * 0.05), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.7 }));
+  shine.position.set(-size * 0.45, size * 0.55, size * 0.5);
+  const rim = new THREE.Mesh(new THREE.SphereGeometry(size * 1.03, 28, 18), edge);
+  bubble.add(new THREE.Mesh(new THREE.SphereGeometry(size, 28, 18), fill), rim, shine);
+  bubble.visible = false;
+  bubble.userData.materials = [fill, edge, shine.material];
+  bubble.userData.opacity = [0.3, 0.55, 0.7];
+  return bubble;
+}
+
 export class RobotTank extends TankBody {
   constructor(enemy, scene, shadow, reducedMotion) {
     const look = LOOKS[enemy.kind];
@@ -684,17 +739,7 @@ export class RobotTank extends TankBody {
 
   /** The see-through bubble a bubble shot traps it in. */
   addBubble() {
-    const size = Math.max(this.length, this.wide) * 0.62;
-    const bubble = new THREE.Group();
-    const geometry = new THREE.SphereGeometry(size, 28, 18);
-    const fill = bubbleMaterial();
-    const edge = bubbleEdge();
-    const shine = new THREE.Mesh(ball(size * 0.18, size * 0.1, size * 0.05), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.7 }));
-    shine.position.set(-size * 0.45, size * 0.55, size * 0.5);
-    const rim = new THREE.Mesh(new THREE.SphereGeometry(size * 1.03, 28, 18), edge);
-    bubble.add(new THREE.Mesh(geometry, fill), rim, shine);
-    bubble.visible = false;
-    bubble.userData.materials = [fill, edge, shine.material];
+    const bubble = bubbleOf(Math.max(this.length, this.wide) * 0.62);
     this.scene.add(bubble);
     this.bubble = bubble;
     this.bubbleShown = 0;

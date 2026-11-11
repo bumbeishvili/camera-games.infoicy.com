@@ -216,8 +216,9 @@ export function readHand(snapshot) {
   return hand.status === 'missing' ? 'none' : 'unsure';
 }
 
-/** Which tanks come, in order: small ones to start with, and a big one to finish. */
+/** Which tanks come, in order: small ones to start with, and a big one to finish. None for a battle with a friend. */
 export function tanksFor(total, plan = null) {
+  if (!(total > 0)) return [];
   const mid = ['scout', 'scout', 'basher', 'scout', 'basher'];
   const line = [];
   for (let i = 0; i < total - 1; i += 1) {

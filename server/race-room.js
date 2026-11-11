@@ -25,7 +25,9 @@
 //                                      In Mighty Moves, k is a round this player's fighter has just won
 //   hit    { r, m, d, tot, sm, sg, sd }    Mighty Moves: their fighter makes move m in round r, doing d, and
 //                                      tot in all this round. sm is 1 for a small hit and sg for their
-//                                      fighter's own finishing move, and sd the side, l or r, if it has one
+//                                      fighter's own finishing move, and sd the side, l or r, if it has one.
+//                                      In Tank Patrol, a shot of theirs has hit the friend's tank, as their
+//                                      game decides: m is the kind of shot, and tot how many hits they've made
 //   pose   { ms, p }                       Mighty Moves: their body, for their fighter to copy, as POSE_NUMBERS
 //                                      numbers about where their hands and feet are and how they lean (see
 //                                      BODY_KEYS in games/mighty-moves/clips.js), or none when it can't be seen
@@ -46,6 +48,10 @@
 //                                      glove can be seen and is open, where it is, and p, its 21 points, as in hand.
 //                                      Everyone makes the same mazes from the host's mode, its size and a seed, and
 //                                      claims the fruit and lost friends it reaches
+//   tank   { ms, x, z, h, a, s, n, r, o }   where their tank is in Tank Patrol, across and along the valley, which
+//                                      way it faces and its turret points, how fast it's going, how many shots it
+//                                      has fired, so the friend's game can show them coming, whether their child
+//                                      is resting, when it can't be fired at, and whether their hand is open
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
@@ -53,7 +59,7 @@
 //   room   { you, members: [{ id, name, driver, ready, racing, host }] }   whenever that changes
 //   go     { level, length, laps, mode, racers, seed }   the countdown starts now, on the host's course (laps is
 //                                      length). seed is the same for everyone, for a game laid out by chance
-//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker { from, ... } and done { from, ms, n, w }   passed on
+//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker, tank { from, ... } and done { from, ms, n, w }   passed on
 //                                      from the others: ball only from the host, and shot only to the host
 //   claimed { k, by }                      balloon k, or round k, went to player by, sent to everyone, them too
 //   full   {}                              the room already has as many as it holds: see mostIn
@@ -61,9 +67,9 @@
 //   nobody {}                              joining by a code, there's no game with it just now
 
 export const MAX_RACERS = 4;
-// A fight is two fighters, and Bounce Back is one child on each side of the net. Every other game's room holds
-// MAX_RACERS.
-const MOST_IN = { 'mighty-moves': 2, 'bounce-back': 2 };
+// A fight is two fighters, Bounce Back is one child on each side of the net, and a Tank Patrol battle is tank
+// against tank. Every other game's room holds MAX_RACERS.
+const MOST_IN = { 'mighty-moves': 2, 'bounce-back': 2, 'tank-patrol': 2 };
 export const mostIn = (game) => MOST_IN[game] ?? MAX_RACERS;
 export const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // No 0, O, 1, I or L, which look alike.
 // A code is short enough to say out loud or type in a moment. A new game never takes one in use: see arrive.
@@ -277,6 +283,21 @@ export function cleanWalker(message) {
   };
 }
 
+/** Only what a tank in Tank Patrol should hold, rounded: where it is in the valley, which way it and its turret point, and the rest. */
+export function cleanTank(message) {
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    x: number(message.x, -60, 60, 2),
+    z: number(message.z, -50, 40, 2),
+    h: number(message.h, -4, 4, 3),
+    a: number(message.a, -4, 4, 3),
+    s: number(message.s, 0, 30, 1),
+    n: number(message.n, 0, 100_000, 0),
+    r: message.r ? 1 : 0,
+    o: message.o ? 1 : 0,
+  };
+}
+
 /** Only what a car message should hold, rounded, so nothing else can be passed on. */
 export function cleanCar(message) {
   return {
@@ -435,8 +456,9 @@ export class RaceRoom {
       case 'pose':
       case 'racket':
       case 'runner':
-      case 'walker': {
-        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand, pose: cleanPose, racket: cleanRacket, runner: cleanRunner, walker: cleanWalker }[message.t](message);
+      case 'walker':
+      case 'tank': {
+        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand, pose: cleanPose, racket: cleanRacket, runner: cleanRunner, walker: cleanWalker, tank: cleanTank }[message.t](message);
         for (const other of others) other.send({ t: message.t, from: meta.id, ...moved });
         break;
       }

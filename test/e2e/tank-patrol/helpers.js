@@ -4,7 +4,8 @@ import { expect, openGame, show, waitForScreen } from '../helpers.js';
 
 const GAME = 'tank-patrol';
 
-export const openPatrol = (page, settings = {}) => openGame(page, settings, GAME);
+/** hash is anything after # in the address, as in a link from a friend to play with them. */
+export const openPatrol = (page, settings = {}, hash = '') => openGame(page, settings, GAME, hash);
 
 export async function startPatrol(page, settings = {}, scene = [null, 'open', { scale: 0.7 }]) {
   await openPatrol(page, settings);
@@ -15,7 +16,8 @@ export async function startPatrol(page, settings = {}, scene = [null, 'open', { 
 
 /**
  * Keeps the hand pointing at a place, which stays true as things move. where is { x, z } on the ground,
- * or 'tank' for the first robot tank still rolling. hand is which photo to show: open or fist.
+ * 'tank' for the first robot tank still rolling, or 'friend' for the friend's tank in a battle with them.
+ * hand is which photo to show: open or fist.
  */
 export async function pointAt(page, where, hand = 'open', side = 'right') {
   await page.evaluate(({ place, photo, handSide }) => {
@@ -25,7 +27,8 @@ export async function pointAt(page, where, hand = 'open', side = 'right') {
     let offsetY = window.__point?.offsetY ?? 0;
     const timer = setInterval(() => {
       const glove = field.gloves[handSide];
-      const at = place === 'tank' ? window.__game.patrol.rolling[0] : place;
+      const { patrol } = window.__game;
+      const at = place === 'tank' ? patrol.rolling[0] : place === 'friend' ? patrol.friend : place;
       if (glove.visible && at) {
         const spot = field.project(at.x, at.y ?? 0, at.z);
         offsetX += ((spot.x - glove.x) / innerWidth) * 180;

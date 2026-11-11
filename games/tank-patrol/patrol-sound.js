@@ -58,8 +58,9 @@ export class PatrolSound extends Sound {
     loop.source.playbackRate.setTargetAtTime(ENGINE_IDLE.rate + (ENGINE_DRIVING.rate - ENGINE_IDLE.rate) * going, this.context.currentTime, 0.18);
   }
 
-  shot() {
-    this.play(oneOf('shot', 2), { gain: 0.5, rate: near(0.12) });
+  /** The child's own gun, or, more quietly and from further off, a friend's, in a battle with them. */
+  shot({ friend = false } = {}) {
+    this.play(oneOf('shot', 2), { gain: friend ? 0.26 : 0.5, rate: near(0.12) * (friend ? 1.1 : 1) });
   }
 
   hit() {
@@ -67,6 +68,11 @@ export class PatrolSound extends Sound {
     if (now - this.hitAt < HIT_APART_MS) return;
     this.hitAt = now;
     this.play(oneOf('hit', 3), { gain: 0.34, rate: near(0.2) });
+  }
+
+  /** A friend's shot landing on the child's tank, in a battle with them: the same soft hit, a little deeper. */
+  tickled() {
+    this.play(oneOf('hit', 3), { gain: 0.3, rate: near(0.1) * 0.8 });
   }
 
   /** A robot tank has lobbed a shell, a good way off. */

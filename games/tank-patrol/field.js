@@ -12,7 +12,7 @@ import { Glove } from '../../core/glove.js';
 import { CageView, Loot } from './goodies.js';
 import { Marks } from './marks.js';
 import { GUN, NEWS, POWERS, PRIZES, shellPoint } from './patrol.js';
-import { ChildTank, RobotTank, shadowTexture } from './tanks.js';
+import { ChildTank, PAINTS, RobotTank, shadowTexture } from './tanks.js';
 import { Valley } from './valley.js';
 import { PLAY, bridgeRise, clampToPlay, groundY, heightAt } from './valley-map.js';
 
@@ -43,6 +43,11 @@ const SHELLS_AT_ONCE = 6;
 const TRACK_MARKS = 420;
 const TRACK_EVERY = 0.85;
 const CREW_SMOKE_SECONDS = 2.6;
+// In a battle with a friend: their shots coming over, how high their name is over their tank, above Giraffe's
+// head, and the +1 that goes up beside it for each hit, slowly, fading in and out.
+const FRIEND_SHOTS_AT_ONCE = 6;
+const NAME_ABOVE = 10.6;
+const POINT_SECONDS = 1.4;
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const mix = (from, to, share) => from + (to - from) * share;
@@ -88,6 +93,11 @@ export class Field {
     this.marks = new Marks(overlay);
     this.softShadow = shadowTexture();
     this.child = new ChildTank(this.scene, this.softShadow, this.reducedMotion);
+    // A friend's tank, in a battle with them: made the first time it's needed.
+    this.friendTank = null;
+    this.friendName = '';
+    this.friendShots = [];
+    this.points = [];
     this.robots = new Map();
     this.loot = new Loot(this.scene, this.softShadow, this.reducedMotion);
     this.cageViews = new Map();
@@ -177,6 +187,15 @@ export class Field {
     this.shotBalls = Array.from({ length: SHOTS_AT_ONCE }, () => {
       const group = new THREE.Group();
       group.add(new THREE.Mesh(shape, mine), new THREE.Mesh(shape, line));
+      group.visible = false;
+      this.scene.add(group);
+      return group;
+    });
+    // A friend's shots are the same balls, in the colour of their tank, so it's plain whose they are.
+    const friends = new THREE.MeshBasicMaterial({ color: PAINTS.friend.light });
+    this.friendBalls = Array.from({ length: FRIEND_SHOTS_AT_ONCE }, () => {
+      const group = new THREE.Group();
+      group.add(new THREE.Mesh(shape, friends), new THREE.Mesh(shape, line));
       group.visible = false;
       this.scene.add(group);
       return group;
@@ -313,6 +332,34 @@ export class Field {
       shadow.visible = false;
     }
     this.child.place(patrol.tank, 1 / 60, { snap: true });
+    this.showFriend(patrol.friend ?? null);
+  }
+
+  /** In a battle with a friend, their tank, where it starts. With no friend there's none. */
+  showFriend(friend) {
+    this.friendShots = [];
+    this.points = [];
+    for (const ball of this.friendBalls) ball.visible = false;
+    if (!friend) {
+      this.friendTank?.setVisible(false);
+      return;
+    }
+    this.friendTank ??= new ChildTank(this.scene, this.softShadow, this.reducedMotion, PAINTS.friend);
+    this.friendTank.setVisible(true);
+    this.friendTank.cheerLeft = 0;
+    this.friendTank.place(friend, 1 / 60, { snap: true });
+  }
+
+  /** The friend's gun has fired, as many times as this, at the child's tank: each shot comes over. */
+  friendFired(count) {
+    const { patrol, friendTank } = this;
+    if (!patrol?.friend || !friendTank?.visible) return;
+    for (let i = 0; i < count && this.friendShots.length < FRIEND_SHOTS_AT_ONCE; i += 1) {
+      const from = friendTank.muzzle(this.point).clone();
+      const seconds = Math.max(0.12, Math.hypot(patrol.tank.x - from.x, patrol.tank.z - from.z) / GUN.shotSpeed);
+      this.friendShots.push({ from, share: -i * 0.15, seconds });
+    }
+    friendTank.fired();
   }
 
   addRobot(enemy) {
@@ -414,8 +461,28 @@ export class Field {
       power: () => this.label(`power-${event.name}`, POWERS[event.name], () => this.overTank()),
       'crate-got': () => this.onCrateGot(),
       'chest-open': () => this.bits(this.point.set(event.prize.x, event.prize.y + 2, event.prize.z), { count: 8, shapes: ['star', 'spark'], colours: ['#ffd23f', '#ffffff'], size: 1, speed: 5, life: 0.9, gravity: 8 }),
+      'friend-hit': () => this.onFriendHit(event.friend),
+      'friend-bonk': () => this.bits(this.point.set(event.friend.x, event.friend.y + 4, event.friend.z), { count: 2, shapes: ['star', 'spark'], colours: ['#ffffff', '#bfe8ff'], size: 0.8, speed: 4, life: 0.45 }),
+      'hit-by': () => this.onHitBy(),
     };
     handlers[event.type]?.();
+  }
+
+  /** The child's shot has hit their friend's tank: it wobbles, a few stars, and +1 goes up beside it. */
+  onFriendHit(friend) {
+    this.friendTank?.hit();
+    this.bits(this.point.set(friend.x, friend.y + 4, friend.z), { count: 5, shapes: ['star', 'spark', 'star'], colours: ['#ffd23f', '#ffffff', PAINTS.friend.light], size: 1.1 });
+    this.points.push({ age: 0 });
+  }
+
+  /** The friend's shot has hit the child's tank, as their game says: the shot lands, and it tickles. */
+  onHitBy() {
+    // The ball still on its way lands now, so the hit and the ball go together.
+    const coming = this.friendShots.find(({ share }) => share >= 0);
+    if (coming) coming.share = 1;
+    this.child.hit();
+    const { tank } = this.patrol;
+    this.bits(this.point.set(tank.x, tank.y + 4, tank.z), { count: 5, shapes: ['star'], colours: ['#ffd23f', '#ffffff'], size: 0.75, speed: 4, life: 0.75, gravity: 7 });
   }
 
   onBounce({ from }) {
@@ -744,6 +811,37 @@ export class Field {
     });
   }
 
+  /** The friend's tank where their game says it is, with their Giraffe copying their hand, and their shots coming over. */
+  updateFriend(dt, friend) {
+    const { patrol } = this;
+    this.friendTank.update(dt, {
+      tank: friend,
+      hand: friend.open ? 'open' : 'closed',
+      lookAt: patrol.tank,
+      speedShare: friend.speed / patrol.pace.drive,
+      safe: patrol.friendSafe,
+    });
+    this.whileMoving(friend, dt, 2.1, 7.8);
+    const { tank } = patrol;
+    const toY = tank.y + 2.8;
+    this.friendShots = this.friendShots.filter((shot) => {
+      shot.share += dt / shot.seconds;
+      if (shot.share < 1) return true;
+      // Landing on the child's tank: a little puff. Whether it was a hit, the friend's game says.
+      this.puffs(this.point.set(tank.x, toY, tank.z), { count: 2, colours: ['#ffe3d9', '#ffffff'], size: 0.7, speed: 1.4, life: 0.45 });
+      return false;
+    });
+    this.friendBalls.forEach((ball, index) => {
+      const shot = this.friendShots[index];
+      ball.visible = Boolean(shot && shot.share >= 0);
+      if (!ball.visible) return;
+      const { from, share } = shot;
+      ball.position.set(mix(from.x, tank.x, share), mix(from.y, toY, share) + Math.sin(share * Math.PI) * 1.6, mix(from.z, tank.z, share));
+    });
+    for (const point of this.points) point.age += dt;
+    this.points = this.points.filter(({ age }) => age < POINT_SECONDS);
+  }
+
   placeShells(dt) {
     const shells = this.patrol?.shells ?? [];
     this.shellBalls.forEach(({ group, shadow }, index) => {
@@ -777,15 +875,18 @@ export class Field {
     this.valley.update(dt, this.reducedMotion);
     if (patrol) {
       const { tank, crosshair } = patrol;
+      const { friend } = patrol;
       child.update(dt, {
         tank,
         hand,
-        lookAt: crosshair.seen ? crosshair : patrol.rolling[0] ?? null,
+        lookAt: crosshair.seen ? crosshair : patrol.rolling[0] ?? friend ?? null,
         speedShare: tank.speed / patrol.pace.drive,
         celebrating: this.celebrating,
+        safe: Boolean(patrol.safe),
       });
       this.whileMoving(tank, dt, 2.1, 7.8);
       this.exhaust(dt);
+      if (friend && this.friendTank?.visible) this.updateFriend(dt, friend);
       this.updateRobots(dt);
       this.placeShots();
       this.placeShells(dt);
@@ -851,6 +952,20 @@ export class Field {
       // In the language the voice speaks, which a grown-up can change in the middle of a round.
       labels.push({ x: at.x, y: at.y, words: this.wordsFor(label.item), alpha });
     }
+    // In a battle, the friend's name is over their tank all the time, and +1 goes up beside it for each hit.
+    const { friend } = patrol;
+    if (friend && this.friendTank?.visible) {
+      const top = this.project(friend.x, friend.y + NAME_ABOVE, friend.z);
+      labels.push({ x: top.x, y: top.y, words: this.friendName, alpha: 1 });
+      for (const { age } of this.points) {
+        const rise = this.reducedMotion ? 0 : (age / POINT_SECONDS) * 3.5;
+        const side = this.project(friend.x + 6, friend.y + 4 + rise, friend.z);
+        labels.push({ x: side.x, y: side.y, words: '+1', alpha: clamp(Math.min(age / 0.3, (POINT_SECONDS - age) / 0.5), 0, 1) });
+      }
+      // A tank whose child is resting is asleep, and can't be fired at.
+      if (friend.resting) sleeping.push(this.project(friend.x + 2, friend.y + 7.6, friend.z));
+    }
+    if (friend && resting) sleeping.push(this.project(tank.x + 2, tank.y + 7.6, tank.z));
     // How far the gun reaches, as a ring on the ground, following its bumps.
     const points = [];
     for (let i = 0; i < RING_POINTS; i += 1) {
