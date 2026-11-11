@@ -2,7 +2,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { AIM_HELP, CAGE_SPOTS, GUN, KINDS, LEVELS, NEWS, PACES, POWERS, Patrol, STANDOFF, levelPlan, newsAt, readHand, shellPoint, tanksFor } from '../../games/tank-patrol/patrol.js';
+import { AIM_HELP, CAGE_SPOTS, GUN, KINDS, LEVELS, NEWS, PACES, POWERS, Patrol, STANDOFF, headingTo, levelPlan, newsAt, readHand, shellPoint, tanksFor } from '../../games/tank-patrol/patrol.js';
+import { BATTLE_SECONDS, CLEAR, Duel, SAFE_SECONDS, STARTS, battleSeconds, wrap } from '../../games/tank-patrol/duel.js';
+import { cleanTank } from '../../server/race-room.js';
 import { BRIDGES, PLAY, SPAWNS, START, TANK_RADIUS, groundY, heightAt, riverNear, seeded, solidNear, valleyNav } from '../../games/tank-patrol/valley-map.js';
 import { PatrolSound } from '../../games/tank-patrol/patrol-sound.js';
 
@@ -1412,4 +1414,191 @@ test('hits landing together, like a triple shot\'s, are heard as one', () => {
   sound.play = (name) => played.push(name);
   for (let i = 0; i < 3; i += 1) sound.hit();
   assert.equal(played.filter((name) => name.startsWith('hit')).length, 1);
+});
+
+/* ---------- a battle with a friend ---------- */
+
+const battle = (settings = {}) => {
+  const duel = new Duel({ random: seeded(7), ...settings });
+  duel.begin();
+  return duel;
+};
+
+/** The friend's tank, as their game says, this far across from this child's, and not doing anything. */
+const friendAt = (duel, dx, dz = 0, extra = {}) => duel.placeFriend({ x: duel.tank.x + dx, z: duel.tank.z + dz, h: 0, a: 0, s: 0, r: 0, o: 0, n: 0, ...extra }, STEP);
+
+test('a battle with a friend has no robot tanks, and the two tanks start apart on free ground, facing each other, out of reach of each other\'s guns', () => {
+  const nav = valleyNav();
+  for (const { x, z } of STARTS) assert.ok(nav.isFree(x, z), `${x}, ${z}`);
+  const [host, guest] = [battle({ slot: 0 }), battle({ slot: 1 })];
+  // Each game puts its own tank in its own place, and the friend's in the other.
+  assert.deepEqual([host.tank.x, host.tank.z, host.friend.x, host.friend.z], [guest.friend.x, guest.friend.z, guest.tank.x, guest.tank.z]);
+  for (const duel of [host, guest]) {
+    assert.deepEqual([duel.enemies.length, duel.queue.length, duel.total, duel.cages.length], [0, 0, 0, 0]);
+    assert.equal(duel.inRange(duel.friend), false, 'the first thing to do is drive');
+    const facing = headingTo(duel.friend.x - duel.tank.x, duel.friend.z - duel.tank.z);
+    assert.ok(Math.abs(wrap(duel.tank.heading - facing)) < 0.01);
+  }
+  // However long it goes on, nothing else comes: no robot tanks, no shells and nothing to pick up.
+  run(host, 30, (t) => closedAt(STARTS[0].x + Math.sin(t) * 12, 10 + Math.cos(t * 0.7) * 8));
+  assert.deepEqual([host.enemies.length, host.shells.length, host.prizes.length, host.crates.length], [0, 0, 0, 0]);
+  assert.equal(host.state, 'playing');
+});
+
+test('a battle lasts 2, 3 or 4 minutes, from the host\'s number of robot tanks', () => {
+  assert.deepEqual([6, 10, 15].map(battleSeconds), [120, 180, 240]);
+  assert.equal(battleSeconds(undefined), BATTLE_SECONDS[10]);
+});
+
+test('a closed hand on the friend\'s tank drives up to it, and stops within reach of the gun', () => {
+  const duel = battle({ pace: 'medium' });
+  run(duel, 8, () => closedAt(duel.friend.x, duel.friend.z));
+  assert.ok(duel.inRange(duel.friend));
+  assert.ok(Math.hypot(duel.tank.x - duel.friend.x, duel.tank.z - duel.friend.z) > CLEAR * 1.5, 'well short of it');
+  assert.ok(duel.stats.driven > 8);
+  assert.equal(duel.stats.shots, 0, 'a closed hand never fires');
+});
+
+test('a shot of this child\'s that reaches the friend\'s tank is a hit and a point, and then the tank has its bubble for a moment, which shots bounce off', () => {
+  const duel = battle();
+  const log = eventsOf(duel);
+  friendAt(duel, 14);
+  const aim = () => openAt(duel.friend.x, duel.friend.z);
+  run(duel, 1.5, aim);
+  assert.equal(duel.score.mine, 1);
+  assert.equal(log.count('friend-hit'), 1);
+  assert.deepEqual(log.events.find(({ type }) => type === 'friend-hit').hits, 1);
+  assert.equal(duel.friendSafe, true);
+  // The gun keeps firing while the hand's open, and the shots bounce off the bubble.
+  assert.ok(log.count('friend-bonk') >= 1);
+  // The first hit landed a moment after the first shot, and its bubble lasts a little past this.
+  run(duel, SAFE_SECONDS - 1.5, aim);
+  assert.equal(duel.score.mine, 1, 'nothing more while it lasts');
+  // Once it's gone, the next shot that gets there is another hit.
+  run(duel, 1, aim);
+  assert.equal(duel.score.mine, 2);
+  assert.equal(duel.score.theirs, 0, 'the friend\'s hits are only theirs to say');
+  // Never more than a hit for every few seconds of firing.
+  run(duel, 30, aim);
+  assert.ok(duel.score.mine <= 2 + Math.ceil(30 / SAFE_SECONDS), `${duel.score.mine}`);
+  assert.ok(duel.score.mine >= 2 + Math.floor(30 / (SAFE_SECONDS + 1)), `${duel.score.mine}`);
+});
+
+test('a friend who is resting can\'t be fired at, and isn\'t, and an uncertain hand doesn\'t fire either', () => {
+  const duel = battle();
+  friendAt(duel, 14, 0, { r: 1 });
+  run(duel, 3, () => openAt(duel.friend.x, duel.friend.z));
+  assert.deepEqual([duel.stats.shots, duel.score.mine, duel.targets.length], [0, 0, 0]);
+  assert.equal(duel.locked, null);
+  // Back again, and the gun can fire at them.
+  friendAt(duel, 14, 0, { r: 0 });
+  run(duel, 1, () => openAt(duel.friend.x, duel.friend.z));
+  assert.equal(duel.score.mine, 1);
+  // A hand that can't be read, or has gone, never fires, as on a patrol.
+  for (const hand of ['unsure', 'none']) {
+    const shots = duel.stats.shots;
+    run(duel, 4, { hand, pointer: { x: duel.friend.x, z: duel.friend.z } });
+    assert.equal(duel.stats.shots, shots, hand);
+  }
+});
+
+test('a hit from the friend\'s game is their point: this tank goes in its bubble for a moment, and nothing is taken away', () => {
+  const duel = battle();
+  const log = eventsOf(duel);
+  friendAt(duel, 14);
+  run(duel, 1, () => openAt(duel.friend.x, duel.friend.z));
+  const { mine } = duel.score;
+  const hearts = duel.hearts;
+  assert.equal(duel.hitBy(1), true);
+  assert.deepEqual(duel.score, { mine, theirs: 1 });
+  assert.equal(duel.safe, true);
+  assert.equal(log.count('hit-by'), 1);
+  assert.equal(duel.hitBy(1), false, 'the same hit, heard twice, counts once');
+  assert.equal(duel.hitBy(0), false);
+  assert.equal(duel.hitBy(3), true, 'one missed on the way is made up by the next');
+  assert.equal(duel.score.theirs, 3);
+  // Nothing is lost, and the tank goes on just as it was: it fires, and it drives.
+  assert.deepEqual([duel.score.mine, duel.hearts, duel.state], [mine, hearts, 'playing']);
+  run(duel, SAFE_SECONDS + 0.5, () => openAt(duel.friend.x, duel.friend.z));
+  assert.equal(duel.safe, false);
+  assert.ok(duel.score.mine > mine);
+  const before = { x: duel.tank.x, z: duel.tank.z };
+  run(duel, 3, closedAt(STARTS[0].x + 2, 4));
+  assert.ok(Math.hypot(duel.tank.x - before.x, duel.tank.z - before.z) > 5);
+});
+
+test('the friend\'s tank goes where their game says, and the shots it fires come over, a few at a time', () => {
+  const duel = battle();
+  assert.equal(friendAt(duel, 20, -6, { h: 1, a: -2, s: 6, o: 1 }), 0);
+  assert.deepEqual([duel.friend.x, duel.friend.z, duel.friend.heading, duel.friend.turret, duel.friend.speed, duel.friend.open], [duel.tank.x + 20, duel.tank.z - 6, 1, -2, 6, true]);
+  assert.equal(duel.friend.y, groundY(duel.friend.x, duel.friend.z));
+  assert.equal(friendAt(duel, 20, -6, { n: 2 }), 2);
+  assert.equal(friendAt(duel, 20, -6, { n: 2 }), 0, 'each shot once');
+  assert.equal(friendAt(duel, 20, -6, { n: 40 }), 3, 'after a gap, only a few at once');
+  assert.equal(friendAt(duel, 20, -6, { n: 1 }), 0, 'an older message brings back none');
+});
+
+test('the two tanks never go through each other', () => {
+  const duel = battle();
+  // The friend's tank drives right up against this one, from the side away from the village.
+  friendAt(duel, -2, 0.5);
+  run(duel, 0.2, { hand: 'none', pointer: null });
+  assert.ok(Math.hypot(duel.tank.x - duel.friend.x, duel.tank.z - duel.friend.z) >= CLEAR - 0.01);
+  assert.ok(valleyNav().isFree(duel.tank.x, duel.tank.z));
+  // Driving straight into it, as at a friend who's resting, which nothing stops short of: it never goes into it.
+  const { x, z } = duel.tank;
+  friendAt(duel, 12, 0.6, { r: 1 });
+  let nearest = Infinity;
+  run(duel, 4, () => {
+    nearest = Math.min(nearest, Math.hypot(duel.tank.x - duel.friend.x, duel.tank.z - duel.friend.z));
+    return closedAt(x + 26, z);
+  });
+  assert.ok(nearest >= CLEAR - 0.01, `${nearest}`);
+  assert.ok(duel.stats.driven > 3, 'it did try to drive through');
+});
+
+test('at the end of a battle nobody has lost, and a shot still on its way lands on nothing', () => {
+  const duel = battle();
+  const log = eventsOf(duel);
+  friendAt(duel, 14);
+  run(duel, 0.1, () => openAt(duel.friend.x, duel.friend.z));
+  assert.ok(duel.shots.length > 0, 'a shot on its way');
+  duel.endBattle();
+  run(duel, 1.5, () => openAt(duel.friend.x, duel.friend.z));
+  assert.deepEqual([duel.score.mine, duel.state, duel.firing], [0, 'won', false]);
+  assert.equal(log.count('battle-over'), 1);
+  duel.endBattle();
+  assert.equal(log.count('battle-over'), 1, 'it only ends once');
+  // A hit the friend's game sent just before the end still counts for them, without any fuss.
+  assert.equal(duel.hitBy(2), false);
+  assert.equal(duel.score.theirs, 2);
+  assert.equal(log.count('hit-by'), 0);
+});
+
+test('a friend who goes takes their tank with them, and nothing can be fired at it', () => {
+  const duel = battle();
+  friendAt(duel, 14);
+  run(duel, 0.2, () => openAt(duel.friend.x, duel.friend.z));
+  duel.friendGone();
+  const { shots } = duel.stats;
+  run(duel, 3, () => openAt(duel.friend.x, duel.friend.z));
+  assert.deepEqual([duel.targets.length, duel.stats.shots, duel.locked], [0, shots, null]);
+  assert.equal(friendAt(duel, 10, 0, { n: 5 }), 0, 'and it doesn\'t come back');
+});
+
+test('what a battle sends of the child\'s tank is what the server passes on, and its directions stay within a turn', () => {
+  const duel = battle();
+  run(duel, 6, (t) => closedAt(STARTS[0].x + Math.sin(t * 2) * 20, 6 + Math.cos(t * 3) * 14));
+  const heading = duel.tank.heading + Math.PI * 6;
+  assert.ok(Math.abs(wrap(heading)) <= Math.PI);
+  assert.ok(Math.abs(Math.sin(wrap(heading) - heading)) < 1e-9);
+  const state = { ms: 1234, x: Math.round(duel.tank.x * 100) / 100, z: Math.round(duel.tank.z * 100) / 100, h: Math.round(wrap(heading) * 1000) / 1000, a: 0.5, s: 7.5, n: 3, r: 0, o: 1 };
+  assert.deepEqual(cleanTank(state), state);
+});
+
+test('a battle\'s rooms are known to both servers, and a friend\'s tank is passed on to the game', () => {
+  for (const file of ['../../server/worker.js', '../../tools/race-server.mjs']) {
+    assert.match(readFileSync(new URL(file, import.meta.url), 'utf8'), /const GAMES = \[[^\]]*'tank-patrol'/, file);
+  }
+  assert.match(readFileSync(new URL('../../core/friends.js', import.meta.url), 'utf8'), /'tank'[^\]]*\]\.includes\(message\.t\)/);
 });

@@ -250,3 +250,48 @@ body:has(#chip-haul:not([hidden])) .story { top: max(106px, calc(var(--hud-botto
   overflow: hidden;
 }
 .power-bar span { display: block; height: 100%; background: #35c26a; width: 100%; }
+
+/* ---------- a battle with a friend: the rest is in core/base.css ---------- */
+/* Both scores, each with a little tank in its colour, and the time left, in place of the patrol's chips. */
+body[data-battle] .chip-solo { display: none; }
+.chip-battle .chip-label { display: flex; align-items: center; gap: 4px; }
+.battle-name { max-width: 7.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.battle-tank { width: 1.55em; height: 1em; flex: none; stroke: var(--ink); stroke-width: 1.3; stroke-linejoin: round; }
+.is-mine .battle-tank { fill: #2f6fed; }
+.is-friend .battle-tank { fill: #e0533a; }
+.battle-tank .battle-tread { fill: #26303f; }
+.battle-tank .battle-gun { fill: none; stroke: #3a4a68; stroke-width: 2.6; stroke-linecap: round; }
+.chip-battle.is-mine .chip-value { color: #1d5fd8; }
+.chip-battle.is-friend .chip-value { color: #c03c25; }
+.chip-time .chip-value { font-variant-numeric: tabular-nums; }
+
+/* A score that's gone up grows a little and settles, a move rather than a flash. */
+.chip-battle.is-up .chip-value { animation: battle-up 0.7s ease-out; }
+@keyframes battle-up {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+
+/* On the finish card: "You 7 : 5 Ben", each with their tank. */
+.finish-score {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  margin: 4px 0 2px;
+  font-weight: 700;
+}
+
+.finish-score[hidden] { display: none; }
+.finish-side { display: flex; align-items: center; gap: 8px; }
+.finish-side .battle-tank { width: 44px; height: 28px; }
+.finish-who { font-size: 18px; color: var(--ink-soft); max-width: 8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.finish-points { font-size: 40px; line-height: 1; font-variant-numeric: tabular-nums; }
+.finish-side.is-mine .finish-points { color: #1d5fd8; }
+.finish-side.is-friend .finish-points { color: #c03c25; }
+.finish-dash { font-size: 34px; color: var(--ink-soft); }
+
+@media (prefers-reduced-motion: reduce) {
+  .chip-battle.is-up .chip-value { animation: none; }
+}

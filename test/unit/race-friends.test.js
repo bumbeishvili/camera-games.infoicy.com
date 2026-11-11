@@ -2,7 +2,7 @@
 // is moved smoothly from what their game sends.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanBall, cleanCar, cleanHand, cleanName, cleanRacket, cleanShip, cleanShot, COMES_BACK_WITHIN_MS, idFor, makeCode, MAX_RACERS, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
+import { cleanBall, cleanCar, cleanHand, cleanName, cleanRacket, cleanShip, cleanShot, cleanTank, COMES_BACK_WITHIN_MS, idFor, makeCode, MAX_RACERS, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
 import { BODY_KEYS } from '../../games/mighty-moves/clips.js';
 import { Track } from '../../core/friends.js';
 import { CarTrack, codeInLink } from '../../games/high-five-racers/friends.js';
@@ -537,6 +537,54 @@ test('in Leap Trail, each runner goes to the others, with only what a runner mes
   ana.say({ t: 'runner', d: 'far', x: 99, y: -3, s: 500 });
   assert.deepEqual(ben.last('runner'), { t: 'runner', from: 'aaaaaaaa', ms: 0, d: 0, x: 5, y: 0, s: 60, j: 0, w: 0, b: 0 });
   assert.equal(ana.last('runner'), undefined, 'nobody hears their own');
+});
+
+test('a Tank Patrol battle holds two tanks, and a third is told it\'s full, while the other games still hold four', () => {
+  assert.equal(mostIn('tank-patrol'), 2);
+  for (const game of ['', 'balloon-pop', 'leap-trail', 'giraffe-maze']) assert.equal(mostIn(game), MAX_RACERS);
+  const { join, leave } = makeRoom(mostIn('tank-patrol'));
+  const ana = join('aaaaaaaa');
+  const ben = join('bbbbbbbb');
+  assert.ok(ana && ben);
+  assert.equal(join('cccccccc'), null, 'a third is told the game is full');
+  assert.equal(ana.last('room').members.length, 2);
+  leave(ben);
+  assert.ok(join('dddddddd'), 'someone going makes room again');
+});
+
+test('in Tank Patrol, each tank goes to the other player with only what a tank should hold, and its hits count only once the battle has started', () => {
+  const { join } = makeRoom(mostIn('tank-patrol'));
+  const ana = join('aaaaaaaa');
+  ana.say({ t: 'hi', name: 'Ana', driver: 'giraffe', level: 4, length: 6, mode: 'fast' });
+  const ben = join('bbbbbbbb');
+  ben.say({ t: 'hi', name: 'Ben', driver: 'giraffe', level: 1, length: 15, mode: 'slow' });
+  // A hit before the battle has started counts for nothing.
+  ana.say({ t: 'hit', ms: 10, r: 1, m: 'ball', d: 1, tot: 1, sm: 0, sg: 0, sd: '' });
+  assert.equal(ben.last('hit'), undefined);
+  ana.say({ t: 'ready' });
+  ben.say({ t: 'ready' });
+  // Both play the host's battle: how long it lasts, from her 6 tanks, and her speed.
+  for (const player of [ana, ben]) {
+    const { length, mode, racers } = player.last('go');
+    assert.deepEqual([length, mode, racers], [6, 'fast', ['aaaaaaaa', 'bbbbbbbb']]);
+  }
+  ana.say({ t: 'tank', ms: 1500.4, x: -13.987, z: 19.123, h: 1.5708, a: -3.14159, s: 9.96, n: 12, r: 0, o: 1, picture: 'not this' });
+  assert.deepEqual(ben.last('tank'), { t: 'tank', from: 'aaaaaaaa', ms: 1500, x: -13.99, z: 19.12, h: 1.571, a: -3.142, s: 10, n: 12, r: 0, o: 1 });
+  assert.equal(ana.last('tank'), undefined, 'nobody hears their own');
+  // Ana's shot has hit Ben's tank, as her game decides: her third hit.
+  ana.say({ t: 'hit', ms: 2000, r: 1, m: 'ball', d: 1, tot: 3, sm: 0, sg: 0, sd: '' });
+  assert.deepEqual(ben.last('hit'), { t: 'hit', from: 'aaaaaaaa', ms: 2000, r: 1, m: 'ball', d: 1, tot: 3, sm: 0, sg: 0, sd: '' });
+  assert.equal(ana.last('hit'), undefined);
+  // And each says how many hits they made at the end.
+  ben.say({ t: 'done', ms: 120000, n: 2, w: 1 });
+  assert.deepEqual(ana.last('done'), { t: 'done', from: 'bbbbbbbb', ms: 120000, n: 2, w: 1 });
+});
+
+test('a tank message holds only what it should, rounded and kept to the valley, and well under the most a message can be', () => {
+  assert.deepEqual(Object.keys(cleanTank({})), ['ms', 'x', 'z', 'h', 'a', 's', 'n', 'r', 'o']);
+  assert.deepEqual(cleanTank({ ms: -1, x: 'far', z: 999, h: 9, a: -9, s: 99, n: -3, r: 'yes', o: 0, picture: 'not this' }), { ms: 0, x: 0, z: 40, h: 4, a: -4, s: 30, n: 0, r: 1, o: 0 });
+  const biggest = JSON.stringify({ t: 'tank', from: 'abcdefghijkl', ...cleanTank({ ms: 3_599_999, x: -59.99, z: -49.99, h: -3.142, a: -3.142, s: 29.9, n: 99_999, r: 1, o: 1 }) });
+  assert.ok(biggest.length < 200, `${biggest.length} characters`);
 });
 
 test('a finish always gets through, even straight after more messages than a second allows', () => {

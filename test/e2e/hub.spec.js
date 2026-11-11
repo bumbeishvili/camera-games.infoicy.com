@@ -266,7 +266,7 @@ test('each filter narrows the games to the ones it\'s about', async ({ page }) =
 
   await test.step('With friends: just the cards with the friends badge', async () => {
     const withBadge = await page.locator('.game-card:has(.game-friends) h2').allTextContents();
-    expect(withBadge).toEqual(expect.arrayContaining(['High Five Racers', 'Balloon Pop', 'Mighty Moves', 'Sky Wings', 'Bounce Back']));
+    expect(withBadge).toEqual(expect.arrayContaining(['High Five Racers', 'Balloon Pop', 'Mighty Moves', 'Sky Wings', 'Bounce Back', 'Tank Patrol']));
     await filterNamed(page, 'With friends').check();
     await expectOnly(page, withBadge);
     await filterNamed(page, 'With friends').uncheck();
@@ -293,7 +293,7 @@ test('filters in one group add games, the groups narrow each other, and the sear
   // Both of these, not either.
   await filterNamed(page, 'Sitting down').check();
   await filterNamed(page, 'With friends').check();
-  await expectGames(page, ['Balloon Pop', 'Bounce Back', 'High Five Racers', 'Sky Wings', 'The Lighthouse Keeper'], ['Mighty Moves', 'Tank Patrol']);
+  await expectGames(page, ['Balloon Pop', 'Bounce Back', 'Cannon Bay', 'Giraffe’s Smoothie Stand', 'High Five Racers', 'Sky Wings', 'Spider Catcher', 'Tank Patrol', 'The Lighthouse Keeper'], ['Mighty Moves']);
   await page.locator('#hub-filters-clear').click();
 
   // The search and a filter together.
