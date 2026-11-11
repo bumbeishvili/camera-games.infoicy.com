@@ -69,10 +69,14 @@ export const leadHand = (page, { target = 'way', photo = 'open', side = 'right',
       const screen = { x: glove.x + game.gloveOffset.x, y: glove.y + game.gloveOffset.y };
       x += ((at.x - screen.x) / innerWidth) * 1280 * rate;
       y += ((at.y - screen.y) / innerHeight) * 720 * rate;
-      // Each hand's photo starts on its own side of the picture, and can go right across it.
-      x = hand === 'left' ? Math.max(-300, Math.min(900, x)) : Math.max(-900, Math.min(300, x));
-      y = Math.max(-300, Math.min(320, y));
+    } else if (!glove.visible && picture !== 'none') {
+      // Lost, as a hand right at the edge of the picture can be: back towards the middle, as anyone would.
+      x *= 0.95;
+      y *= 0.95;
     }
+    // Each hand's photo starts on its own side of the picture, and can go right across it, but stays in it.
+    x = hand === 'left' ? Math.max(-220, Math.min(780, x)) : Math.max(-780, Math.min(220, x));
+    y = Math.max(-260, Math.min(240, y));
     const shown = picture === 'none' ? null : picture;
     window.__camera.show({ left: hand === 'left' ? shown : null, right: hand === 'right' ? shown : null, scale: 0.62, [`${hand}OffsetX`]: x, [`${hand}OffsetY`]: y });
     window.__lead.x = x;
