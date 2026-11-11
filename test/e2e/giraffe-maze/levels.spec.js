@@ -128,8 +128,19 @@ test('level 6: a gem waits in a dead end, and is the child\'s for walking there'
   await startPlaying(page, atLevel(6));
   const gem = await item(page, 'gem');
   expect(gem).not.toBeNull();
-  await leadHand(page, { target: `(game) => { const { run } = game; const gem = run.layout.items.find((each) => each.kind === 'gem' && !each.gone); return gem && run.phase === 'walking' ? run.wayAhead(gem.cell, 1.3) : null; }` });
-  await expectSoon(async () => (await state(page)).prizes.gem, { timeout: 90_000 }).toBeGreaterThanOrEqual(1);
+  // The gem's dead end can be behind the gate, so the key comes first, and a sheep in the way is woken.
+  await leadHand(page, {
+    target: `(game) => {
+      const { run } = game;
+      if (run.waitingAt?.kind === 'sheep') return { x: run.waitingAt.x, y: run.waitingAt.y };
+      const gem = run.layout.items.find((each) => each.kind === 'gem' && !each.gone);
+      const key = run.layout.items.find((each) => each.kind === 'key' && !each.gone);
+      if (!gem || run.phase !== 'walking') return null;
+      return run.wayAhead(key && !run.hasKey ? key.cell : gem.cell, 1.3);
+    }`,
+    gain: 0.2,
+  });
+  await expectSoon(async () => (await state(page)).prizes.gem, { timeout: 120_000 }).toBeGreaterThanOrEqual(1);
   await expect(page.locator('#chip-prizes')).not.toHaveText('0', { timeout: 5000 });
   await shot(page, 'maze-gem');
   await stopHand(page);
