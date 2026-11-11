@@ -10,10 +10,14 @@
 // Nothing flashes: seizures are more common in children with hemiplegia. Colours stay steady, a web
 // fills in slowly, places fade into each other over more than a second, and legs only patter. New things
 // only move, grow or fade, slowly.
+//
+// With friends, it's the same garden on everyone's screen, and each friend's glove is in it in light grey,
+// carrying whatever spider it caught: see setShared, and friends.js for how it's shared.
 import { Glove, INK } from '../../core/glove.js';
+import { acrossGardens, answerFor, catchKey, homeBits, placeRandom, readFriend, readKey } from './friends.js';
 import {
   BASKET_HOLDS, BERRY, BUTTERFLY, CATCH_REACH, CHEST_BERRIES, CHEST_SECONDS, Catching, DASH, GOLDEN_BERRIES, SLEEP_MOST,
-  SPIDER_SIZE, WAKE_SECONDS, WEB_REACH, gardenAt, pathFor, spidersFor, spiderAt, spotFor, visitorsAt, webAt,
+  SPIDER_SIZE, WAKE_SECONDS, WEB_REACH, friendsGardenAt, gardenAt, pathFor, spidersFor, spiderAt, spotFor, visitorsAt, webAt,
 } from './spiders.js';
 
 const PALM_SHARE = 0.105;
@@ -64,6 +68,15 @@ const LABELS = {
   shy: ['Shy!', 'მორცხვია!'],
   twins: ['Holding hands!', 'ხელჩაკიდებულები!'],
 };
+
+// With friends, where a friend's glove is goes from their screen to this one through the garden a child playing with
+// the right hand, with a little reach help, sees on a wide screen: see toCommon and acrossGardens in friends.js.
+const COMMON = { aspect: 16 / 9, help: REACH_HELP.little };
+const COMMON_MIDDLE = (GARDEN_ACROSS - COMMON.help - WEB_ACROSS) * COMMON.aspect; // From the web, in screen heights.
+const NO_VISITORS = { ladybird: false, butterfly: false, chest: false, basket: false };
+// A friend's glove: solid, as a see-through one shows its outline through itself, and only fading as it comes and goes.
+const FRIEND_GLOVE = { fill: '#e3e8ee', ink: '#9aa8b6' };
+const isHome = ({ state }) => state === 'home' || state === 'landing';
 
 const LOOKS = {
   gate: { sky: ['#8fd3ff', '#e9f8ff'], far: '#a8dc8a', near: '#7cc65e', leaves: '#4f9f47' },
@@ -291,6 +304,12 @@ export class Garden {
     this.oldWeb = null;
     this.home = { left: 0, right: 0 };
     this.lastHand = { open: false, closed: false };
+    // Playing with friends: see setShared.
+    this.shared = null;
+    this.placeIndex = 0;
+    this.friendsGloves = []; // Each friend's glove, as [{ id, name, glove, fade }], which main.js keeps up to date.
+    this.early = []; // Claims for spiders that aren't out here yet, as when a friend's game is a moment ahead.
+    this.leftBits = 0; // Which spiders are home at the place being left, while the next one comes.
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
@@ -366,14 +385,40 @@ export class Garden {
     return this.fills[0];
   }
 
-  /** What this level brings: see gardenAt in spiders.js. */
+  /** What this level brings: see gardenAt in spiders.js. With friends, it's the plain garden at that level. */
   setLevel(level) {
     this.levelNumber = level;
-    this.level = gardenAt(level);
+    this.level = this.shared ? friendsGardenAt(level) : gardenAt(level);
   }
 
-  /** A new place: its web is empty, and the first spiders come out to play straight away. */
-  arriveAt(place, count) {
+  /**
+   * Playing with friends, everyone's garden has the same spiders, going round by the same clock, and what happens to
+   * them is shared: see friends.js. shared is { seed, clock(), me, claim(k) }: the seed every game was given, the
+   * seconds since the game started, the same on every computer, this player's id, and a way to claim a spider
+   * caught. Or it's null, on their own. The level is set after, with setLevel.
+   */
+  setShared(shared) {
+    this.shared = shared;
+    this.friendsGloves = [];
+    this.early = [];
+  }
+
+  /** How many spiders this child has brought home, with either hand. */
+  get mine() {
+    return this.home.left + this.home.right;
+  }
+
+  /** Which spiders are home at this place, a bit each, for friends' games: see readFriend in friends.js. */
+  get homeBits() {
+    return this.moving > 0 ? this.leftBits : homeBits(this.spiders);
+  }
+
+  /**
+   * A new place: its web is empty, and the first spiders come out to play straight away. index is which place it is
+   * in the game, which friends' games know each of its spiders by.
+   */
+  arriveAt(place, count, index = 0) {
+    this.placeIndex = index;
     this.place = place;
     this.fromPlace = null;
     this.fade = 1;
@@ -386,9 +431,12 @@ export class Garden {
     this.fills = [0, 0];
     this.webGlow = null;
     this.spiders = [];
-    this.visitors = visitorsAt(place, this.levelNumber);
+    this.visitors = this.shared ? NO_VISITORS : visitorsAt(place, this.levelNumber);
     this.catching = new Catching();
-    this.waiting = spidersFor(count, this.levelNumber, Math.random, { ladybird: this.visitors.ladybird });
+    // With friends, the same spiders as on every friend's screen, from the game's seed. Each knows where it comes in
+    // the line, which is how friends' games know it.
+    const random = this.shared ? placeRandom(this.shared.seed, index) : Math.random;
+    this.waiting = spidersFor(count, this.levelNumber, random, { ladybird: this.visitors.ladybird, at: this.level }).map((plan, order) => ({ ...plan, index: order }));
     // At two webs, each spider is the colour of the web it lives in.
     if (this.level.webs > 1) for (const plan of this.waiting) if (plan.web !== null) plan.colour = plan.web;
     this.webCount = [0, 1].map((index) => this.waiting.filter((plan) => plan.kind !== 'ladybird' && (plan.web ?? 0) === index).length);
@@ -411,9 +459,11 @@ export class Garden {
     const playing = () => this.spiders.filter(({ state }) => state !== 'home' && state !== 'landing').length;
     while (this.waiting.length && playing() < this.level.atOnce) {
       const used = new Set(this.spiders.filter(({ state }) => state !== 'home' && state !== 'landing').map(({ slot }) => slot));
-      let slot = 0;
-      while (used.has(slot)) slot += 1;
       const plan = this.waiting.shift();
+      // With friends, each has a spot of its own, so it plays in the same one on every screen, whatever order the
+      // others went home in. On their own, the first free spot.
+      let slot = this.shared ? plan.index : 0;
+      while (!this.shared && used.has(slot)) slot += 1;
       const spider = this.makeSpider(plan, slot);
       this.spiders.push(spider);
       // Twins come out together.
@@ -423,6 +473,8 @@ export class Garden {
         this.introduce('twins', spider);
       }
     }
+    // A friend may have caught one of these already, if their game let it out a moment sooner.
+    if (this.shared && this.early.length) this.tryEarly();
   }
 
   makeSpider(plan, slot, leader = null) {
@@ -449,6 +501,11 @@ export class Garden {
       // When on its path's clock it fell asleep, as its path waits for it while it sleeps.
       sleptAt: plan.sleepy ? this.playTime : null,
       waking: 0,
+      // With friends: whose glove it's in, how many times it has been caught and let go, and whether the server has
+      // still to say if this child's catch was first. See friends.js.
+      holder: null,
+      catches: 0,
+      pending: false,
     };
     this.placeOnPath(spider);
     this.events.onArrive?.();
@@ -535,7 +592,8 @@ export class Garden {
 
   update(dt, snapshot, { aspect = this.aspect, playing = false, showHands = false } = {}) {
     this.time += dt;
-    this.playTime += dt * this.slow;
+    // With friends, the spiders go round by the clock every friend's game has, so they're in step on every screen.
+    this.playTime = this.shared ? this.shared.clock() : this.playTime + dt * this.slow;
     this.aspect = aspect;
     for (const side of ['left', 'right']) {
       const glove = this.gloves[side];
@@ -548,6 +606,7 @@ export class Garden {
     }
     this.moveAlong(dt);
     for (const spider of this.spiders) this.moveSpider(spider, dt);
+    if (this.shared) this.followFriends();
     this.updateExtras(dt, snapshot, playing && this.moving === 0);
     if (playing && this.moving === 0) {
       this.noticeHand();
@@ -581,9 +640,10 @@ export class Garden {
   goTo(place) {
     this.fromPlace = this.place;
     this.place = place;
+    this.leftBits = homeBits(this.spiders);
     this.oldWeb = { spiders: this.spiders.filter(({ state }) => state === 'home'), fills: [...this.fills], flower: this.visitors.ladybird, stream: this.stream };
     // The next place's things fade in as this one's fade out, so its flower comes and goes gently.
-    this.visitors = visitorsAt(place, this.levelNumber);
+    this.visitors = this.shared ? NO_VISITORS : visitorsAt(place, this.levelNumber);
     this.spiders = [];
     this.count = 0;
     this.homeHere = 0;
@@ -743,6 +803,11 @@ export class Garden {
     if (result === 'caught') {
       const spider = this.catching.held;
       spider.state = 'held';
+      if (this.shared) {
+        // In this child's glove at once, and the server says whose it really is, if a friend closed on it too.
+        Object.assign(spider, { holder: this.shared.me, pending: true });
+        this.shared.claim(catchKey(this.placeIndex, spider.index, spider.catches));
+      }
       // It leaves a berry behind on the leaf, to pick up on the way back.
       if (this.level.berries) this.dropBerry(spider.x, spider.y + this.spiderSize * 1.4);
       this.events.onCatch?.();
@@ -762,19 +827,29 @@ export class Garden {
     });
   }
 
-  /** A spider let go of scurries back to playing. At the other of two webs, its own web glows softly. */
-  letGoOf(spider) {
-    const wrong = this.atOtherWeb(spider);
+  /**
+   * A spider let go of scurries back to playing. At the other of two webs, its own web glows softly. by is the friend
+   * who let it go, with friends, or null for this child.
+   */
+  letGoOf(spider, by = null) {
+    const wrong = !by && this.atOtherWeb(spider);
     spider.state = 'returning';
     spider.back = { x: spider.x, y: spider.y, t: 0 };
+    if (this.shared) {
+      // Caught again, it's a new catch. One the server hasn't said was this child's yet only counts once it does.
+      if (by || !spider.pending) spider.catches += 1;
+      Object.assign(spider, { holder: null, pending: false });
+    }
     if (wrong) {
       const web = this.webOf(spider);
       this.webGlow = { index: web.index, life: 1.6 };
     }
-    this.events.onLetGo?.();
+    this.events.onLetGo?.(by);
   }
 
-  bringHome(spider) {
+  /** by is the friend who brought it home, with friends, or null for this child, whose it then is. */
+  bringHome(spider, by = null) {
+    if (this.catching.held === spider) this.catching.drop();
     spider.state = 'landing';
     spider.land = { x: spider.x, y: spider.y, t: 0 };
     if (spider.kind === 'ladybird') {
@@ -792,18 +867,120 @@ export class Garden {
         }
       }
       const web = this.webOf(spider).index;
-      spider.spot = this.webHome[web];
+      // With friends, each has its own spot in the web, as they can come home in any order on each screen.
+      spider.spot = this.shared ? spider.index : this.webHome[web];
       this.webHome[web] += 1;
     }
     this.homeHere += 1;
-    this.home[this.side] += 1;
+    if (!by) this.home[this.side] += 1;
+    Object.assign(spider, { holder: null, pending: false });
     // A golden spider brings a shower of berries home with it.
     if (spider.golden) {
       const at = this.homeSpot(spider);
       for (let i = 0; i < GOLDEN_BERRIES; i += 1) this.dropBerry(at.x, at.y, { armed: true, spread: (i - (GOLDEN_BERRIES - 1) / 2) * 0.7 });
     }
-    this.events.onHome?.(this.side);
+    this.events.onHome?.(this.side, by);
     this.letOut();
+  }
+
+  /* ---------- with friends: see friends.js ---------- */
+
+  /**
+   * The server says whose a spider is: the first hand to close on it, here or on a friend's computer. A claim for a
+   * spider that isn't out here yet waits until it is.
+   */
+  claimed(k, by) {
+    if (!this.shared) return;
+    const { place, index, catches } = readKey(k);
+    if (place < this.placeIndex) return;
+    const spider = place === this.placeIndex && this.count > 0 ? this.spiders.find((each) => each.index === index) : null;
+    if (!spider) {
+      this.early.push({ k, by });
+      return;
+    }
+    const answer = answerFor(spider, catches, by, this.shared.me);
+    if (answer === 'mine') {
+      Object.assign(spider, { catches, pending: false });
+    } else if (answer === 'gone') {
+      spider.catches = catches + 1;
+    } else if (answer === 'theirs') {
+      if (this.catching.held === spider) this.catching.drop();
+      Object.assign(spider, { state: 'held', holder: by, catches, pending: false, back: null });
+    }
+  }
+
+  tryEarly() {
+    const early = this.early;
+    this.early = [];
+    for (const { k, by } of early) this.claimed(k, by);
+  }
+
+  /**
+   * A friend's latest message, { z, h, m }: which place they're at, what's in their glove and which spiders are home
+   * on their screen. One home there comes home here, and one they've let go of goes back to playing. If they're on
+   * further in the garden, every spider here is home on their screen, so it's home here too.
+   */
+  fromFriend(id, { z, h, m }) {
+    if (!this.shared || this.count === 0) return;
+    if (z > this.placeIndex) {
+      this.allHome(id);
+      return;
+    }
+    if (z < this.placeIndex) return;
+    const { home, letGo } = readFriend(this.spiders, this.placeIndex, id, { h, m });
+    for (const spider of home) this.bringHome(spider, id);
+    for (const spider of letGo) this.letGoOf(spider, id);
+  }
+
+  /** Every spider at this place is home on a friend's screen, so they all come home here, those still waiting too. */
+  allHome(by) {
+    if (this.homeHere >= this.count) return;
+    for (let spider = this.spiders.find((each) => !isHome(each)); spider; spider = this.spiders.find((each) => !isHome(each))) {
+      this.bringHome(spider, by);
+    }
+  }
+
+  /** A friend has gone, and a spider in their glove goes back to playing. */
+  friendGone(id) {
+    if (!this.shared) return;
+    for (const spider of this.spiders) if (spider.holder === id && !isHome(spider)) this.letGoOf(spider, id);
+  }
+
+  /** A spider in a friend's glove rides in it, peeping out, wherever their glove is on this screen. */
+  followFriends() {
+    for (const spider of this.spiders) {
+      if (spider.state !== 'held' || !spider.holder || spider.holder === this.shared.me) continue;
+      const glove = this.friendsGloves.find((each) => each.id === spider.holder)?.glove;
+      if (!glove?.visible) continue;
+      spider.x = glove.x;
+      spider.y = glove.y - this.palmSize * 0.15;
+    }
+  }
+
+  /** In a friend's glove, rather than playing or in this child's. */
+  heldByFriend(spider) {
+    return Boolean(this.shared && spider.state === 'held' && spider.holder && spider.holder !== this.shared.me);
+  }
+
+  /** How far the garden's middle is from the web, in screen heights, which reach help and the screen's shape change. */
+  get middleFromWeb() {
+    return ((GARDEN_ACROSS - REACH_HELP[this.reach] - WEB_ACROSS) * this.width) / this.height;
+  }
+
+  /**
+   * Where a point on this screen is in the garden friends share: the one a child playing with the right hand, with a
+   * little reach help, sees on a wide screen, from 0 on Giraffe's side to 1 across, and down. So a friend's glove by a
+   * spider on their screen is by it on this one, and at the web when it's at theirs: see acrossGardens.
+   */
+  toCommon(x, y) {
+    const away = (this.way * (x - this.across(WEB_ACROSS))) / this.height;
+    return { x: WEB_ACROSS + acrossGardens(away, this.middleFromWeb, COMMON_MIDDLE) / COMMON.aspect, y: y / this.height };
+  }
+
+  /** Where a point in the garden friends share is on this screen. */
+  fromCommon(x, y) {
+    const away = acrossGardens((x - WEB_ACROSS) * COMMON.aspect, COMMON_MIDDLE, this.middleFromWeb);
+    return { x: this.across(WEB_ACROSS) + this.way * away * this.height, y: y * this.height };
   }
 
   /* ---------- berries, helpers and labels, from the higher levels ---------- */
@@ -1578,11 +1755,40 @@ export class Garden {
     this.drawBerries(ctx);
     const carried = this.catching.carried;
     for (const spider of this.spiders) {
-      if (!carried.includes(spider)) this.drawSpider(ctx, spider);
+      if (!carried.includes(spider) && !this.heldByFriend(spider)) this.drawSpider(ctx, spider);
     }
+    // Friends' gloves under the child's own, each with what it's carrying.
+    this.drawFriendsGloves(ctx);
+    for (const spider of this.spiders) if (this.heldByFriend(spider)) this.drawSpider(ctx, spider, { held: true });
     this.gloves.left.draw(ctx, this.palmSize);
     this.gloves.right.draw(ctx, this.palmSize);
     for (const spider of carried) this.drawSpider(ctx, spider, { held: true });
     for (const label of this.labels) this.drawLabel(ctx, label);
+  }
+
+  /**
+   * Friends' gloves, playing on their own computers, where their hands really are in the garden, in light grey,
+   * with each friend's name over theirs. A spider caught by a friend rides in theirs.
+   */
+  drawFriendsGloves(ctx) {
+    const { palmSize } = this;
+    for (const { glove, name, fade } of this.friendsGloves) {
+      if (!glove.visible || fade < 0.02) continue;
+      glove.draw(ctx, palmSize, { ...FRIEND_GLOVE, alpha: fade });
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.font = `700 ${Math.round(palmSize * 0.32)}px Fredoka, "Noto Sans Georgian", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      const y = glove.y - palmSize * 1.55;
+      const wide = ctx.measureText(name).width + palmSize * 0.4;
+      ctx.fillStyle = 'rgba(18, 48, 77, 0.72)';
+      ctx.beginPath();
+      ctx.roundRect(glove.x - wide / 2, y - palmSize * 0.42, wide, palmSize * 0.48, palmSize * 0.24);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(name, glove.x, y);
+      ctx.restore();
+    }
   }
 }

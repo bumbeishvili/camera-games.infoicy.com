@@ -66,6 +66,13 @@
 //   ship   { ms, x, z, h, s, v, f }        where their ship is in Cannon Bay: where on the water, which way it
 //                                      heads, how fast, how far its sails are up, from 0 to 1, and f, how many
 //                                      cannonballs it has fired so far, for the other game to show them coming
+//   catcher { ms, x, y, v, o, p, z, h, m, n }   their glove in Spider Catcher: where it is in the garden, as a child
+//                                      playing with the right hand and a little reach help would see it, 0 to 1 across
+//                                      and down, whether it can be seen and is open, and p, its 21 points, as in hand.
+//                                      z is which place in the garden they're at, h the spider in the glove, as the
+//                                      claim it was caught with, or -1, m which of that place's spiders are home on
+//                                      their screen, a bit each, and n how many they've brought home. Everyone makes
+//                                      the same spiders from the seed, and claims each one their glove closes on
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
@@ -73,7 +80,7 @@
 //   room   { you, members: [{ id, name, driver, ready, racing, host }] }   whenever that changes
 //   go     { level, length, laps, mode, racers, seed }   the countdown starts now, on the host's course (laps is
 //                                      length). seed is the same for everyone, for a game laid out by chance
-//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker, stand, ship { from, ... } and done { from, ms, n, w }
+//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker, stand, ship, catcher { from, ... } and done { from, ms, n, w }
 //                                      passed on from the others: ball only from the host, shot only to the host,
 //                                      and stand only from someone playing
 //   claimed { k, by }                      balloon k, or round k, went to player by, sent to everyone, them too
@@ -354,6 +361,27 @@ export function cleanShip(message) {
   };
 }
 
+/**
+ * Only what a glove in Spider Catcher should hold, rounded, with its 21 points while it can be seen, or none. A spider
+ * in it that isn't a number is none, -1.
+ */
+export function cleanCatcher(message) {
+  const points = Array.isArray(message.p) && message.p.length === 42 ? message.p.map((value) => number(value, -4, 4, 2)) : [];
+  const seen = message.v && points.length ? 1 : 0;
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    x: number(message.x, -0.5, 1.5, 3),
+    y: number(message.y, -0.5, 1.5, 3),
+    v: seen,
+    o: seen && message.o ? 1 : 0,
+    p: seen ? points : [],
+    z: number(message.z, 0, 20, 0),
+    h: typeof message.h === 'number' && Number.isFinite(message.h) ? number(message.h, -1, 1_000_000, 0) : -1,
+    m: number(message.m, 0, 1023, 0),
+    n: number(message.n, 0, 1000, 0),
+  };
+}
+
 /** Only what a car message should hold, rounded, so nothing else can be passed on. */
 export function cleanCar(message) {
   return {
@@ -543,8 +571,9 @@ export class RaceRoom {
       case 'racket':
       case 'runner':
       case 'walker':
-      case 'ship': {
-        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand, pose: cleanPose, racket: cleanRacket, runner: cleanRunner, walker: cleanWalker, ship: cleanShip }[message.t](message);
+      case 'ship':
+      case 'catcher': {
+        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand, pose: cleanPose, racket: cleanRacket, runner: cleanRunner, walker: cleanWalker, ship: cleanShip, catcher: cleanCatcher }[message.t](message);
         for (const other of others) other.send({ t: message.t, from: meta.id, ...moved });
         break;
       }

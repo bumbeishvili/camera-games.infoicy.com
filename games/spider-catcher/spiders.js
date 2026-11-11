@@ -79,6 +79,29 @@ export function gardenAt(level) {
   };
 }
 
+/**
+ * The garden at a level when playing with friends: as many spiders, as quick, on paths as long and twisty as the
+ * level has, and none of the new things the levels bring. Those would be one child's and not another's, and a
+ * spider that dashes off from a hand, or sleeps until one wakes it, couldn't be in the same place on every screen.
+ */
+export function friendsGardenAt(level) {
+  return {
+    ...gardenAt(level),
+    webSway: 0,
+    shy: 0,
+    pairs: 0,
+    berries: false,
+    ladybird: false,
+    sleepy: 0,
+    butterfly: false,
+    basket: false,
+    chest: false,
+    webs: 1,
+    boats: false,
+    golden: false,
+  };
+}
+
 // What each level brings that's new, for the title card, the countdown and the finish card. key says
 // which part of gardenAt turns it on, which the unit tests check.
 const NEWS = {
@@ -183,10 +206,11 @@ const SPOTS = [[-0.1, 0.1], [0.1, -0.1], [0.12, 0.13], [-0.12, -0.12], [0, 0], [
 
 /**
  * Who's coming out to play at a place, in order, for a level. Every other one swings on its thread.
- * Each pair is two spiders on one path, one just behind the other.
+ * Each pair is two spiders on one path, one just behind the other. at is the garden they're for: the
+ * level's, or with friends, friendsGardenAt's.
  */
-export function spidersFor(count, level, random = Math.random, { ladybird = false } = {}) {
-  const { pairs, shy, sleepy, webs, boats, golden } = gardenAt(level);
+export function spidersFor(count, level, random = Math.random, { ladybird = false, at = gardenAt(level) } = {}) {
+  const { pairs, shy, sleepy, webs, boats, golden } = at;
   const spiders = [];
   let pairsLeft = pairs;
   // Starting halfway, so the first shy one comes early on, not only at the end.
