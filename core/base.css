@@ -132,6 +132,21 @@ h2 {
   color: var(--ink-soft);
 }
 
+/* The hand shapes chosen for this game's moves, when a grown-up has chosen any. */
+.shape-note {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 18px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.shape-note[hidden] { display: none; }
+.shape-note-move { display: inline-flex; align-items: center; gap: 6px; }
+.shape-note .shape-icon { width: 30px; height: 32px; }
+
 .big-button {
   border: 0;
   border-radius: 999px;
@@ -343,6 +358,10 @@ body[data-steer-hint] .hand-demo-hand { animation: hand-steers 2.4s ease-in-out 
   0%, 100% { transform: translateX(-16px) rotate(-8deg); }
   50% { transform: translateX(16px) rotate(8deg); }
 }
+
+/* A shape chosen for a move: its straight fingers open and close, and the rest stay curled. */
+.hand-demo[data-shaped] .hand-demo-finger:not(.is-up) { animation: none; transform: scale(0.28); }
+body[data-screen='playing'][data-shape-hint] .hand-demo { display: block; }
 
 @media (prefers-reduced-motion: reduce) {
   .hand-demo-finger, .hand-demo-hand { animation-duration: 3.6s; }
@@ -947,6 +966,76 @@ body:not([data-screen='countdown'], [data-screen='playing']) .count { display: n
   border-top: 1px solid var(--line);
   padding: 14px 0;
 }
+
+/* ---------- hand shapes, in the panel ---------- */
+.choice.shapes { display: block; }
+
+.shapes-lead {
+  clear: both;
+  font-size: 15px;
+  color: var(--ink-soft);
+  white-space: normal;
+}
+
+.shape-move { margin-top: 12px; }
+
+.shape-move-name {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.shape-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.choice .shape-option {
+  gap: 6px;
+  border-radius: 14px;
+  background: var(--surface-soft);
+  box-shadow: inset 0 0 0 2px var(--line);
+  padding: 5px 12px 5px 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.choice .shape-option:has(input:checked) { background: #e6f0fc; box-shadow: inset 0 0 0 3px var(--accent); }
+.choice .shape-option:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
+.choice .shape-option:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.shape-picture { display: inline-flex; }
+.shape-icon { width: 34px; height: 36px; }
+.shape-icon rect { fill: var(--ink); }
+.shape-icon path { fill: none; stroke: var(--ink); stroke-width: 11; stroke-linecap: round; }
+.shape-option:has(input:checked) .shape-icon rect { fill: var(--accent); }
+.shape-option:has(input:checked) .shape-icon path { stroke: var(--accent); }
+
+.shape-fingers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  margin-top: 8px;
+  font-size: 15px;
+}
+
+.shape-fingers[hidden] { display: none; }
+.shape-fingers > span { color: var(--ink-soft); font-weight: 600; }
+
+.shapes-note {
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.35;
+  background: #fff4d6;
+  border-radius: 12px;
+  padding: 8px 10px;
+  white-space: normal;
+}
+
+.shapes-note[hidden] { display: none; }
+.strictness[hidden] { display: none; }
 
 @media (max-height: 560px) {
   :root {

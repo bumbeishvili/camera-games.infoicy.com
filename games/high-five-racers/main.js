@@ -41,6 +41,8 @@ const WORDS = {
     turbo: 'Turbo!',
     fly: 'Fly!',
     keepOpen: 'Keep your hand open!',
+    // With a hand shape chosen to drive, rather than the open hand.
+    keepShape: 'Keep holding it!',
     otherHand: 'Other hand: fist, then open!',
     highTen: 'High ten!',
     newTag: 'New!',
@@ -52,6 +54,7 @@ const WORDS = {
     turbo: 'ტურბო!',
     fly: 'გაფრინდი!',
     keepOpen: 'ხელი გაშლილი გეჭიროს!',
+    keepShape: 'ასე გეჭიროს!',
     otherHand: 'მეორე ხელი: მუშტი, მერე გაშალე!',
     highTen: 'ორმაგი ხუთი!',
     newTag: 'ახალი!',
@@ -405,7 +408,7 @@ class RaceGame {
     const rising = turbo > this.lastTurboLevel + 1e-4;
     this.lastTurboLevel = turbo;
     const state = turboOn ? 'on' : turbo > 0.02 && rising ? 'filling' : 'idle';
-    const word = turboOn ? this.words.turbo : this.words.keepOpen;
+    const word = turboOn ? this.words.turbo : this.session.shapes.open.fingers ? this.words.keepShape : this.words.keepOpen;
     if (this.turboBox.dataset.state !== state || this.turboWord.textContent !== word) {
       this.turboBox.dataset.state = state;
       this.turboWord.textContent = word;
@@ -598,6 +601,8 @@ class RaceGame {
 const driverChoices = ROSTER.map(({ id, name }) => `<label><input type="radio" name="fighter" value="${id}"> ${name}</label>`).join('\n        ');
 
 new GameSession({
+  // What the open and closed hand do here, for the hand shapes in the grown-ups' panel: see core/shapes.js.
+  moves: { open: 'Drive', closed: 'Slow down' },
   shell: {
     title: 'High Five Racers',
     startLabel: 'Let’s race!',

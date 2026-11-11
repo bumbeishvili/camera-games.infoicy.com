@@ -286,9 +286,9 @@ class SmoothieGame {
     const needed = session.handsPrompt(snapshot, dt);
     if (needed && !needed.key.startsWith('closed')) return needed;
     const { side } = snapshot;
-    if (field.gloves[side].sticky > 0) return { key: `sticky-${side}`, text: STICKY, side: null, silent: true };
+    if (field.gloves[side].sticky > 0) return { key: `sticky-${side}`, text: STICKY, side: null, silent: true, asks: 'open' };
     if (this.bump && session.playSeconds - this.bump.at < BUMP_PROMPT_SECONDS) {
-      return { key: `bump-${this.bump.side}`, text: OPEN_TO_SLICE[this.bump.side], side: this.bump.side };
+      return { key: `bump-${this.bump.side}`, text: OPEN_TO_SLICE[this.bump.side], side: this.bump.side, asks: 'open' };
     }
     if (field.throwing && this.idleFor > HOW_AFTER_SECONDS) return { key: 'how', text: HOW, side: null };
     return null;
@@ -316,6 +316,8 @@ class SmoothieGame {
 }
 
 new GameSession({
+  // What the open and closed hand do here, for the hand shapes in the grown-ups' panel: see core/shapes.js.
+  moves: { open: 'Slice', closed: null },
   shell: {
     title: 'Giraffe’s Smoothie Stand',
     startLabel: 'Open the stand',

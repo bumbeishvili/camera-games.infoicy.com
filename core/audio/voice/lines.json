@@ -31,5 +31,11 @@
   {"id": "popped-all", "text": "You popped them all!", "ka": "ყველა ბუშტი გახეთქე!"},
   {"id": "maths-hint", "text": "Pop the right answer!", "ka": "გახეთქე სწორი პასუხი!"},
   {"id": "too-hot", "text": "Ouch! Too hot!", "ka": "უი! ძალიან ცხელია!"},
-  {"id": "cool-it", "text": "Hold your hand open to cool it down!", "ka": "ხელი გაშლილი გეჭიროს, რომ გაცივდეს!"}
+  {"id": "cool-it", "text": "Hold your hand open to cool it down!", "ka": "ხელი გაშლილი გეჭიროს, რომ გაცივდეს!"},
+  {"id": "shape-point", "text": "Point with one finger!", "ka": "აჩვენე საჩვენებელი თითი!"},
+  {"id": "shape-two", "text": "Show two fingers!", "ka": "აჩვენე ორი თითი!"},
+  {"id": "shape-three", "text": "Show three fingers!", "ka": "აჩვენე სამი თითი!"},
+  {"id": "shape-thumb", "text": "Thumbs up!", "ka": "ცერა თითი მაღლა!"},
+  {"id": "shape-fingers", "text": "Show the fingers in the picture!", "ka": "აჩვენე თითები, როგორც სურათზეა!"},
+  {"id": "shape-rest", "text": "Resting is OK. Show me when you’re ready.", "speak": "Resting is okay. Show me when you're ready.", "ka": "შეგიძლია დაისვენო. როცა მზად იქნები, მაჩვენე."}
 ]

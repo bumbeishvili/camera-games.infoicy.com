@@ -63,6 +63,7 @@ export function mountShell({
     <div class="card title-card">
       <h1>${title}</h1>
       <p id="tagline" class="tagline"></p>
+      <p id="shape-note" class="shape-note" hidden></p>
       <button id="start" class="big-button" type="button">${startLabel}</button>
       ${ALL_GAMES}
       <p class="small-print">For grown-ups: the camera picture stays on this computer. It is never saved or sent anywhere.</p>
@@ -90,11 +91,11 @@ export function mountShell({
     <svg viewBox="0 0 100 110">
       <g class="hand-demo-hand">
         <rect x="26" y="58" width="48" height="42" rx="16" />
-        <path class="hand-demo-finger" d="M33 62V36" />
-        <path class="hand-demo-finger" d="M45 58V24" />
-        <path class="hand-demo-finger" d="M57 58V22" />
-        <path class="hand-demo-finger" d="M68 62V32" />
-        <path class="hand-demo-finger hand-demo-thumb" d="M74 82L92 66" />
+        <path class="hand-demo-finger" data-finger="pinky" d="M33 62V36" />
+        <path class="hand-demo-finger" data-finger="ring" d="M45 58V24" />
+        <path class="hand-demo-finger" data-finger="middle" d="M57 58V22" />
+        <path class="hand-demo-finger" data-finger="index" d="M68 62V32" />
+        <path class="hand-demo-finger hand-demo-thumb" data-finger="thumb" d="M74 82L92 66" />
       </g>
     </svg>
   </div>
@@ -144,6 +145,8 @@ export function mountShell({
       <legend>Hand to play with</legend>
       ${HAND_CHOICES.map(([value, label]) => `<label><input type="radio" name="hands" value="${value}"> ${label}</label>`).join('\n      ')}
     </fieldset>
+
+    <div id="panel-shapes"></div>
 
     ${panelSettings}
 

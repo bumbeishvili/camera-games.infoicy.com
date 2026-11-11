@@ -251,10 +251,10 @@ class SpiderGame {
         const [en, ka] = TO_THE_FLOWER;
         return { key: 'bring-ladybird', text: session.settings.language === 'ka' ? ka : en, side: null, silent: true };
       }
-      return { key: 'bring', text: OPEN_ON_WEB, side: null };
+      return { key: 'bring', text: OPEN_ON_WEB, side: null, asks: 'open' };
     }
     const playing = garden.spiders.some((spider) => garden.catchable(spider));
-    if (!garden.holding && playing && this.idleFor > HINT_AFTER_SECONDS) return { key: 'close-on-one', text: CLOSE_ON_ONE, side: null };
+    if (!garden.holding && playing && this.idleFor > HINT_AFTER_SECONDS) return { key: 'close-on-one', text: CLOSE_ON_ONE, side: null, asks: 'closed' };
     return null;
   }
 
@@ -275,6 +275,8 @@ class SpiderGame {
 const total = placesAt(1).reduce((sum, { count }) => sum + count, 0);
 
 new GameSession({
+  // What the open and closed hand do here, for the hand shapes in the grown-ups' panel: see core/shapes.js.
+  moves: { open: 'Let go', closed: 'Catch and hold' },
   shell: {
     title: 'Spider Catcher',
     startLabel: 'Catch the spiders',

@@ -41,6 +41,7 @@ index.html, hub.css, hub.js    the page for choosing a game, with its search and
 demos/                  the films of each game on that page, made with tools/record_demos.mjs
 core/                   what every game shares
   hands.js              decides whether a hand is open
+  shapes.js, shapes-ui.js    other hand shapes a grown-up can choose for a game's moves, like pointing
   session.js            runs a game: title, hand check, countdown, play, finish
   shell.js, hud.js      the shared screens, hand meters, prompts and grown-ups' panel
   sound.js, audio/      voice lines and shared sound effects
@@ -115,6 +116,22 @@ The numbers worth tuning with a therapist are `OPEN_RULES` at the top of `hands.
 Choose **Hand to play with** under the gear icon. It's remembered across the games. The other hand is ignored, so it can rest, close or leave the picture, except for one extra in High Five Racers, below, which it can never be punished for missing. It still can't overlap the hand in play, so one hand can't hold the other open. In High Five Racers, moving the hand side to side steers, measured from where it started in the hand check.
 
 **How it tells left from right.** It uses the tracker's own left or right label, because the hand could be anywhere in the picture. The label swapped correctly on every mirrored photo, at angles up to 60° and including fists, with confidence never below 0.88. It also named both hands correctly in a photo with crossed arms. When the tracker is less than 70% sure, the hand's side of the mirror decides instead, so a child doesn't get stuck being asked for a hand they're showing. If the tracker is sure it's seeing the other hand, that hand doesn't count, and the panel says "Only sees the other hand".
+
+## Hand shapes
+
+Under the gear icon, **Hand shapes** chooses what makes each of a game's moves. Every hand game has an open move and most have a closed one, named for what they do there: in High Five Racers, *Drive* and *Slow down*; in Robot Rescue, *Fire* and *Shield*; in Tank Patrol, *Fire* and *Drive*. Balloon Pop, Bounce Back, Smoothie Stand and the Lighthouse only have the open move, as a closed hand does nothing there. Each move can be:
+
+- **Open hand** or **Closed hand**, as the games have always been, which is how every game starts.
+- **Pointing** (the index finger straight and the other three curled), **Two fingers**, **Three fingers** or **Thumb up**.
+- **Choose fingers**: any fingers straight, and the rest curled.
+
+A child who can't open the whole hand may well manage pointing, and moving one finger at a time is good practice too. Each game keeps its own choice, so pointing can drive in High Five Racers while Balloon Pop still pops with an open hand.
+
+**How a shape is told apart.** It's in [core/shapes.js](core/shapes.js). A finger counts as straight from a score of 0.55 and curled up to 0.35, with room for a finger that can't straighten all the way. A shape is as sure as its least sure finger, it counts once it's 60% sure for a fifth of a second, and it stays made until it's under 40% sure, so it doesn't flicker. On the real photos, each of pointing, a peace sign and a thumbs up makes its own shape and none of the others, and an open hand and a fist make none of them. The thumb is left out of pointing, two and three fingers, as thumbs sit every which way.
+
+**What a hand making neither shape does.** With a shape for the open move and the closed hand left as it is, any other hand is the closed move, as always: with pointing to drive, an open hand slows the car down. With a shape for the closed move too, a hand making neither carries on with the move it made last. So with an open hand to drive and pointing to slow down, the car keeps going when the hand rests, until the child points. As always, a hand out of view, at the edge of the picture, too far away or overlapping the other hand stops any move at once, and has to make a shape again afterwards.
+
+The hand check asks for the open move's shape, and the picture in the corner shows it. The prompts ask for it in its own words, like "Point with one finger!", and show it. "How open counts as open" is only for the open hand, so the panel puts it away while the open move is a shape. In High Five Racers, the other hand's fist and then open hand for flying stays as it is.
 
 ## Levels
 
@@ -692,6 +709,7 @@ There's no free footage of a person clapping, circling a hand or holding their a
 - **How Spider Catcher feels.** Whether the spiders are slow enough to catch with a real affected hand, whether closing within about a second of opening is long enough for a hand that closes slowly, how big the catching circle should be, and whether a child finds the spiders cute. It was only played with photos of an adult hand, moved about by the tests, and nobody has listened to its sound.
 - **How Bounce Back feels.** Whether the ball is slow enough for a real affected hand, how far from the hand a waiting ball should float, whether a child can tell the racket with strings from the dashed ring, and whether the long cartoon arms are funny or strange. It was only played with photos of an adult hand, moved about by the tests, nobody has listened to its sound, and playing with a friend was only tried with two browsers on one computer, not two computers far apart.
 - **How Giraffe's Maze feels.** Whether leading a character along a path is clear to a young child, whether he walks quickly enough, how big the paths should be for a real affected hand, whether a second of an open hand is right to wake the sheep, and whether rubbing the bush can be done with a weak hand. It was only played with photos of an adult hand, moved about by the tests, nobody has listened to its sound, and playing with friends was only tried with browsers on one computer. The friends' calls in Georgian need a native speaker to check them.
+- **Hand shapes on a real hand.** Pointing, a peace sign and a thumbs up were each told apart on one photo of an adult hand. A child's hand, or one with hemiplegia, may hold a shape differently, and whether the thresholds suit one is for a therapist to judge. Three fingers and the grown-up's own choice of fingers have only been tested on the finger scores, and the new Georgian lines need a native speaker.
 - **Flying with the other hand, on a real child.** It was tested with photos of a fist and an open hand. A hand with hemiplegia might not read as a clear fist, and nobody has checked whether reaching out the second hand pulls the hand in play out of view.
 - **Kicks seen from the front.** The only kick footage available was filmed from the side, which confuses the tracker's left and right legs, so kicks were tested with a real standing body that had its legs moved by the test.
 - **A real webcam.** Only simulated camera feeds have been used. Real lighting, backgrounds and motion may need some tuning. That goes double for Balloon Pop: how hard balloons are to reach, and how it feels to chase them, can only be judged with a real hand moving.

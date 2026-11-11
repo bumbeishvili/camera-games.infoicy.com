@@ -550,14 +550,14 @@ class BalloonGame {
 
     const glove = this.field.gloves[snapshot.side];
     // The second time round it's only there to read.
-    if (glove.burnt > 0) return { key: `cool-${snapshot.side}`, text: COOL_IT, side: null, silent: this.burns > 1 };
+    if (glove.burnt > 0) return { key: `cool-${snapshot.side}`, text: COOL_IT, side: null, silent: this.burns > 1, asks: 'open' };
 
     if (this.bump && session.playSeconds - this.bump.at < BUMP_PROMPT_SECONDS) {
       const { side } = this.bump;
-      return { key: `bump-${side}`, text: OPEN_TO_POP[side], side };
+      return { key: `bump-${side}`, text: OPEN_TO_POP[side], side, asks: 'open' };
     }
     if (!this.mathsOn && session.playSeconds < POP_HINT_SECONDS) {
-      return { key: 'pop-hint', text: POP_HINT, side: null };
+      return { key: 'pop-hint', text: POP_HINT, side: null, asks: 'open' };
     }
     return null;
   }
@@ -575,6 +575,8 @@ class BalloonGame {
 }
 
 new GameSession({
+  // What the open and closed hand do here, for the hand shapes in the grown-ups' panel: see core/shapes.js.
+  moves: { open: 'Pop', closed: null },
   shell: {
     title: 'Balloon Pop',
     startLabel: 'Let’s pop!',

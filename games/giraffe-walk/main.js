@@ -285,18 +285,18 @@ class WalkGame {
     const needed = session.handsPrompt(snapshot, dt);
     // Closing the hand is part of this game, so it isn't asked to open unless it's time to.
     if (needed && !needed.key.startsWith('closed')) return needed;
-    const shown = (key, [en, ka]) => ({ key, text: session.settings.language === 'ka' ? ka : en, side: null, silent: true });
+    const shown = (key, [en, ka], asks) => ({ key, text: session.settings.language === 'ka' ? ka : en, side: null, silent: true, asks });
     // The plank goes in the gap in the bridge, not to Giraffe.
-    if (walk.holding?.kind === 'plank') return shown('to-the-bridge', TO_THE_BRIDGE);
+    if (walk.holding?.kind === 'plank') return shown('to-the-bridge', TO_THE_BRIDGE, 'open');
     const stopped = this.idleFor > HINT_AFTER_SECONDS;
     // Just after taking the basket or the feather, the hand opens before it picks a fruit, so if it
     // stays closed for a while, it's asked to open.
     if (walk.picking.spent) return stopped ? needed : null;
     // He's had enough here, and it's the bridge that's still to mend, so it's the plank, not more fruit.
-    if (journey.wanted === 0 && !journey.bridgeFixed) return stopped ? shown('on-the-plank', ON_THE_PLANK) : null;
+    if (journey.wanted === 0 && !journey.bridgeFixed) return stopped ? shown('on-the-plank', ON_THE_PLANK, 'closed') : null;
     // Once they've got the idea, these only come back if they seem to have stopped.
-    if (walk.holding && (journey.stats.fed === 0 || stopped)) return { key: 'bring', text: OPEN_FOR_GIRAFFE, side: null };
-    if (!walk.holding && stopped && walk.fruit.some(({ state }) => state === 'hanging')) return { key: 'close-on-it', text: CLOSE_ON_IT, side: null };
+    if (walk.holding && (journey.stats.fed === 0 || stopped)) return { key: 'bring', text: OPEN_FOR_GIRAFFE, side: null, asks: 'open' };
+    if (!walk.holding && stopped && walk.fruit.some(({ state }) => state === 'hanging')) return { key: 'close-on-it', text: CLOSE_ON_IT, side: null, asks: 'closed' };
     return null;
   }
 
@@ -317,6 +317,8 @@ class WalkGame {
 }
 
 new GameSession({
+  // What the open and closed hand do here, for the hand shapes in the grown-ups' panel: see core/shapes.js.
+  moves: { open: 'Let go', closed: 'Pick and hold' },
   shell: {
     title: 'Giraffe’s Long Walk Home',
     startLabel: 'Help Giraffe',

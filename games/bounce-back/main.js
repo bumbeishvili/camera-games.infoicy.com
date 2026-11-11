@@ -651,7 +651,7 @@ class BounceGame {
     if (needed && !needed.key.startsWith('closed')) return needed;
     if (needed && forMe) return needed;
     if (!this.hitOnce && session.playSeconds < HINT_SECONDS) {
-      return { key: 'bounce-hint', text: session.settings.language === 'ka' ? HINT[1] : HINT[0], side: null, silent: true };
+      return { key: 'bounce-hint', text: session.settings.language === 'ka' ? HINT[1] : HINT[0], side: null, silent: true, asks: 'open' };
     }
     return null;
   }
@@ -710,6 +710,8 @@ const choice = (name, value, label) => `<label><input type="radio" name="${name}
 const characterChoices = ROSTER.map(({ id, name }) => choice('fighter', id, name)).join('\n        ');
 
 new GameSession({
+  // What the open and closed hand do here, for the hand shapes in the grown-ups' panel: see core/shapes.js.
+  moves: { open: 'Hit the ball', closed: null },
   shell: {
     title: 'Bounce Back',
     startLabel: 'Let’s play!',

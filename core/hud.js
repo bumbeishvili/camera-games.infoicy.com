@@ -2,6 +2,8 @@
 // and the grown-ups' panel. Hand state is never shown by colour alone: each state also
 // has its own shape and word.
 import { FINGER_NAMES, OPEN_RULES } from './hands.js';
+import { fingersUp, isShaped } from './shapes.js';
+import { ShapesPicker, shapeIcon } from './shapes-ui.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const byId = (id) => document.getElementById(id);
@@ -29,6 +31,8 @@ const ICON_FINGERS = {
   index: { x: 72.5, reach: 25 },
 };
 const STATE_WORDS = { open: 'Open', closed: 'Open me', missing: 'Can’t see' };
+// With a shape chosen for the open move, rather than the open hand.
+const SHAPE_WORDS = { made: 'Yes!', wanted: 'Show me' };
 const PROBLEM_WORDS = { edge: 'Too far out', small: 'Too far away', overlap: 'Too close' };
 
 /** A ring that fills with how open the hand is, around a little hand that copies theirs. */
@@ -73,12 +77,13 @@ class HandMeter {
 
   update(view, { showTarget }) {
     this.root.dataset.state = view.status;
-    const shown = view.status === 'missing' ? 0 : view.openness;
+    // How far the hand is towards the open move: how open it is, or with a shape for it, how sure it is of that.
+    const shown = view.status === 'missing' ? 0 : view.level ?? view.openness;
     this.fill.setAttribute('stroke-dasharray', `${RING_LENGTH * shown} ${RING_LENGTH}`);
     // A round line cap would otherwise draw a dot at zero.
     this.fill.classList.toggle('is-hidden', shown < 0.01);
 
-    this.tick.setAttribute('transform', `rotate(${view.target * 360} 60 60)`);
+    this.tick.setAttribute('transform', `rotate(${(view.line ?? view.target) * 360} 60 60)`);
     this.tick.classList.toggle('is-hidden', !showTarget || view.status === 'missing');
 
     for (const [name, { x, reach }] of Object.entries(ICON_FINGERS)) {
@@ -90,9 +95,10 @@ class HandMeter {
     this.fingerLines.thumb.setAttribute('y2', 74 - 12 * thumb);
 
     this.mark.textContent = view.status === 'open' ? '✓' : view.status === 'missing' ? '?' : '';
+    const shaped = view.shape && view.shape !== 'open';
     this.word.textContent = view.status === 'open'
-      ? STATE_WORDS.open
-      : (PROBLEM_WORDS[view.reason] ?? STATE_WORDS[view.status]);
+      ? (shaped ? SHAPE_WORDS.made : STATE_WORDS.open)
+      : (PROBLEM_WORDS[view.reason] ?? (shaped && view.status === 'closed' ? SHAPE_WORDS.wanted : STATE_WORDS[view.status]));
   }
 }
 
@@ -172,9 +178,11 @@ const VOICE_MAX_REPEATS = 2;
 
 /** Holds prompts steady so they don't flicker, and stops nagging after a few repeats. */
 export class PromptBox {
-  constructor(speak, translate) {
+  /** onShown hears each prompt as it's shown, and null as it goes. */
+  constructor(speak, translate, onShown = () => {}) {
     this.speak = speak;
     this.translate = translate;
+    this.onShown = onShown;
     this.root = byId('prompt');
     this.text = byId('prompt-text');
     this.arrowLeft = byId('prompt-arrow-left');
@@ -200,6 +208,7 @@ export class PromptBox {
       this.text.textContent = prompt ? this.translate(prompt.text) : '';
       this.arrowLeft.classList.toggle('is-visible', prompt?.side === 'left');
       this.arrowRight.classList.toggle('is-visible', prompt?.side === 'right');
+      this.onShown(prompt);
     }
     // A prompt can say it's only to be read, for something that has already been said once.
     if (prompt && key === this.shownKey && !silent && !prompt.silent) this.voice(prompt, now);
@@ -330,6 +339,7 @@ class PanelHand {
     this.slider.step = 5;
     this.sliderValue = document.createElement('output');
     sliderLabel.append(this.slider, this.sliderValue);
+    this.sliderLabel = sliderLabel;
     this.slider.addEventListener('input', () => {
       this.sliderValue.textContent = `${this.slider.value}% of best`;
       onStrictness(side, Number(this.slider.value) / 100);
@@ -350,15 +360,20 @@ class PanelHand {
     const missing = otherHandSeen ? '? Only sees the other hand' : '? Not in view';
     this.state.textContent = view.status === 'open' ? '✓ Open' : view.status === 'missing' ? missing : 'Not open';
     this.state.dataset.state = view.status;
-    this.barFill.style.width = percent(view.status === 'missing' ? 0 : view.openness);
-    this.barTarget.style.left = percent(view.target);
-    this.numbers.textContent = view.checked
-      ? `Now ${percent(view.status === 'missing' ? 0 : view.openness)} · needs ${percent(view.target)} · best today ${percent(view.best)}`
-      : `Now ${percent(view.status === 'missing' ? 0 : view.openness)} · needs ${percent(view.target)} · hand check not done yet`;
+    const shaped = view.shape && view.shape !== 'open';
+    const level = view.status === 'missing' ? 0 : view.level ?? view.openness;
+    this.barFill.style.width = percent(level);
+    this.barTarget.style.left = percent(view.line ?? view.target);
+    this.sliderLabel.hidden = shaped;
+    this.numbers.textContent = shaped
+      ? `Shape now ${percent(level)} sure · needs ${percent(view.line)}`
+      : view.checked
+        ? `Now ${percent(level)} · needs ${percent(view.target)} · best today ${percent(view.best)}`
+        : `Now ${percent(level)} · needs ${percent(view.target)} · hand check not done yet`;
     for (const name of FINGER_NAMES) {
       this.fingerFills[name].style.height = percent(view.status === 'missing' ? 0 : view.fingers[name]);
     }
-    const belowFloor = view.checked && view.best < OPEN_RULES.floor;
+    const belowFloor = !shaped && view.checked && view.best < OPEN_RULES.floor;
     this.note.classList.toggle('is-visible', belowFloor);
     this.note.textContent = belowFloor
       ? `The hand check reached ${percent(view.best)}. The game always needs at least ${percent(OPEN_RULES.floor)} so that a fist can never count as open. Try the check again with fingers as straight as they’ll comfortably go.`
@@ -369,10 +384,12 @@ class PanelHand {
 export class Hud {
   /**
    * choices names the game's own settings in the panel, as radio groups, and how to read
-   * each one's value: for example { laps: Number }.
+   * each one's value: for example { laps: Number }. moves and shapes are the game's moves and the hand
+   * shapes for them (see core/shapes.js), and onShape(move, choice) hears a grown-up choose another.
    */
-  constructor({ speak, translate, settings, choices = {}, tagline, onStrictness, onSettings, onRecheck }) {
+  constructor({ speak, translate, settings, choices = {}, tagline, moves = { open: 'Play', closed: null }, shapes, onShape = () => {}, onStrictness, onSettings, onRecheck }) {
     this.tagline = tagline;
+    this.moves = moves;
     this.frame = byId('camera-frame');
     this.skeleton = byId('skeleton');
     this.meters = {
@@ -384,7 +401,10 @@ export class Hud {
       right: makeHandGuide(this.frame, 'right'),
     };
     this.wheel = byId('wheel');
-    this.prompt = new PromptBox(speak, translate);
+    // A prompt asking for a move's shape shows the shape too, in the hand demo.
+    this.prompt = new PromptBox(speak, translate, (prompt) => this.showShapeHint(prompt?.move ?? null));
+    this.demo = document.querySelector('.hand-demo');
+    this.shapeNote = byId('shape-note');
     this.confetti = new Confetti(byId('confetti'));
     this.count = byId('count');
 
@@ -397,6 +417,8 @@ export class Hud {
     this.panelHands.left.setStrictness(settings.strictness.left);
     this.panelHands.right.setStrictness(settings.strictness.right);
     this.panelUpdatedAt = 0;
+    this.shapesPicker = new ShapesPicker(byId('panel-shapes'), { moves, onShape });
+    if (shapes) this.setShapes(shapes);
 
     for (const name of ['hands', 'language', ...Object.keys(choices)]) {
       // A saved value from an older version may no longer be one of the choices.
@@ -422,6 +444,31 @@ export class Hud {
     byId('setting-voice').addEventListener('change', (event) => onSettings({ voice: event.target.checked }));
     byId('recheck').addEventListener('click', onRecheck);
     byId('close-panel').addEventListener('click', () => this.panel.close());
+  }
+
+  /**
+   * The hand shapes for the game's moves: in the panel, on the title card, and in the hand demo, which shows the
+   * open move's shape during the hand check, and a move's shape whenever a prompt asks for it.
+   */
+  setShapes(shapes) {
+    this.shapes = shapes;
+    this.shapesPicker.set(shapes);
+    const shaped = isShaped(shapes);
+    this.shapeNote.hidden = !shaped;
+    const moves = [['open', shapes.open], ...(this.moves.closed ? [['closed', shapes.closed]] : [])];
+    this.shapeNote.innerHTML = shaped
+      ? moves.map(([move, shape]) => `<span class="shape-note-move">${shapeIcon(shape)} ${this.moves[move]}: ${shape.name}</span>`).join(' ')
+      : '';
+    this.showShapeHint(null);
+  }
+
+  showShapeHint(move) {
+    if (!this.shapes) return;
+    const shape = move ? this.shapes[move] : this.shapes.open;
+    document.body.toggleAttribute('data-shape-hint', Boolean(move && shape.fingers));
+    this.demo.toggleAttribute('data-shaped', Boolean(shape.fingers));
+    const up = new Set(fingersUp(shape));
+    for (const finger of this.demo.querySelectorAll('[data-finger]')) finger.classList.toggle('is-up', up.has(finger.dataset.finger));
   }
 
   setCameraAspect(aspect) {

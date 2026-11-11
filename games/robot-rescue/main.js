@@ -451,14 +451,14 @@ class RescueGame {
     this.stage.render();
   }
 
-  /** A prompt is read as long as it's up, and spoken only for the first few times. */
-  once(key, text) {
+  /** A prompt is read as long as it's up, and spoken only for the first few times. asks is the move it asks for. */
+  once(key, text, asks) {
     const said = this.spokenTimes.get(key) ?? 0;
     if (this.lastPromptKey !== key) {
       this.lastPromptKey = key;
       this.spokenTimes.set(key, said + 1);
     }
-    return { key, text, side: null, silent: said >= SPOKEN_AT_MOST };
+    return { key, text, side: null, silent: said >= SPOKEN_AT_MOST, asks };
   }
 
   prompt(snapshot, dt) {
@@ -471,9 +471,9 @@ class RescueGame {
     const hand = readHand(snapshot);
     const fighting = mission.phase === 'fighting';
     if (fighting && mission.resting && hand === 'closed') return this.once('resting', SPOKEN.resting);
-    if (hand === 'open' && mission.blaster.empty && mission.leftHere > 0) return this.once('reload', CLOSE_TO_RELOAD);
-    if (fighting && hand !== 'closed' && !mission.guarded && mission.gooClose > SHIELD_PROMPT_CLOSE && !this.blockedOne()) return this.once('shield', CLOSE_FOR_SHIELD);
-    if (fighting && hand === 'closed' && !mission.goo.length && this.closedFor > CLOSED_PROMPT_SECONDS) return this.once('fire', OPEN_TO_FIRE);
+    if (hand === 'open' && mission.blaster.empty && mission.leftHere > 0) return this.once('reload', CLOSE_TO_RELOAD, 'closed');
+    if (fighting && hand !== 'closed' && !mission.guarded && mission.gooClose > SHIELD_PROMPT_CLOSE && !this.blockedOne()) return this.once('shield', CLOSE_FOR_SHIELD, 'closed');
+    if (fighting && hand === 'closed' && !mission.goo.length && this.closedFor > CLOSED_PROMPT_SECONDS) return this.once('fire', OPEN_TO_FIRE, 'open');
     // The words of what's just been said, for as long as it takes to find the first star.
     if (this.starsFor > 0) return { key: 'stars', text: GOLD_STARS, side: null, silent: true };
     this.lastPromptKey = null;
@@ -515,6 +515,8 @@ class RescueGame {
 const choice = (name, value, label) => `<label><input type="radio" name="${name}" value="${value}"> ${label}</label>`;
 
 new GameSession({
+  // What the open and closed hand do here, for the hand shapes in the grown-ups' panel: see core/shapes.js.
+  moves: { open: 'Fire', closed: 'Shield' },
   shell: {
     title: 'Robot Rescue',
     startLabel: 'Ride to the rescue',

@@ -401,13 +401,13 @@ class TankGame {
     this.field.render();
   }
 
-  /** A prompt is read as long as it's up, and spoken only for the first few times. */
-  once(key, text) {
+  /** A prompt is read as long as it's up, and spoken only for the first few times. asks is the move it asks for. */
+  once(key, text, asks) {
     if (this.lastPromptKey !== key) {
       this.lastPromptKey = key;
       this.spokenTimes.set(key, (this.spokenTimes.get(key) ?? 0) + 1);
     }
-    return { key, text, side: null, silent: this.spokenTimes.get(key) > SPOKEN_AT_MOST };
+    return { key, text, side: null, silent: this.spokenTimes.get(key) > SPOKEN_AT_MOST, asks };
   }
 
   prompt(snapshot, dt) {
@@ -421,12 +421,12 @@ class TankGame {
     // Nothing else says what the ring on the ground means.
     if (!patrol.autoDrive && patrol.underShell) return this.once('look-out', LOOK_OUT);
     if (patrol.resting && hand === 'closed') return this.once('resting', SPOKEN.resting);
-    if (!patrol.autoDrive && this.farFor > TOO_FAR_PROMPT_SECONDS) return this.once('far', TOO_FAR);
+    if (!patrol.autoDrive && this.farFor > TOO_FAR_PROMPT_SECONDS) return this.once('far', TOO_FAR, 'closed');
     // What the gun can fire at, as it fires: robot tanks that can be seen, and the cage, but not a
     // digger under the ground.
     const nearOne = patrol.targets.some((target) => patrol.inRange(target));
-    if (hand === 'closed' && nearOne && !patrol.driving && this.closedFor > OPEN_PROMPT_SECONDS) return this.once('fire', OPEN_TO_FIRE);
-    if (!patrol.autoDrive && hand === 'open' && !nearOne && this.openFor > CLOSE_PROMPT_SECONDS) return this.once('drive', CLOSE_TO_DRIVE);
+    if (hand === 'closed' && nearOne && !patrol.driving && this.closedFor > OPEN_PROMPT_SECONDS) return this.once('fire', OPEN_TO_FIRE, 'open');
+    if (!patrol.autoDrive && hand === 'open' && !nearOne && this.openFor > CLOSE_PROMPT_SECONDS) return this.once('drive', CLOSE_TO_DRIVE, 'closed');
     this.lastPromptKey = null;
     return null;
   }
@@ -457,6 +457,8 @@ class TankGame {
 const choice = (name, value, label) => `<label><input type="radio" name="${name}" value="${value}"> ${label}</label>`;
 
 new GameSession({
+  // What the open and closed hand do here, for the hand shapes in the grown-ups' panel: see core/shapes.js.
+  moves: { open: 'Fire', closed: 'Drive' },
   shell: {
     title: 'Tank Patrol',
     startLabel: 'Climb aboard',

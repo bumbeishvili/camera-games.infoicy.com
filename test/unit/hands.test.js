@@ -5,7 +5,6 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import {
   HandCheck,
-  HandMonitor,
   OPEN_RULES,
   PlayStats,
   measureHand,
@@ -13,53 +12,11 @@ import {
   steerFromReach,
   targetFor,
 } from '../../core/hands.js';
+import { FINGERS_PROMPT, SHAPES, SHAPE_RESTING } from '../../core/shapes.js';
+import { FIST, FRAME_ASPECT, OPEN, feed, handAt, leftHand, photos, rightHand, setup } from './photo-hands.js';
 import { engineRate, gearAt } from '../../games/high-five-racers/car-sound.js';
 
-const photos = JSON.parse(readFileSync(new URL('../fixtures/photo-hands.json', import.meta.url)));
 const score = (name, index = 0) => measureHand(photos[name].hands[index].world).openness;
-const FRAME_ASPECT = 16 / 9;
-
-/** A real hand from a photo, moved to a place on screen. A webcam sends x unmirrored. */
-function handAt(name, screenX, screenY = 0.5, { palm = 0.2, index = 0, label = null, confidence = hands => hands.score } = {}) {
-  const { aspect, hands } = photos[name];
-  const hand = hands[index];
-  const centre = [0, 5, 9, 13, 17].reduce(
-    (sum, i) => ({ x: sum.x + hand.image[i].x / 5, y: sum.y + hand.image[i].y / 5 }),
-    { x: 0, y: 0 },
-  );
-  const wrist = hand.image[0];
-  const knuckle = hand.image[9];
-  const palmLength = Math.hypot((wrist.x - knuckle.x) * aspect, wrist.y - knuckle.y);
-  const k = palm / palmLength;
-  return {
-    score: confidence(hand),
-    label,
-    world: hand.world,
-    image: hand.image.map((p) => ({
-      x: 1 - screenX + ((p.x - centre.x) * aspect * k) / FRAME_ASPECT,
-      y: screenY + (p.y - centre.y) * k,
-      z: p.z,
-    })),
-  };
-}
-
-const OPEN = 'left_hands';
-const FIST = 'fist';
-// The right hand, where it naturally is in the mirror, and the left hand on its own side.
-const rightHand = (name, options) => handAt(name, 0.73, 0.5, { label: 'Right', ...options });
-const leftHand = (name, options) => handAt(name, 0.27, 0.5, { label: 'Left', ...options });
-
-/** Feeds the same view to the monitor for a while, at camera speed. */
-function feed(monitor, clock, ms, hands) {
-  let snapshot = monitor.snapshot;
-  for (let elapsed = 0; elapsed < ms; elapsed += 33) {
-    clock.now += 33;
-    snapshot = monitor.update(hands, clock.now, FRAME_ASPECT);
-  }
-  return snapshot;
-}
-
-const setup = (options, side) => ({ monitor: new HandMonitor(options, side), clock: { now: 1000 } });
 
 test('poses that are not open all score below the floor', () => {
   for (const name of ['fist', 'pointing_up', 'pointing_up_rotated', 'victory', 'thumb_up']) {
@@ -539,7 +496,14 @@ test('every line the game can say has a rendered voice file', () => {
       if (prompt) asked.add(prompt.text);
     }
     asked.add(promptFor({ side, [side]: { reason: null }, overlap: true }).text);
+    // And each hand shape a grown-up can choose for the open move: see core/shapes.js.
+    for (const shape of [...Object.keys(SHAPES), 'fingers']) {
+      for (const reason of ['closed', 'shape']) asked.add(promptFor({ side, [side]: { reason, shape }, overlap: false }).text);
+    }
   }
+  for (const { prompt } of Object.values(SHAPES)) if (prompt) asked.add(prompt);
+  asked.add(FINGERS_PROMPT);
+  asked.add(SHAPE_RESTING);
 
   // Everything the shared code and each game say directly.
   const files = ['core/session.js', 'core/sound.js', 'games/high-five-racers/main.js', 'games/balloon-pop/main.js'];

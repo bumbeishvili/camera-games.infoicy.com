@@ -270,7 +270,7 @@ class LighthouseGame {
     const { session } = this;
     const needed = session.handsPrompt(snapshot, dt);
     if (needed && !needed.key.startsWith('closed')) return needed;
-    if (this.closedFor > CLOSED_PROMPT_SECONDS) return { key: 'open-to-wipe', text: OPEN_TO_WIPE, side: null };
+    if (this.closedFor > CLOSED_PROMPT_SECONDS) return { key: 'open-to-wipe', text: OPEN_TO_WIPE, side: null, asks: 'open' };
     return null;
   }
 
@@ -291,6 +291,8 @@ class LighthouseGame {
 }
 
 new GameSession({
+  // What the open and closed hand do here, for the hand shapes in the grown-ups' panel: see core/shapes.js.
+  moves: { open: 'Wipe', closed: null },
   shell: {
     title: 'The Lighthouse Keeper',
     startLabel: 'Climb the lighthouse',

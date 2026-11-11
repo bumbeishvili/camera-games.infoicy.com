@@ -24,11 +24,15 @@
 //                             at once, as High Five Racers does for friends: the game calls go() when it's time
 //   chimeOnOpen               chime whenever the hand in play opens
 //   debug                     extra things for the automated tests to read
+//
+// A prompt from a game can say which move it asks for, as asks: 'open' or 'closed'. When a grown-up has chosen a
+// hand shape for that move (see core/shapes.js), it's asked for in that shape's words instead.
 import { CameraProblem, TrackingCamera } from './camera.js';
 import { HandCheck, HandMonitor, OPEN_RULES, PlayStats, promptFor } from './hands.js';
 import { Hud } from './hud.js';
 import { Levels, mountLevels } from './levels.js';
 import { loadSettings, saveSettings } from './settings.js';
+import { SHAPE_RESTING, shapesFor } from './shapes.js';
 import { mountShell } from './shell.js';
 import { Sound } from './sound.js';
 
@@ -62,10 +66,13 @@ export class GameSession {
    * shell is what mountShell needs. defaults and choices are the game's own settings.
    * tagline(side) is the line on the title card, and finishLine what the voice says at the
    * end. createSound and createGame build the game's sound and the game itself. lines is where a
-   * game's own voice lines are, and portraits makes pictures of the characters for it.
+   * game's own voice lines are, and portraits makes pictures of the characters for it. moves names what
+   * the open and closed hand do, as { open: 'Drive', closed: 'Slow down' }, with closed null where a
+   * closed hand isn't a move of its own: they're for choosing hand shapes in the panel.
    */
-  constructor({ shell, defaults = {}, choices = {}, tagline, finishLine, createSound, createGame, lines = null, portraits = null }) {
+  constructor({ shell, defaults = {}, choices = {}, tagline, finishLine, createSound, createGame, lines = null, portraits = null, moves = { open: 'Play', closed: null } }) {
     this.shell = shell;
+    this.moves = moves;
     this.defaults = defaults;
     this.choices = choices;
     this.taglineFor = tagline;
@@ -113,6 +120,9 @@ export class GameSession {
 
     this.sound = this.createSound({ sound: settings.sound, voice: settings.voice, language: settings.language, lines });
     this.monitor = new HandMonitor(settings.strictness, settings.hands);
+    // The hand shapes for this game's moves, saved for each game as its levels are.
+    this.shapes = shapesFor(settings.shapes?.[this.levels.game], this.moves);
+    this.monitor.setShapes(this.shapes);
     this.camera = new TrackingCamera(document.getElementById('camera'));
 
     this.hud = new Hud({
@@ -122,6 +132,9 @@ export class GameSession {
       settings,
       choices: this.choices,
       tagline: this.taglineFor,
+      moves: this.moves,
+      shapes: this.shapes,
+      onShape: (move, choice) => this.changeShape(move, choice),
       onStrictness: (side, value) => {
         settings.strictness[side] = value;
         this.monitor.setStrictness(side, value);
@@ -211,6 +224,32 @@ export class GameSession {
     saveSettings(settings);
   }
 
+  /** A grown-up has chosen the hand shape for one of this game's moves: see core/shapes.js. */
+  changeShape(move, choice) {
+    const { settings } = this;
+    const { game } = this.levels;
+    settings.shapes = { ...settings.shapes, [game]: { ...settings.shapes?.[game], [move]: choice } };
+    this.shapes = shapesFor(settings.shapes[game], this.moves);
+    this.monitor.setShapes(this.shapes);
+    this.hud.setShapes(this.shapes);
+    this.hud.prompt.clear();
+    const { snapshot } = this.monitor;
+    for (const side of ['left', 'right']) this.hud.panelHands[side].update(snapshot[side], snapshot.otherHandSeen);
+    saveSettings(settings);
+  }
+
+  /**
+   * A game's prompt, asked in the words for the hand shape chosen for the move it asks for, if there is one.
+   * Resting is fine whatever the shape, and that's said in a shape's words too.
+   */
+  shapedPrompt(prompt) {
+    const resting = prompt?.text === SPOKEN.resting;
+    const move = resting ? 'open' : prompt?.asks;
+    const shape = move ? this.shapes[move] : null;
+    if (!shape?.prompt) return prompt;
+    return { ...prompt, key: `${prompt.key}-${shape.id}`, text: resting ? SHAPE_RESTING : shape.prompt, move };
+  }
+
   setScreen(name) {
     this.screen = name;
     document.body.dataset.screen = name;
@@ -264,13 +303,17 @@ export class GameSession {
     const counted = this.handCheck.add(snapshot, dt);
     hud.setCheckProgress(this.handCheck.progress);
 
-    const text = this.checkRetried ? SPOKEN.openWideAgain : SPOKEN.openWide;
-    const prompt = counted ? { key: `check-${this.checkRetried}`, text, side: null } : this.handsPrompt(snapshot, dt);
-    hud.prompt.show(prompt, now);
+    // With a shape for the open move, the check is of that, and how far the hand opens doesn't matter.
+    const { open } = this.shapes;
+    const asked = open.prompt
+      ? { key: `check-${open.id}`, text: open.prompt, side: null, move: 'open' }
+      : { key: `check-${this.checkRetried}`, text: this.checkRetried ? SPOKEN.openWideAgain : SPOKEN.openWide, side: null };
+    hud.prompt.show(counted ? asked : this.handsPrompt(snapshot, dt), now);
 
     if (!this.handCheck.done) return;
     const result = this.handCheck.result();
-    if (result.best < OPEN_RULES.floor && !this.checkRetried) {
+    if (open.fingers) result.best = null;
+    if (result.best !== null && result.best < OPEN_RULES.floor && !this.checkRetried) {
       this.handCheck = new HandCheck();
       this.checkRetried = true;
       return;
@@ -357,7 +400,7 @@ export class GameSession {
     this.game.update(dt, snapshot);
 
     // The game may have just finished.
-    if (this.screen === 'playing') this.hud.prompt.show(this.game.prompt(snapshot, dt), now);
+    if (this.screen === 'playing') this.hud.prompt.show(this.shapedPrompt(this.game.prompt(snapshot, dt)), now);
 
     if (this.goShownFor > 0) {
       this.goShownFor -= dt;

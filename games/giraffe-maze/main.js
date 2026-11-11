@@ -734,7 +734,7 @@ class MazeGame {
       const [en, ka] = LABELS[key];
       return { key: `blocked-${key}`, text: session.settings.language === 'ka' ? ka : en, side: null, silent: true };
     }
-    if (run.index === 0 && run.stats.walked < 2 && session.playSeconds < HINT_SECONDS) return { key: 'lead-hint', text: HINT, side: null };
+    if (run.index === 0 && run.stats.walked < 2 && session.playSeconds < HINT_SECONDS) return { key: 'lead-hint', text: HINT, side: null, asks: 'open' };
     return null;
   }
 
@@ -772,6 +772,8 @@ const choice = (name, value, label) => `<label><input type="radio" name="${name}
 const characterChoices = ROSTER.map(({ id, name }) => choice('fighter', id, name)).join('\n        ');
 
 new GameSession({
+  // What the open and closed hand do here, for the hand shapes in the grown-ups' panel: see core/shapes.js.
+  moves: { open: 'Lead Giraffe', closed: 'Wait' },
   shell: {
     title: 'Giraffe’s Maze',
     startLabel: 'Into the maze!',

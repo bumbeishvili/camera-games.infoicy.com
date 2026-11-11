@@ -15,7 +15,7 @@ Movement-based games for children, played in front of a webcam.
 - Resting never costs anything.
 - Each game has 10 levels.
 - Play with friends on their own computers in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail and Giraffe's Maze: make a game on the title card and send them the link.
-- A grown-up can change the settings under the gear icon.
+- A grown-up can change the settings under the gear icon, including which hand shape makes each move, like pointing instead of an open hand.
 - The camera picture stays on your computer. The site counts visits with Google Analytics.
 
 ## Play

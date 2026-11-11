@@ -211,7 +211,7 @@ class CannonBay {
   /** The hand as the rules need it. Anything that can't be properly read fails closed. */
   readHand(snapshot) {
     const hand = snapshot[snapshot.side];
-    const readable = hand.status !== 'missing' && !snapshot.overlap && (hand.reason === null || hand.reason === 'closed');
+    const readable = hand.status !== 'missing' && !snapshot.overlap && (hand.reason === null || hand.reason === 'closed' || hand.reason === 'shape');
     return { steer: snapshot.steer, drive: snapshot.drive, open: snapshot.handOpen === true, seen: readable };
   }
 
@@ -432,7 +432,7 @@ class CannonBay {
     if (battle.state !== 'sailing') return null;
     if (!snapshot.handOpen) {
       if (session.closedSeconds > RESTING_PROMPT_AFTER) return { key: 'rest', text: SPOKEN.resting, side: null };
-      if (session.closedSeconds > OPEN_PROMPT_AFTER) return { key: 'open-to-sail', text: OPEN_TO_SAIL, side: null };
+      if (session.closedSeconds > OPEN_PROMPT_AFTER) return { key: 'open-to-sail', text: OPEN_TO_SAIL, side: null, asks: 'open' };
       return null;
     }
     if (battle.atLimit > LIMIT_PROMPT_FROM) return { key: 'limit', text: TURN_BACK, side: null };
@@ -730,6 +730,8 @@ class CannonBay {
 }
 
 new GameSession({
+  // What the open and closed hand do here, for the hand shapes in the grown-ups' panel: see core/shapes.js.
+  moves: { open: 'Raise the sails', closed: 'Lower the sails' },
   shell: {
     title: 'Cannon Bay',
     startLabel: 'Set sail!',
