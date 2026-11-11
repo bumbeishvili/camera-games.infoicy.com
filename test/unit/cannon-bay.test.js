@@ -5,7 +5,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { Battle, HEARTS, HULL, LEVELS, MOST_AT_ONCE, MOST_HEARTS, NEWS, PACES, POWERS, REST_AFTER, SHIP_KINDS, forwardOf, levelPlan, newsAt } from '../../games/cannon-bay/battle.js';
 import { BaySound } from '../../games/cannon-bay/bay-sound.js';
 import { getChart } from '../../games/cannon-bay/chart.js';
+import { Duel, SHIP_TRACK, duelSeconds, duelStart, shipWire } from '../../games/cannon-bay/duel.js';
 import { WORLD, heightAt } from '../../games/sky-wings/island-map.js';
+import { Track } from '../../core/friends.js';
+import { cleanShip } from '../../server/race-room.js';
 
 const STEP = 1 / 30;
 const OPEN = { open: true, seen: true, drive: 1, steer: 0 };
@@ -1496,4 +1499,235 @@ test('a triple shot\'s three balls landing together make one thud, and a raft be
   const ship = battle.afloat.find(({ kind, little }) => kind === 'ship' && !little);
   beatBeside(battle, ship);
   assert.ok(events.find(({ type, pirate }) => type === 'beaten' && pirate === ship).boat);
+});
+
+/* ---------- with a friend: ship against ship, see duel.js ---------- */
+
+/** A duel from one child's side: their ship in this slot, and their friend's beside it, as each game starts. */
+function duel(slot = 0, options = {}) {
+  const { battle, events, types } = start({ ships: 0, start: duelStart(slot), ...options });
+  const friend = battle.addFriend(duelStart(1 - slot));
+  return { battle, events, types, friend };
+}
+
+/** The friend's ship where their game would say it is: this far off the bow, going the same way. */
+function holdFriend(battle, off = Math.PI / 2, away = 110) {
+  const direction = battle.heading + off;
+  battle.placeFriend({ x: battle.x + Math.sin(direction) * away, z: battle.z - Math.cos(direction) * away, heading: battle.heading, speed: battle.speed, sails: 1 }, STEP);
+}
+
+const besideFriend = (battle, seconds, input = OPEN, off = Math.PI / 2) => {
+  for (let i = 0; i < seconds / STEP; i += 1) {
+    holdFriend(battle, off);
+    battle.update(STEP, input);
+  }
+};
+
+test('a duel lasts two, three or four minutes, from the host\'s ships to beat', () => {
+  assert.deepEqual([4, 6, 9].map(duelSeconds), [120, 180, 240]);
+  assert.equal(duelSeconds(undefined), 180);
+  assert.equal(duelSeconds(7), 180);
+  const clock = new Duel({ seconds: 120 });
+  clock.tick(119);
+  assert.equal(clock.over, false);
+  clock.tick(5);
+  assert.equal(clock.left, 0);
+  assert.equal(clock.over, true);
+});
+
+test('the two ships start side by side out at sea, each in the other\'s firing zone on every How hard', () => {
+  const chart = getChart();
+  const [host, guest] = [duelStart(0), duelStart(1)];
+  assert.equal(host.heading, guest.heading);
+  assert.ok(guest.x > host.x, 'the host is on the left');
+  for (const at of [host, guest]) {
+    assert.ok(chart.room(at.x, at.z) > 150, 'in open water');
+    assert.ok(Math.hypot(at.x, at.z) < WORLD.limit - 150, 'well inside the edge of the world');
+  }
+  for (const level of Object.keys(LEVELS)) {
+    for (const slot of [0, 1]) {
+      const { battle, friend } = duel(slot, { level });
+      assert.equal(battle.zoneOf(friend), slot === 0 ? 'right' : 'left', `${level}, slot ${slot}`);
+    }
+  }
+});
+
+test('with a friend there are no pirates, and the friend\'s ship is only ever where their game says', () => {
+  const { battle, friend, types } = duel(0);
+  run(battle, 20, CLOSED);
+  assert.deepEqual(battle.afloat, [friend]);
+  assert.equal(battle.state, 'sailing');
+  assert.ok(!types().includes('spawn'));
+  // Nothing has come from their game, so it's where it started, and it has never fired here by itself.
+  assert.deepEqual({ x: friend.x, z: friend.z }, { x: duelStart(1).x, z: duelStart(1).z });
+  assert.equal(battle.balls.length, 0);
+  assert.equal(friend.mode, 'friend');
+  battle.placeFriend({ x: friend.x + 30, z: friend.z - 40, heading: 0.4, speed: 20, sails: 0.7 }, STEP);
+  assert.deepEqual([friend.x, friend.z, friend.heading, friend.speed, friend.sails], [duelStart(1).x + 30, duelStart(1).z - 40, 0.4, 20, 0.7]);
+});
+
+test('a hit on the friend\'s ship is a point for the child, and it never sinks, runs, fires back or costs a heart', () => {
+  const { battle, friend, events } = duel(0);
+  besideFriend(battle, 60);
+  const hits = events.filter(({ type, friend: onFriend }) => type === 'hit' && onFriend);
+  // About two a second while it's alongside, as the cannons always fire.
+  assert.ok(hits.length > 100, `${hits.length} hits`);
+  assert.equal(battle.stats.hits, hits.length);
+  assert.equal(friend.state, 'sailing');
+  assert.equal(friend.mode, 'friend');
+  assert.equal(battle.balls.length, 0);
+  assert.equal(battle.hearts, HEARTS);
+  assert.ok(!events.some(({ type }) => ['beaten', 'won', 'lost', 'smoke', 'hurt'].includes(type)));
+});
+
+test('with a friend too, only a hand seen open fires: closed, gone or unreadable, it never does', () => {
+  for (const input of [CLOSED, GONE]) {
+    const { battle } = duel(0);
+    besideFriend(battle, 10, input);
+    assert.equal(battle.stats.shots, 0);
+  }
+  // Set to always, a closed hand that can be seen fires, and one that's gone still doesn't.
+  const always = duel(0, { cannons: 'always' });
+  besideFriend(always.battle, 5, CLOSED);
+  assert.ok(always.battle.stats.hits > 0);
+  const gone = duel(0, { cannons: 'always' });
+  besideFriend(gone.battle, 5, GONE);
+  assert.equal(gone.battle.stats.shots, 0);
+});
+
+test('the friend\'s balls fly over to the child\'s ship, and only the hits their game says it made show, costing nothing', () => {
+  const { battle, events } = duel(0);
+  besideFriend(battle, 1);
+  battle.friendFired(2);
+  assert.equal(battle.balls.filter(({ homing, harmless }) => homing && harmless).length, 2);
+  assert.equal(events.filter(({ type }) => type === 'pirate-fire').length, 2);
+  // Their game says one of them hit: it shows as the first lands, on the side facing them, and the other lands quietly.
+  battle.struck(1);
+  const landed = [];
+  for (let i = 0; i < 2 / STEP; i += 1) {
+    holdFriend(battle);
+    const before = events.length;
+    battle.update(STEP, OPEN);
+    for (const event of events.slice(before)) if (event.type === 'struck') landed.push({ along: battle.distanceFromHull(event.x, event.z), facing: Math.hypot(event.x - battle.friend.x, event.z - battle.friend.z) < Math.hypot(battle.x - battle.friend.x, battle.z - battle.friend.z) });
+  }
+  assert.equal(battle.balls.length, 0);
+  assert.equal(landed.length, 1);
+  assert.ok(Math.abs(landed[0].along - HULL.beam) < 0.5, `${landed[0].along} from the middle of the hull`);
+  assert.equal(landed[0].facing, true);
+  assert.equal(battle.hearts, HEARTS);
+  // With none of theirs on the way, a hit their game says it made shows at once.
+  battle.struck(1);
+  besideFriend(battle, STEP);
+  assert.equal(events.filter(({ type }) => type === 'struck').length, 2);
+  assert.equal(battle.stats.struck, 2);
+  assert.equal(battle.hearts, HEARTS);
+  assert.ok(!events.some(({ type }) => type === 'hurt'));
+});
+
+test('the two ships never bump: each makes half the room, as the friend\'s game does the same', () => {
+  const { battle, friend } = duel(0);
+  run(battle, 1, CLOSED);
+  const before = { x: battle.x, z: battle.z };
+  battle.placeFriend({ x: battle.x + 20, z: battle.z, heading: battle.heading, speed: 0, sails: 0 });
+  battle.update(STEP, CLOSED);
+  const gap = Math.hypot(friend.x - battle.x, friend.z - battle.z);
+  assert.ok(gap >= 45, `${gap} apart as it's shown`);
+  const moved = Math.hypot(battle.x - before.x, battle.z - before.z);
+  assert.ok(moved > 10 && moved < 16, `the child's ship made ${moved} of the room`);
+});
+
+test('when the time is up it\'s over at once, and a ball still in the air lands on nothing', () => {
+  const { battle, events } = duel(0);
+  besideFriend(battle, 3);
+  assert.ok(battle.shots.length > 0, 'a ball on its way');
+  const { hits } = battle.stats;
+  battle.friendFired(1);
+  battle.struck(1);
+  battle.stop();
+  assert.equal(battle.state, 'won');
+  assert.equal(events.filter(({ type }) => type === 'won').length, 1);
+  besideFriend(battle, 3);
+  assert.equal(battle.stats.hits, hits);
+  assert.equal(battle.stats.struck, 0);
+  battle.struck(2);
+  battle.friendFired(2);
+  assert.equal(battle.strikesDue, 0);
+  assert.equal(battle.balls.length, 0);
+  // Stopping again changes nothing.
+  battle.stop();
+  assert.equal(events.filter(({ type }) => type === 'won').length, 1);
+});
+
+test('a friend who goes takes their ship and its balls with them', () => {
+  const { battle } = duel(1);
+  besideFriend(battle, 1);
+  battle.friendFired(2);
+  battle.struck(1);
+  battle.removeFriend();
+  assert.deepEqual(battle.afloat, []);
+  assert.equal(battle.friend, null);
+  assert.equal(battle.balls.length, 0);
+  const { shots, hits } = battle.stats;
+  run(battle, 2, OPEN);
+  assert.equal(battle.stats.struck, 0);
+  // Nothing more to fire at, and what was on its way lands on nothing.
+  assert.equal(battle.stats.shots, shots);
+  assert.equal(battle.stats.hits, hits);
+});
+
+test('what\'s sent about the ship is what the server passes on, and a friend\'s ship carries on smoothly between messages', () => {
+  const { battle } = duel(0);
+  run(battle, 3, { ...OPEN, steer: 1 });
+  battle.heading += Math.PI * 6;
+  const wire = shipWire(battle);
+  assert.deepEqual(Object.keys(wire), ['x', 'z', 'h', 's', 'v', 'f']);
+  assert.ok(Math.abs(wire.h) <= Math.PI, 'the same way round, however many times it has gone round');
+  assert.deepEqual(cleanShip({ ms: 100, ...wire }), { ms: 100, ...wire });
+  // Between two messages it goes smoothly, and with nothing new for a moment, it carries on as it was going.
+  const track = new Track(SHIP_TRACK);
+  track.push({ ms: 0, x: 0, z: 0, h: 0, s: 20, v: 1, f: 0 }, 1000);
+  track.push({ ms: 100, x: 0, z: -2, h: 0.2, s: 20, v: 0.5, f: 1 }, 1100);
+  const between = track.at(1100 + 120 - 50);
+  assert.ok(between.z < 0 && between.z > -2 && between.h > 0 && between.h < 0.2);
+  const later = track.at(1100 + 120 + 300);
+  assert.ok(later.z < -6, `${later.z}: still going`);
+  assert.equal(later.f, 1);
+});
+
+test('a duel counts each ship\'s hits, the friend\'s balls since they were last shown, and equal points share the win', () => {
+  const counted = new Duel({ seconds: 120 });
+  assert.equal(counted.newlyFired(5), 0, 'what was fired before is not shown');
+  assert.equal(counted.newlyFired(7), 2);
+  assert.equal(counted.newlyFired(7), 0);
+  assert.equal(counted.newlyFired(30), 3, 'only a few at once after a pause');
+  assert.equal(counted.heard(3), 3);
+  assert.equal(counted.heard(2), 0, 'a late message changes nothing');
+  assert.equal(counted.heard(4), 1);
+  assert.equal(counted.theirs, 4);
+  assert.equal(counted.scored(), 1);
+  assert.equal(counted.scored(), 2);
+  assert.deepEqual([Duel.outcome(5, 5), Duel.outcome(6, 5), Duel.outcome(4, 5), Duel.outcome(0, 0)], ['tied', 'won', 'lost', 'tied']);
+});
+
+test('the game\'s rooms are known to both servers, a friend\'s ship gets through to the game, and the page may reach the server', () => {
+  for (const file of ['../../server/worker.js', '../../tools/race-server.mjs']) {
+    const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+    assert.match(source, /const GAMES = \[[^\]]*'cannon-bay'/, file);
+  }
+  const friends = readFileSync(new URL('../../core/friends.js', import.meta.url), 'utf8');
+  assert.match(friends, /\[[^\]]*'ship'[^\]]*\]\.includes\(message\.t\)/);
+  const page = readFileSync(new URL('../../games/cannon-bay/index.html', import.meta.url), 'utf8');
+  assert.match(page, /connect-src 'self' wss:\/\/hemi-race\.infoicy\.com ws:\/\/localhost:\* /);
+});
+
+test('a friend\'s hits that are shown together are heard as one thud, which is no louder than the child\'s own', () => {
+  const sound = new BaySound();
+  const played = [];
+  sound.play = (name, { gain }) => played.push([name, gain]);
+  sound.struck();
+  sound.struck();
+  assert.equal(played.length, 1);
+  assert.equal(played[0][0], 'thud');
+  sound.hit(0);
+  assert.ok(played[0][1] <= played[1][1] * 1.2, 'about as loud as a hit of the child\'s own, close by');
 });

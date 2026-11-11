@@ -36,6 +36,9 @@ const ODD_KINDS = new Set(['raft', 'little', 'sub']);
 const KING_SAILS = [1, 3, 0, 2];
 const FROST_SAILS = new THREE.Color('#cfe6ff');
 const WHITE = new THREE.Color('#ffffff');
+// With a friend who is Giraffe too, their ship has his spotted sails and him at the helm, but a red hull, so that
+// it can't be taken for the child's own.
+const FRIEND_GIRAFFE = { ...LOOKS.giraffe, hull: '#d9463b', upper: '#ffe2d6', trim: '#ffd23f', bottom: '#7a2218', flag: '#d9463b' };
 
 // A soap bubble: nearly clear in the middle and paler towards its edge, with a little shine on it, which
 // is what makes it read as a bubble. Its opacity only ever changes slowly.
@@ -754,6 +757,27 @@ export class Bay {
     return this.fleet.get(this.order[pirate.index % this.order.length]) ?? null;
   }
 
+  /**
+   * With a friend, the ship they sail, in the colours of their character from the other games and with them at
+   * the helm: a pirate captain's ship, as there are no pirates then, or for Giraffe, whose own ship is the
+   * child's, one in other colours, made the first time it's needed. Returns its name in the fleet, for the
+   * battle's order.
+   */
+  friendShipKey(spec) {
+    if (this.fleet.has(spec.id)) return spec.id;
+    const key = `friend:${spec.id}`;
+    if (!this.fleet.has(key)) {
+      const look = spec.id === 'giraffe' ? FRIEND_GIRAFFE : LOOKS[spec.id];
+      const ship = new PirateShip(spec, look);
+      ship.lifeboat = new Lifeboat(look);
+      ship.rock = { pitch: 0, roll: 0, y: 0 };
+      ship.ropes.visible = this.quality > 0;
+      this.scene.add(ship.root, ship.lifeboat.root);
+      this.fleet.set(key, ship);
+    }
+    return key;
+  }
+
   /** Where something in the world is on the screen, in pixels, and whether it's behind the camera. */
   project(x, y, z) {
     const at = this.projecting.set(x, y, z);
@@ -849,6 +873,7 @@ export class Bay {
       beaten: () => this.onBeaten(event),
       splash: () => this.splash(event.x, event.z, event.size),
       hurt: () => this.onHurt(event),
+      struck: () => this.onStruck(event),
       gold: () => this.onGold(event),
       won: () => this.onWon(),
       prize: () => this.onPrize(event),
@@ -916,7 +941,20 @@ export class Bay {
   onHit({ pirate, x, y, z }) {
     const ship = this.shipFor(pirate);
     ship?.captain.setExpression('hurt', 0.45);
-    const at = { x, y: y + 1, z };
+    this.hitShapes({ x, y: y + 1, z });
+  }
+
+  /**
+   * With a friend, one of their balls on the child's ship, as their game says it hit: the same few small shapes
+   * as a hit on theirs, and Giraffe pulls a face for a moment. Nothing is lost.
+   */
+  onStruck({ x, z }) {
+    this.hitShapes({ x, y: 7 + this.heroRock.y, z });
+    this.hero.giraffe.setExpression('hurt', 0.45);
+  }
+
+  /** A few stars and bits of wood, and a little smoke, where a ball hit a ship. */
+  hitShapes(at) {
     const count = this.reducedMotion ? 2 : 4;
     for (let i = 0; i < count; i += 1) {
       const angle = (i / count) * Math.PI * 2 + Math.random();
@@ -1103,7 +1141,8 @@ export class Bay {
   placePirates(dt) {
     const { battle, camera, calm } = this;
     if (!battle) return;
-    if (battle.state === 'ready') {
+    // A friend's ship is there from the countdown, beside the child's, where it starts.
+    if (battle.state === 'ready' && !battle.friend) {
       this.placeTitlePirate(dt);
       return;
     }
@@ -1139,7 +1178,8 @@ export class Bay {
         heading: pirate.heading,
         pitch: ship.rock.pitch,
         roll: ship.rock.roll,
-        sails: pirate.state === 'sinking' ? pirate.sails : 1,
+        // A friend's sails are up or down as their hand has them.
+        sails: pirate.state === 'sinking' || pirate.friend ? pirate.sails : 1,
         wind: 0.5 + clamp(going, 0, 1) * 0.5,
       });
       // A quick little sloop or a big flagship, on the higher levels.
@@ -1306,18 +1346,21 @@ export class Bay {
     const balls = battle?.balls ?? [];
     const shots = battle?.shots ?? [];
     const theirs = Math.min(balls.length, MOST_BALLS);
+    let rings = 0;
     for (let i = 0; i < theirs; i += 1) {
       const ball = balls[i];
       ballAt.set(ball.x, ball.y, ball.z);
       ballSize.setScalar(1.75);
       theirBalls.setMatrixAt(i, ballMatrix.compose(ballAt, ballTurn, ballSize));
-      // It closes in on where the ball will land.
+      // It closes in on where the ball will land. A friend's always comes to the child's ship, so it has none.
+      if (ball.homing) continue;
       ballAt.set(ball.to.x, 1.2, ball.to.z);
       ballSize.setScalar(4 + (1 - ball.t) * 11);
-      targets.setMatrixAt(i, ballMatrix.compose(ballAt, ballTurn, ballSize));
+      targets.setMatrixAt(rings, ballMatrix.compose(ballAt, ballTurn, ballSize));
+      rings += 1;
     }
     theirBalls.count = theirs;
-    targets.count = theirs;
+    targets.count = rings;
     theirBalls.instanceMatrix.needsUpdate = true;
     targets.instanceMatrix.needsUpdate = true;
     const counts = { ball: 0, bounce: 0, bubble: 0, snow: 0 };
@@ -1337,13 +1380,14 @@ export class Bay {
       mesh.instanceMatrix.needsUpdate = true;
     }
 
-    // A little smoke trail, so that their slow high arcs can be followed.
+    // A little smoke trail, so that their slow high arcs can be followed. A friend's are quick and low, as the
+    // child's own are, and have none.
     this.trailIn -= dt;
     if (this.trailIn <= 0 && theirs) {
       this.trailIn = this.reducedMotion ? 0.24 : 0.12;
       for (let i = 0; i < theirs; i += 1) {
         const ball = balls[i];
-        this.sparks.emit({ shape: 'puff', colour: '#e4dfd6', at: { x: ball.x, y: ball.y, z: ball.z }, life: 0.6, size: 1.5, grow: 1.6, opacity: 0.42 });
+        if (!ball.homing) this.sparks.emit({ shape: 'puff', colour: '#e4dfd6', at: { x: ball.x, y: ball.y, z: ball.z }, life: 0.6, size: 1.5, grow: 1.6, opacity: 0.42 });
       }
     }
 

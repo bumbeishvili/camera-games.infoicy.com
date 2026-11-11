@@ -593,10 +593,13 @@ export class HeroShip extends Ship {
 const CAPTAIN_SIZE = 3.9;
 const CAPTAIN_AT = [0, DECK.back - 0.15, 12.5];
 
-/** A pirate ship in its captain's colours. It's built once and used again in each battle. */
+/**
+ * A pirate ship in its captain's colours, or look's: a friend's ship, in a battle with a friend, is one of these
+ * too. It's built once and used again in each battle.
+ */
 export class PirateShip extends Ship {
-  constructor(spec) {
-    super(LOOKS[spec.id]);
+  constructor(spec, look = LOOKS[spec.id]) {
+    super(look);
     this.spec = spec;
     this.captain = new Fighter3D(spec);
     this.captain.root.scale.setScalar(CAPTAIN_SIZE);

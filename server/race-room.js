@@ -25,7 +25,9 @@
 //                                      In Mighty Moves, k is a round this player's fighter has just won
 //   hit    { r, m, d, tot, sm, sg, sd }    Mighty Moves: their fighter makes move m in round r, doing d, and
 //                                      tot in all this round. sm is 1 for a small hit and sg for their
-//                                      fighter's own finishing move, and sd the side, l or r, if it has one
+//                                      fighter's own finishing move, and sd the side, l or r, if it has one.
+//                                      In Cannon Bay, one of their cannonballs hit the other ship, as their
+//                                      game saw it, and tot is how many have so far
 //   pose   { ms, p }                       Mighty Moves: their body, for their fighter to copy, as POSE_NUMBERS
 //                                      numbers about where their hands and feet are and how they lean (see
 //                                      BODY_KEYS in games/mighty-moves/clips.js), or none when it can't be seen
@@ -46,6 +48,9 @@
 //                                      glove can be seen and is open, where it is, and p, its 21 points, as in hand.
 //                                      Everyone makes the same mazes from the host's mode, its size and a seed, and
 //                                      claims the fruit and lost friends it reaches
+//   ship   { ms, x, z, h, s, v, f }        where their ship is in Cannon Bay: where on the water, which way it
+//                                      heads, how fast, how far its sails are up, from 0 to 1, and f, how many
+//                                      cannonballs it has fired so far, for the other game to show them coming
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
@@ -53,7 +58,7 @@
 //   room   { you, members: [{ id, name, driver, ready, racing, host }] }   whenever that changes
 //   go     { level, length, laps, mode, racers, seed }   the countdown starts now, on the host's course (laps is
 //                                      length). seed is the same for everyone, for a game laid out by chance
-//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker { from, ... } and done { from, ms, n, w }   passed on
+//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker, ship { from, ... } and done { from, ms, n, w }   passed on
 //                                      from the others: ball only from the host, and shot only to the host
 //   claimed { k, by }                      balloon k, or round k, went to player by, sent to everyone, them too
 //   full   {}                              the room already has as many as it holds: see mostIn
@@ -61,9 +66,9 @@
 //   nobody {}                              joining by a code, there's no game with it just now
 
 export const MAX_RACERS = 4;
-// A fight is two fighters, and Bounce Back is one child on each side of the net. Every other game's room holds
-// MAX_RACERS.
-const MOST_IN = { 'mighty-moves': 2, 'bounce-back': 2 };
+// A fight is two fighters, Bounce Back is one child on each side of the net, and Cannon Bay is ship against ship.
+// Every other game's room holds MAX_RACERS.
+const MOST_IN = { 'mighty-moves': 2, 'bounce-back': 2, 'cannon-bay': 2 };
 export const mostIn = (game) => MOST_IN[game] ?? MAX_RACERS;
 export const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // No 0, O, 1, I or L, which look alike.
 // A code is short enough to say out loud or type in a moment. A new game never takes one in use: see arrive.
@@ -277,6 +282,22 @@ export function cleanWalker(message) {
   };
 }
 
+/**
+ * Only what a ship in Cannon Bay should hold, rounded: where it is on the water and which way it heads, how
+ * fast it goes, how far its sails are up, and f, how many cannonballs it has fired so far.
+ */
+export function cleanShip(message) {
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    x: number(message.x, -2000, 2000, 2),
+    z: number(message.z, -2000, 2000, 2),
+    h: number(message.h, -7, 7, 3),
+    s: number(message.s, 0, 100, 1),
+    v: number(message.v, 0, 1, 2),
+    f: number(message.f, 0, 1_000_000, 0),
+  };
+}
+
 /** Only what a car message should hold, rounded, so nothing else can be passed on. */
 export function cleanCar(message) {
   return {
@@ -435,8 +456,9 @@ export class RaceRoom {
       case 'pose':
       case 'racket':
       case 'runner':
-      case 'walker': {
-        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand, pose: cleanPose, racket: cleanRacket, runner: cleanRunner, walker: cleanWalker }[message.t](message);
+      case 'walker':
+      case 'ship': {
+        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand, pose: cleanPose, racket: cleanRacket, runner: cleanRunner, walker: cleanWalker, ship: cleanShip }[message.t](message);
         for (const other of others) other.send({ t: message.t, from: meta.id, ...moved });
         break;
       }

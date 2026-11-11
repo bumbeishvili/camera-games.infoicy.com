@@ -38,6 +38,7 @@ const GOLD_APART_MS = 110;
 const GOLD_ROW_MS = 1500;
 const GOLD_RATES = [1, 9 / 8, 5 / 4, 3 / 2, 5 / 3, 2];
 const HIT_APART_MS = 10; // Hits in the same frame, like a triple shot's, are heard as one.
+const STRUCK_APART_MS = 120; // A friend's hits that are shown together, after a moment's wait, are heard as one.
 
 const near = (spread) => 1 + (Math.random() - 0.5) * spread;
 /** How loud something is from this far away: all of it close by, and never quite nothing. */
@@ -50,6 +51,7 @@ export class BaySound extends Sound {
     this.goldAt = -Infinity;
     this.goldStreak = 0;
     this.hitAt = -Infinity;
+    this.struckAt = -Infinity;
   }
 
   /** What's being said matters more than what's going on, and together they could clip. */
@@ -103,6 +105,17 @@ export class BaySound extends Sound {
     if (now - this.hitAt < HIT_APART_MS) return;
     this.hitAt = now;
     this.play('thud', { gain: 0.24 * atDistance(away) * this.underVoice, rate: near(0.24) });
+  }
+
+  /**
+   * With a friend, one of their balls hitting the child's ship: the thud of a hit, a little lower, and no
+   * louder than the child's own, as it can come as often.
+   */
+  struck() {
+    const now = performance.now();
+    if (now - this.struckAt < STRUCK_APART_MS) return;
+    this.struckAt = now;
+    this.play('thud', { gain: 0.26 * this.underVoice, rate: 0.86 * near(0.12) });
   }
 
   /** A ball hitting the child's ship, which is soft too. */
