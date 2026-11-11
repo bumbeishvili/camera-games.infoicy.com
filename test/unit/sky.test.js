@@ -1087,6 +1087,51 @@ test('a wingman keeps beside its leader', () => {
   assert.ok(furthest > 0 && furthest < 70, `furthest apart ${furthest}`);
 });
 
+test('a pair gets out of the way together: hitting either one sends its leader off, with the wingman beside it', () => {
+  for (const shot of ['wing', 'lead']) {
+    const { flight } = flying({ levelNumber: 8, planes: 6 });
+    const lead = flight.flying.find(({ kind }) => kind === 'lead');
+    const wing = flight.flying.find(({ kind }) => kind === 'wing');
+    flight.huntIn = 1000;
+    fly(flight, 4, { out: false });
+    for (const one of [lead, wing]) one.hitsLeft = 1000;
+    let furthest = 0;
+    for (let i = 0; i < 4; i += 1) {
+      flight.hit(shot === 'wing' ? wing : lead);
+      assert.ok(lead.dodgeLeft > 0, `${shot}: its leader gets out of the way`);
+      assert.equal(wing.dodgeLeft, 0, `${shot}: and the wingman goes with it, rather than its own way`);
+      fly(flight, 1.5, () => {
+        furthest = Math.max(furthest, Math.hypot(lead.x - wing.x, lead.z - wing.z));
+        return { out: false };
+      });
+    }
+    assert.ok(furthest < 70, `${shot}: furthest apart ${furthest}`);
+  }
+});
+
+test('a wingman never goes hunting on its own while its leader flies: it comes along when its leader hunts', () => {
+  const { flight } = flying({ levelNumber: 8, planes: 6, level: 'tough' });
+  const lead = flight.flying.find(({ kind }) => kind === 'lead');
+  const wing = flight.flying.find(({ kind }) => kind === 'wing');
+  for (const one of flight.flying) one.hitsLeft = 1000;
+  // Each hunt goes to the last plane there is to choose from, which the wingman would be, after its leader.
+  assert.deepEqual(flight.flying.map(({ kind }) => kind), ['scout', 'lead', 'wing']);
+  flight.random = () => 0.99;
+  let leaderHunted = 0;
+  let furthestHunting = 0;
+  for (let i = 0; i < 900; i += 1) {
+    flight.huntIn = 0;
+    fly(flight, 0.1, huntingWell(flight));
+    assert.notEqual(wing.mode, 'hunt', `at ${flight.time.toFixed(1)} s`);
+    if (lead.mode === 'hunt') {
+      leaderHunted += 1;
+      furthestHunting = Math.max(furthestHunting, Math.hypot(lead.x - wing.x, lead.z - wing.z));
+    }
+  }
+  assert.ok(leaderHunted > 0, 'its leader hunts');
+  assert.ok(furthestHunting < 70, `the wingman beside it while it hunts: ${furthestHunting}`);
+});
+
 test('a wingman whose leader is already near comes in from the distance, like any pirate, and flies over to join it', () => {
   // Nine planes at level 8: the second pair's leader comes first, and its wingman later.
   const { flight } = flying({ levelNumber: 8, planes: 9 });

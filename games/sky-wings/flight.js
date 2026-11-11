@@ -699,8 +699,8 @@ export class Flight {
     this.huntIn = between(this.random, this.huntEvery);
     const hunting = this.flying.some(({ mode }) => mode === 'hunt');
     if (hunting) return;
-    // Balloons and the airship never hunt.
-    const free = this.flying.filter((enemy) => enemy !== this.locked && KINDS[enemy.kind].hunts);
+    // Balloons and the airship never hunt, and a wingman only comes along with its leader.
+    const free = this.flying.filter((enemy) => enemy !== this.locked && KINDS[enemy.kind].hunts && enemy.leader?.state !== 'flying');
     if (!free.length) return;
     const hunter = free[Math.floor(this.random() * free.length)];
     hunter.mode = 'hunt';
@@ -822,11 +822,14 @@ export class Flight {
       this.drop(enemy);
       return;
     }
-    // Being shot at, it stops hunting and tries to get out of the ring, so it has to be chased.
-    if (enemy.dodgeLeft === 0 && KINDS[enemy.kind].dodges) {
-      enemy.mode = 'cross';
-      enemy.dodgeLeft = this.levelRules.dodgeSeconds;
-      this.pickWay(enemy, { dodging: true });
+    // Being shot at, it stops hunting and tries to get out of the ring, so it has to be chased. A pair gets out
+    // of the way together: a wingman's leader goes, and the wingman stays beside it, rather than each going its
+    // own way.
+    const going = enemy.leader?.state === 'flying' ? enemy.leader : enemy;
+    if (going.dodgeLeft === 0 && KINDS[going.kind].dodges) {
+      going.mode = 'cross';
+      going.dodgeLeft = this.levelRules.dodgeSeconds;
+      this.pickWay(going, { dodging: true });
     }
   }
 
