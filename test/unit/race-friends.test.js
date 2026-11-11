@@ -2,7 +2,7 @@
 // is moved smoothly from what their game sends.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanBall, cleanCar, cleanHand, cleanName, cleanRacket, cleanShot, COMES_BACK_WITHIN_MS, idFor, makeCode, MAX_RACERS, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
+import { cleanBall, cleanCar, cleanHand, cleanName, cleanRacket, cleanShip, cleanShot, COMES_BACK_WITHIN_MS, idFor, makeCode, MAX_RACERS, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
 import { BODY_KEYS } from '../../games/mighty-moves/clips.js';
 import { Track } from '../../core/friends.js';
 import { CarTrack, codeInLink } from '../../games/high-five-racers/friends.js';
@@ -550,4 +550,44 @@ test('a finish always gets through, even straight after more messages than a sec
   assert.ok(ben.heard.filter(({ t }) => t === 'claimed').length < 60);
   ana.say({ t: 'done', ms: 5000, n: 12, w: 1 });
   assert.deepEqual(ben.last('done'), { t: 'done', from: 'aaaaaaaa', ms: 5000, n: 12, w: 1 });
+});
+
+test('a Cannon Bay game is ship against ship: room for two, and a third is told it already has two players', () => {
+  assert.equal(mostIn('cannon-bay'), 2);
+  const { join, leave } = makeRoom(mostIn('cannon-bay'));
+  const host = join('aaaaaaaa');
+  const friend = join('bbbbbbbb');
+  assert.ok(host && friend);
+  assert.equal(join('cccccccc'), null, 'a third is told the game is full');
+  assert.equal(host.last('room').members.length, 2);
+  leave(friend);
+  assert.ok(join('dddddddd'), 'someone going makes room again');
+});
+
+test('in Cannon Bay, each ship goes to the other with only what a ship should hold, and a hit goes across as its game decided it', () => {
+  const { join } = makeRoom(mostIn('cannon-bay'));
+  const ana = join('aaaaaaaa');
+  const ben = join('bbbbbbbb');
+  // A hit before the battle has started counts for nothing.
+  ana.say({ t: 'hit', ms: 10, r: 1, m: 'ball', d: 1, tot: 1 });
+  assert.equal(ben.last('hit'), undefined);
+  ana.say({ t: 'ready' });
+  ben.say({ t: 'ready' });
+
+  ana.say({ t: 'ship', ms: 1500.4, x: -180.12345, z: 860.456, h: 0.123456, s: 23.456, v: 0.8765, f: 12, picture: 'not this', name: 'Ana' });
+  assert.deepEqual(ben.last('ship'), { t: 'ship', from: 'aaaaaaaa', ms: 1500, x: -180.12, z: 860.46, h: 0.123, s: 23.5, v: 0.88, f: 12 });
+  assert.equal(ana.last('ship'), undefined, 'nobody hears their own');
+  // Anything that isn't a ship's is kept within what a ship could be.
+  ben.say({ t: 'ship', x: 'far', z: 99_999, h: -50, s: -3, v: 7, f: 2.6 });
+  assert.deepEqual(ana.last('ship'), { t: 'ship', from: 'bbbbbbbb', ms: 0, x: 0, z: 2000, h: -7, s: 0, v: 1, f: 3 });
+  assert.deepEqual(cleanShip({}), { ms: 0, x: 0, z: 0, h: 0, s: 0, v: 0, f: 0 });
+
+  // The game of the ship that fired says it hit, with how many it has, so one lost is made up by the next.
+  ana.say({ t: 'hit', ms: 2000.2, r: 1, m: 'ball', d: 1, tot: 3, picture: 'not this' });
+  assert.deepEqual(ben.last('hit'), { t: 'hit', from: 'aaaaaaaa', ms: 2000, r: 1, m: 'ball', d: 1, tot: 3, sm: 0, sg: 0, sd: '' });
+  assert.equal(ana.last('hit'), undefined);
+  ana.say({ t: 'done', ms: 180_000, n: 42, w: 1 });
+  assert.deepEqual(ben.last('done'), { t: 'done', from: 'aaaaaaaa', ms: 180_000, n: 42, w: 1 });
+  const biggest = JSON.stringify({ t: 'ship', from: 'abcdefghijkl', ...cleanShip({ ms: 3_599_999, x: -1999.99, z: -1999.99, h: -6.999, s: 99.9, v: 0.99, f: 999_999 }) });
+  assert.ok(biggest.length < 160, `${biggest.length} long`);
 });

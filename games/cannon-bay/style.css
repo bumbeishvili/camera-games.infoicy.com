@@ -342,3 +342,59 @@ body:has(.bay-prizes[data-on='yes']) .story { top: max(154px, calc(var(--hud-bot
   .bay-label { transition-duration: 0.6s; }
   #bay-power-fill { transition: none; }
 }
+
+/* ---------- with a friend: the two ships' hits and the time, where the pirates, gold and hearts are on their own ---------- */
+.bay-duel { display: none; }
+body[data-friends-race] .bay-duel { display: grid; }
+body[data-friends-race] .bay-solo,
+body[data-friends-race][data-screen] .bay-captains { display: none; }
+
+.bay-score .chip-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.bay-score-face {
+  width: clamp(20px, 2.2vw, 28px);
+  height: clamp(20px, 2.2vw, 28px);
+  border-radius: 50%;
+  background: var(--surface-soft);
+}
+
+/* A long name is cut short, so the chips stay on one line beside the camera picture. */
+.bay-score-name {
+  max-width: 7em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bay-score.is-mine .chip-value { color: var(--accent); }
+.bay-score.is-ahead { box-shadow: 0 0 0 3px #ffd23f, 0 4px 14px rgba(18, 48, 77, 0.18); }
+
+/* The friend's ship has their name over it, in place of a pirate's health. */
+.mark-name { display: none; }
+.mark[data-friend='yes'] .mark-bar { display: none; }
+
+.mark[data-friend='yes'] .mark-name {
+  display: block;
+  position: absolute;
+  left: 0;
+  top: -92px;
+  transform: translateX(-50%);
+  max-width: 12em;
+  padding: 2px 12px 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--surface);
+  border: 2px solid #ffd23f;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(18, 48, 77, 0.3);
+  font-size: clamp(15px, 1.5vw, 19px);
+  font-weight: 700;
+}
+
+.mark[data-where='off'][data-friend='yes'] .mark-name { top: 34px; }
+.mark[data-friend='yes'][data-state='fired-on'] .mark-name { border-color: #3ddc84; }

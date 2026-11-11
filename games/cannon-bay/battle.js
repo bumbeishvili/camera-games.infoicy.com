@@ -222,6 +222,9 @@ const SUB = { up: 8, under: 4.5 };
 const TOW = 30; // How far behind its ship a sailor's cage is towed.
 const WON_AFTER = 2.6;
 const AFTER_WIN_WHEEL = 0.3;
+// A friend's ship, in a duel: as many of its balls as are shown flying over at once, as many of its hits as can
+// wait to be shown as one of them lands, and how long the child's ship wobbles for one, as a pirate's does.
+const FRIEND_FIRE = { most: 4, mostDue: 6, wobble: 0.35 };
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const between = (random, [low, high]) => low + random() * (high - low);
@@ -299,8 +302,12 @@ function keepOnTheWater(ship, dt) {
 }
 
 export class Battle {
-  /** ships is how many there are to beat. pace, level and cannons are the grown-ups' settings. */
-  constructor({ ships = 6, pace = 'slow', level = 'gentle', levelNumber = 1, cannons = 'open', random = Math.random, onEvent = () => {} } = {}) {
+  /**
+   * ships is how many there are to beat. pace, level and cannons are the grown-ups' settings. start is where
+   * the child's ship starts, as { x, z, heading }: with a friend, see duel.js, there are no ships to beat, and
+   * the friend's ship is added with addFriend.
+   */
+  constructor({ ships = 6, pace = 'slow', level = 'gentle', levelNumber = 1, cannons = 'open', start = START, random = Math.random, onEvent = () => {} } = {}) {
     this.random = random;
     this.onEvent = onEvent;
     this.total = ships;
@@ -313,9 +320,9 @@ export class Battle {
 
     this.state = 'ready'; // ready, sailing, won, lost
     this.time = 0;
-    this.x = START.x;
-    this.z = START.z;
-    this.heading = START.heading;
+    this.x = start.x;
+    this.z = start.z;
+    this.heading = start.heading ?? 0;
     this.speed = 0;
     this.sails = 0;
     this.wheel = 0;
@@ -349,8 +356,10 @@ export class Battle {
     this.roles = this.planRoles();
     this.bonuses = this.bonusOrder();
     this.nextBonus = 0;
+    this.friend = null; // With a friend, their ship: see addFriend.
+    this.strikesDue = 0; // Their hits on the child's ship still to be shown: see struck.
 
-    this.stats = { beaten: 0, shots: 0, hits: 0, hurts: 0, seconds: 0, openSeconds: 0, openings: 0, crewsAway: 0, gold: 0, gems: 0, hearts: 0, keys: 0, chests: 0, sailors: 0, powers: 0, littles: 0, blocked: 0 };
+    this.stats = { beaten: 0, shots: 0, hits: 0, hurts: 0, seconds: 0, openSeconds: 0, openings: 0, crewsAway: 0, gold: 0, gems: 0, hearts: 0, keys: 0, chests: 0, sailors: 0, powers: 0, littles: 0, blocked: 0, struck: 0 };
   }
 
   emptyZone() {
@@ -592,6 +601,8 @@ export class Battle {
 
   movePirate(pirate, dt) {
     pirate.hitLeft = Math.max(0, pirate.hitLeft - dt);
+    // A friend's ship is sailed by their own game, and only put where it says: see placeFriend.
+    if (pirate.friend) return;
     if (pirate.state === 'sinking') {
       this.sinkPirate(pirate, dt);
       return;
@@ -783,7 +794,107 @@ export class Battle {
     if (pirate.sink >= 1) pirate.state = 'gone';
   }
 
-  /** Nobody ever bumps: ships only slide apart, with the pirates doing most of the moving. */
+  /* ---------- a friend's ship, sailed by them on their own computer: see duel.js ---------- */
+
+  /**
+   * The friend's ship, at { x, z, heading }. It's fired at like a pirate ship, but it never sinks, as a hit
+   * on it is only a point, its captain never calls out as a pirate does, and it never fires here: their game
+   * does that, and says so.
+   */
+  addFriend({ x, z, heading = 0 }) {
+    const friend = this.makePirate('ship', x, z, 0);
+    Object.assign(friend, { friend: true, heading, speed: 0, sails: 0, mode: 'friend', maxHits: Infinity, hitsLeft: Infinity, fireIn: Infinity, spoke: true, gun: 0 });
+    this.friend = friend;
+    this.pirates.push(friend);
+    return friend;
+  }
+
+  /** Where the friend's game says their ship is now, as { x, z, heading, speed, sails }. */
+  placeFriend({ x, z, heading, speed, sails }, dt = 0) {
+    const { friend } = this;
+    if (!friend) return;
+    const before = friend.heading;
+    Object.assign(friend, { x, z, heading, speed, sails });
+    if (dt > 0) friend.turning = damp(friend.turning, clamp(turnBetween(heading, before) / (SAIL.turn * dt), -1, 1), 3, dt);
+  }
+
+  /**
+   * The friend's cannons fired this many balls at the child's ship, as their game says. Their game decides
+   * what they hit, so these are only to be seen: they fly over and land on the child's ship, harmlessly, and
+   * a hit their game says it made shows as one of them lands: see struck.
+   */
+  friendFired(count) {
+    const { friend } = this;
+    if (!friend || this.state !== 'sailing') return;
+    const forward = forwardOf(friend.heading);
+    const across = rightOf(friend.heading);
+    // From the side of their ship that faces the child's.
+    const side = (this.x - friend.x) * across.x + (this.z - friend.z) * across.z >= 0 ? 1 : -1;
+    friend.burstSide = side;
+    for (let i = 0; i < Math.min(count, FRIEND_FIRE.most); i += 1) {
+      friend.gun = (friend.gun + 1) % GUN_SPOTS.length;
+      const along = GUN_SPOTS[friend.gun];
+      const from = {
+        x: friend.x + forward.x * along + across.x * side * HULL.beam,
+        y: GUN_HEIGHT,
+        z: friend.z + forward.z * along + across.z * side * HULL.beam,
+      };
+      const away = Math.hypot(this.x - from.x, this.z - from.z);
+      // As quick and as low as the child's own, rather than a pirate's high arcs, as that's what they are.
+      const ball = { from, to: { x: this.x, z: this.z }, lands: SHOT.height, t: 0, seconds: clamp(away / SHOT.speed, SHOT.shortest, SHOT.longest), arc: SHOT.arc + away * SHOT.arcPerUnit, x: from.x, y: from.y, z: from.z, harmless: true, homing: true, pirate: friend };
+      this.balls.push(ball);
+      this.emit('pirate-fire', { pirate: friend, ball });
+    }
+  }
+
+  /**
+   * The friend's game says this many of its balls hit the child's ship: a point each for them. Each shows as
+   * one of their balls lands, or at once if none is on its way. Nothing is lost, as there's nothing to lose.
+   */
+  struck(count = 1) {
+    if (!this.friend || this.state !== 'sailing') return;
+    this.strikesDue = Math.min(FRIEND_FIRE.mostDue, this.strikesDue + count);
+  }
+
+  /** One of the friend's hits, shown where it landed on the child's ship. */
+  strike(at) {
+    this.strikesDue = Math.max(0, this.strikesDue - 1);
+    this.stats.struck += 1;
+    this.hurtLeft = Math.max(this.hurtLeft, FRIEND_FIRE.wobble);
+    this.emit('struck', { x: at.x, z: at.z });
+  }
+
+  /** The side of the child's ship facing something, where a ball from it lands. */
+  sideFacing(x, z) {
+    const across = rightOf(this.heading);
+    const facing = (x - this.x) * across.x + (z - this.z) * across.z >= 0 ? 1 : -1;
+    return { x: this.x + across.x * facing * HULL.beam, z: this.z + across.z * facing * HULL.beam };
+  }
+
+  /** The friend has gone, and their ship and its balls with them. */
+  removeFriend() {
+    const { friend } = this;
+    if (!friend) return;
+    friend.state = 'gone';
+    this.pirates = this.pirates.filter((pirate) => pirate !== friend);
+    this.balls = this.balls.filter(({ homing }) => !homing);
+    this.strikesDue = 0;
+    this.friend = null;
+  }
+
+  /** It's over at once, as a duel is when its time is up. Whatever's still in the air lands on nothing. */
+  stop() {
+    if (this.state !== 'sailing') return;
+    this.state = 'won';
+    this.strikesDue = 0;
+    this.quietCannons();
+    this.emit('won', { beaten: this.stats.beaten });
+  }
+
+  /**
+   * Nobody ever bumps: ships only slide apart, with the pirates doing most of the moving. A friend's ship and
+   * the child's make half the room each, as the friend's game does the same.
+   */
   keepApart() {
     const ships = this.pirates.filter(({ state }) => state !== 'gone');
     const mine = forwardOf(this.heading);
@@ -802,10 +913,11 @@ export class Battle {
       const away = Math.hypot(dx, dz) || 1;
       if (away < PIRATE.apart) {
         const push = PIRATE.apart - away;
-        pirate.x += (dx / away) * push * 0.8;
-        pirate.z += (dz / away) * push * 0.8;
-        this.x -= (dx / away) * push * 0.2;
-        this.z -= (dz / away) * push * 0.2;
+        const theirs = pirate.friend ? 0.5 : 0.8;
+        pirate.x += (dx / away) * push * theirs;
+        pirate.z += (dz / away) * push * theirs;
+        this.x -= (dx / away) * push * (1 - theirs);
+        this.z -= (dz / away) * push * (1 - theirs);
       }
       for (let j = i + 1; j < ships.length; j += 1) {
         const other = ships[j];
@@ -935,6 +1047,13 @@ export class Battle {
   }
 
   hit(pirate, shot) {
+    // A friend's ship never sinks and never runs: a hit on it is a point for the child, and that's all.
+    if (pirate.friend) {
+      pirate.hitLeft = 0.35;
+      this.stats.hits += 1;
+      this.emit('hit', { pirate, x: shot.x, y: shot.y, z: shot.z, fire: null, friend: true });
+      return;
+    }
     pirate.hitsLeft -= 1;
     pirate.hitLeft = 0.35;
     pirate.sinceHit = 0;
@@ -1292,13 +1411,17 @@ export class Battle {
   moveBalls(dt) {
     for (const ball of this.balls) {
       ball.t = Math.min(1, ball.t + dt / ball.seconds);
+      // A friend's goes to wherever the child's ship has got to, as their game's balls go to where it is there.
+      if (ball.homing) Object.assign(ball.to, this.sideFacing(ball.from.x, ball.from.z));
       const { from, to, t } = ball;
       ball.x = from.x + (to.x - from.x) * t;
       ball.z = from.z + (to.z - from.z) * t;
-      ball.y = from.y * (1 - t) + 4 * ball.arc * t * (1 - t);
+      ball.y = from.y + ((ball.lands ?? 0) - from.y) * t + 4 * ball.arc * t * (1 - t);
       if (t >= 1) this.landBall(ball);
     }
     this.balls = this.balls.filter(({ t }) => t < 1);
+    // A hit the friend's game has said it made, with none of their balls still on the way, shows now.
+    if (this.strikesDue > 0 && this.state === 'sailing' && this.friend && !this.balls.some(({ homing }) => homing)) this.strike(this.sideFacing(this.friend.x, this.friend.z));
   }
 
   /** How far a place on the water is from the child's hull, which is long and thin. */
@@ -1311,6 +1434,11 @@ export class Battle {
   }
 
   landBall(ball) {
+    // One of a friend's, which only their game decides: a hit it has said it made shows as this one lands.
+    if (ball.homing) {
+      if (this.strikesDue > 0 && this.state === 'sailing') this.strike(ball.to);
+      return;
+    }
     const onHull = !ball.harmless && !this.resting && this.state === 'sailing' && this.distanceFromHull(ball.to.x, ball.to.z) <= HULL.beam + BALL.hitWiden;
     if (onHull && this.power?.kind === 'shield') {
       // The shield bubble: it bounces off, and nothing's lost.

@@ -8,6 +8,7 @@
   {"id": "giraffe-back", "text": "Back to the island!", "ka": "კუნძულისკენ დაბრუნდი!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
   {"id": "giraffe-won", "text": "You drove them all off! The treasure is safe!", "ka": "ყველა გააძევე! განძი უსაფრთხოდაა!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
   {"id": "giraffe-lost", "text": "So close! Sail again!", "ka": "ცოტაც და! კიდევ სცადე!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "giraffe-duel-done", "text": "What a battle! Well sailed!", "ka": "რა ბრძოლა იყო! კარგად იცურე!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
   {"id": "captain-truffle", "text": "Oink! That treasure smells delicious!", "ka": "ღრუტ! ამ განძს გემრიელი სუნი აქვს!", "voice": "am_puck", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 12},
   {"id": "captain-kit", "text": "Kit here! Your treasure is mine!", "ka": "კიტი ვარ! შენი განძი ჩემია!", "voice": "af_nicole", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 6},
   {"id": "captain-mochi", "text": "Hop hop! Hand over the treasure!", "ka": "ხტუნვა, ხტუნვა! განძი მომეცი!", "voice": "af_sky", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 24},
