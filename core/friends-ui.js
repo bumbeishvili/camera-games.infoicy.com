@@ -1,6 +1,6 @@
-// What playing with friends looks like, in High Five Racers, Sky Wings, Balloon Pop and Mighty Moves: a box on the
-// title card for making or joining a race, a flight, a game or a fight, the screen for waiting at the start, and how everyone did on the
-// finish card. Each game gives its own words, and what's sent and shown about each friend. The connection
+// What playing with friends looks like, in every game that can be played with them: a box on the title card for
+// making or joining a race, a flight, a game, a fight or a battle, the screen for waiting at the start, and how
+// everyone did on the finish card. Each game gives its own words, and what's sent and shown about each friend. The connection
 // itself is in friends.js.
 //
 // Once the box is open, by its button or a friend's link, the title card shows nothing else, over the game

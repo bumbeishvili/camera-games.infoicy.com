@@ -1,5 +1,6 @@
-// Playing with friends, in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail and Giraffe's
-// Maze: who's in a room, and what they pass to each other.
+// Playing with friends, in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail, Giraffe's
+// Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher and the Lighthouse Keeper: who's in a room, and
+// what they pass to each other.
 // The same rules run on Cloudflare (server/worker.js) and on this computer for the tests
 // (tools/race-server.mjs). Each game has rooms of its own. Nothing here is kept once everyone has gone, and no
 // camera picture ever comes here: only where each car or plane is, the moves a fighter makes and how it stands,

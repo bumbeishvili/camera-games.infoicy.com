@@ -1166,7 +1166,7 @@ body:not([data-screen='countdown']) .level-new-now { display: none; }
 /* A chip a game hides, such as a prize count before its level, stays hidden whatever .chip says. */
 .chip[hidden] { display: none; }
 
-/* ---------- playing with friends, in High Five Racers, Sky Wings and Balloon Pop: core/friends-ui.js ---------- */
+/* ---------- playing with friends, in every game that can be: core/friends-ui.js ---------- */
 /* "Race a friend" or "Fly with a friend" on the title card, which opens a little box for making or joining. */
 .friends {
   display: grid;

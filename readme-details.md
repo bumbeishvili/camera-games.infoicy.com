@@ -2,7 +2,7 @@
 
 Camera games for children with hemiplegia, played by moving in front of a webcam. Opening the hand is what they practise. The right hand is the default, and the left can be chosen instead under the gear icon.
 
-They're played at <https://hemi.infoicy.com> in Google Chrome, on a computer with a webcam, or from this folder (see [Run it](#run-it)). The camera picture never leaves the computer, and once loaded they work offline, apart from racing a friend in High Five Racers. Each game has ten levels, and a grown-up can set how open the hand has to be, how far to reach and how big a move has to be.
+They're played at <https://hemi.infoicy.com> in Google Chrome, on a computer with a webcam, or from this folder (see [Run it](#run-it)). The camera picture never leaves the computer, and once loaded they work offline, apart from playing with friends. Each game has ten levels, and a grown-up can set how open the hand has to be, how far to reach and how big a move has to be.
 
 - **High Five Racers:** the car only drives while the hand is open. Steering over to a giant hand at the roadside high fives it for a boost, and keeping the hand open fills up turbo. Nobody can crash or lose: if the hand closes, the car coasts to a stop and waits. See [below](#high-five-racers).
 - **Balloon Pop:** balloons float up and drift around, and the open hand pops them. A closed hand just bumps them. Missing a balloon costs nothing. A grown-up can turn on a maths challenge, where the wrong answer burns the glove.
@@ -75,7 +75,7 @@ games/
   bounce-back/          its rules and levels, the court, the players' pictures, and the ball on a friend's computer
   giraffe-maze/         its mazes and how the character walks, the game as it's played, the maze drawn, the characters' pictures and its voices
 tools/                  the local server, the local race server, and what prepares voices and sounds
-server/                 the server for playing with friends in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail and Giraffe's Maze: its rules, and the Cloudflare Worker that runs them
+server/                 the server for playing with friends in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail, Giraffe's Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher and the Lighthouse Keeper: its rules, and the Cloudflare Worker that runs them
 vendor/                 libraries, the tracking model and fonts
 test/                   unit tests, and Playwright tests for the hub and each game
 ```
@@ -225,7 +225,7 @@ Coins are counted at the top from level 2, and on the finish card with any gems,
 
 **Racing friends.** Up to 4 children can race each other, each on their own computer with their own camera.
 
-- **Making a race:** a grown-up presses **Race a friend** on the title card, then **Make a race**, and tells their friend its code, 3 letters and numbers, or sends the link. A new race never gets a code that's in use: the server says so, and the game picks another. While making or joining a race, the title card shows only that, over the game dimmed and blurred, and **Let’s race!** comes under who's here. A name can be typed there too, if they'd like one, and it's remembered. **Back** goes back to the usual title card. It's the same in Sky Wings, Balloon Pop, Mighty Moves, Bounce Back and Giraffe's Maze.
+- **Making a race:** a grown-up presses **Race a friend** on the title card, then **Make a race**, and tells their friend its code, 3 letters and numbers, or sends the link. A new race never gets a code that's in use: the server says so, and the game picks another. While making or joining a race, the title card shows only that, over the game dimmed and blurred, and **Let’s race!** comes under who's here. A name can be typed there too, if they'd like one, and it's remembered. **Back** goes back to the usual title card. It's the same in every game played with friends.
 - **Joining:** the friend opens the link, or presses **Race a friend** and types the code, which joins as soon as it's typed. Links with the 6-letter codes from before still work.
 - **Starting:** everyone presses **Let’s race!**. After the hand check, each waits on the grid until everyone is ready, and then all count down together. Whoever made the race can press **Start now** instead, and anyone can choose to race on their own.
 - **The course** is the host's: their level and race length. Friends' cars take the place of the other cars, with each friend's name over theirs. A friend's car close to the child's is shown a little to one side, as the other cars keep out of the way, so it never sits in front of the camera.
@@ -746,7 +746,7 @@ Where each sound came from is in [CREDITS.md](CREDITS.md).
 
 ## Privacy
 
-Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, except Google Analytics, and except that High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail and Giraffe's Maze may reach the server for playing with friends, which they only do once a grown-up makes or joins a race, a flight, a game, a fight or a run (see [Racing friends](#high-five-racers)), and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
+Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, except Google Analytics, and except that High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail, Giraffe's Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher and the Lighthouse Keeper may reach the server for playing with friends, which they only do once a grown-up makes or joins a race, a flight, a game, a fight, a run or a battle (see [Racing friends](#high-five-racers)), and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
 
 **Google Analytics** (`G-BPC62S5T34`) counts visits to every page, through [core/analytics.js](core/analytics.js): Google's tag says which page was opened, with what any website's visit tells it, such as the browser, the screen size and roughly where. Nothing from this site goes with it: never anything from the camera, and nothing about how a child plays. Google signals and ad personalisation are turned off, as this is a site for children. It sets Google's own cookies, which in some countries means a website should ask first. It never loads on this computer, as in the tests, so nothing leaves it there. Each page's security policy lets in Google's tag and analytics, and nothing else new.
 
