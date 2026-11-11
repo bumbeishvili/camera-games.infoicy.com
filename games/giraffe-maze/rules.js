@@ -31,8 +31,8 @@ export const WAYS = ['lead', 'find'];
 export const WALK = {
   speed: 2.5, // Cells a second.
   stop: 0.06, // Closer to the hand than this, it stands still.
-  minDot: 0.1, // A way has to head at least this much towards the hand to be taken.
-  straight: 0.06, // Going on the way it was going wins a close call, so it doesn't zigzag.
+  better: 0.02, // Somewhere has to be at least this much nearer the hand to set off for it.
+  straight: 0.04, // Going on the way it was going wins a close call, so it doesn't zigzag.
   cap: 0.22, // How far along a way it can go up to something standing in the middle of it.
 };
 
@@ -513,10 +513,23 @@ export function buildMaze({ seed, index = 0, size = 'medium', level = 1, feature
     if (early.length) add(features.helper, early[0]);
   }
 
-  // Gems, and a treasure chest, in the dead ends.
+  // Gems, and a treasure chest, in the dead ends, or down the side paths when there aren't enough dead ends free,
+  // so they're always there at their levels.
   const freeEnds = shuffle(deadEnds(maze).filter((id) => !taken.has(id)), random);
-  if (features.chest && freeEnds.length) add('chest', freeEnds.shift());
-  for (let n = 0; n < features.gems && freeEnds.length; n += 1) add('gem', freeEnds.shift());
+  const sides = shuffle(Array.from({ length: maze.count }, (_, id) => id).filter((id) => !taken.has(id) && !onWay.has(id) && maze.degree(id) > 1), random);
+  const hideaways = [...freeEnds, ...sides, ...shuffle(way.filter((id) => !taken.has(id)), random)];
+  const hideaway = () => {
+    while (hideaways.length && taken.has(hideaways[0])) hideaways.shift();
+    return hideaways.shift();
+  };
+  if (features.chest) {
+    const cell = hideaway();
+    if (cell !== undefined) add('chest', cell);
+  }
+  for (let n = 0; n < features.gems; n += 1) {
+    const cell = hideaway();
+    if (cell !== undefined) add('gem', cell);
+  }
 
   // Fruit, mostly along the way to the friend, and some down the side paths.
   const share = lostCount > 1 ? FRIENDS_FRUIT_SHARE : FRUIT_SHARE;
@@ -543,21 +556,53 @@ export function walkerAt(maze, walker) {
   return { x: x + DX[walker.d] * walker.t, y: y + DY[walker.d] * walker.t };
 }
 
+/** The point on a straight bit of path nearest the target: how far along it is, and how far from the target. */
+function nearestAlong(x, y, d, length, target) {
+  const along = DX[d] * (target.x - x) + DY[d] * (target.y - y);
+  const s = Math.min(length, Math.max(0, along));
+  return { s, gap: Math.hypot(target.x - (x + DX[d] * s), target.y - (y + DY[d] * s)) };
+}
+
+/** The nearest the walker can get to the target by setting off from a cell's middle that way: along it, and one path on. */
+function reachFrom(maze, cell, d, target, limit) {
+  const room = limit(cell, d);
+  if (room <= 0) return Infinity;
+  const { x, y } = maze.centre(cell);
+  let best = nearestAlong(x, y, d, room, target).gap;
+  if (room >= 1) best = Math.min(best, reachBeyond(maze, maze.next(cell, d), opposite(d), target, limit));
+  return best;
+}
+
+/** The nearest it can get going on from a cell's middle, any way but back the way it came. */
+function reachBeyond(maze, cell, back, target, limit) {
+  const { x, y } = maze.centre(cell);
+  let best = Infinity;
+  for (let e = 0; e < 4; e += 1) {
+    if (e === back) continue;
+    const room = limit(cell, e);
+    if (room > 0) best = Math.min(best, nearestAlong(x, y, e, room, target).gap);
+  }
+  return best;
+}
+
 /**
- * Moves the walker up to distance cells along the paths towards target, and returns how far it went. It goes the
- * way that brings it nearer the target, and stops at the nearest point it can get to, so it never goes back and
- * forth. limit(a, d) is how far it may go along the way from cell a in direction d: 0 for a hedge, 1 for an open
- * path, and a little way for one with something standing in it. field, when the character finds its own way, is
- * { goal, dist }: the cell to head for and how many steps each cell is from it.
+ * Moves the walker up to distance cells along the paths towards target, and returns how far it went. It heads for
+ * the nearest point to the target it can see, along the path it's on or one path on from either end, so it goes
+ * round a corner towards the hand rather than stopping just before it. It never goes back and forth: it only ever
+ * heads for somewhere nearer the target than it is. limit(a, d) is how far it may go along the way from cell a in
+ * direction d: 0 for a hedge, 1 for an open path, and a little way for one with something standing in it. field,
+ * when the character finds its own way, is { goal, dist }: the cell to head for and how many steps each cell is
+ * from it.
  */
 export function stepWalker(maze, walker, target, distance, { limit, field = null }) {
   let left = distance;
   let moved = 0;
+  // Standing still, it only sets off for somewhere clearly nearer, so a hand that trembles doesn't jiggle it. Once
+  // it's walking, it goes all the way.
+  const better = walker.walking ? 1e-4 : WALK.better;
   for (let guard = 0; guard < 16 && left > 1e-6; guard += 1) {
     const at = walkerAt(maze, walker);
-    const dx = target.x - at.x;
-    const dy = target.y - at.y;
-    const gap = Math.hypot(dx, dy);
+    const gap = Math.hypot(target.x - at.x, target.y - at.y);
     const finding = field && field.goal >= 0 && field.goal !== walker.a && field.dist[walker.a] > 0;
     if (walker.d < 0) {
       let best = -1;
@@ -569,11 +614,12 @@ export function stepWalker(maze, walker, target, distance, { limit, field = null
       }
       if (best < 0) {
         if (gap < WALK.stop) break;
-        let bestScore = WALK.minDot;
+        let bestScore = Infinity;
         for (let d = 0; d < 4; d += 1) {
-          if (limit(walker.a, d) <= 0) continue;
-          const score = (DX[d] * dx + DY[d] * dy) / gap + (d === walker.facing ? WALK.straight : 0);
-          if (score > bestScore) {
+          const reach = reachFrom(maze, walker.a, d, target, limit);
+          if (reach >= gap - better) continue;
+          const score = reach - (d === walker.facing ? WALK.straight : 0);
+          if (score < bestScore) {
             bestScore = score;
             best = d;
           }
@@ -590,7 +636,24 @@ export function stepWalker(maze, walker, target, distance, { limit, field = null
     if (field && field.goal >= 0 && field.goal !== walker.a && field.goal !== b && field.dist[walker.a] >= 0) {
       want = b >= 0 && field.dist[b] >= 0 && field.dist[b] < field.dist[walker.a] ? Infinity : -Infinity;
     } else {
-      want = DX[d] * dx + DY[d] * dy;
+      // The nearest point on this path, ahead or behind, and the nearest one path on from either end of it.
+      const room = limit(walker.a, d);
+      const ahead = nearestAlong(at.x, at.y, d, room - walker.t, target);
+      const behind = nearestAlong(at.x, at.y, opposite(d), walker.t, target);
+      const onPast = room >= 1 ? reachBeyond(maze, b, opposite(d), target, limit) : Infinity;
+      const backPast = reachBeyond(maze, walker.a, d, target, limit);
+      // Only somewhere clearly nearer is worth setting off for, and going on the way it's going wins a close call.
+      const choices = [[ahead.gap, ahead.s, true], [behind.gap, -behind.s, false], [onPast, room - walker.t, true], [backPast, -walker.t, false]];
+      let bestScore = Infinity;
+      want = 0;
+      for (const [reach, go, onwards] of choices) {
+        if (reach >= gap - better) continue;
+        const score = reach - (onwards ? WALK.straight : 0);
+        if (score < bestScore) {
+          bestScore = score;
+          want = go;
+        }
+      }
     }
     if (want > 1e-6) {
       const step = Math.min(left, want, limit(walker.a, d) - walker.t);
@@ -622,6 +685,7 @@ export function stepWalker(maze, walker, target, distance, { limit, field = null
       break;
     }
   }
+  walker.walking = moved > 1e-6;
   return moved;
 }
 

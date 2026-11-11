@@ -78,6 +78,7 @@ export class MazeRun {
     this.butterflyIn = this.plan.butterflies ? 3 : Infinity;
     this.stuckFor = 0;
     this.lockedShown = false;
+    this.waitingAt = null;
   }
 
   get maze() {
@@ -268,9 +269,12 @@ export class MazeRun {
 
   /** The sheep, the bush and the gate: what the hand and the character do about them. */
   workOnBlockers(dt, input, at) {
+    this.waitingAt = null;
     for (const blocker of this.layout.blockers) {
       if (blocker.open) continue;
       const near = Math.hypot(blocker.x - at.x, blocker.y - at.y);
+      // Standing right up against it.
+      if (near < 0.5 - WALK.cap + 0.12) this.waitingAt = blocker;
       const glove = input.glove;
       const onIt = glove && input.open && Math.hypot(blocker.x - glove.x, blocker.y - glove.y) < REACHES.touch;
       // Waiting right by it: a sheep wakes and a bush goes by themselves after a while, so nobody gets stuck.
@@ -296,6 +300,7 @@ export class MazeRun {
   open(blocker) {
     blocker.open = true;
     blocker.openedAt = this.time;
+    if (this.waitingAt === blocker) this.waitingAt = null;
     if (blocker.kind === 'gate') {
       this.hasKey = false;
       this.stats.gates += 1;

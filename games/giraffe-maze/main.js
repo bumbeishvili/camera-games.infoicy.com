@@ -13,8 +13,8 @@ import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { FOLLOW_SPACING, MazeRun } from './play.js';
 import {
-  castFor, facingOf, FOUND_SECONDS, friendsCast, MAZE_COUNTS, mazeNewAt, modeWord, NEWS, newSeedWord, POINTS, REACH,
-  readMode, SIZE_NAMES, SLIDE_SECONDS, Trail, WAYS,
+  castFor, facingOf, FOUND_SECONDS, friendsCast, LABELS, MAZE_COUNTS, mazeNewAt, modeWord, NEWS, newSeedWord, POINTS,
+  REACH, readMode, SIZE_NAMES, SLIDE_SECONDS, Trail, WAYS,
 } from './rules.js';
 import { MazeView } from './view.js';
 import { renderWalkers } from './walkers.js';
@@ -40,6 +40,7 @@ const HINT_SECONDS = 10;
 const ASK_OPEN_AFTER = 2.5; // Seconds of a closed hand before asking for it to open.
 const RESTING_AFTER = 15; // And before saying that resting is fine.
 const FILM_SECONDS = 25;
+const BLOCKED_HINT_AFTER = 1.5; // Seconds held up by something in the way, before saying what to do.
 const FILM_CELLS = 3; // The film shows until the character has walked this far.
 const STEP_EVERY = 0.42; // Cells between footsteps.
 const PRIZE_MARKS = { butterfly: '🦋', gem: '💎', crown: '👑' };
@@ -51,16 +52,16 @@ const LABEL_FOR = { butterflies: 'butterfly', gate: 'key', shoes: 'shoes', sheep
 const MAZE_WORDS = {
   toggle: 'Play with friends',
   make: 'Make a game',
-  codeLabel: 'Or a friend’s game code',
+  codeLabel: 'A friend’s game code',
   codeName: 'Game code',
-  how: 'Send the link to your friends. Then you all press <b>Into the maze!</b>',
+  how: 'Tell your friends the code. Then you all press <b>Into the maze!</b>',
   leave: 'Leave this game',
   privacy: 'Only your name, who you play as, where your character and glove are in the maze and what you find go to your friends. The camera picture stays on this computer.',
   alone: 'Play on your own',
   full: 'That game already has 4 players.',
   lost: 'Can’t reach the game. Check the internet, then try again.',
   left: 'You’ve left the game.',
-  badCode: 'A game code is 6 letters and numbers.',
+  badCode: 'A game code is 3 letters and numbers.',
   busy: 'Playing',
   still: 'still playing',
 };
@@ -134,6 +135,7 @@ class MazeGame {
 
   resetCounts() {
     this.restFor = 0;
+    this.blockedFor = 0;
     this.praised = 0;
     this.stepIn = STEP_EVERY;
     this.lastWalked = 0;
@@ -376,6 +378,7 @@ class MazeGame {
     }
     this.view.update(dt);
     this.restFor = input.open ? 0 : this.restFor + dt;
+    this.blockedFor = this.run.waitingAt ? this.blockedFor + dt : 0;
     this.showFilm();
     this.footsteps();
     if (this.run.over && this.session.screen === 'playing') this.session.finish();
@@ -720,6 +723,13 @@ class MazeGame {
     if (this.restFor > RESTING_AFTER) return { key: 'resting', text: SPOKEN.resting, side: null };
     if (needed && !needed.key.startsWith('closed')) return needed;
     if (needed && this.restFor > ASK_OPEN_AFTER) return needed;
+    // Held up by something in the way: what to do about it, shown rather than said, every time.
+    const blocker = run.waitingAt;
+    if (blocker && this.blockedFor > BLOCKED_HINT_AFTER) {
+      const key = blocker.kind === 'gate' ? 'locked' : blocker.kind;
+      const [en, ka] = LABELS[key];
+      return { key: `blocked-${key}`, text: session.settings.language === 'ka' ? ka : en, side: null, silent: true };
+    }
     if (run.index === 0 && run.stats.walked < 2 && session.playSeconds < HINT_SECONDS) return { key: 'lead-hint', text: HINT, side: null };
     return null;
   }

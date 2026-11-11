@@ -158,23 +158,31 @@ export async function secondPlayer(browser) {
   return { context, page, errors };
 }
 
-/** A grown-up makes a game, with a name, and gets its code. */
+export const CODE = /^[A-HJ-NP-Z2-9]{3}$/;
+
+/** A name, if they'd like one, typed once they're in a game. */
+async function giveName(page, name) {
+  if (!name) return;
+  await page.locator('#friends-name').fill(name);
+  await page.locator('#friends-name').dispatchEvent('change');
+}
+
+/** A grown-up makes a game, and gets its code. */
 export async function makeGame(page, name = 'Ana') {
   await page.locator('#friends-toggle').click();
-  await page.locator('#friends-name').fill(name);
   await page.locator('#friends-make').click();
-  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]+$/);
+  await expect(page.locator('#friends-code-shown')).toHaveText(CODE);
+  await giveName(page, name);
   return page.locator('#friends-code-shown').textContent();
 }
 
-/** A friend joins a game with its code, by opening its link, with their own settings, and types their name. */
+/** A friend opens the game with their own settings, and joins with the code, which joins as soon as it's typed. */
 export async function joinGame(page, code, settings = {}, name = '') {
-  await openGame(page, { ...EASY_REACH, ...settings }, GAME, `#maze=${code}`);
+  await openGame(page, { ...EASY_REACH, ...settings }, GAME);
+  await page.locator('#friends-toggle').click();
+  await page.locator('#friends-code').fill(code);
   await expect(page.locator('#friends-code-shown')).toHaveText(code);
-  if (name) {
-    await page.locator('#friends-name').fill(name);
-    await page.locator('#friends-name').dispatchEvent('change');
-  }
+  await giveName(page, name);
 }
 
 /** Everyone gets through the hand check and waits for each other, and then they all play. */
