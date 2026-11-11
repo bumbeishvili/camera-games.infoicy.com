@@ -254,7 +254,7 @@ class SpiderGame {
       return { key: 'bring', text: OPEN_ON_WEB, side: null, asks: 'open' };
     }
     const playing = garden.spiders.some((spider) => garden.catchable(spider));
-    if (!garden.holding && playing && this.idleFor > HINT_AFTER_SECONDS) return { key: 'close-on-one', text: CLOSE_ON_ONE, side: null, asks: 'closed' };
+    if (!garden.holding && playing && this.idleFor > HINT_AFTER_SECONDS) return { key: 'close-on-one', text: CLOSE_ON_ONE, side: null };
     return null;
   }
 

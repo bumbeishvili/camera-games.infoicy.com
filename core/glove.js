@@ -35,9 +35,6 @@ export class Glove {
     this.side = side;
     this.visible = false;
     this.status = 'missing';
-    // With hand shapes chosen for both moves (core/shapes.js), a hand making neither yet: not open, and not
-    // closed on anything either.
-    this.neither = false;
     this.stain = 0; // How much of the stain colour shows, from nothing to all of it.
     this.stainColour = '#352c28';
     this.embers = false; // Little hot spots on the fingertips.
@@ -50,14 +47,12 @@ export class Glove {
   hide() {
     this.visible = false;
     this.status = 'missing';
-    this.neither = false;
     this.speed = 0;
   }
 
   /** field has the aspect of the camera picture, the screen's width and height, and a palm size. */
   follow(view, dt, field) {
     this.status = view.status;
-    this.neither = view.reason === 'shape';
     if (view.status === 'missing') {
       this.visible = false;
       return;

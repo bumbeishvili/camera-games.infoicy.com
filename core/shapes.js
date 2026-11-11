@@ -1,8 +1,9 @@
-// Hand shapes, so a grown-up can choose what each of a game's two moves is made with: the open move, which is
-// an open hand unless they choose otherwise, and the closed move, which is a closed hand. The others are made
-// with some fingers straight and the rest curled, like pointing with the index finger, which a child who can't
-// open the whole hand may well manage, and which is good practice for one finger at a time. They're chosen per
-// game in the grown-ups' panel, and saved with the other settings.
+// Hand shapes, so a grown-up can choose what a game's active move is made with: the open move, which is an open
+// hand unless they choose otherwise. The others are made with some fingers straight and the rest curled, like
+// pointing with the index finger, which a child who can't open the whole hand may well manage, and which is good
+// practice for one finger at a time. The passive move is always the closed hand, which is any hand not making the
+// active move's shape, as a resting hand does: stopping, in a race. They're chosen per game in the grown-ups'
+// panel, and saved with the other settings.
 //
 // Each finger scores from 0 (curled) to 1 (straight) in hands.js. On real photos those scores are clear: pointing
 // is the index at 1 and the rest at 0, a peace sign two at 1, a thumbs up the thumb at 0.68. So a finger counts as
@@ -19,7 +20,7 @@ export const SHAPE_LOST = 0.4;
 
 // up is straight, down is curled, and a finger left out can be either. The thumb is left out of most, as thumbs
 // sit every which way. The open hand goes by the hand's whole opening against its line, as always, and the
-// closed hand is any hand that isn't making the open move, as always. Each prompt has a rendered voice file.
+// closed hand is any hand that isn't making the open move. Each prompt has a rendered voice file.
 export const SHAPES = {
   open: { name: 'Open hand', move: 'open', fingers: null, prompt: null },
   closed: { name: 'Closed hand', move: 'closed', fingers: null, prompt: null },
@@ -32,11 +33,8 @@ export const FINGERS_PROMPT = 'Show the fingers in the picture!';
 // What a game says to a hand that's resting, when its open move is a shape.
 export const SHAPE_RESTING = 'Resting is OK. Show me when you’re ready.';
 
-// What the panel offers for each move, in order. fingers is the grown-up's own choice of fingers.
-export const CHOICES = {
-  open: ['open', 'point', 'two', 'three', 'thumb', 'fingers'],
-  closed: ['closed', 'point', 'two', 'three', 'thumb', 'fingers'],
-};
+// What the panel offers for the open move, in order. fingers is the grown-up's own choice of fingers.
+export const CHOICES = ['open', 'point', 'two', 'three', 'thumb', 'fingers'];
 // Where the grown-up's own choice starts: the thumb and index finger straight, an L, which none of the others is.
 export const FIRST_FINGERS = ['thumb', 'index'];
 
@@ -54,33 +52,26 @@ export function fingersShape(fingers) {
   };
 }
 
-/** A saved choice for a move, as a shape: one of SHAPES by name, or { fingers: [...] }. Anything else is as always. */
-export function shapeOf(choice, move) {
+/** A saved choice for the open move, as a shape: one of SHAPES by name, or { fingers: [...] }. Anything else is the open hand. */
+export function shapeOf(choice) {
   const shape = typeof choice === 'string' ? SHAPES[choice] : null;
-  if (shape && CHOICES[move].includes(choice)) return { id: choice, ...shape };
+  if (shape && CHOICES.includes(choice)) return { id: choice, ...shape };
   const fingers = Array.isArray(choice?.fingers) ? FINGERS.filter((finger) => choice.fingers.includes(finger)) : [];
   if (fingers.length) return fingersShape(fingers);
-  return { id: move, ...SHAPES[move] };
+  return { id: 'open', ...SHAPES.open };
 }
 
-const sameFingers = (a, b) => FINGERS.every((finger) => (a.fingers[finger] ?? 'either') === (b.fingers[finger] ?? 'either'));
+const CLOSED = Object.freeze({ id: 'closed', ...SHAPES.closed });
 
-/**
- * The shapes for a game's two moves, from what's saved for it. moves is the game's names for them, and a game
- * whose closed hand isn't a move of its own, as in Balloon Pop, keeps the closed hand as it is. The two moves
- * can't be the same shape: then the closed one is the closed hand.
- */
-export function shapesFor(saved = {}, moves = {}) {
-  const open = shapeOf(saved?.open, 'open');
-  let closed = moves.closed ? shapeOf(saved?.closed, 'closed') : shapeOf(null, 'closed');
-  if (open.fingers && closed.fingers && sameFingers(open, closed)) closed = shapeOf(null, 'closed');
-  return { open, closed };
+/** The shapes for a game's two moves, from what's saved for it: its open move's, and the closed hand. */
+export function shapesFor(saved = {}) {
+  return { open: shapeOf(saved?.open), closed: CLOSED };
 }
 
 export const DEFAULT_SHAPES = Object.freeze(shapesFor());
 
-/** Whether either move has a shape chosen, rather than the open and closed hand. */
-export const isShaped = (shapes) => Boolean(shapes.open.fingers || shapes.closed.fingers);
+/** Whether the open move has a shape chosen, rather than the open hand. */
+export const isShaped = (shapes) => Boolean(shapes.open.fingers);
 
 const ramp = (value, low, high) => Math.min(1, Math.max(0, (value - low) / (high - low)));
 

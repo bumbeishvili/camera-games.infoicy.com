@@ -194,26 +194,22 @@ class HandSide {
     this.lastSeen = null;
     this.lastUpdate = null;
     this.pendingSince = null;
-    // The shapes for the moves, and with shapes chosen, the move the hand last made: 'open', 'closed' or null.
+    // The shapes for the moves (see core/shapes.js), and how sure it is the hand is making the open move's shape.
     this.shapes = DEFAULT_SHAPES;
-    this.made = null;
-    this.pendingMove = null;
-    this.scores = { open: 0, closed: 0 };
+    this.shapeLevel = 0;
   }
 
   get target() {
     return targetFor(this.best, this.strictness);
   }
 
-  /** The shapes for the open and closed moves, from shapesFor in core/shapes.js. The hand starts again from neither. */
+  /** The shapes for the open and closed moves, from shapesFor in core/shapes.js. The hand has to make the open move again. */
   setShapes(shapes) {
     this.shapes = shapes;
-    this.made = null;
-    this.pendingMove = null;
     this.pendingSince = null;
     if (this.status !== 'missing') {
       this.status = 'closed';
-      this.reason = shapes.closed.fingers ? 'shape' : 'closed';
+      this.reason = 'closed';
     }
   }
 
@@ -227,8 +223,6 @@ class HandSide {
     this.lastSeen = null;
     this.lastUpdate = null;
     this.pendingSince = null;
-    this.made = null;
-    this.pendingMove = null;
   }
 
   update(reading, now, blocked) {
@@ -245,8 +239,6 @@ class HandSide {
         this.status = 'missing';
         this.reason = 'missing';
         this.pendingSince = null;
-        this.made = null;
-        this.pendingMove = null;
         this.openness -= this.openness * blend;
         for (const name of FINGER_NAMES) this.fingers[name] -= this.fingers[name] * blend;
       }
@@ -260,6 +252,7 @@ class HandSide {
     for (const name of FINGER_NAMES) {
       this.fingers[name] += (candidate.fingers[name] - this.fingers[name]) * blend;
     }
+    if (isShaped(this.shapes)) this.shapeLevel = shapeScore(this.fingers, this.shapes.open);
 
     // Problems with the view close the hand at once, without waiting out a hold time.
     const problem = blocked
@@ -273,75 +266,32 @@ class HandSide {
       this.status = 'closed';
       this.reason = problem;
       this.pendingSince = null;
-      // With shapes, a hand has to make one again afterwards, as an open hand has to prove it's open again.
-      this.made = null;
-      this.pendingMove = null;
       return;
     }
 
     // A hand in view is never "missing". It starts as not open until it has proved it is.
     if (this.status === 'missing') this.status = 'closed';
-    if (isShaped(this.shapes)) {
-      this.updateShapes(now);
-      return;
-    }
 
+    // With a shape chosen for the open move, it's that shape rather than how open the hand is, and it has to be
+    // held a little longer, as a hand on its way to one shape can pass through others. Any other hand is closed.
     let wanted = this.status;
-    if (this.openness >= this.target) wanted = 'open';
+    if (isShaped(this.shapes)) {
+      if (this.shapeLevel >= SHAPE_MADE) wanted = 'open';
+      else if (this.shapeLevel < SHAPE_LOST) wanted = 'closed';
+    } else if (this.openness >= this.target) wanted = 'open';
     else if (this.openness < this.target - HYSTERESIS) wanted = 'closed';
 
     if (wanted === this.status) {
       this.pendingSince = null;
     } else {
       if (this.pendingSince === null) this.pendingSince = now;
-      const hold = wanted === 'open' ? OPEN_HOLD_MS : CLOSE_HOLD_MS;
+      const hold = wanted === 'open' ? (isShaped(this.shapes) ? SHAPE_HOLD_MS : OPEN_HOLD_MS) : CLOSE_HOLD_MS;
       if (now - this.pendingSince >= hold) {
         this.status = wanted;
         this.pendingSince = null;
       }
     }
     this.reason = this.status === 'open' ? null : 'closed';
-  }
-
-  /**
-   * With a shape chosen for a move, which move the hand is making. With the closed hand as it always is, that's
-   * any hand not making the open move. With a shape for the closed move too, a hand making neither carries on
-   * with the move it made last, so pointing can mean stop and an open hand go, and a hand can rest in between.
-   * Until it has made one, it's neither: closed, but with reason 'shape', so a game's closed move doesn't happen.
-   */
-  updateShapes(now) {
-    const { open, closed } = this.shapes;
-    const was = this.made;
-    this.scores.open = open.fingers ? shapeScore(this.fingers, open) : this.openness;
-    const openMade = open.fingers
-      ? this.scores.open >= (was === 'open' ? SHAPE_LOST : SHAPE_MADE)
-      : this.openness >= (was === 'open' ? this.target - HYSTERESIS : this.target);
-    let wanted = openMade ? 'open' : 'closed';
-    if (closed.fingers) {
-      this.scores.closed = shapeScore(this.fingers, closed);
-      const closedMade = this.scores.closed >= (was === 'closed' ? SHAPE_LOST : SHAPE_MADE);
-      if (openMade && closedMade) wanted = was ?? (this.scores.open >= this.scores.closed ? 'open' : 'closed');
-      else if (!openMade) wanted = closedMade ? 'closed' : was;
-    }
-
-    if (wanted === was) {
-      this.pendingMove = null;
-      this.pendingSince = null;
-    } else {
-      if (this.pendingMove !== wanted) {
-        this.pendingMove = wanted;
-        this.pendingSince = now;
-      }
-      const shaped = wanted === 'open' ? open.fingers : closed.fingers;
-      const hold = shaped ? SHAPE_HOLD_MS : wanted === 'open' ? OPEN_HOLD_MS : CLOSE_HOLD_MS;
-      if (now - this.pendingSince >= hold) {
-        this.made = wanted;
-        this.pendingMove = null;
-        this.pendingSince = null;
-      }
-    }
-    this.status = this.made === 'open' ? 'open' : 'closed';
-    this.reason = this.made === 'open' ? null : this.made === 'closed' || !closed.fingers ? 'closed' : 'shape';
   }
 
   view() {
@@ -358,13 +308,12 @@ class HandSide {
       strictness: this.strictness,
       image: this.image,
       // How far past the target towards this hand's best. Drives the speed bonus. For a shape, how sure it is.
-      excess: shape.fingers ? ramp(this.scores.open, SHAPE_MADE, 1) : ramp(this.openness, this.target, Math.max(this.best, this.target + 0.01)),
-      // The shapes for the open and closed moves, by name (see core/shapes.js).
+      excess: shape.fingers ? ramp(this.shapeLevel, SHAPE_MADE, 1) : ramp(this.openness, this.target, Math.max(this.best, this.target + 0.01)),
+      // The open move's shape, by name (see core/shapes.js).
       shape: shape.id,
-      closedShape: this.shapes.closed.id,
       // How far the hand is towards the open move, and where it counts: its opening and its line for the open
       // hand, or for a shape how sure it is of it.
-      level: shape.fingers ? this.scores.open : this.openness,
+      level: shape.fingers ? this.shapeLevel : this.openness,
       line: shape.fingers ? SHAPE_MADE : this.target,
     };
   }
@@ -570,15 +519,15 @@ export class HandCheck {
 
 /**
  * What to tell the child right now, or null when the hand is doing the right thing. A hand that isn't making the
- * open move is asked to: to open, or to make the shape chosen for it, and then move says which move's shape to
- * show in the picture. Its key starts with 'closed' either way, which is how games know it.
+ * open move is asked to: to open, or to make the shape chosen for it, and then move says to show that shape in
+ * the picture. Its key starts with 'closed' either way, which is how games know it.
  */
 export function promptFor(snapshot) {
   if (snapshot.overlap) return { key: 'apart', text: 'Keep your hands apart', side: null };
 
   const { side } = snapshot;
   const { reason, shape = 'open' } = snapshot[side];
-  if ((reason === 'closed' || reason === 'shape') && shape !== 'open') {
+  if (reason === 'closed' && shape !== 'open') {
     return { key: `closed-${side}-${shape}`, text: SHAPES[shape]?.prompt ?? FINGERS_PROMPT, side, move: 'open' };
   }
   const text = {
@@ -586,10 +535,8 @@ export function promptFor(snapshot) {
     edge: `Move your ${side} hand into the picture`,
     small: 'Come a little closer',
     closed: `Open your ${side} hand!`,
-    shape: `Open your ${side} hand!`,
   }[reason];
-  const key = reason === 'shape' ? 'closed' : reason;
-  return text ? { key: `${key}-${side}`, text, side } : null;
+  return text ? { key: `${reason}-${side}`, text, side } : null;
 }
 
 const emptyHandStats = () => ({

@@ -293,10 +293,10 @@ class WalkGame {
     // stays closed for a while, it's asked to open.
     if (walk.picking.spent) return stopped ? needed : null;
     // He's had enough here, and it's the bridge that's still to mend, so it's the plank, not more fruit.
-    if (journey.wanted === 0 && !journey.bridgeFixed) return stopped ? shown('on-the-plank', ON_THE_PLANK, 'closed') : null;
+    if (journey.wanted === 0 && !journey.bridgeFixed) return stopped ? shown('on-the-plank', ON_THE_PLANK) : null;
     // Once they've got the idea, these only come back if they seem to have stopped.
     if (walk.holding && (journey.stats.fed === 0 || stopped)) return { key: 'bring', text: OPEN_FOR_GIRAFFE, side: null, asks: 'open' };
-    if (!walk.holding && stopped && walk.fruit.some(({ state }) => state === 'hanging')) return { key: 'close-on-it', text: CLOSE_ON_IT, side: null, asks: 'closed' };
+    if (!walk.holding && stopped && walk.fruit.some(({ state }) => state === 'hanging')) return { key: 'close-on-it', text: CLOSE_ON_IT, side: null };
     return null;
   }
 

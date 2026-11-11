@@ -25,8 +25,8 @@
 //   chimeOnOpen               chime whenever the hand in play opens
 //   debug                     extra things for the automated tests to read
 //
-// A prompt from a game can say which move it asks for, as asks: 'open' or 'closed'. When a grown-up has chosen a
-// hand shape for that move (see core/shapes.js), it's asked for in that shape's words instead.
+// A prompt from a game can say it asks for the open move, as asks: 'open'. When a grown-up has chosen a hand shape
+// for that move (see core/shapes.js), it's asked for in that shape's words instead.
 import { CameraProblem, TrackingCamera } from './camera.js';
 import { HandCheck, HandMonitor, OPEN_RULES, PlayStats, promptFor } from './hands.js';
 import { Hud } from './hud.js';
@@ -68,7 +68,7 @@ export class GameSession {
    * end. createSound and createGame build the game's sound and the game itself. lines is where a
    * game's own voice lines are, and portraits makes pictures of the characters for it. moves names what
    * the open and closed hand do, as { open: 'Drive', closed: 'Slow down' }, with closed null where a
-   * closed hand isn't a move of its own: they're for choosing hand shapes in the panel.
+   * closed hand does nothing of its own: they're for choosing the open move's hand shape in the panel.
    */
   constructor({ shell, defaults = {}, choices = {}, tagline, finishLine, createSound, createGame, lines = null, portraits = null, moves = { open: 'Play', closed: null } }) {
     this.shell = shell;
@@ -121,7 +121,7 @@ export class GameSession {
     this.sound = this.createSound({ sound: settings.sound, voice: settings.voice, language: settings.language, lines });
     this.monitor = new HandMonitor(settings.strictness, settings.hands);
     // The hand shapes for this game's moves, saved for each game as its levels are.
-    this.shapes = shapesFor(settings.shapes?.[this.levels.game], this.moves);
+    this.shapes = shapesFor(settings.shapes?.[this.levels.game]);
     this.monitor.setShapes(this.shapes);
     this.camera = new TrackingCamera(document.getElementById('camera'));
 
@@ -134,7 +134,7 @@ export class GameSession {
       tagline: this.taglineFor,
       moves: this.moves,
       shapes: this.shapes,
-      onShape: (move, choice) => this.changeShape(move, choice),
+      onShape: (choice) => this.changeShape(choice),
       onStrictness: (side, value) => {
         settings.strictness[side] = value;
         this.monitor.setStrictness(side, value);
@@ -224,12 +224,12 @@ export class GameSession {
     saveSettings(settings);
   }
 
-  /** A grown-up has chosen the hand shape for one of this game's moves: see core/shapes.js. */
-  changeShape(move, choice) {
+  /** A grown-up has chosen the hand shape for this game's open move: see core/shapes.js. */
+  changeShape(choice) {
     const { settings } = this;
     const { game } = this.levels;
-    settings.shapes = { ...settings.shapes, [game]: { ...settings.shapes?.[game], [move]: choice } };
-    this.shapes = shapesFor(settings.shapes[game], this.moves);
+    settings.shapes = { ...settings.shapes, [game]: { open: choice } };
+    this.shapes = shapesFor(settings.shapes[game]);
     this.monitor.setShapes(this.shapes);
     this.hud.setShapes(this.shapes);
     this.hud.prompt.clear();
@@ -239,15 +239,14 @@ export class GameSession {
   }
 
   /**
-   * A game's prompt, asked in the words for the hand shape chosen for the move it asks for, if there is one.
+   * A game's prompt asking for the open move, asked in the words for the hand shape chosen for it, if there is one.
    * Resting is fine whatever the shape, and that's said in a shape's words too.
    */
   shapedPrompt(prompt) {
     const resting = prompt?.text === SPOKEN.resting;
-    const move = resting ? 'open' : prompt?.asks;
-    const shape = move ? this.shapes[move] : null;
-    if (!shape?.prompt) return prompt;
-    return { ...prompt, key: `${prompt.key}-${shape.id}`, text: resting ? SHAPE_RESTING : shape.prompt, move };
+    const { open } = this.shapes;
+    if (!open.prompt || !(resting || prompt?.asks === 'open')) return prompt;
+    return { ...prompt, key: `${prompt.key}-${open.id}`, text: resting ? SHAPE_RESTING : open.prompt, move: 'open' };
   }
 
   setScreen(name) {

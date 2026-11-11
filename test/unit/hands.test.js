@@ -498,7 +498,7 @@ test('every line the game can say has a rendered voice file', () => {
     asked.add(promptFor({ side, [side]: { reason: null }, overlap: true }).text);
     // And each hand shape a grown-up can choose for the open move: see core/shapes.js.
     for (const shape of [...Object.keys(SHAPES), 'fingers']) {
-      for (const reason of ['closed', 'shape']) asked.add(promptFor({ side, [side]: { reason, shape }, overlap: false }).text);
+      asked.add(promptFor({ side, [side]: { reason: 'closed', shape }, overlap: false }).text);
     }
   }
   for (const { prompt } of Object.values(SHAPES)) if (prompt) asked.add(prompt);

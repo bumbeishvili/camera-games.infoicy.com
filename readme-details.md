@@ -119,19 +119,17 @@ Choose **Hand to play with** under the gear icon. It's remembered across the gam
 
 ## Hand shapes
 
-Under the gear icon, **Hand shapes** chooses what makes each of a game's moves. Every hand game has an open move and most have a closed one, named for what they do there: in High Five Racers, *Drive* and *Slow down*; in Robot Rescue, *Fire* and *Shield*; in Tank Patrol, *Fire* and *Drive*. Balloon Pop, Bounce Back, Smoothie Stand and the Lighthouse only have the open move, as a closed hand does nothing there. Each move can be:
+Under the gear icon, **Hand shapes** chooses what makes a game's active move, named for what it does there: *Drive* in High Five Racers, *Fire* in Robot Rescue and Tank Patrol, *Pop* in Balloon Pop. It can be:
 
-- **Open hand** or **Closed hand**, as the games have always been, which is how every game starts.
+- **Open hand**, as the games have always been, which is how every game starts.
 - **Pointing** (the index finger straight and the other three curled), **Two fingers**, **Three fingers** or **Thumb up**.
 - **Choose fingers**: any fingers straight, and the rest curled.
 
-A child who can't open the whole hand may well manage pointing, and moving one finger at a time is good practice too. Each game keeps its own choice, so pointing can drive in High Five Racers while Balloon Pop still pops with an open hand.
+The passive move is always the closed hand: any hand that isn't making the active move's shape, as a resting hand does. With pointing to drive, an open hand or a fist slows the car down. A child who can't open the whole hand may well manage pointing, and moving one finger at a time is good practice too. Each game keeps its own choice, so pointing can drive in High Five Racers while Balloon Pop still pops with an open hand.
 
-**How a shape is told apart.** It's in [core/shapes.js](core/shapes.js). A finger counts as straight from a score of 0.55 and curled up to 0.35, with room for a finger that can't straighten all the way. A shape is as sure as its least sure finger, it counts once it's 60% sure for a fifth of a second, and it stays made until it's under 40% sure, so it doesn't flicker. On the real photos, each of pointing, a peace sign and a thumbs up makes its own shape and none of the others, and an open hand and a fist make none of them. The thumb is left out of pointing, two and three fingers, as thumbs sit every which way.
+**How a shape is told apart.** It's in [core/shapes.js](core/shapes.js). A finger counts as straight from a score of 0.55 and curled up to 0.35, with room for a finger that can't straighten all the way. A shape is as sure as its least sure finger, it counts once it's 60% sure for a fifth of a second, and it stays made until it's under 40% sure, so it doesn't flicker. On the real photos, each of pointing, a peace sign and a thumbs up makes its own shape and none of the others, and an open hand and a fist make none of them. The thumb is left out of pointing, two and three fingers, as thumbs sit every which way. As always, a hand out of view, at the edge of the picture, too far away or overlapping the other hand doesn't count.
 
-**What a hand making neither shape does.** With a shape for the open move and the closed hand left as it is, any other hand is the closed move, as always: with pointing to drive, an open hand slows the car down. With a shape for the closed move too, a hand making neither carries on with the move it made last. So with an open hand to drive and pointing to slow down, the car keeps going when the hand rests, until the child points. As always, a hand out of view, at the edge of the picture, too far away or overlapping the other hand stops any move at once, and has to make a shape again afterwards.
-
-The hand check asks for the open move's shape, and the picture in the corner shows it. The prompts ask for it in its own words, like "Point with one finger!", and show it. "How open counts as open" is only for the open hand, so the panel puts it away while the open move is a shape. In High Five Racers, the other hand's fist and then open hand for flying stays as it is.
+The hand check asks for the shape, and the picture in the corner shows it. The prompts ask for it in its own words, like "Point with one finger!", and show it. "How open counts as open" is only for the open hand, so the panel puts it away while the move is a shape. In High Five Racers, the other hand's fist and then open hand for flying stays as it is.
 
 ## Levels
 

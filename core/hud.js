@@ -385,7 +385,7 @@ export class Hud {
   /**
    * choices names the game's own settings in the panel, as radio groups, and how to read
    * each one's value: for example { laps: Number }. moves and shapes are the game's moves and the hand
-   * shapes for them (see core/shapes.js), and onShape(move, choice) hears a grown-up choose another.
+   * shapes for them (see core/shapes.js), and onShape(choice) hears a grown-up choose another for the open move.
    */
   constructor({ speak, translate, settings, choices = {}, tagline, moves = { open: 'Play', closed: null }, shapes, onShape = () => {}, onStrictness, onSettings, onRecheck }) {
     this.tagline = tagline;
@@ -448,24 +448,21 @@ export class Hud {
 
   /**
    * The hand shapes for the game's moves: in the panel, on the title card, and in the hand demo, which shows the
-   * open move's shape during the hand check, and a move's shape whenever a prompt asks for it.
+   * open move's shape during the hand check, and whenever a prompt asks for it.
    */
   setShapes(shapes) {
     this.shapes = shapes;
     this.shapesPicker.set(shapes);
     const shaped = isShaped(shapes);
     this.shapeNote.hidden = !shaped;
-    const moves = [['open', shapes.open], ...(this.moves.closed ? [['closed', shapes.closed]] : [])];
-    this.shapeNote.innerHTML = shaped
-      ? moves.map(([move, shape]) => `<span class="shape-note-move">${shapeIcon(shape)} ${this.moves[move]}: ${shape.name}</span>`).join(' ')
-      : '';
+    this.shapeNote.innerHTML = shaped ? `<span class="shape-note-move">${shapeIcon(shapes.open)} ${this.moves.open}: ${shapes.open.name}</span>` : '';
     this.showShapeHint(null);
   }
 
   showShapeHint(move) {
     if (!this.shapes) return;
-    const shape = move ? this.shapes[move] : this.shapes.open;
-    document.body.toggleAttribute('data-shape-hint', Boolean(move && shape.fingers));
+    const shape = this.shapes.open;
+    document.body.toggleAttribute('data-shape-hint', Boolean(move === 'open' && shape.fingers));
     this.demo.toggleAttribute('data-shaped', Boolean(shape.fingers));
     const up = new Set(fingersUp(shape));
     for (const finger of this.demo.querySelectorAll('[data-finger]')) finger.classList.toggle('is-up', up.has(finger.dataset.finger));

@@ -1,4 +1,4 @@
-// Hand shapes a grown-up can choose for a game's moves, like pointing for the open move: see core/shapes.js.
+// Hand shapes a grown-up can choose for a game's active move, like pointing to drive: see core/shapes.js.
 // Real photos, through the same hand rules as every game.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,8 +7,7 @@ import { DEFAULT_SHAPES, FINGERS, SHAPES, SHAPE_MADE, fingersShape, isShaped, sh
 import { FIST, OPEN, feed, handAt, photos, rightHand, setup } from './photo-hands.js';
 
 const fingersOf = (name, index = 0) => measureHand(photos[name].hands[index].world).fingers;
-const made = (name, id) => shapeScore(fingersOf(name), shapeOf(id, 'open')) >= SHAPE_MADE;
-const RELAXED = (options) => rightHand('woman_hands', { index: 1, ...options });
+const made = (name, id) => shapeScore(fingersOf(name), shapeOf(id)) >= SHAPE_MADE;
 
 test('the five fingers are the same five everywhere', () => {
   assert.deepEqual(FINGERS, FINGER_NAMES);
@@ -33,26 +32,23 @@ test('a shape of the grown-up\'s own fingers is made with just those fingers str
   assert.equal(fingersShape(['middle', 'thumb']).name, 'Thumb + Middle');
 });
 
-test('what\'s saved for a game becomes its shapes, and anything else is the open and closed hand as always', () => {
-  const moves = { open: 'Drive', closed: 'Slow down' };
-  assert.deepEqual(shapesFor(undefined, moves), DEFAULT_SHAPES);
+test('what\'s saved for a game becomes its open move\'s shape, and the closed move is always the closed hand', () => {
+  assert.deepEqual(shapesFor(undefined), DEFAULT_SHAPES);
   assert.equal(isShaped(DEFAULT_SHAPES), false);
-  assert.equal(shapesFor({ open: 'point' }, moves).open.id, 'point');
-  assert.equal(shapesFor({ open: 'point' }, moves).closed.id, 'closed');
-  assert.deepEqual(shapesFor({ closed: { fingers: ['index', 'nose'] } }, moves).closed.chosen, ['index']);
-  // Not a shape, or not one for that move.
-  for (const saved of [{ open: 'wave' }, { open: 'closed' }, { closed: 'open' }, { open: { fingers: [] } }, { open: 7 }, null]) {
-    assert.deepEqual(shapesFor(saved, moves), DEFAULT_SHAPES, JSON.stringify(saved));
+  assert.equal(shapesFor({ open: 'point' }).open.id, 'point');
+  assert.equal(isShaped(shapesFor({ open: 'point' })), true);
+  assert.deepEqual(shapesFor({ open: { fingers: ['index', 'nose'] } }).open.chosen, ['index']);
+  // A closed move saved by an earlier version is the closed hand now, as it always is.
+  assert.equal(shapesFor({ open: 'two', closed: 'point' }).closed.id, 'closed');
+  // Not a shape, or not one for the open move.
+  for (const saved of [{ open: 'wave' }, { open: 'closed' }, { open: { fingers: [] } }, { open: 7 }, null]) {
+    assert.deepEqual(shapesFor(saved), DEFAULT_SHAPES, JSON.stringify(saved));
   }
-  // The two moves can't be the same shape, and a game with no closed move of its own keeps the closed hand.
-  assert.equal(shapesFor({ open: 'two', closed: 'two' }, moves).closed.id, 'closed');
-  assert.equal(shapesFor({ open: { fingers: ['index'] }, closed: { fingers: ['index'] } }, moves).closed.id, 'closed');
-  assert.equal(shapesFor({ closed: 'point' }, { open: 'Pop', closed: null }).closed.id, 'closed');
 });
 
 test('pointing for the open move: pointing counts as open, and an open hand doesn\'t', () => {
   const { monitor, clock } = setup(undefined, 'right');
-  monitor.setShapes(shapesFor({ open: 'point' }, { open: 'Drive', closed: 'Slow down' }));
+  monitor.setShapes(shapesFor({ open: 'point' }));
   let snapshot = feed(monitor, clock, 600, [rightHand('pointing_up')]);
   assert.equal(snapshot.right.status, 'open');
   assert.equal(snapshot.handOpen, true);
@@ -76,56 +72,31 @@ test('pointing for the open move: pointing counts as open, and an open hand does
 
 test('a shape has to be held a moment, so passing through it on the way to another doesn\'t count', () => {
   const { monitor, clock } = setup(undefined, 'right');
-  monitor.setShapes(shapesFor({ open: 'two' }, { open: 'Drive', closed: 'Slow down' }));
+  monitor.setShapes(shapesFor({ open: 'two' }));
   feed(monitor, clock, 600, [rightHand(FIST)]);
   assert.equal(feed(monitor, clock, 100, [rightHand('victory')]).right.status, 'closed');
   assert.equal(feed(monitor, clock, 100, [rightHand(FIST)]).right.status, 'closed');
   assert.equal(feed(monitor, clock, 700, [rightHand('victory')]).right.status, 'open');
 });
 
-test('pointing for the closed move: it stops, an open hand goes, and a hand making neither keeps on as it was', () => {
+test('with a shape, a problem with the view still closes the hand at once, and the shape has to be made again', () => {
   const { monitor, clock } = setup(undefined, 'right');
-  monitor.setShapes(shapesFor({ closed: 'point' }, { open: 'Drive', closed: 'Slow down' }));
-  // Until it has made one, a hand is neither, which isn't open and isn't the closed move.
-  let snapshot = feed(monitor, clock, 600, [rightHand(FIST)]);
-  assert.deepEqual([snapshot.right.status, snapshot.right.reason], ['closed', 'shape']);
-
-  snapshot = feed(monitor, clock, 600, [rightHand(OPEN)]);
-  assert.equal(snapshot.right.status, 'open');
-  // Resting the hand, or a fist, carries on driving.
-  for (const hand of [RELAXED(), rightHand(FIST)]) assert.equal(feed(monitor, clock, 600, [hand]).right.status, 'open');
-
-  snapshot = feed(monitor, clock, 600, [rightHand('pointing_up')]);
-  assert.deepEqual([snapshot.right.status, snapshot.right.reason], ['closed', 'closed']);
-  assert.equal(snapshot.handOpen, false);
-  snapshot = feed(monitor, clock, 600, [rightHand(FIST)]);
-  assert.deepEqual([snapshot.right.status, snapshot.right.reason], ['closed', 'closed']);
-  assert.equal(feed(monitor, clock, 600, [rightHand(OPEN)]).right.status, 'open');
-});
-
-test('with shapes, a problem with the view still ends a move at once, and the hand has to make one again', () => {
-  const { monitor, clock } = setup(undefined, 'right');
-  monitor.setShapes(shapesFor({ open: 'point', closed: 'thumb' }, { open: 'Fire', closed: 'Shield' }));
+  monitor.setShapes(shapesFor({ open: 'point' }));
   assert.equal(feed(monitor, clock, 600, [rightHand('pointing_up')]).right.status, 'open');
-  assert.equal(feed(monitor, clock, 600, [rightHand(FIST)]).right.status, 'open', 'neither keeps on firing');
-
   // Cut off by the edge of the picture.
   let snapshot = feed(monitor, clock, 100, [handAt('pointing_up', 0.98, 0.5, { label: 'Right' })]);
   assert.deepEqual([snapshot.right.status, snapshot.right.reason], ['closed', 'edge']);
-  snapshot = feed(monitor, clock, 600, [rightHand(FIST)]);
-  assert.deepEqual([snapshot.right.status, snapshot.right.reason], ['closed', 'shape']);
-
+  snapshot = feed(monitor, clock, 100, [rightHand('pointing_up')]);
+  assert.deepEqual([snapshot.right.status, snapshot.right.reason], ['closed', 'closed']);
+  assert.equal(feed(monitor, clock, 600, [rightHand('pointing_up')]).right.status, 'open');
   // Gone altogether.
-  feed(monitor, clock, 600, [rightHand('thumb_up')]);
-  assert.equal(monitor.snapshot.right.reason, 'closed');
   assert.equal(feed(monitor, clock, 600, []).right.status, 'missing');
-  snapshot = feed(monitor, clock, 600, [rightHand(FIST)]);
-  assert.deepEqual([snapshot.right.status, snapshot.right.reason], ['closed', 'shape']);
+  assert.deepEqual([feed(monitor, clock, 600, [rightHand(FIST)]).right.reason], ['closed']);
 });
 
 test('the other hand is always just open or closed, whatever shapes the hand in play has', () => {
   const { monitor, clock } = setup(undefined, 'right');
-  monitor.setShapes(shapesFor({ open: 'point', closed: 'two' }, { open: 'Drive', closed: 'Slow down' }));
+  monitor.setShapes(shapesFor({ open: 'point' }));
   const snapshot = feed(monitor, clock, 600, [rightHand('pointing_up'), handAt(OPEN, 0.25, 0.5, { label: 'Left' })]);
   assert.equal(snapshot.right.status, 'open');
   assert.equal(snapshot.other.status, 'open');
@@ -147,23 +118,10 @@ test('a hand check of a shape leaves the hand\'s best opening as it was', () => 
 test('shape prompts all have their words', () => {
   for (const [id, shape] of Object.entries(SHAPES)) {
     if (!shape.fingers) continue;
-    const prompt = promptFor({ side: 'left', left: { reason: 'shape', shape: id }, overlap: false });
+    const prompt = promptFor({ side: 'left', left: { reason: 'closed', shape: id }, overlap: false });
     assert.equal(prompt.text, shape.prompt);
   }
-  assert.equal(promptFor({ side: 'left', left: { reason: 'shape', shape: 'fingers' }, overlap: false }).text, 'Show the fingers in the picture!');
-  // With the open hand, a hand that's neither is asked to open, as a closed one is.
-  assert.deepEqual(promptFor({ side: 'left', left: { reason: 'shape', shape: 'open' }, overlap: false }), { key: 'closed-left', text: 'Open your left hand!', side: 'left' });
-});
-
-test('a glove knows a hand making neither shape, so a game doesn\'t close it on anything', async () => {
-  const { Glove } = await import('../../core/glove.js');
-  const glove = new Glove('right');
-  const field = { aspect: 16 / 9, palmSize: 50, width: 800, height: 450 };
-  glove.follow({ status: 'closed', reason: 'shape', image: null }, 0.016, field);
-  assert.equal(glove.neither, true);
-  glove.follow({ status: 'closed', reason: 'closed', image: null }, 0.016, field);
-  assert.equal(glove.neither, false);
-  glove.follow({ status: 'closed', reason: 'shape', image: null }, 0.016, field);
-  glove.hide();
-  assert.equal(glove.neither, false);
+  assert.equal(promptFor({ side: 'left', left: { reason: 'closed', shape: 'fingers' }, overlap: false }).text, 'Show the fingers in the picture!');
+  // With the open hand, as always.
+  assert.deepEqual(promptFor({ side: 'left', left: { reason: 'closed', shape: 'open' }, overlap: false }), { key: 'closed-left', text: 'Open your left hand!', side: 'left' });
 });

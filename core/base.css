@@ -1024,17 +1024,13 @@ body:not([data-screen='countdown'], [data-screen='playing']) .count { display: n
 .shape-fingers[hidden] { display: none; }
 .shape-fingers > span { color: var(--ink-soft); font-weight: 600; }
 
-.shapes-note {
+/* The passive move, which is always the closed hand. */
+.shapes-rest {
   margin-top: 10px;
-  font-size: 14px;
-  line-height: 1.35;
-  background: #fff4d6;
-  border-radius: 12px;
-  padding: 8px 10px;
+  font-size: 15px;
+  color: var(--ink-soft);
   white-space: normal;
 }
-
-.shapes-note[hidden] { display: none; }
 .strictness[hidden] { display: none; }
 
 @media (max-height: 560px) {

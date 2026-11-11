@@ -658,7 +658,7 @@ export class Walk {
       const turn = this.time * FIREFLY_SPEED * (this.reducedMotion ? 0.5 : 1) + fly.phase;
       fly.x = fly.cx + Math.sin(turn) * fly.rx;
       fly.y = fly.cy + Math.sin(turn * 2) * fly.ry * 0.6;
-      if (playing && atStop && glove.visible && glove.status !== 'open' && !glove.neither && Math.hypot(glove.x - fly.x, glove.y - fly.y) <= this.palmSize * GIFT_REACH) {
+      if (playing && atStop && glove.visible && glove.status !== 'open' && Math.hypot(glove.x - fly.x, glove.y - fly.y) <= this.palmSize * GIFT_REACH) {
         fly.caught = true;
         this.giftFound({ kind: 'firefly', x: fly.x, y: fly.y });
       }
@@ -722,7 +722,7 @@ export class Walk {
   handleHand(dt) {
     const glove = this.gloves[this.side];
     const seen = glove.visible;
-    const closed = glove.status !== 'open' && !glove.neither;
+    const closed = glove.status !== 'open';
     const before = this.picking.held;
     if (seen && closed && !before) {
       for (const fruit of this.fruit) {

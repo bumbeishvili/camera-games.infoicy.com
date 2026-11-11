@@ -211,7 +211,7 @@ class CannonBay {
   /** The hand as the rules need it. Anything that can't be properly read fails closed. */
   readHand(snapshot) {
     const hand = snapshot[snapshot.side];
-    const readable = hand.status !== 'missing' && !snapshot.overlap && (hand.reason === null || hand.reason === 'closed' || hand.reason === 'shape');
+    const readable = hand.status !== 'missing' && !snapshot.overlap && (hand.reason === null || hand.reason === 'closed');
     return { steer: snapshot.steer, drive: snapshot.drive, open: snapshot.handOpen === true, seen: readable };
   }
 
