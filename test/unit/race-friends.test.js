@@ -2,7 +2,7 @@
 // is moved smoothly from what their game sends.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanBall, cleanCar, cleanHand, cleanName, cleanRacket, cleanShot, idFor, makeCode, MAX_RACERS, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
+import { cleanBall, cleanCar, cleanHand, cleanName, cleanRacket, cleanShot, COMES_BACK_WITHIN_MS, idFor, makeCode, MAX_RACERS, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
 import { BODY_KEYS } from '../../games/mighty-moves/clips.js';
 import { Track } from '../../core/friends.js';
 import { CarTrack, codeInLink } from '../../games/high-five-racers/friends.js';
@@ -31,7 +31,7 @@ function makeRoom(most = MAX_RACERS) {
     };
     players.push(player);
     clock += 10;
-    const inside = rules.arrive(player, id, null, most);
+    const inside = rules.arrive(player, id, null, { most });
     return inside ? player : null;
   };
   const leave = (player) => {
@@ -41,16 +41,45 @@ function makeRoom(most = MAX_RACERS) {
   return { rules, join, leave, tick: (ms) => { clock += ms; } };
 }
 
-test('race codes are 6 letters and numbers that can\'t be mistaken for each other', () => {
+test('codes are 3 letters and numbers that can\'t be mistaken for each other, and old 6-long links still work', () => {
   const code = makeCode((below) => Math.floor(Math.random() * below));
-  assert.equal(code.length, 6);
+  assert.equal(code.length, 3);
   assert.ok(validCode(code));
-  assert.ok(!validCode('ABC10O'), 'no 0, O, 1 or I');
-  assert.ok(!validCode('abcdef'));
-  assert.ok(!validCode('ABCDE'));
-  assert.equal(codeInLink('#race=abcdef'), 'ABCDEF', 'typed in small letters');
+  assert.ok(!validCode('A0O') && !validCode('B1I') && !validCode('CLM'), 'no 0, O, 1, I or L');
+  assert.ok(!validCode('abc'));
+  assert.ok(!validCode('AB') && !validCode('ABCD'));
+  assert.ok(validCode('ABCDEF'), 'a link from before codes were short');
+  assert.equal(codeInLink('#race=abc'), 'ABC', 'typed in small letters');
+  assert.equal(codeInLink('#race=abcdef'), 'ABCDEF');
   assert.equal(codeInLink('#race=zz'), null);
   assert.equal(codeInLink(''), null);
+});
+
+test('a new game never takes a code in use, even by someone who has only just lost the connection', () => {
+  const { rules, join } = makeRoom();
+  const making = (id) => {
+    const player = { meta: null, heard: [], setMeta(meta) { this.meta = meta; }, send(message) { this.heard.push(message); } };
+    return { player, inside: rules.arrive(player, id, null, { making: true }) };
+  };
+  // Nobody here: it's theirs.
+  const first = making('aaaaaaaa');
+  assert.equal(first.inside, true);
+  // Someone else making a game with the same code is told it's taken, and is not let in.
+  join('bbbbbbbb');
+  const second = making('cccccccc');
+  assert.equal(second.inside, false);
+  assert.deepEqual(second.player.heard, [{ t: 'taken' }]);
+  // Joining it with the code, rather than making it, is how a friend gets in.
+  assert.ok(join('dddddddd'));
+  // Just after everyone has gone, the code is still theirs for a moment, for anyone coming back.
+  const empty = makeRoom();
+  const was = empty.join('eeeeeeee');
+  empty.leave(was);
+  const third = { meta: null, heard: [], setMeta(meta) { this.meta = meta; }, send(message) { this.heard.push(message); } };
+  assert.equal(empty.rules.arrive(third, 'ffffffff', null, { making: true }), false);
+  assert.deepEqual(third.heard, [{ t: 'taken' }]);
+  empty.tick(COMES_BACK_WITHIN_MS + 1000);
+  assert.equal(empty.rules.arrive(third, 'ffffffff', null, { making: true }), true);
 });
 
 test('the first in hosts, everyone hears who\'s here, and the host\'s course is raced once all are ready', () => {
@@ -166,14 +195,15 @@ test('coming back while the old connection is still there, as when the wifi drop
   assert.equal(closed, 1, 'the old connection goes');
   assert.equal(host.meta, null);
   assert.ok(rules.arrive(back, 'aaaaaaaa', kept));
-  assert.deepEqual(back.meta, { ...kept, id: 'aaaaaaaa' });
+  assert.deepEqual(back.meta, { ...kept, id: 'aaaaaaaa', seen: back.meta.seen });
+  assert.equal(typeof back.meta.seen, 'number');
   assert.equal(back.meta.racing, true);
   assert.equal(back.meta.name, 'Ana');
   assert.equal(takeOver(players, 'cccccccc'), null, 'nobody to take over');
   assert.equal(takeOver(players, 'not valid!'), null);
 });
 
-test('back within moments of a connection that did close, a player carries on as before, still hosting', () => {
+test('back within two minutes of a connection that did close, as when a laptop sleeps, a player carries on as before, still hosting', () => {
   const { rules, join, leave, tick } = makeRoom();
   const host = join('aaaaaaaa');
   host.say({ t: 'hi', name: 'Ana' });
@@ -183,14 +213,14 @@ test('back within moments of a connection that did close, a player carries on as
   const joined = host.meta.joined;
   leave(host);
   assert.equal(friend.last('room').members.find(({ host: hosting }) => hosting).id, 'bbbbbbbb', 'meanwhile the friend hosts');
-  tick(2000);
+  tick(90_000);
   const kept = rules.cameBack('aaaaaaaa');
   assert.equal(kept.joined, joined);
   assert.equal(kept.racing, true);
   assert.equal(rules.cameBack('aaaaaaaa'), null, 'only once');
   // Too long gone, and they start again.
   leave(friend);
-  tick(16_000);
+  tick(COMES_BACK_WITHIN_MS + 1000);
   assert.equal(rules.cameBack('bbbbbbbb'), null);
 });
 
@@ -446,4 +476,47 @@ test('the Bounce Back messages hold only what they should, rounded, and well und
   const biggest = JSON.stringify({ t: 'racket', from: 'abcdefghijkl', ...cleanRacket({ ms: 3_599_999, x: -1.999, y: 2.999, v: 1, o: 1, r: 0.599, g: 1.99, p: Array(42).fill(-3.99) }) });
   assert.ok(biggest.length < 700, `${biggest.length}`);
   assert.ok(JSON.stringify({ t: 'ball', from: 'abcdefghijkl', ...cleanBall({ ms: 3_599_999, x: -1.999, y: 2.999, vx: -5.999, vy: -5.999, s: 3, k: 999_999, a: 99, b: 99, n: 999, f: 7, l: 2, sv: 2, g: 2, r: 1, w: 1 }) }).length < 300);
+});
+
+test('joining by a code with no game is told so, and a friend coming back still finds theirs', () => {
+  const { rules, join, leave, tick } = makeRoom();
+  const joiner = () => ({ meta: null, heard: [], setMeta(meta) { this.meta = meta; }, send(message) { this.heard.push(message); } });
+  const early = joiner();
+  assert.equal(rules.arrive(early, 'aaaaaaaa', null, { fresh: true }), false);
+  assert.deepEqual(early.heard, [{ t: 'nobody' }]);
+  // Once someone's made it, a friend joins with the code.
+  const host = join('bbbbbbbb');
+  const friend = joiner();
+  assert.equal(rules.arrive(friend, 'cccccccc', null, { fresh: true }), true);
+  // The host's connection drops: for two minutes the game is still there for a friend to join.
+  leave(host);
+  tick(60_000);
+  assert.equal(rules.arrive(joiner(), 'dddddddd', null, { fresh: true }), true);
+});
+
+test('a connection that has said nothing for a long while gives up its place, so a friend coming back can join', () => {
+  const { rules, join, tick } = makeRoom(2);
+  const host = join('aaaaaaaa');
+  const friend = join('bbbbbbbb');
+  let heardAt = 1000;
+  Object.defineProperty(friend, 'heardAt', { get: () => heardAt });
+  friend.close = () => {
+    friend.closed = true;
+  };
+  const back = () => ({ meta: null, heard: [], setMeta(meta) { this.meta = meta; }, send(message) { this.heard.push(message); } });
+  // Heard from a minute ago: still there, and the room is full.
+  tick(60_000);
+  heardAt = 30_000;
+  const third = back();
+  assert.equal(rules.arrive(third, 'cccccccc', null, { most: 2 }), false);
+  assert.deepEqual(third.heard, [{ t: 'full' }]);
+  // Silent for over a minute and a half: that connection has died, and gives up its place.
+  tick(60_000);
+  const fourth = back();
+  assert.equal(rules.arrive(fourth, 'dddddddd', null, { most: 2 }), true);
+  assert.equal(friend.closed, true);
+  assert.equal(friend.meta, null);
+  // And they can still come back as themselves.
+  assert.equal(rules.cameBack('bbbbbbbb').id, 'bbbbbbbb');
+  assert.ok(host.meta);
 });

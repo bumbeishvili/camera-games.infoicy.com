@@ -1238,8 +1238,8 @@ body[data-friends-box] .friends-box {
   gap: 14px;
 }
 
-/* The name on one line with its box, to leave room for who's here. */
-.friends-box > .friends-field {
+/* The name, if they'd like one, on one line with its box, under who's here. */
+.friends-name {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1247,7 +1247,7 @@ body[data-friends-box] .friends-box {
   gap: 6px 12px;
 }
 
-.friends-box > .friends-field input { width: min(240px, 70vw); }
+.friends-name input { width: min(220px, 64vw); font-size: 20px; padding: 6px 12px; }
 
 .friends-title { font-size: clamp(30px, 4vw, 42px); }
 
@@ -1277,7 +1277,14 @@ body[data-friends-box] .friends-box {
   gap: 10px;
 }
 
-.friends-join .friends-field input { width: min(200px, 60vw); }
+/* A friend's code: three big letters, which join as soon as they're typed. */
+.friends-join .friends-field input#friends-code {
+  width: 4.6em;
+  padding: 6px 0 6px 0.3em;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+}
 
 .friends-code-row {
   display: flex;
@@ -1287,7 +1294,7 @@ body[data-friends-box] .friends-box {
   gap: 10px 24px;
 }
 
-.friends-code-row .friends-code-line strong { font-size: 36px; }
+.friends-code-row .friends-code-line strong { font-size: 48px; letter-spacing: 0.2em; }
 
 .friends-lonely {
   width: min(360px, 100%);

@@ -9,14 +9,14 @@ export const RACE_WORDS = {
   make: 'Make a race',
   codeLabel: 'A friend’s race code',
   codeName: 'Race code',
-  how: 'Send the link to a friend. Then you both press <b>Let’s race!</b>',
+  how: 'Tell your friend the code. Then you both press <b>Let’s race!</b>',
   leave: 'Leave this race',
   privacy: 'Only your name, who drives and where your car is go to your friends. The camera picture stays on this computer.',
   alone: 'Race on your own',
   full: 'That race already has 4 cars.',
   lost: 'Can’t reach the race. Check the internet, then try again.',
   left: 'You’ve left the race.',
-  badCode: 'A race code is 6 letters and numbers.',
+  badCode: 'A race code is 3 letters and numbers.',
   busy: 'Racing', // Someone in the middle of a race, on the waiting screen.
   still: 'still racing', // Someone who hasn't finished yet, on the finish card.
 };

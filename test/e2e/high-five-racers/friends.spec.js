@@ -2,6 +2,7 @@
 // they're two separate browsers, talking through the race server on this computer (tools/race-server.mjs),
 // which has the same rules as the one on Cloudflare.
 import { expect, openGame, screenName, show, test, waitForScreen } from '../helpers.js';
+import { CODE_LETTERS } from '../../../server/race-room.js';
 
 const raceOf = (page) => page.evaluate(() => {
   const { race, session } = window.__game;
@@ -56,9 +57,13 @@ const roomOf = (page) => page.evaluate(() => {
 /** A grown-up makes a race, and gets its code. */
 async function makeRace(page, name) {
   await page.locator('#friends-toggle').click();
-  await page.locator('#friends-name').fill(name);
   await page.locator('#friends-make').click();
-  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{6}$/);
+  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{3}$/);
+  // A name, if they'd like one, once they're in.
+  if (name) {
+    await page.locator('#friends-name').fill(name);
+    await page.locator('#friends-name').dispatchEvent('change');
+  }
   return page.locator('#friends-code-shown').textContent();
 }
 
@@ -134,7 +139,7 @@ test('two friends race each other from their own computers, on the host\'s cours
   expect((await raceOf(page)).ownLevel).toBe(3);
   expect((await raceOf(friend.page)).ownLevel).toBe(1);
   // The only connection off the page was to the race server.
-  expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/${code}`]);
+  expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/${code}?make=1`]);
 
   // Racing again waits for both again.
   await page.locator('#play-again').click();
@@ -178,7 +183,7 @@ test('making or joining a race, the title card shows only that, with Let\'s race
   await expect(start).toBeHidden();
   await expect(page.locator('.friends-title')).toHaveText('Race a friend');
   await expect(page.locator('#screen-welcome h1')).toBeVisible();
-  await expect(page.locator('#friends-name')).toBeFocused();
+  await expect(page.locator('#friends-code')).toBeFocused();
   expect(await page.locator('#screen-welcome').evaluate((node) => getComputedStyle(node).backdropFilter)).toBe('blur(6px)');
   await page.screenshot({ path: 'test-results/screens/race-friends-box.png' });
 
@@ -215,20 +220,113 @@ test('making or joining a race, the title card shows only that, with Let\'s race
   await ben.context.close();
 });
 
+test('typing a friend\'s code joins at once, and a new race never lands in someone else\'s', async ({ page, browser }) => {
+  test.setTimeout(120_000);
+  await openGame(page);
+  const code = await makeRace(page, 'Ana');
+
+  // Ben types the code, in small letters, and he's in, with nothing to press.
+  const ben = await secondPlayer(browser);
+  await openGame(ben.page);
+  await ben.page.locator('#friends-toggle').click();
+  await ben.page.locator('#friends-code').pressSequentially(code.toLowerCase(), { delay: 80 });
+  await expect(ben.page.locator('#friends-code-shown')).toHaveText(code);
+  await expect(page.locator('#friends-here li')).toHaveCount(2);
+  await ben.page.screenshot({ path: 'test-results/screens/race-friends-typed.png' });
+
+  // Cat makes a race, and the first code her game picks happens to be Ana's. It's in use, so she gets another,
+  // on her own, and Ana's race still has just Ana and Ben.
+  const cat = await secondPlayer(browser);
+  await openGame(cat.page);
+  await cat.page.locator('#friends-toggle').click();
+  await cat.page.evaluate(([taken, letters]) => {
+    const real = crypto.getRandomValues.bind(crypto);
+    const queue = [...taken].map((letter) => letters.indexOf(letter));
+    crypto.getRandomValues = (array) => {
+      if (queue.length && array.length === 1) {
+        array[0] = queue.shift();
+        return array;
+      }
+      return real(array);
+    };
+  }, [code, CODE_LETTERS]);
+  await cat.page.locator('#friends-make').click();
+  await expect(cat.page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{3}$/);
+  await expect(cat.page.locator('#friends-code-shown')).not.toHaveText(code);
+  await expect(cat.page.locator('#friends-here li')).toHaveCount(1);
+  const hers = await cat.page.locator('#friends-code-shown').textContent();
+  expect(cat.page.url()).toContain(`#race=${hers}`);
+  await expect(page.locator('#friends-here li')).toHaveCount(2);
+  for (const each of [ben, cat]) {
+    expect(each.errors).toEqual([]);
+    await each.context.close();
+  }
+});
+
 test('a wrong code is caught before anything is sent, and the race server can be left', async ({ page }) => {
   await openGame(page);
   const sockets = [];
   page.on('websocket', (socket) => sockets.push(socket.url()));
   await page.locator('#friends-toggle').click();
-  await page.locator('#friends-code').fill('hello');
-  await page.locator('#friends-join button').click();
-  await expect(page.locator('#friends-status')).toHaveText('A race code is 6 letters and numbers.');
+  // Typed in full, a code that can't be one is caught; nothing more is needed to join.
+  await page.locator('#friends-code').fill('hl0');
+  await expect(page.locator('#friends-status')).toHaveText('A race code is 3 letters and numbers.');
   expect(sockets).toEqual([]);
+  // A code nobody has made a race with is told so, rather than waiting on its own.
+  await page.locator('#friends-code').fill('zzz');
+  await expect(page.locator('#friends-status')).toHaveText('There’s no game with that code just now. Check it with your friend.');
+  await expect(page.locator('#friends-out')).toBeVisible();
   await page.locator('#friends-make').click();
-  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{6}$/);
+  await expect(page.locator('#friends-code-shown')).toHaveText(/^[A-HJ-NP-Z2-9]{3}$/);
   await page.locator('#friends-leave').click();
   await expect(page.locator('#friends-out')).toBeVisible();
   expect(await screenName(page)).toBe('welcome');
+});
+
+/** The connection can't be made for this long, as when the wifi has dropped. */
+const offlineFor = (page, ms) => page.evaluate((forMs) => {
+  const Real = window.WebSocket;
+  const until = Date.now() + forMs;
+  window.WebSocket = class extends Real {
+    constructor(...args) {
+      if (Date.now() < until) throw new Error('offline');
+      super(...args);
+    }
+  };
+}, ms);
+
+test('the connection dropping on the finish card, just as Race again is pressed, still races together again', async ({ page, browser }) => {
+  test.setTimeout(240_000);
+  await openGame(page, { laps: 1 });
+  const code = await makeRace(page, 'Ana');
+  const ben = await joiner(browser, code);
+  await getReady(page);
+  await getReady(ben.page);
+  await waitForScreen(page, 'playing');
+  await waitForScreen(ben.page, 'playing');
+  for (const each of [page, ben.page]) await nearlyThere(each, 4);
+  await waitForScreen(page, 'finish');
+  await waitForScreen(ben.page, 'finish');
+  const was = (await roomOf(ben.page)).you;
+
+  // Ben's wifi drops for a few seconds, just as he presses Race again. His game waits for it to come back,
+  // still with his friend, rather than racing on its own, and says so.
+  await offlineFor(ben.page, 3000);
+  await ben.page.evaluate(() => window.__game.game.friends.room.socket.close());
+  await ben.page.locator('#play-again').click();
+  await waitForScreen(ben.page, 'waiting');
+  await expect(ben.page.locator('#friends-wait-status')).toHaveText('Reconnecting…');
+  await expect.poll(async () => (await roomOf(ben.page)).status, { timeout: 20_000 }).toBe('in');
+  expect((await roomOf(ben.page)).you).toBe(was);
+
+  // Back, and ready: as soon as Ana presses Race again too, they race each other.
+  await page.locator('#play-again').click();
+  await waitForScreen(page, 'playing');
+  await waitForScreen(ben.page, 'playing');
+  expect((await raceOf(ben.page)).friends.map(({ name }) => name)).toEqual(['Ana']);
+  expect((await raceOf(page)).friends).toHaveLength(1);
+  expect(ben.errors).toEqual([]);
+  await ben.context.close();
 });
 
 test('the host can start without a friend who isn\'t ready, who then races the next one, three together', async ({ page, browser }) => {
@@ -382,9 +480,10 @@ test('a race holds four, can be joined by its code or the copied link, comes bac
   const ben = await secondPlayer(browser);
   await openGame(ben.page);
   await ben.page.locator('#friends-toggle').click();
-  await ben.page.locator('#friends-name').fill('Ben');
   await ben.page.locator('#friends-code').fill(code.toLowerCase());
-  await ben.page.locator('#friends-join button').click();
+  await expect(ben.page.locator('#friends-in')).toBeVisible();
+  await ben.page.locator('#friends-name').fill('Ben');
+  await ben.page.locator('#friends-name').dispatchEvent('change');
   await expect(ben.page.locator('#friends-here li')).toHaveCount(2);
   const cat = await joiner(browser, code);
   const dan = await joiner(browser, code);
@@ -396,16 +495,18 @@ test('a race holds four, can be joined by its code or the copied link, comes bac
   await expect(eve.page.locator('#friends-status')).toHaveText('That race already has 4 cars.');
   await expect(eve.page.locator('#friends-out')).toBeVisible();
 
-  // Reloading the page goes back into the same race, with the name kept.
+  // Reloading the page goes back into the same race as the same player, with the name and place kept.
+  const ben1 = (await roomOf(ben.page)).you;
   await ben.page.reload();
   await expect(ben.page.locator('#friends-code-shown')).toHaveText(code);
   await expect(ben.page.locator('#friends-here li')).toHaveCount(4);
   await expect(page.locator('#friends-here')).toContainText('Ben');
+  expect((await roomOf(ben.page)).you).toBe(ben1);
 
-  // The host goes, and whoever has been there longest hosts instead: Cat, as Ben came back after her.
+  // The host goes, and whoever has been there longest hosts instead: Ben, who kept his place through the reload.
   await page.locator('#friends-leave').click();
-  await expect.poll(async () => (await roomOf(cat.page)).hosting, { timeout: 10_000 }).toBe(true);
-  expect((await roomOf(ben.page)).members.map(({ host }) => host)).toEqual([true, false, false]);
+  await expect.poll(async () => (await roomOf(ben.page)).hosting, { timeout: 10_000 }).toBe(true);
+  expect((await roomOf(cat.page)).members.map(({ host }) => host)).toEqual([true, false, false]);
   for (const each of [ben, cat, dan, eve]) {
     expect(each.errors).toEqual([]);
     await each.context.close();
