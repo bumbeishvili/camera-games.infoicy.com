@@ -66,7 +66,7 @@ export const EXTRAS = {
 };
 
 export const FOUND_SECONDS = 1.3; // A friend found cheers this long before the next maze.
-export const SLIDE_SECONDS = 1.1; // The next maze slides in.
+export const SLIDE_SECONDS = 1.1; // The last maze fades away and the next comes in, over this long.
 export const FRUIT_SHARE = 0.36; // About this share of the cells have fruit on their own.
 export const FRIENDS_FRUIT_SHARE = 0.45; // And with friends, as there's more of them to share it.
 export const FRUIT_KINDS = ['apple', 'orange', 'pear', 'banana', 'plum', 'peach'];
@@ -455,7 +455,12 @@ export function buildMaze({ seed, index = 0, size = 'medium', level = 1, feature
   });
   addLoops(maze, Math.round(maze.count * mazeLevel(level).loops), random, () => stillTheOnlyWay());
 
+  // On their own, finding the friend ends the maze, so nothing goes where it could only be got to past them.
+  const beforeFriend = distances(maze, start, (a, d) => maze.isOpen(a, d) && a !== goal);
   const taken = new Set([start]);
+  if (lostCount <= 1) {
+    for (let id = 0; id < maze.count; id += 1) if (beforeFriend[id] < 0) taken.add(id);
+  }
   const items = [];
   let itemNumber = 0;
   const add = (kind, cell, extra = {}) => {

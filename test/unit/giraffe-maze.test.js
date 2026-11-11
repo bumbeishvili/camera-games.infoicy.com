@@ -389,8 +389,10 @@ test('gems wait in the dead ends from level 6, and a treasure chest with a crown
       const chest = layout.items.filter(({ kind }) => kind === 'chest');
       assert.equal(chest.length, 1, `a chest in ${seed} ${size}`);
       assert.equal(gems.length, EXTRAS.gems, `gems in ${seed} ${size}`);
-      // In a dead end, unless they're all taken, and then down a side path.
-      const freeEnds = ends.filter((cell) => !layout.items.some((item) => item.cell === cell && !['gem', 'chest'].includes(item.kind)) && cell !== layout.start && !layout.lost.some((lost) => lost.cell === cell));
+      // In a dead end, unless they're all taken, and then down a side path, but never past the friend.
+      const goal = layout.lost[0].cell;
+      const before = distances(layout.maze, layout.start, (a, d) => layout.maze.isOpen(a, d) && a !== goal);
+      const freeEnds = ends.filter((cell) => before[cell] >= 0 && !layout.items.some((item) => item.cell === cell && !['gem', 'chest'].includes(item.kind)) && cell !== layout.start && cell !== goal);
       const hidden = [...gems, ...chest].filter((item) => ends.includes(item.cell)).length;
       assert.equal(hidden, Math.min(freeEnds.length, gems.length + chest.length), `${seed} ${size}`);
     }
@@ -404,7 +406,22 @@ test('gems wait in the dead ends from level 6, and a treasure chest with a crown
   assert.ok(run.stats.prizes.crown >= 1);
 });
 
-test('a friend found cheers for a moment, and then the next maze slides in, with no waiting about', () => {
+test('on their own, everything to pick up can be got to before the friend, as finding them ends the maze', () => {
+  for (const seed of SEEDS) {
+    for (const size of Object.keys(SIZES)) {
+      for (const level of [1, 6, 10]) {
+        for (const index of [0, 1, 2]) {
+          const layout = buildMaze({ seed, index, size, level, features: featuresFor(level, index, size) });
+          const goal = layout.lost[0].cell;
+          const before = distances(layout.maze, layout.start, (a, d) => layout.maze.isOpen(a, d) && a !== goal);
+          for (const item of layout.items) assert.ok(before[item.cell] >= 0 && item.cell !== goal, `${item.kind} in ${seed} ${size} ${level} ${index}`);
+        }
+      }
+    }
+  }
+});
+
+test('a friend found cheers for a moment, and then the next maze comes in, with no waiting about', () => {
   const run = soloRun({ level: 1, mazes: 2 });
   run.begin();
   let t = 0;

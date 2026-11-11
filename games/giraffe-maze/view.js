@@ -2,8 +2,8 @@
 // side facing the child, and the characters stand up in the paths between them. Things further down the screen are
 // nearer, so they're drawn after the hedges behind them.
 //
-// Nothing flashes: what comes and goes fades or grows, a sparkle is a few small stars, and the next maze slides in
-// from the side rather than cutting to it.
+// Nothing flashes: what comes and goes fades or grows, a sparkle is a few small stars, and the next maze fades in,
+// after the last one has faded down to the bare ground, rather than cutting to it.
 import { INK } from '../../core/glove.js';
 import { paintFruit } from '../../core/fruit.js';
 import { LABELS } from './rules.js';
@@ -14,7 +14,7 @@ const HEIGHT = 0.36; // How tall a hedge stands, in cells on the screen.
 const MARGIN = 14;
 const CHARACTER = 0.98; // How tall a character's body is, in cells.
 const FOLLOWER = 0.84; // Friends following along are a little smaller.
-const STRIDE = 0.2; // Cells walked for each picture of a walk.
+const STRIDE = 0.3; // Cells walked for each picture of a walk: about 8 pictures a second at a full walk.
 const WALK_FRAMES = ['stepA', 'stand', 'stepB', 'stand'];
 const LABEL_SECONDS = 2.4;
 const PRIZE_FLY_SECONDS = 0.8;
@@ -360,18 +360,15 @@ export class MazeView {
     }
     const slide = model.slide;
     if (slide && slide.next) {
-      // The maze just done goes off to the left, and the next comes in from the right. With reduced motion, the
-      // next one fades in over it instead.
-      const share = ease(clamp(slide.share, 0, 1));
-      if (this.reducedMotion) {
-        this.drawMaze(layout, model, 0, { withPeople: false });
-        ctx.globalAlpha = share;
-        this.drawMaze(slide.next, model, 0, { withPeople: true });
-        ctx.globalAlpha = 1;
-      } else {
-        this.drawMaze(layout, model, -share * w, { withPeople: false });
-        this.drawMaze(slide.next, model, (1 - share) * w, { withPeople: true });
-      }
+      // The maze just done fades down to the bare ground, and then the next one fades up, with everyone at its
+      // way in. Each part of the picture changes at most twice, slowly. Sliding the mazes across instead swept
+      // hedges and paths past every part of the screen several times a second, which is a flicker.
+      const share = clamp(slide.share, 0, 1);
+      ctx.drawImage(this.baseFor(slide.next), 0, 0, w, h);
+      ctx.globalAlpha = share < 0.5 ? ease(1 - share * 2) : ease(share * 2 - 1);
+      if (share < 0.5) this.drawMaze(layout, model, 0, { withPeople: false });
+      else this.drawMaze(slide.next, model, 0, { withPeople: true });
+      ctx.globalAlpha = 1;
     } else {
       this.drawMaze(layout, model, 0, { withPeople: true });
     }
@@ -469,7 +466,7 @@ export class MazeView {
     const way = facing === 0 ? 'up' : facing === 2 ? 'down' : 'side';
     let frame;
     if (walker.cheer) frame = art.frames.cheer;
-    else if (walker.wave) frame = Math.floor(this.time * 1.4 + (walker.phase ?? 0)) % 2 ? art.frames.wave : art.frames.down.stand;
+    else if (walker.wave) frame = this.reducedMotion || Math.floor(this.time * 1.4 + (walker.phase ?? 0)) % 2 ? art.frames.wave : art.frames.down.stand;
     else frame = art.frames[way][walker.moving ? WALK_FRAMES[Math.floor((walker.walked ?? 0) / STRIDE) % WALK_FRAMES.length] : 'stand'];
     const scale = (size * s) / art.tall;
     const flip = facing === 3 ? -1 : 1;

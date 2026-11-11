@@ -244,7 +244,7 @@ class MazeGame {
       for (const friend of friendly.friends) {
         this.friendWalkers.set(friend.id, { id: friend.id, spec: friend.spec, name: friend.spec.name, track: new Track(WALKER_TRACK), trail: new Trail(), glove: new Glove('right'), fade: 0, found: [], z: -1, walked: 0 });
       }
-      this.artFor([me, ...players, ...cast.flat()].filter((id) => ids.includes(id)));
+      this.artFor([...players, ...cast.flat()]);
     } else {
       this.run = this.soloRun(level);
       this.artFor([this.myCharacter().id, ...this.run.cast.flat()]);
@@ -280,8 +280,9 @@ class MazeGame {
           if (lost && CALLS[lost.who]) this.story.say(lost.who, CALLS[lost.who]);
           this.nameNewThings(layout);
         }
-        for (const claim of this.waitingClaims.filter(({ k }) => Math.floor(k / 1000) === index)) this.run.claimed(claim.k, claim.by);
-        this.waitingClaims = this.waitingClaims.filter(({ k }) => Math.floor(k / 1000) > index);
+        const waiting = this.waitingClaims;
+        this.waitingClaims = waiting.filter(({ k }) => Math.floor(k / 1000) > index);
+        for (const claim of waiting.filter(({ k }) => Math.floor(k / 1000) === index)) this.claimed(claim);
         this.showFound();
       },
       onEat: (item) => {
@@ -549,8 +550,11 @@ class MazeGame {
 
   /* ---------- what's drawn ---------- */
 
-  /** The friends a walker has found, following along its trail, apart from one just found, who cheers where they were. */
-  followersOf(trail, found, walked) {
+  /**
+   * The friends a walker has found, following along its trail and walking while it walks, apart from one just
+   * found, who cheers where they were.
+   */
+  followersOf(trail, found, walked, moving) {
     return found.map((entry, at) => {
       const { lost, who } = entry;
       if (lost && this.run.time - (lost.foundAt ?? -Infinity) < FOUND_SECONDS && lost.cell !== undefined && this.run.layout.lost.includes(lost)) {
@@ -558,7 +562,7 @@ class MazeGame {
       }
       const spot = trail.behind((at + 1) * FOLLOW_SPACING);
       if (!spot) return null;
-      return { x: spot.x, y: spot.y, art: this.art[who], facing: facingOf(spot.dx, spot.dy, 1), moving: Math.hypot(spot.dx, spot.dy) > 0.02, walked: walked + at * 0.31 };
+      return { x: spot.x, y: spot.y, art: this.art[who], facing: facingOf(spot.dx, spot.dy, 1), moving, walked: walked + at * 0.31 };
     }).filter(Boolean);
   }
 
@@ -593,7 +597,7 @@ class MazeGame {
         hasKey: run.hasKey,
         power: run.power,
         stuck: run.stuck,
-        followers: this.followersOf(run.trail, run.followers, run.stats.walked),
+        followers: this.followersOf(run.trail, run.followers, run.stats.walked, run.moving),
       });
       for (const friend of this.friendWalkers.values()) {
         if (!friend.shown || !friend.at) continue;
@@ -607,7 +611,7 @@ class MazeGame {
           walked: friend.walked,
           name: friend.name,
           alpha: 0.95,
-          followers: this.followersOf(friend.trail, found, friend.walked),
+          followers: this.followersOf(friend.trail, found, friend.walked, Boolean(friend.at.m)),
         });
       }
     }
