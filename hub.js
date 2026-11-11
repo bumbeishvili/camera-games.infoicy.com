@@ -89,6 +89,7 @@ const panel = document.getElementById('hub-filters');
 const chosenCount = document.getElementById('hub-filters-count');
 const clearFilters = document.getElementById('hub-filters-clear');
 const found = document.getElementById('hub-found');
+const foundLine = found.parentElement;
 const none = document.getElementById('hub-none');
 const [showAllHere] = document.querySelectorAll('.hub-found-line .hub-show-all');
 const groups = [...panel.querySelectorAll('fieldset')].map((set) => ({
@@ -132,8 +133,11 @@ function update() {
   const saying = !narrowed ? 'All games' : shown > 0 ? `${shown} of ${games.length} games` : 'No games match';
   // Only when it changes, so a screen reader doesn't say it again.
   if (found.textContent !== saying) found.textContent = saying;
-  // With nothing to show, the box saying so takes over, and this only says it to a screen reader.
-  found.classList.toggle('visually-hidden', shown === 0);
+  // It's only shown once some games are left out. With nothing to show, the box saying so takes over, and either
+  // way this still says it to a screen reader.
+  const quiet = !narrowed || shown === 0;
+  found.classList.toggle('visually-hidden', quiet);
+  foundLine.classList.toggle('is-quiet', quiet);
   none.hidden = shown > 0;
   showAllHere.hidden = !narrowed || shown === 0;
   chosenCount.textContent = filters;

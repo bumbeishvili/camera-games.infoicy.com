@@ -50,11 +50,6 @@ body.hub {
   .hub-main { padding-top: 76px; }
 }
 
-.hub-lead {
-  font-size: clamp(18px, 2.3vw, 26px);
-  font-weight: 500;
-}
-
 /* ---------- the search, under the title, and its filters: hub.js ---------- */
 .hub-search {
   width: min(640px, 100%);
@@ -245,7 +240,10 @@ body.hub {
 .hub-filters-end .soft-button { margin-right: auto; }
 .hub-filters-end [hidden] { display: none; }
 
-/* How many games are showing, just above them. */
+/* How many games are showing, just above them, once a search or filter leaves some out. Until then it's only for
+   a screen reader, and takes no room. */
+.hub-found-line.is-quiet { min-height: 0; }
+
 .hub-found-line {
   min-height: 34px;
   display: flex;
