@@ -1,0 +1,173 @@
+/* Giraffe's Maze: the maze fills the screen under a band along the top. In the band are the friends to find and
+   what's been picked up on the left, a friend's call in the middle, and the hand meter and the mirror on the right,
+   so nothing sits over the maze. main.js works out the same band, so the maze stays under it. */
+:root {
+  --meter-size: clamp(66px, 7vw, 92px);
+  --camera-small: clamp(140px, 15vw, 230px);
+}
+
+/* The mirror, in the top right corner, by the gear. */
+body:not([data-screen='check']) .camera-frame { left: auto; right: 70px; transform: none; }
+
+/* The hand meter, beside the mirror. */
+.hands-bar {
+  top: 12px;
+  bottom: auto;
+  left: auto;
+  right: calc(70px + var(--camera-small) + 12px);
+  transform: none;
+}
+body[data-screen='check'] .hands-bar { top: auto; bottom: 10px; left: 50%; right: auto; transform: translateX(-50%); }
+.meter { padding: 6px 6px 4px; border-radius: 20px; }
+.meter-caption { font-size: clamp(11px, 1vw, 13px); }
+
+/* ---------- the friends to find, and what's been picked up ---------- */
+.maze-hud {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  top: 12px;
+  left: 12px;
+  align-items: center;
+  gap: 8px;
+}
+
+body[data-screen='playing'] .maze-hud,
+body[data-screen='countdown'] .maze-hud { display: flex; }
+
+.maze-found {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  padding: 5px 8px;
+  list-style: none;
+  background: var(--surface);
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(18, 48, 77, 0.18);
+}
+
+.maze-found[hidden] { display: none; }
+
+.maze-found li {
+  width: clamp(34px, 3.6vw, 48px);
+  height: clamp(34px, 3.6vw, 48px);
+  border-radius: 50%;
+  background: var(--surface-soft);
+  border: 3px solid var(--line);
+  overflow: hidden;
+}
+
+.maze-found li img { width: 100%; height: 100%; object-fit: cover; filter: grayscale(1) opacity(0.45); }
+.maze-found li.is-now { border-color: var(--sun); }
+.maze-found li.is-found { border-color: var(--good); }
+.maze-found li.is-found img { filter: none; }
+
+.maze-hud .chip { min-width: clamp(56px, 6vw, 84px); padding: 4px 10px 6px; }
+.chip-fruit .chip-label::before { content: '🍎 '; }
+.chip-prizes { display: none !important; }
+body[data-prizes='on'] .chip-prizes { display: grid !important; }
+.chip-prizes .chip-label::before { content: '⭐ '; }
+.chip-prizes.is-caught { animation: prize-landed 0.6s ease-out; }
+@keyframes prize-landed {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+
+/* With friends: everyone's points, the most first, where the friends to find are on their own. */
+.maze-scores {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 44vw;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.maze-scores[hidden] { display: none; }
+
+.maze-scores li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px 3px 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 4px 14px rgba(18, 48, 77, 0.18);
+  font-size: clamp(14px, 1.4vw, 17px);
+  font-weight: 700;
+}
+.maze-scores li.is-you { background: var(--sun); }
+.maze-scores img { width: 30px; height: 30px; border-radius: 50%; background: var(--surface-soft); }
+.maze-score-name { max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.maze-score { margin-left: 4px; font-variant-numeric: tabular-nums; }
+
+/* With friends the fruit tally sits first, and the scores after it. */
+body[data-friends-race] .maze-found { display: none; }
+
+/* ---------- a friend's call, in the middle of the band ---------- */
+.story {
+  top: 12px;
+  left: 50%;
+  transform: translateX(-62%);
+  width: min(30vw, 360px);
+}
+body[data-screen='playing']:has(.story.is-visible) .prompt { left: 50%; max-width: calc(100vw - 32px); }
+
+/* ---------- a little film: the character follows an open hand along a path, and waits while it's closed ---------- */
+.maze-film { width: min(22vw, 34vh); }
+.film-hedge { fill: #4ea556; }
+.film-path { fill: #f3e1b5; }
+.film-lead { fill: none; stroke: #ffffff; stroke-width: 4; stroke-dasharray: 1 9; stroke-linecap: round; opacity: 0.9; }
+.film-body { fill: #f5c451; stroke: #4a2c10; stroke-width: 3; }
+.film-spot { fill: #b4682c; }
+.film-eye { fill: #4a2c10; }
+.film-hand rect { fill: #3ddc84; stroke: var(--ink); stroke-width: 3; }
+.film-finger { fill: none; stroke: #3ddc84; stroke-width: 7; stroke-linecap: round; transform-box: fill-box; transform-origin: bottom center; }
+
+.film-walker { animation: film-walker 6s linear infinite; }
+.film-hand { animation: film-hand 6s linear infinite; }
+.film-finger { animation: film-finger 6s ease-in-out infinite; }
+
+/* The hand goes along the path ahead, and the character follows it, round the corner. In the middle the hand
+   closes for a moment, and the character waits, and then they carry on. */
+@keyframes film-hand {
+  0% { transform: translate(78px, 100px); }
+  30% { transform: translate(150px, 100px); }
+  40%, 56% { transform: translate(172px, 100px); }
+  85%, 100% { transform: translate(172px, 46px); }
+}
+
+@keyframes film-walker {
+  0% { transform: translate(30px, 100px); }
+  30% { transform: translate(104px, 100px); }
+  40%, 56% { transform: translate(126px, 100px); }
+  66% { transform: translate(168px, 100px); }
+  85%, 100% { transform: translate(172px, 70px); }
+}
+
+@keyframes film-finger {
+  0%, 40% { transform: scaleY(1); }
+  44%, 52% { transform: scaleY(0.4); }
+  56%, 100% { transform: scaleY(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip-prizes.is-caught { animation: none; }
+  .film-walker, .film-hand, .film-finger { animation-duration: 9s; }
+}
+
+/* ---------- the finish card ---------- */
+.finish-card .hero-mark { color: inherit; }
+.finish-found { display: flex; justify-content: center; gap: 8px; margin: 0; }
+.finish-found:empty { display: none; }
+.finish-found img { width: clamp(40px, 4.6vw, 58px); height: clamp(40px, 4.6vw, 58px); border-radius: 50%; background: var(--surface-soft); }
+.finish-prizes { margin: 0; font-size: clamp(20px, 2.4vw, 28px); font-weight: 600; }
+.finish-prizes:empty { display: none; }
+body:not([data-prizes='on']) tr:has(#sum-left-prizes) { display: none; }
+
+/* On a small screen the band keeps out of the way of the mirror. */
+@media (max-width: 720px) {
+  .story { display: none !important; }
+  .maze-found li { width: 28px; height: 28px; }
+}
