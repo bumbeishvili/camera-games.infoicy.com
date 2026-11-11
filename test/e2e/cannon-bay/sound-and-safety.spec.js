@@ -126,7 +126,7 @@ test('the game makes no requests off this computer, and the page refuses to', as
     }
   });
   expect(blocked).toBe(true);
-  await expect.poll(() => pageErrors.join('\n')).toContain("violates the following Content Security Policy directive: \"connect-src 'self'\"");
+  await expect.poll(() => pageErrors.join('\n')).toContain("violates the following Content Security Policy directive: \"connect-src 'self'");
   pageErrors.length = 0;
 });
 

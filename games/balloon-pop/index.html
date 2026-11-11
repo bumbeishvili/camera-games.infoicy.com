@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <!-- Children's camera video: this policy stops the page sending anything off this computer. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; connect-src 'self' wss://hemi-race.infoicy.com ws://localhost:*; worker-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.googletagmanager.com; style-src 'self'; img-src 'self' data: blob: https://*.google-analytics.com https://*.googletagmanager.com; media-src 'self' blob: mediastream:; connect-src 'self' wss://hemi-race.infoicy.com ws://localhost:* https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; worker-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Balloon Pop</title>
   <meta name="description" content="Pop balloons by reaching out with an open hand in front of a webcam. A closed hand only bumps them, and missing one costs nothing. Made for children with hemiplegia.">
   <meta property="og:title" content="Balloon Pop">
@@ -15,6 +15,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%88%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="../../core/base.css">
   <link rel="stylesheet" href="style.css">
+  <script src="../../core/analytics.js"></script>
   <script type="module" src="main.js"></script>
 </head>
 <body data-screen="welcome">

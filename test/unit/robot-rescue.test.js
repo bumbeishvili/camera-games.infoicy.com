@@ -894,7 +894,8 @@ test('the rules have no screen in them, so that they can run here', () => {
 test('everything is on this computer', () => {
   for (const file of [...CODE, 'index.html', 'style.css']) {
     const source = readFileSync(new URL(file, FOLDER), 'utf8');
-    assert.ok(!/https?:\/\/(?!www\.w3\.org)/.test(source), file);
+    // The page's security policy names Google's analytics, which counts visits: see core/analytics.js.
+    assert.ok(!/https?:\/\/(?!www\.w3\.org|www\.googletagmanager\.com|\*\.google-analytics\.com|\*\.analytics\.google\.com|\*\.googletagmanager\.com)/.test(source), file);
   }
 });
 

@@ -114,7 +114,7 @@ test('the game makes no requests off this computer, and the page refuses to', as
     }
   });
   expect(blocked).toBe(true);
-  await expect.poll(() => pageErrors.join('\n')).toContain("violates the following Content Security Policy directive: \"connect-src 'self' wss://hemi-race.infoicy.com ws://localhost:*\"");
+  await expect.poll(() => pageErrors.join('\n')).toContain("violates the following Content Security Policy directive: \"connect-src 'self'");
   pageErrors.length = 0;
 });
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; script-src 'self' https://www.googletagmanager.com; style-src 'self'; img-src 'self' data: https://*.google-analytics.com https://*.googletagmanager.com; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Camera Games: webcam games for children with hemiplegia</title>
   <meta name="description" content="Free games played by moving in front of a webcam, made for a child with hemiplegia. Most practise opening the hand, and some use the whole body. They run in Chrome, work offline, and the camera picture never leaves the computer.">
   <meta property="og:title" content="Camera Games: webcam games for children with hemiplegia">
@@ -14,6 +14,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9C%8B%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="core/base.css">
   <link rel="stylesheet" href="hub.css">
+  <script src="core/analytics.js"></script>
   <script type="module" src="hub.js"></script>
 </head>
 <body class="hub">
@@ -515,7 +516,7 @@
       </a>
     </div>
 
-    <p class="small-print hub-print">For grown-ups: the camera picture stays on this computer. It is never saved or sent anywhere. These games are not medical devices and don’t replace therapy.</p>
+    <p class="small-print hub-print">For grown-ups: the camera picture stays on this computer. It is never saved or sent anywhere. The site counts visits with Google Analytics, which never sees the camera or how anyone plays. These games are not medical devices and don’t replace therapy.</p>
   </main>
 </body>
 </html>
