@@ -1,0 +1,14 @@
+[
+  {"id": "lead-hint", "text": "Lead the way with your open hand!", "ka": "გაშლილი ხელით გზა აჩვენე!"},
+  {"id": "all-found", "text": "Everyone is found!", "ka": "ყველა ნაპოვნია!"},
+  {"id": "call-giraffe", "text": "Help! I’m lost in the maze!", "speak": "Help! I'm lost in the maze!", "ka": "მიშველე! ლაბირინთში დავიკარგე!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "call-truffle", "text": "Oink! I’m lost! Come and find me!", "speak": "Oink! I'm lost! Come and find me!", "ka": "ღრუტ! დავიკარგე! მოდი, მიპოვე!", "voice": "am_puck", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 12},
+  {"id": "call-kit", "text": "Kit here! Can you find me?", "ka": "კიტი ვარ! შეგიძლია მიპოვო?", "voice": "af_nicole", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 6},
+  {"id": "call-mochi", "text": "Hop, hop! I’m lost in the hedges!", "speak": "Hop, hop! I'm lost in the hedges!", "ka": "ხტუნ, ხტუნ! ბუჩქებში დავიკარგე!", "voice": "af_sky", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 24},
+  {"id": "call-widget", "text": "Beep! Widget is lost! Find me!", "ka": "ბიპ! ვიჯეტი დაიკარგა! მიპოვე!", "voice": "am_echo", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -6},
+  {"id": "call-frost", "text": "Brrr! I’m lost! Please find me!", "speak": "Brrr! I'm lost! Please find me!", "ka": "ბრრრ! დავიკარგე! მიპოვე, თუ შეიძლება!", "voice": "bf_emma", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 18},
+  {"id": "call-bramble", "text": "Over here! Follow the path to me!", "ka": "აქ ვარ! ბილიკს გამოჰყევი!", "voice": "bm_george", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -18},
+  {"id": "call-nova", "text": "Meow! I’m over here! Come and find me!", "speak": "Meow! I'm over here! Come and find me!", "ka": "მიაუ! აქ ვარ! მოდი, მიპოვე!", "voice": "af_bella", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 12},
+  {"id": "call-cinder", "text": "Cinder here! Which way is out?", "ka": "სინდერი ვარ! საით არის გასასვლელი?", "voice": "am_adam", "kaVoice": "ka-GE-EkaNeural", "kaPitch": 6},
+  {"id": "call-tur", "text": "I’m lost! Please come quickly!", "speak": "I'm lost! Please come quickly!", "ka": "დავიკარგე! მალე მოდი, თუ შეიძლება!", "voice": "bm_lewis", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": -6}
+]

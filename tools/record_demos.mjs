@@ -519,6 +519,46 @@ const FILMS = {
       return { hits: stats.hits, longest: stats.longest, prizes: stats.prizes, scores };
     }),
   },
+  'giraffe-maze': {
+    settings: { mazeReach: 'lots', mazes: 3, levels: { 'giraffe-maze': 2 } },
+    css: '.camera-frame { --camera-small: 22vw !important; } .maze-film { display: none !important; }',
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: null, right: 'open', scale: 0.62 }));
+      await page.addScriptTag({ content: CHASE });
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await wait(page, 600);
+    },
+    async play(page) {
+      // The open hand leads Giraffe along the paths, a little ahead of him, to the friend lost in the maze, as a
+      // child would. Each friend found follows him into the next maze.
+      await page.evaluate(() => new Promise((done) => {
+        const { game, view } = window.__game;
+        const stop = window.__chase(
+          () => {
+            const glove = game.gloves.right;
+            return { visible: glove.visible, x: glove.x + game.gloveOffset.x, y: glove.y + game.gloveOffset.y };
+          },
+          () => {
+            const { run } = window.__game;
+            if (run.phase !== 'walking') return null;
+            const ahead = run.wayAhead(run.nextCell(), 1.3);
+            return view.at(ahead.x, ahead.y);
+          },
+          () => 'open',
+          0.14,
+        );
+        setTimeout(() => {
+          stop();
+          done();
+        }, 15_000);
+      }));
+    },
+    report: (page) => page.evaluate(() => {
+      const { stats, index } = window.__game.run;
+      return { found: stats.found, fruit: stats.fruit, prizes: stats.prizes, maze: index };
+    }),
+  },
   'balloon-pop': {
     settings: { reach: 'none', pace: 'medium' },
     async ready(page) {

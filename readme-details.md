@@ -17,6 +17,7 @@ They're played at <https://hemi.infoicy.com> in Google Chrome, on a computer wit
 - **Giraffe's Smoothie Stand:** at the Harvest Fair, each customer orders a smoothie, and the child slices what they ordered with a swipe of the open hand. Bad fruit makes the glove sticky until it has been held open.
 - **The Lighthouse Keeper:** mud from a storm has covered the windows and ships are lost at sea. Wiping a window clean with an open hand lets the light out, and brings a ship home.
 - **Bounce Back:** tennis with a big, slow, floaty ball, against the computer or a friend. The open hand is the racket, and only an open hand sends the ball back over the net. Resting never loses a point. See [below](#bounce-back).
+- **Giraffe's Maze:** Giraffe's friends are lost in a garden maze. The child's open hand leads him along the paths to each of them, and each friend found follows him into the next maze. A closed hand, or one that can't be seen, just leaves him waiting. On their own or with friends, all in the same maze. See [below](#giraffes-maze).
 
 Every game's grown-ups' panel, under the gear icon, has a way back to all the games. On the page for choosing a game, each game's card plays a film of it being played, with just its name, and pointing at a card shows a line about the game. With reduced motion turned on in the computer's settings, a film only plays while its card is pointed at.
 
@@ -69,8 +70,9 @@ games/
   smoothie-stand/       its customers and orders, the fair and its sounds
   lighthouse/           its storm and ships, the lamp room and its sounds
   bounce-back/          its rules and levels, the court, the players' pictures, and the ball on a friend's computer
+  giraffe-maze/         its mazes and how the character walks, the game as it's played, the maze drawn, the characters' pictures and its voices
 tools/                  the local server, the local race server, and what prepares voices and sounds
-server/                 the server for playing with friends in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back and Leap Trail: its rules, and the Cloudflare Worker that runs them
+server/                 the server for playing with friends in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail and Giraffe's Maze: its rules, and the Cloudflare Worker that runs them
 vendor/                 libraries, the tracking model and fonts
 test/                   unit tests, and Playwright tests for the hub and each game
 ```
@@ -204,7 +206,7 @@ Coins are counted at the top from level 2, and on the finish card with any gems,
 
 **Racing friends.** Up to 4 children can race each other, each on their own computer with their own camera.
 
-- **Making a race:** a grown-up presses **Race a friend** on the title card, then **Make a race**, and tells their friend its code, 3 letters and numbers, or sends the link. A new race never gets a code that's in use: the server says so, and the game picks another. While making or joining a race, the title card shows only that, over the game dimmed and blurred, and **Let’s race!** comes under who's here. A name can be typed there too, if they'd like one, and it's remembered. **Back** goes back to the usual title card. It's the same in Sky Wings, Balloon Pop, Mighty Moves and Bounce Back.
+- **Making a race:** a grown-up presses **Race a friend** on the title card, then **Make a race**, and tells their friend its code, 3 letters and numbers, or sends the link. A new race never gets a code that's in use: the server says so, and the game picks another. While making or joining a race, the title card shows only that, over the game dimmed and blurred, and **Let’s race!** comes under who's here. A name can be typed there too, if they'd like one, and it's remembered. **Back** goes back to the usual title card. It's the same in Sky Wings, Balloon Pop, Mighty Moves, Bounce Back and Giraffe's Maze.
 - **Joining:** the friend opens the link, or presses **Race a friend** and types the code, which joins as soon as it's typed. Links with the 6-letter codes from before still work.
 - **Starting:** everyone presses **Let’s race!**. After the hand check, each waits on the grid until everyone is ready, and then all count down together. Whoever made the race can press **Start now** instead, and anyone can choose to race on their own.
 - **The course** is the host's: their level and race length. Friends' cars take the place of the other cars, with each friend's name over theirs. A friend's car close to the child's is shown a little to one side, as the other cars keep out of the way, so it never sits in front of the camera.
@@ -565,6 +567,52 @@ Two children can play each other, each on their own computer with their own came
 
 Only the name typed, the character from the other games, where the racket is and whether it's open, and from the host's game where the ball is and the score go to the friend. Never anything from the camera.
 
+## Giraffe's Maze
+
+A garden maze of hedges, seen from a little above, so each hedge shows its top and the side facing the child, with sandy paths between them. Giraffe's friends are lost in it, and the child leads him to them. He's the child's character unless a grown-up picks someone else under **Who plays**, and the friends lost are the other characters from the games, never the child's own. It uses the same hand tracking as Balloon Pop, so it starts with the hand check and can be played sitting close to the camera.
+
+**How it's played.** The glove copies the child's hand over the maze, and while the hand is open, Giraffe walks along the paths towards it, with a dotted line from him to the glove. He goes round corners towards the hand, and never through a hedge: with the hand on the other side of one, he walks as near as the paths let him and waits, with a little question mark over his head, until the hand leads him round. Each maze has one friend lost in it, waiting by the way out on the right and waving, who calls out once, in their own voice, with their face beside what they say, while the action is already going. Reaching them, they cheer, with a few hearts, and follow along behind, and the next maze fades in, about two and a half seconds after. Fruit lies along the paths, and walking over it eats it. Finding the last friend ends the game, with the fruit, the friends found and any prizes on the finish card. A grown-up chooses 2, 3 or 5 friends to find under **Friends to find in a game**, and nobody can lose.
+
+**For children with hemiplegia:**
+
+- **Only an open hand leads, and it fails closed.** A hand that's closed, missing, at the edge of the picture, too far away, overlapping the other one or that the tracker isn't sure of never moves Giraffe. He just waits where he is.
+- **Resting is never punished.** Nothing in a maze has a time limit and nothing goes away: everything is still there when the hand opens again. After a couple of seconds of a closed hand it asks for it to open, and after 15 seconds says resting is fine.
+- **How hard** sets how big the maze is, and so how wide its paths: 5 by 3 cells on Easy, 7 by 4 on Medium, the default, and 9 by 5 on Hard. No level changes it.
+- **Reach help** makes the middle of the camera picture cover the whole maze, so a smaller movement goes further: none, a little (the default), or a lot, which is 1.6 times as far.
+- **Finding the way** can be changed so the character finds its own way to the open hand, round any corners, for a child who can open the hand but not yet trace a path.
+- **A trembling hand doesn't jiggle him.** Standing still, he only sets off for somewhere clearly nearer the hand, and walking, he heads for the nearest point he can see, so he never goes back and forth.
+- **A little film** in the corner shows an open hand going along a path with Giraffe following, and stopping while it closes, until he has walked a few cells. The voice says "Lead the way with your open hand!" once, after the friend's call.
+- **Nothing flashes.** What comes and goes fades or grows, a sparkle is a few small stars, and the next maze fades in, once the last has faded down to the bare ground, rather than cutting to it. Sliding it in from the side was tried, and it swept hedges past every part of the screen several times a second, which is a flicker. With reduced motion, nothing in the maze bobs, sways or waves by itself. Walking pictures change about eight times a second at a full walk, rather than twelve, as Giraffe and the friends behind him going past a place are what changes there most quickly. Measured through walking, eating, a friend found and the next maze coming in, at level 1 and at level 10 with butterflies, the bluebird, a power-up and things in the way about, brightness changed by at most 2.3 out of 255 from one frame to the next, and less than 0.4% of the picture flickered, none of it as the next maze came in. With a hand opening and closing four times a second, quicker than any child, less than 1% did, all of it the glove copying the hand.
+
+**Levels** ([games/giraffe-maze/rules.js](games/giraffe-maze/rules.js)). There are fewer ways round as the levels go up, so more of each maze is one long path with dead ends off it. On top of that, every level from 2 brings something new, which stays for the levels after it:
+
+| Level | What's new |
+|---|---|
+| 2 | **Butterflies to catch.** Now and then a butterfly flutters over the maze, and the glove catches it just by coming near it, open or closed. |
+| 3 | **A gate and its key.** A gate with a padlock stands across the way to the friend, and its key waits somewhere that can be got to without going through it, down a side path if there is one. Walking over the key picks it up, and it rides over Giraffe's head to the gate, which swings open. Led to the gate without it, the prompt says "Find the key!". |
+| 4 | **Running shoes,** early on the way, which make Giraffe quicker for 8 seconds of the hand being open. |
+| 5 | **A sleepy sheep** lying across the way. An open hand held on it for a second wakes it, with a ring filling round it, and it hops off over the hedge. |
+| 6 | **Gems in the corners:** two in the dead ends, or down side paths when the dead ends are taken. |
+| 7 | **The bluebird,** early on the way, which flies off along the paths to the friend and leaves a trail of footprints to follow for 14 seconds. |
+| 8 | **Bushes to rub away.** A bush across the way goes for an open hand rubbing it, back and forth, for about a second and a half, and not for one held still. |
+| 9 | **The magnet,** which for 8 seconds of the hand being open draws fruit and gems from round about to Giraffe, over the hedges. |
+| 10 | **Treasure chests,** in a dead end, which open for Giraffe with a crown inside. |
+
+The newest thing a level brings is in the first maze of the game, so it's met, and the rest take turns from maze to maze: never more things in the way of one maze than its size has room for, one on Easy, two on Medium and three on Hard, and one helper at a time. Something in the way is always the only way on, so it can't be walked round. The first time each new thing comes along in a game, it has a small label beside it for a couple of seconds, in the language the voice speaks, and nothing new is said out loud; while something holds Giraffe up, the prompt says what to do about it each time, shown but not said. So that nobody gets stuck, a sheep wakes by itself once Giraffe has waited by it for 12 seconds, and a bush goes by itself after 15. Power-ups only run down while the hand is open, prizes fly up to their tally at the top, and missing any of it costs nothing. How hard, reach help, finding the way, the friends to find and who plays stay as a grown-up set them. The numbers are in `mazeLevel`, `featuresFor` and `NEWS` in `rules.js`, and how the character walks is `stepWalker`.
+
+### Playing Giraffe's Maze with friends
+
+Up to 4 children can play in one maze together, each on their own computer with their own camera.
+
+- **Making and joining:** under **Play with friends** on the title card, a grown-up presses **Make a game** and tells their friends the 3-letter code, or sends the link. A friend types the code, or opens the link, and is in. A fifth is told the game already has four players.
+- **Starting:** everyone presses **Into the maze!**. After the hand check, each waits until everyone is ready, and then all count down together. Whoever made the game can press **Start now**, and anyone can play on their own instead.
+- **One maze for everyone:** every game makes the same mazes from the host's size and a seed the host's game picks as it gets ready, so there's a new maze each game, at the host's level and number of mazes. It's the plain maze with its fruit, without the levels' new things, and one more friend is lost in each than there are players, spread out over it, none of them anyone's own character.
+- **Everyone in it:** each child sees everyone else's character walking where it really is in the maze, a moment ago, with their name over it, and their glove in light grey, copying their hand finger by finger. Characters walk through each other, so nobody can block anyone.
+- **First there has it:** whoever's character gets to a fruit or a lost friend first has it, and it's theirs on every screen: the server decides, as each one reaches it. A friend found follows whoever found them. A fruit is a point and a friend three, and everyone's points show at the top, the most first. Once all of a maze's lost friends are found, everyone moves on to the next maze together, as every game hears the same finds.
+- **The end:** after the last maze, the finish card says who came where, and equal points share a place. A game with friends doesn't move anyone's own level on, and nobody's settings change: each child keeps their own reach help and way finding. Nobody's game runs the maze for the others, so a friend who goes, the host too, just takes their character with them, and everyone else plays on.
+
+Only the name typed, the character from the other games, the host's level, size, number of mazes and seed, where the character and the glove are in the maze, and what each one reached first go to friends. Never anything from the camera.
+
 ## Sound
 
 **A line is never cut off,** in any of the games, as nothing sounds more robotic. If something is being said, a new line waits for it to finish, after a short pause, and only the newest one waits, so a queue can't build up. A line that has waited more than 4 seconds is out of date and goes unsaid, and small remarks are simply dropped if anything's being said. Lines only stop mid-way if everything is stopping, such as when the panel opens.
@@ -603,11 +651,13 @@ Each recording is trimmed and set to the same level as the rest. Any lines not r
 
 **The court** in Bounce Back has The Lighthouse Keeper's real waves on a beach, kept quiet underneath. Nothing new was recorded for it. A hit is High Five Racers' slap, a bounce Leap Trail's hand drum, a point won Mighty Moves' cheering, kept quiet, and a prize its sparkle. The bubble ball and the bluebird boing with Robot Rescue's cartoon boing, and the computer swinging at a ball it misses is a soft whoosh. The only words said are ones the other games already say: "Open your right hand!", "Resting is OK" and now and then "Nice one!".
 
+**The maze** in Giraffe's Maze has Spider Catcher's real wood full of birds, kept quiet underneath. Nothing new was recorded for it. Giraffe's footsteps are Leap Trail's real steps on grass, quietly, eating a fruit is the Long Walk Home's real apple crunch, a friend found Spider Catcher's harp bounce with Mighty Moves' cheering, kept quiet, and a prize Mighty Moves' sparkle. A gate or a chest opens with Robot Rescue's barn lock, a sheep hops off with its cartoon boing, a bush goes with Spider Catcher's long grass, and the next maze comes in with Mighty Moves' swish. Each lost friend's call is a new line in their own voice, as in the other games with a mission, and the coach says the hint and the finish.
+
 Where each sound came from is in [CREDITS.md](CREDITS.md).
 
 ## Privacy
 
-Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, except that High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back and Leap Trail may reach the server for playing with friends, which they only do once a grown-up makes or joins a race, a flight, a game, a fight or a run (see [Racing friends](#high-five-racers)), and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
+Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, except that High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail and Giraffe's Maze may reach the server for playing with friends, which they only do once a grown-up makes or joins a race, a flight, a game, a fight or a run (see [Racing friends](#high-five-racers)), and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
 
 ## Tests
 
@@ -635,6 +685,7 @@ There's no free footage of a person clapping, circling a hand or holding their a
 - **How far the big hands should be, and how long turbo should take to fill, on a real hand.**
 - **How Spider Catcher feels.** Whether the spiders are slow enough to catch with a real affected hand, whether closing within about a second of opening is long enough for a hand that closes slowly, how big the catching circle should be, and whether a child finds the spiders cute. It was only played with photos of an adult hand, moved about by the tests, and nobody has listened to its sound.
 - **How Bounce Back feels.** Whether the ball is slow enough for a real affected hand, how far from the hand a waiting ball should float, whether a child can tell the racket with strings from the dashed ring, and whether the long cartoon arms are funny or strange. It was only played with photos of an adult hand, moved about by the tests, nobody has listened to its sound, and playing with a friend was only tried with two browsers on one computer, not two computers far apart.
+- **How Giraffe's Maze feels.** Whether leading a character along a path is clear to a young child, whether he walks quickly enough, how big the paths should be for a real affected hand, whether a second of an open hand is right to wake the sheep, and whether rubbing the bush can be done with a weak hand. It was only played with photos of an adult hand, moved about by the tests, nobody has listened to its sound, and playing with friends was only tried with browsers on one computer. The friends' calls in Georgian need a native speaker to check them.
 - **Flying with the other hand, on a real child.** It was tested with photos of a fist and an open hand. A hand with hemiplegia might not read as a clear fist, and nobody has checked whether reaching out the second hand pulls the hand in play out of view.
 - **Kicks seen from the front.** The only kick footage available was filmed from the side, which confuses the tracker's left and right legs, so kicks were tested with a real standing body that had its legs moved by the test.
 - **A real webcam.** Only simulated camera feeds have been used. Real lighting, backgrounds and motion may need some tuning. That goes double for Balloon Pop: how hard balloons are to reach, and how it feels to chase them, can only be judged with a real hand moving.

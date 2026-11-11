@@ -271,6 +271,21 @@ body.hub {
 .art-bounce-palm-far { fill: #fff; stroke: var(--ink); stroke-width: 2.500; }
 .art-bounce-finger-far { fill: none; stroke: #fff; stroke-width: 5; stroke-linecap: round; }
 .art-bounce-ring-far + .art-bounce-finger-ink { stroke-width: 8.500; }
+
+/* Giraffe's Maze's picture. */
+.game-art-maze { background: linear-gradient(#a6dc8c, #8fd17a 70%); }
+.art-maze-path { fill: #f3e1b5; }
+.art-maze-side { fill: none; stroke: #3f9447; stroke-width: 15; stroke-linecap: square; stroke-linejoin: round; }
+.art-maze-top { fill: none; stroke: #64c25c; stroke-width: 11; stroke-linecap: square; stroke-linejoin: round; }
+.art-maze-lead { fill: none; stroke: #fff; stroke-width: 4; stroke-dasharray: 1 9; stroke-linecap: round; }
+.art-maze-ring { fill: none; stroke: #fff; stroke-width: 3; }
+.art-maze-friend { fill: #ff9ec7; stroke: var(--ink); stroke-width: 2.5; }
+.art-maze-snout { fill: #ff7eb6; stroke: var(--ink); stroke-width: 2; }
+.art-maze-bubble { fill: #fff; stroke: var(--ink); stroke-width: 2; }
+.art-maze-mark { fill: #e8433f; }
+.art-maze-apple { fill: #e8433f; stroke: var(--ink); stroke-width: 2; }
+.art-maze-spot { fill: #b4682c; }
+.art-maze-eye { fill: var(--ink); }
 .art-paint-pink { fill: #ff7eb6; stroke: var(--ink); stroke-width: 2; }
 .art-paint-blue { fill: #3fb7ff; stroke: var(--ink); stroke-width: 2; }
 .art-paint-yellow { fill: #ffd23f; stroke: var(--ink); stroke-width: 2; }

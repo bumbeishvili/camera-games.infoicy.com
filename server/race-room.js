@@ -1,5 +1,5 @@
-// Playing with friends, in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back and Leap Trail: who's
-// in a room, and what they pass to each other.
+// Playing with friends, in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail and Giraffe's
+// Maze: who's in a room, and what they pass to each other.
 // The same rules run on Cloudflare (server/worker.js) and on this computer for the tests
 // (tools/race-server.mjs). Each game has rooms of its own. Nothing here is kept once everyone has gone, and no
 // camera picture ever comes here: only where each car or plane is, the moves a fighter makes and how it stands,
@@ -9,6 +9,7 @@
 //   hi     { name, driver, level, length, mode, racing }   first, after connecting, and again if any of it
 //                                      changes. length is the race's laps, a flight's planes to drop, or how
 //                                      many balloons a game of Balloon Pop has, and mode its maths challenge.
+//                                      In Giraffe's Maze, length is how many mazes, and mode their size and seed.
 //                                      racing says they're in the middle of one, for someone back mid-race
 //   ready  {}                              they're waiting at the start
 //   go     {}                              the host starts with whoever is ready
@@ -40,6 +41,11 @@
 //   runner { ms, d, x, y, s, j, w, b }     where their runner is in Leap Trail: how far along, how far across,
 //                                      how high, how fast, whether it's jumping or waiting, and how many times
 //                                      it has stumbled
+//   walker { ms, z, x, y, f, m, v, o, gx, gy, p }   where their character is in Giraffe's Maze: which maze, where in
+//                                      it, in cells, which way it faces and whether it's walking, whether their
+//                                      glove can be seen and is open, where it is, and p, its 21 points, as in hand.
+//                                      Everyone makes the same mazes from the host's mode, its size and a seed, and
+//                                      claims the fruit and lost friends it reaches
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
@@ -47,7 +53,7 @@
 //   room   { you, members: [{ id, name, driver, ready, racing, host }] }   whenever that changes
 //   go     { level, length, laps, mode, racers, seed }   the countdown starts now, on the host's course (laps is
 //                                      length). seed is the same for everyone, for a game laid out by chance
-//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner { from, ... } and done { from, ms, n, w }   passed on
+//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker { from, ... } and done { from, ms, n, w }   passed on
 //                                      from the others: ball only from the host, and shot only to the host
 //   claimed { k, by }                      balloon k, or round k, went to player by, sent to everyone, them too
 //   full   {}                              the room already has as many as it holds: see mostIn
@@ -253,6 +259,24 @@ export function cleanShot(message) {
   };
 }
 
+/** Only what a walker in Giraffe's Maze should hold, rounded, with its glove's 21 points or none. */
+export function cleanWalker(message) {
+  const points = Array.isArray(message.p) && message.p.length === 42 ? message.p.map((value) => number(value, -4, 4, 2)) : [];
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    z: number(message.z, 0, 20, 0),
+    x: number(message.x, -2, 40, 2),
+    y: number(message.y, -2, 40, 2),
+    f: number(message.f, 0, 3, 0),
+    m: message.m ? 1 : 0,
+    v: message.v ? 1 : 0,
+    o: message.v && message.o ? 1 : 0,
+    gx: number(message.gx, -4, 40, 2),
+    gy: number(message.gy, -4, 40, 2),
+    p: points,
+  };
+}
+
 /** Only what a car message should hold, rounded, so nothing else can be passed on. */
 export function cleanCar(message) {
   return {
@@ -410,8 +434,9 @@ export class RaceRoom {
       case 'hand':
       case 'pose':
       case 'racket':
-      case 'runner': {
-        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand, pose: cleanPose, racket: cleanRacket, runner: cleanRunner }[message.t](message);
+      case 'runner':
+      case 'walker': {
+        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand, pose: cleanPose, racket: cleanRacket, runner: cleanRunner, walker: cleanWalker }[message.t](message);
         for (const other of others) other.send({ t: message.t, from: meta.id, ...moved });
         break;
       }

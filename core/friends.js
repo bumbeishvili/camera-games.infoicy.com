@@ -1,6 +1,6 @@
 // Playing with friends, each on their own computer, in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves,
-// Bounce Back and Leap Trail. One player makes a race, a flight, a game, a fight or a run and sends the link, and
-// the others open it.
+// Bounce Back, Leap Trail and Giraffe's Maze. One player makes a race, a flight, a game, a fight or a run and sends
+// the link, and the others open it.
 // Their games talk through a small server (server/race-room.js), which only passes on what each game needs, such
 // as where each car or plane is, the name typed and who drives or flies. The camera picture never leaves the
 // computer, and nothing is sent at all unless a grown-up makes or joins one. How it looks is in friends-ui.js.
@@ -333,7 +333,7 @@ export class FriendsRoom {
     } else if (message.t === 'go') {
       this.readyToGo = false;
       this.events.onGo?.(message);
-    } else if (['car', 'plane', 'score', 'hand', 'world', 'claimed', 'hit', 'pose', 'racket', 'ball', 'shot', 'runner'].includes(message.t)) {
+    } else if (['car', 'plane', 'score', 'hand', 'world', 'claimed', 'hit', 'pose', 'racket', 'ball', 'shot', 'runner', 'walker'].includes(message.t)) {
       this.events.onMove?.(message.from, message);
     } else if (message.t === 'done') {
       this.events.onDone?.(message.from, message);
