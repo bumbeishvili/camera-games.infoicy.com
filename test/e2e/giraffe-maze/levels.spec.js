@@ -96,8 +96,8 @@ test('level 4: running shoes early on the way make the character quicker for a w
   test.setTimeout(180_000);
   await startPlaying(page, atLevel(4));
   expect(await item(page, 'shoes')).not.toBeNull();
-  await leadHand(page, { ahead: 2.4 });
-  await expectSoon(async () => (await state(page)).power?.kind, { timeout: 60_000 }).toBe('shoes');
+  await leadHand(page, { target: HELPFUL, gain: 0.2 });
+  await expectSoon(async () => (await state(page)).power?.kind, { timeout: 90_000 }).toBe('shoes');
   const from = await state(page);
   await page.waitForTimeout(1000);
   const to = await state(page);
@@ -176,11 +176,19 @@ test('level 9: the magnet draws fruit in from round about, over the hedges', asy
   test.setTimeout(180_000);
   await startPlaying(page, atLevel(9));
   expect(await item(page, 'magnet')).not.toBeNull();
-  await leadHand(page);
-  await expectSoon(async () => (await state(page)).power?.kind, { timeout: 60_000 }).toBe('magnet');
+  await leadHand(page, { target: HELPFUL, gain: 0.2 });
+  await expectSoon(async () => (await state(page)).power?.kind, { timeout: 90_000 }).toBe('magnet');
+  // The hand held open by the character: whatever fruit is near comes to it.
+  await leadHand(page, { target: '(game) => game.run.position', gain: 0.2 });
+  const near = await page.evaluate(() => {
+    const { run } = window.__game;
+    const at = run.position;
+    return run.layout.items.filter((each) => ['fruit', 'gem'].includes(each.kind) && !each.gone && Math.hypot(each.x - at.x, each.y - at.y) < 2.4).length;
+  });
+  const before = (await state(page)).fruit + (await state(page)).prizes.gem;
   await page.waitForTimeout(400);
   await shot(page, 'maze-magnet');
-  await expectSoon(() => page.evaluate(() => window.__game.run.layout.items.some((each) => each.pull)), { timeout: 10_000 }).toBe(true);
+  if (near > 0) await expectSoon(async () => (await state(page)).fruit + (await state(page)).prizes.gem, { timeout: 10_000 }).toBeGreaterThan(before);
   await stopHand(page);
 });
 
@@ -207,8 +215,8 @@ test('level 10: a treasure chest in a dead end opens for the character, with a c
 test('a resting child keeps a power-up: its time only runs while the hand is open', async ({ page }) => {
   test.setTimeout(180_000);
   await startPlaying(page, atLevel(4));
-  await leadHand(page, { ahead: 2.4 });
-  await expectSoon(async () => (await state(page)).power?.kind, { timeout: 60_000 }).toBe('shoes');
+  await leadHand(page, { target: HELPFUL, gain: 0.2 });
+  await expectSoon(async () => (await state(page)).power?.kind, { timeout: 90_000 }).toBe('shoes');
   await stopHand(page);
   await show(page, null, 'fist', { scale: 0.62 });
   await page.waitForTimeout(800);

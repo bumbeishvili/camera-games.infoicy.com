@@ -69,7 +69,8 @@ export const leadHand = (page, { target = 'way', photo = 'open', side = 'right',
       const screen = { x: glove.x + game.gloveOffset.x, y: glove.y + game.gloveOffset.y };
       x += ((at.x - screen.x) / innerWidth) * 1280 * rate;
       y += ((at.y - screen.y) / innerHeight) * 720 * rate;
-      x = Math.max(-900, Math.min(300, x));
+      // Each hand's photo starts on its own side of the picture, and can go right across it.
+      x = hand === 'left' ? Math.max(-300, Math.min(900, x)) : Math.max(-900, Math.min(300, x));
       y = Math.max(-300, Math.min(320, y));
     }
     const shown = picture === 'none' ? null : picture;
