@@ -82,6 +82,15 @@ test('under the countdown, what\'s new is in Georgian when the voice is', async 
 
 test('level 2: a big hand slapped and a car passed spill coins, which are picked up and counted', async ({ page }) => {
   await raceAt(page, 2);
+  // The others well ahead, so the first coins are the big hand's. Otherwise, as their pace swings with the
+  // race's clock, which started before the hand check, a car can be passed just before the big hand, and
+  // its coins are the first: picked up too quickly for the label over them to count as seen.
+  await page.evaluate(() => {
+    const { race } = window.__game;
+    race.rivals.forEach((rival, index) => {
+      rival.distance = race.distance + 200 + index * 30;
+    });
+  });
   await expect(page.locator('#chip-coins-box')).toBeVisible();
   await expect(page.locator('#chip-coins')).toHaveText('0');
   // Over to the first big hand, which is on the right.

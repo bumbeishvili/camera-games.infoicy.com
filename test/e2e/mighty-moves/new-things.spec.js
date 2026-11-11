@@ -32,10 +32,18 @@ const turnOf = (page, kind) => page.evaluate((wanted) => {
   coach.computerIn = 0;
 }, kind);
 
-/** Holds the computer's turn where it is, so a picture can be taken before the child moves. */
-const holdTurn = (page) => page.evaluate(() => {
-  window.__game.coach.defence.left = 60;
-});
+/**
+ * Waits for the computer's turn needing this way out, and holds it where it is in the same moment, so a picture
+ * can be taken before the child moves. A turn is only a few seconds, the level's first may already be under way,
+ * and its label can wait behind another, so anything checked first could find it over.
+ */
+const holdTurnOf = (page, kind) => page.waitForFunction((wanted) => {
+  const { coach } = window.__game;
+  if (coach.phase !== 'defending' || coach.defence?.kind !== wanted) return false;
+  coach.defence.left = 60;
+  coach.defence.then = null;
+  return true;
+}, kind, { timeout: 10_000, polling: 'raf' });
 
 const coachPhase = (page) => page.evaluate(() => ({ phase: window.__game.coach.phase, kind: window.__game.coach.defence?.kind ?? null }));
 const prizeShown = (page, kind) => page.locator(`#prize-${kind} strong`);
@@ -144,9 +152,9 @@ test('level 3: leaning comes in, in the sunset, and getting out of the way earns
   await takeOverGuardAndLean(page);
   await keepMoving(page);
   await turnOf(page, 'lean');
+  await holdTurnOf(page, 'lean');
   await expect(page.locator('#coach-text')).toHaveText('Lean to the side!', { timeout: 10_000 });
   await expect(newLabel(page)).toContainText('Lean away');
-  await holdTurn(page);
   await page.waitForTimeout(300);
   await shot(page, 'mighty-moves-l3-lean-sunset');
   await page.evaluate(() => {
@@ -229,10 +237,12 @@ test('level 6: in the autumn leaves, the computer swings high and a squat ducks 
   await takeOverGuardAndLean(page);
   await keepMoving(page);
   await turnOf(page, 'duck');
+  // Held straight away: its label can wait behind the autumn leaves' for up to 2.4 seconds, and the turn
+  // itself is only 2.7 seconds at medium.
+  await holdTurnOf(page, 'duck');
   await expect(page.locator('#coach-text')).toHaveText('Squat down!', { timeout: 10_000 });
   await expect(newLabel(page)).toContainText('Duck down');
   expect(await coachPhase(page)).toEqual({ phase: 'defending', kind: 'duck' });
-  await holdTurn(page);
   await page.waitForTimeout(400);
   await shot(page, 'mighty-moves-l6-duck-asked');
   await page.evaluate(() => window.__game.game.onMoves([{ move: 'stomp' }]));
@@ -269,10 +279,10 @@ test('level 8: the computer throws a soft ball, and a clap catches it and throws
   await takeOverGuardAndLean(page);
   await keepMoving(page);
   await turnOf(page, 'catch');
+  await holdTurnOf(page, 'catch');
   await expect(page.locator('#coach-text')).toHaveText('Clap your hands!', { timeout: 10_000 });
   await expect(newLabel(page)).toContainText('Catch the ball');
   expect(await page.evaluate(() => ({ visible: window.__game.arena.ball.visible, state: window.__game.arena.ball.userData.state }))).toEqual({ visible: true, state: 'held' });
-  await holdTurn(page);
   await page.waitForTimeout(500);
   await shot(page, 'mighty-moves-l8-ball-ready');
   const npcBefore = (await fightState(page)).npc.hp;
