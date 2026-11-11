@@ -10,11 +10,11 @@ Movement-based games for children, played in front of a webcam.
 | ![Tank Patrol](demos/gif/tank-patrol.gif)<br>**Tank Patrol:** close to drive, open to fire | ![Cannon Bay](demos/gif/cannon-bay.gif)<br>**Cannon Bay:** steer a ship with one hand |
 | ![Long Walk Home](demos/gif/long-walk-home.gif)<br>**Long Walk Home:** carry fruit to a hungry giraffe | ![Spider Catcher](demos/gif/spider-catcher.gif)<br>**Spider Catcher:** catch spiders, take them home |
 | ![Smoothie Stand](demos/gif/smoothie-stand.gif)<br>**Smoothie Stand:** slice fruit with an open hand | ![The Lighthouse Keeper](demos/gif/lighthouse.gif)<br>**Lighthouse Keeper:** wipe the windows clean |
-| ![Bounce Back](demos/gif/bounce-back.gif)<br>**Bounce Back:** hit a big, slow ball over the net with an open hand | |
+| ![Bounce Back](demos/gif/bounce-back.gif)<br>**Bounce Back:** hit a big, slow ball over the net with an open hand | ![Giraffe's Maze](demos/gif/giraffe-maze.gif)<br>**Giraffe's Maze:** lead Giraffe through a maze with an open hand |
 
 - Resting never costs anything.
 - Each game has 10 levels.
-- Play with friends on their own computers in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves and Bounce Back: make a game on the title card and send them the link.
+- Play with friends on their own computers in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back and Giraffe's Maze: make a game on the title card and send them the link.
 - A grown-up can change the settings under the gear icon.
 - The camera picture stays on your computer.
 
