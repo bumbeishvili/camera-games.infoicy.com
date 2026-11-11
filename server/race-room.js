@@ -9,7 +9,8 @@
 //   hi     { name, driver, level, length, mode, racing }   first, after connecting, and again if any of it
 //                                      changes. length is the race's laps, a flight's planes to drop, or how
 //                                      many balloons a game of Balloon Pop has, and mode its maths challenge.
-//                                      In Giraffe's Maze, length is how many mazes, and mode their size and seed.
+//                                      In Giraffe's Maze, length is how many mazes, and mode their size and seed,
+//                                      and at the Smoothie Stand, how many customers, and how fast the fruit flies.
 //                                      In The Lighthouse Keeper, length is how many ships there are to bring home.
 //                                      racing says they're in the middle of one, for someone back mid-race
 //   ready  {}                              they're waiting at the start
@@ -52,6 +53,14 @@
 //                                      a whole number from 0 to WINDOW_PATCHES - 1, all of those since the last
 //                                      wipe, sent at most 10 times a second. Each patch is the first hand's to wipe
 //                                      it. A wipe with no answer is sent again, so a patch can come more than once
+//   stand  { ms, g, f, c, l, a }           Giraffe's Smoothie Stand, from the game running the stand for everyone:
+//                                      the host's, then the next still playing. f is the fruit, each [id, x, y,
+//                                      vx, vy, t, s]: where it was at t, in milliseconds since "GO!", as shares of
+//                                      the screen, how it was going, in shares a second, and s 1 if it hangs still;
+//                                      g is how it falls, in screen heights a second squared. c is the customer, l
+//                                      what's left of their order, and a how many claimed fruit the stand has
+//                                      counted. Each player claims the fruit their glove slices, and its id says
+//                                      what kind of fruit it was. Their glove goes as hand, and their points as score
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
@@ -59,8 +68,9 @@
 //   room   { you, members: [{ id, name, driver, ready, racing, host }] }   whenever that changes
 //   go     { level, length, laps, mode, racers, seed }   the countdown starts now, on the host's course (laps is
 //                                      length). seed is the same for everyone, for a game laid out by chance
-//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker { from, ... } and done { from, ms, n, w }   passed on
-//                                      from the others: ball only from the host, and shot only to the host
+//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker, stand { from, ... } and done { from, ms, n, w }
+//                                      passed on from the others: ball only from the host, shot only to the host,
+//                                      and stand only from someone playing
 //   claimed { k, by }                      balloon k, or round k, went to player by, sent to everyone, them too
 //   wiped  { w, c, by }                    patches c of window w went to player by, as theirs wiped them first,
 //                                      sent to everyone, them too. Those in a wipe that had gone to someone else
@@ -84,6 +94,7 @@ const MOST_BALLOONS = 24;
 // storm has at most four of them, with room to spare.
 export const WINDOW_PATCHES = 126;
 const MOST_WINDOWS = 10;
+const MOST_FRUIT = 16; // At the Smoothie Stand there are never more than 12 up at once, and a few on their way.
 const MOST_A_SECOND = 40; // Messages a player can send in a second; more are dropped, apart from ALWAYS_HEARD.
 const ALWAYS_HEARD = new Set(['ready', 'go', 'done', 'leave']);
 // A player who goes and comes back as soon as this carries on as before, as when a laptop wakes up again.
@@ -303,6 +314,25 @@ export function cleanWipe(message) {
   return { w: number(message.w, 0, MOST_WINDOWS - 1, 0), c };
 }
 
+/**
+ * Only what the Smoothie Stand should hold, rounded: each fruit as [id, x, y, vx, vy, t, s], the customer, what's
+ * left of their order, and how many claimed fruit the stand has counted.
+ */
+export function cleanStand(message) {
+  const fruit = Array.isArray(message.f) ? message.f.slice(0, MOST_FRUIT) : [];
+  const f = fruit.filter((each) => Array.isArray(each) && each.length === 7).map(([id, x, y, vx, vy, t, s]) => [
+    number(id, 0, 1_000_000, 0),
+    number(x, -0.5, 1.5, 4),
+    number(y, -1, 2, 4),
+    number(vx, -2, 2, 4),
+    number(vy, -4, 4, 4),
+    number(t, 0, 3_600_000, 0),
+    s ? 1 : 0,
+  ]);
+  const l = Array.isArray(message.l) ? message.l.slice(0, 3).map((left) => number(left, 0, 99, 0)) : [];
+  return { ms: number(message.ms, 0, 3_600_000, 0), g: number(message.g, 0, 3, 4), f, c: number(message.c, 0, 9, 0), l, a: number(message.a, 0, 100_000, 0) };
+}
+
 /** Only what a car message should hold, rounded, so nothing else can be passed on. */
 export function cleanCar(message) {
   return {
@@ -471,6 +501,12 @@ export class RaceRoom {
         // Only the host's ball is everyone's.
         if (hostOf(players) !== player) return;
         for (const other of others) other.send({ t: 'ball', from: meta.id, ...cleanBall(message) });
+        break;
+      case 'stand':
+        // The Smoothie Stand, from whoever runs it: the host's game, and if that goes, the next still playing,
+        // which each game works out for itself, so here it only has to come from someone playing.
+        if (!meta.racing) return;
+        for (const other of others) other.send({ t: 'stand', from: meta.id, ...cleanStand(message) });
         break;
       case 'shot': {
         // Only the host's game runs the ball, so only it hears a shot, and only from someone playing.

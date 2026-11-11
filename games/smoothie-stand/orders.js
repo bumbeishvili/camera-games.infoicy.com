@@ -110,11 +110,25 @@ export function fairAt(level) {
   };
 }
 
+/**
+ * With friends, everyone slices from the same fruit, at the host's level, but it's the plain fair: none of the tip
+ * coins, golden fruit, watermelons, power-ups, bees, tough fruit or fruit thrown across that the levels bring, as
+ * each of those would be one child's and not another's. How fast the fruit comes, and the rotten fruit, stay the
+ * level's.
+ */
+export function plainFairAt(level) {
+  return { ...fairAt(level), across: 0, pairs: 0, tough: 0, tips: 0, bonus: [], powers: [], bee: false };
+}
+
+// With friends, each fruit is a point for whoever sliced it, one on the order two, and a rotten one nothing.
+export const FRIENDS_POINTS = { wanted: 2, extra: 1, rotten: 0 };
+export const pointsFor = (verdict) => FRIENDS_POINTS[verdict] ?? 0;
+
 export class Stand {
-  /** short is a shorter day, with only three customers. */
-  constructor({ short = false, level = 1, random = Math.random, onEvent = () => {} } = {}) {
+  /** short is a shorter day, with only three customers. plain is the plain fair, for friends: see plainFairAt. */
+  constructor({ short = false, level = 1, plain = false, random = Math.random, onEvent = () => {} } = {}) {
     this.customers = short ? DAY.filter(({ who }) => SHORT_DAY.includes(who)) : DAY;
-    this.level = fairAt(level);
+    this.level = plain ? plainFairAt(level) : fairAt(level);
     this.random = random;
     this.onEvent = onEvent;
     this.index = -1;
@@ -141,6 +155,35 @@ export class Stand {
 
   get wantedKinds() {
     return Object.keys(this.left).filter((kind) => this.left[kind] > 0);
+  }
+
+  /** What's left of this customer's order, as counts in the order's own order, for friends' games. */
+  get leftList() {
+    return Object.keys(this.customer?.order ?? {}).map((kind) => this.left[kind] ?? 0);
+  }
+
+  /** Whether this customer's order is all made. */
+  get orderDone() {
+    return Boolean(this.customer) && !this.wantedKinds.length;
+  }
+
+  /**
+   * With friends, the stand as whoever runs it has it: this customer, and what's left of their order, as
+   * leftList. Nothing is said or shown from here. Returns whether it's a new customer.
+   */
+  setTo(index, leftList = []) {
+    const fresh = index !== this.index;
+    if (fresh) {
+      this.index = index;
+      this.sinceWanted = 0;
+      this.others = 0;
+      this.bonusThrown = false;
+      this.specialIn = Infinity;
+    }
+    const order = this.customer?.order ?? {};
+    this.left = Object.fromEntries(Object.keys(order).map((kind, at) => [kind, Math.max(0, Math.min(order[kind], leftList[at] ?? order[kind]))]));
+    this.stats.smoothies = Math.max(0, Math.min(this.index, this.customers.length)) + (this.orderDone ? 1 : 0);
+    return fresh;
   }
 
   emit(type, details = {}) {

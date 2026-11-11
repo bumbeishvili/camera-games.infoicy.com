@@ -5,9 +5,13 @@
 // of juice where it happened, and the picture itself never changes brightness. Coins, power-up
 // bubbles and the bee from the higher levels float slowly, and the first time each new thing comes
 // in a game, a little label with its name fades in beside it and out again.
+//
+// With friends, everyone slices from the same fruit, and friends' gloves are here too, in light grey with
+// their names: see setShared, and together.js.
 import { LOOKS, paintFruit } from '../../core/fruit.js';
 import { Glove, INK } from '../../core/glove.js';
 import { GOLDEN_COINS, NEW_THINGS, POWER_SECONDS, fairAt, nearestOnPath } from './orders.js';
+import { flightAt, rounded, THROW_AHEAD_MS } from './together.js';
 
 // gravity is in screen heights a second squared, every is the seconds between throws, volley is how
 // few and how many go up in a throw, and most is how many can be up at once. There's always plenty to
@@ -50,6 +54,10 @@ const FLY_SECONDS = 0.7; // A coin flying up to the count of them.
 const LABEL_SECONDS = 2.4; // A new thing's name, beside it the first time it comes.
 const LABEL_WAIT = 3; // How long an older thing's name waits its turn before it's let go.
 const LABEL_DOWN = 0.42; // Where a name waits, under it, as a share of the screen's height.
+// With friends, fruit comes up right across the screen, as each child may play with a different hand.
+const SHARED_REACH = [0.12, 0.88];
+const START_SHARE = 1 + FRUIT_SHARE * 1.4; // Where thrown fruit starts, just below the screen, as a share of its height.
+const FRIEND_GLOVE = { fill: '#e3e8ee', ink: '#9aa8b6' };
 const FLESH = { golden: '#fff3a6', melon: '#ff6b7f', wedge: '#ff6b7f' };
 const fleshOf = (kind) => FLESH[kind] ?? LOOKS[kind].flesh;
 
@@ -107,6 +115,11 @@ export class SmoothieField {
     this.giraffe = null;
     this.tokenTarget = { x: 120, y: 200 };
     this.sliced = { left: 0, right: 0 };
+    // Playing with friends: see setShared. gone is fruit that has gone from this screen for good.
+    this.shared = null;
+    this.gone = new Set();
+    this.sharedGravity = 0;
+    this.friendsGloves = []; // Each friend's glove, as { glove, name, fade }: main.js keeps them up to date.
     this.configure({ pace: 'slow', side: 'right', slicing: 'swipe' });
     window.addEventListener('resize', () => this.resize());
     this.resize();
@@ -151,7 +164,133 @@ export class SmoothieField {
     this.flying = [];
     this.labels = [];
     this.introduced = new Set();
+    this.gone = new Set();
     for (const glove of Object.values(this.gloves)) glove.sticky = 0;
+  }
+
+  /**
+   * Playing with friends, everyone slices from the same fruit. Whoever runs the stand throws it, and every game
+   * works out where each fruit is from how it was thrown and the time since "GO!", so it's in the same place on
+   * every screen. A fruit sliced here goes at once, and the server says whose it was. shared is { runner, clock(),
+   * nextId(kind) }: runner says this game throws the fruit, clock() is the milliseconds since "GO!", and nextId
+   * numbers each fruit thrown. null plays alone again.
+   */
+  setShared(shared) {
+    this.shared = shared;
+    this.gone = new Set();
+    this.fruit = [];
+    // Gravity, in screen heights a second squared, rounded as it's sent, so every game's fruit falls the same.
+    this.sharedGravity = rounded(this.pace.gravity);
+  }
+
+  /** The same turn, spin and flies on every screen, from the fruit's id. */
+  sharedFruit(id, kind, anchor) {
+    const share = (id * 0.6180339887) % 1;
+    return {
+      id,
+      kind,
+      anchor,
+      x: 0,
+      y: -this.height,
+      vx: 0,
+      vy: 0,
+      still: anchor.still,
+      turnFrom: (id * 2.39996) % (Math.PI * 2),
+      turn: 0,
+      spin: this.reducedMotion ? 0.3 : share * 3.2 - 1.6,
+      r: this.fruitSize,
+      phase: (id * 1.7) % 6,
+      across: false,
+      tough: false,
+      cracked: false,
+      rest: 0,
+    };
+  }
+
+  /**
+   * With friends, this game throws one, for everyone. It goes up a moment from now, still below the screen,
+   * so friends' games have heard of it before it can be seen. Somewhere exact, it hangs still there, for the
+   * automated tests, and can be sliced from that moment on, by any glove there then.
+   */
+  throwShared(kind, { x, y } = {}) {
+    const now = this.shared.clock();
+    let anchor;
+    if (y !== undefined) {
+      anchor = { x: rounded(x / this.width), y: rounded(y / this.height), vx: 0, vy: 0, t: Math.round(now + THROW_AHEAD_MS), still: true };
+    } else {
+      const [low, high] = SHARED_REACH;
+      const peak = between(0.34, 0.62);
+      anchor = {
+        x: rounded(x === undefined ? between(low, high) : x / this.width),
+        y: rounded(START_SHARE),
+        vx: rounded(between(-0.03, 0.03)),
+        vy: rounded(-Math.sqrt(2 * this.sharedGravity * (START_SHARE - peak))),
+        t: Math.round(now + THROW_AHEAD_MS),
+        still: false,
+      };
+    }
+    const fruit = this.sharedFruit(this.shared.nextId(kind), kind, anchor);
+    this.fruit.push(fruit);
+    this.placeShared(fruit, now);
+    return fruit;
+  }
+
+  /** On a friend's game, the fruit as whoever runs the stand has it: each { id, kind, x, y, vx, vy, t, still }. */
+  syncShared(list) {
+    const known = new Map(this.fruit.map((fruit) => [fruit.id, fruit]));
+    this.fruit = list.filter(({ id }) => !this.gone.has(id)).map((each) => {
+      const fruit = known.get(each.id) ?? this.sharedFruit(each.id, each.kind, each);
+      fruit.anchor = { x: each.x, y: each.y, vx: each.vx, vy: each.vy, t: each.t, still: each.still };
+      fruit.still = each.still;
+      return fruit;
+    });
+  }
+
+  /** Where a shared fruit is at this moment, on this screen. */
+  placeShared(fruit, now) {
+    const { anchor } = fruit;
+    const at = flightAt(anchor, now, this.sharedGravity);
+    const seconds = (now - anchor.t) / 1000;
+    fruit.x = at.x * this.width;
+    fruit.y = at.y * this.height;
+    // How it's going, for the halves when it's sliced.
+    fruit.vx = anchor.still ? 0 : anchor.vx * this.width;
+    fruit.vy = anchor.still ? 0 : (anchor.vy + this.sharedGravity * seconds) * this.height;
+    fruit.turn = fruit.turnFrom + fruit.spin * Math.max(0, seconds);
+  }
+
+  /** With friends: throwing, if this game runs the stand, and every fruit where it is now. */
+  updateShared(dt, slicing) {
+    const now = this.shared.clock();
+    if (this.shared.runner && this.throwing) {
+      this.throwIn -= dt;
+      if (this.throwIn <= 0) {
+        const { pace } = this;
+        const [few, many] = pace.volley;
+        const count = Math.round(between(few, many));
+        for (let i = 0; i < count && this.fruit.length < pace.most; i += 1) this.throwShared(this.nextThrow().kind);
+        this.throwIn = pace.every * between(0.85, 1.15);
+      }
+    }
+    this.fruit = this.fruit.filter((fruit) => {
+      this.placeShared(fruit, now);
+      // Not thrown yet: still below the screen.
+      if (now < fruit.anchor.t) return true;
+      if (slicing && this.touchGloves(fruit)) return false;
+      if (fruit.still || fruit.y < this.height + fruit.r * 2) return true;
+      this.gone.add(fruit.id);
+      return false;
+    });
+  }
+
+  /** A fruit that someone sliced, here or on a friend's computer, goes here too, in two if it was a friend. */
+  removeShared(id, { burst = true } = {}) {
+    this.gone.add(id);
+    const fruit = this.fruit.find((each) => each.id === id);
+    if (!fruit) return null;
+    this.fruit = this.fruit.filter((each) => each !== fruit);
+    if (burst && this.shared && this.shared.clock() >= fruit.anchor.t) this.split(fruit, -0.4);
+    return fruit;
   }
 
   /**
@@ -362,6 +501,24 @@ export class SmoothieField {
       if (slicing) this.shakeOff(glove, dt);
     }
 
+    if (this.shared) this.updateShared(dt, slicing);
+    else this.updateFruit(dt, slicing);
+    this.updateExtras(dt, slicing);
+
+    const glove = this.gloves[this.side];
+    if (slicing && glove.visible && glove.status === 'open' && glove.speed >= SWIPE_SPEED * 0.7) {
+      this.trail.push({ x: glove.x + glove.points[12].x, y: glove.y + glove.points[12].y, life: TRAIL_SECONDS });
+    }
+    for (const point of this.trail) point.life -= dt;
+    this.trail = this.trail.filter(({ life }) => life > 0);
+
+    this.updateBits(dt);
+    this.blenderSpin = Math.max(0, this.blenderSpin - dt);
+    if (this.blenderSpin === 0 && this.blenderLevel >= 1) this.blenderLevel = 0;
+  }
+
+  /** On their own: throwing, and each fruit flying on. */
+  updateFruit(dt, slicing) {
     const { pace } = this;
     // With the honey, everything floats slowly for a while.
     const slow = this.powerOn('honey') ? HONEY_SLOW : 1;
@@ -397,18 +554,6 @@ export class SmoothieField {
       if (slicing && this.touchGloves(fruit)) return false;
       return fruit.still || fruit.y < this.height + fruit.r * 2;
     });
-    this.updateExtras(dt, slicing);
-
-    const glove = this.gloves[this.side];
-    if (slicing && glove.visible && glove.status === 'open' && glove.speed >= SWIPE_SPEED * 0.7) {
-      this.trail.push({ x: glove.x + glove.points[12].x, y: glove.y + glove.points[12].y, life: TRAIL_SECONDS });
-    }
-    for (const point of this.trail) point.life -= dt;
-    this.trail = this.trail.filter(({ life }) => life > 0);
-
-    this.updateBits(dt);
-    this.blenderSpin = Math.max(0, this.blenderSpin - dt);
-    if (this.blenderSpin === 0 && this.blenderLevel >= 1) this.blenderLevel = 0;
   }
 
   /** A sticky glove comes clean by being held open. */
@@ -472,30 +617,10 @@ export class SmoothieField {
     this.sliced[glove.side] += 1;
     const moveX = glove.lastX === null ? 1 : glove.x - glove.lastX;
     const moveY = glove.lastY === null ? 0 : glove.y - glove.lastY;
-    const cut = Math.atan2(moveY, moveX || 1);
-    const push = this.height * 0.28;
-    for (const way of [-1, 1]) {
-      this.halves.push({
-        kind: fruit.kind,
-        x: fruit.x,
-        y: fruit.y,
-        vx: fruit.vx * 0.4 + Math.cos(cut + Math.PI / 2) * way * push,
-        vy: fruit.vy * 0.3 + Math.sin(cut + Math.PI / 2) * way * push - this.height * 0.1,
-        turn: cut,
-        spin: way * between(1, 2.4),
-        way,
-        r: fruit.r,
-        life: 1,
-      });
-    }
-    const flesh = fleshOf(fruit.kind);
-    const count = this.reducedMotion ? 4 : 9;
-    for (let i = 0; i < count; i += 1) {
-      const angle = (i / count) * Math.PI * 2 + Math.random();
-      const speed = between(0.2, 0.5) * this.height;
-      this.drops.push({ x: fruit.x, y: fruit.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, size: fruit.r * between(0.07, 0.14), life: 0.5, colour: flesh });
-    }
-    const verdict = this.events.onSlice?.(fruit.kind, glove.side);
+    this.split(fruit, Math.atan2(moveY, moveX || 1));
+    // With friends, it's gone from here at once, and main.js asks the server whose it is.
+    if (this.shared) this.gone.add(fruit.id);
+    const verdict = this.events.onSlice?.(fruit.kind, glove.side, fruit);
     if (verdict === 'rotten') glove.sticky = STICKY_SECONDS;
     if (verdict === 'wanted') {
       this.tokens.push({ kind: fruit.kind, x: fruit.x, y: fruit.y, share: 0, fromX: fruit.x, fromY: fruit.y });
@@ -517,6 +642,32 @@ export class SmoothieField {
           turn: (i - 1) * 0.6,
         });
       }
+    }
+  }
+
+  /** A fruit falling in two along the cut, with a few drops of juice. */
+  split(fruit, cut) {
+    const push = this.height * 0.28;
+    for (const way of [-1, 1]) {
+      this.halves.push({
+        kind: fruit.kind,
+        x: fruit.x,
+        y: fruit.y,
+        vx: fruit.vx * 0.4 + Math.cos(cut + Math.PI / 2) * way * push,
+        vy: fruit.vy * 0.3 + Math.sin(cut + Math.PI / 2) * way * push - this.height * 0.1,
+        turn: cut,
+        spin: way * between(1, 2.4),
+        way,
+        r: fruit.r,
+        life: 1,
+      });
+    }
+    const flesh = fleshOf(fruit.kind);
+    const count = this.reducedMotion ? 4 : 9;
+    for (let i = 0; i < count; i += 1) {
+      const angle = (i / count) * Math.PI * 2 + Math.random();
+      const speed = between(0.2, 0.5) * this.height;
+      this.drops.push({ x: fruit.x, y: fruit.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, size: fruit.r * between(0.07, 0.14), life: 0.5, colour: flesh });
     }
   }
 
@@ -812,12 +963,40 @@ export class SmoothieField {
 
     this.drawExtras(ctx);
     this.drawBigGlove(ctx);
+    this.drawFriendsGloves(ctx);
     this.gloves.left.draw(ctx, this.palmSize);
     this.gloves.right.draw(ctx, this.palmSize);
     this.drawPowers(ctx);
     this.drawFlying(ctx);
     const [label] = this.labels;
     if (label?.started) drawLabel(ctx, label, this.labelText(label), label.at(), width, height, LABEL_SECONDS);
+  }
+
+  /**
+   * Friends' gloves, playing on their own computers, where their hands really are, in light grey under the
+   * child's own, with each friend's name over theirs. They're only there to see: they slice nothing here.
+   */
+  drawFriendsGloves(ctx) {
+    const { palmSize } = this;
+    for (const { glove, name, fade } of this.friendsGloves) {
+      if (!glove.visible || fade < 0.02) continue;
+      // Solid, as a see-through one shows its outline through itself, and only fading as it comes and goes.
+      glove.draw(ctx, palmSize, { ...FRIEND_GLOVE, alpha: fade });
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.font = `700 ${Math.round(palmSize * 0.32)}px Fredoka, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      const y = glove.y - palmSize * 1.55;
+      const wide = ctx.measureText(name).width + palmSize * 0.4;
+      ctx.fillStyle = 'rgba(18, 48, 77, 0.72)';
+      ctx.beginPath();
+      ctx.roundRect(glove.x - wide / 2, y - palmSize * 0.42, wide, palmSize * 0.48, palmSize * 0.24);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(name, glove.x, y);
+      ctx.restore();
+    }
   }
 
   /** Coins and wedges floating up, power-up bubbles, and the bee. */
