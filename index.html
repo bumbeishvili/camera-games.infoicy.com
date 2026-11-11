@@ -32,13 +32,13 @@
           <label class="visually-hidden" for="hub-search">Search the games</label>
           <svg class="hub-search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.4 15.4l5.1 5.1" /></svg>
           <input id="hub-search" type="search" placeholder="Search games" enterkeyhint="search" spellcheck="false" autocapitalize="off">
+          <!-- In the search box, at its end, and how many filters are chosen on it. -->
+          <button class="hub-filters-toggle" id="hub-filters-toggle" type="button" title="Filters" aria-expanded="false" aria-controls="hub-filters">
+            <svg class="hub-filters-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7h9.5M17.5 7h3M3.5 17h3M11 17h9.5" /><circle cx="15.2" cy="7" r="2.3" /><circle cx="8.8" cy="17" r="2.3" /></svg>
+            <span class="visually-hidden">Filters</span>
+            <span class="hub-filters-on" hidden><span id="hub-filters-count">0</span><span class="visually-hidden"> chosen</span></span>
+          </button>
         </div>
-        <button class="hub-filters-toggle" id="hub-filters-toggle" type="button" aria-expanded="false" aria-controls="hub-filters">
-          <svg class="hub-filters-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7h9.5M17.5 7h3M3.5 17h3M11 17h9.5" /><circle cx="15.2" cy="7" r="2.3" /><circle cx="8.8" cy="17" r="2.3" /></svg>
-          Filters
-          <span class="hub-filters-on" hidden><span id="hub-filters-count">0</span><span class="visually-hidden"> chosen</span></span>
-          <svg class="hub-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 9.5l5.5 5.5 5.5-5.5" /></svg>
-        </button>
       </div>
 
       <!-- Each filter's value is the tag on the cards it finds (data-tags), and its data-words are more words that

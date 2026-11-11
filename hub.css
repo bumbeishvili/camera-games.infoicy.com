@@ -63,7 +63,7 @@ body.hub {
   gap: 12px;
 }
 
-/* On one line at any width, so choosing a filter, which adds its count to the button, never moves anything. */
+/* The filters' button is in the search box, so choosing a filter, which adds its count to it, never moves anything. */
 .hub-search-row {
   display: flex;
   gap: 10px;
@@ -79,7 +79,8 @@ body.hub {
 .hub-search-box input {
   width: 100%;
   height: 54px;
-  padding: 0 12px 0 50px;
+  /* Room on the right for the filters' button. */
+  padding: 0 62px 0 50px;
   border: 0;
   border-radius: 999px;
   background: var(--surface);
@@ -96,18 +97,8 @@ body.hub {
   opacity: 1;
 }
 
-.hub-search-box input::-webkit-search-cancel-button {
-  appearance: none;
-  width: 30px;
-  height: 30px;
-  margin-left: 8px;
-  border-radius: 50%;
-  background: var(--surface-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7.5 7.5l9 9M16.5 7.5l-9 9' fill='none' stroke='%2346607c' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E") center / 20px no-repeat;
-  cursor: pointer;
-}
-
-/* Only there with something to clear, so it doesn't take the placeholder's room. */
-.hub-search-box input:placeholder-shown::-webkit-search-cancel-button { display: none; }
+/* The search box has one button, the filters'. Escape empties it, and so does "Show all games" under it. */
+.hub-search-box input::-webkit-search-cancel-button { appearance: none; display: none; }
 
 .hub-search-icon {
   position: absolute;
@@ -123,25 +114,25 @@ body.hub {
   pointer-events: none;
 }
 
+/* At the end of the search box, as in most searches with filters. */
 .hub-filters-toggle {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 54px;
-  padding: 0 16px 0 18px;
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
   border: 0;
-  border-radius: 999px;
-  background: var(--surface);
-  box-shadow: var(--shadow);
-  font-size: 20px;
-  font-weight: 700;
-  white-space: nowrap;
+  border-radius: 50%;
+  background: transparent;
+  transform: translateY(-50%);
 }
 
 .hub-filters-toggle:hover { background: var(--surface-soft); }
 
-.hub-filters-toggle[aria-expanded='true'] { box-shadow: inset 0 0 0 3px var(--accent), var(--shadow); }
+.hub-filters-toggle[aria-expanded='true'] { background: var(--surface-soft); box-shadow: inset 0 0 0 3px var(--accent); }
 
 .hub-filters-toggle svg {
   flex: none;
@@ -154,20 +145,23 @@ body.hub {
 }
 
 .hub-filters-icon { stroke: var(--accent); }
-.hub-chevron { stroke: var(--ink-soft); }
-.hub-filters-toggle[aria-expanded='true'] .hub-chevron { transform: rotate(180deg); }
 
-/* How many filters are chosen. */
+/* How many filters are chosen, on the button's corner. */
 .hub-filters-on {
+  position: absolute;
+  top: -2px;
+  right: -3px;
   display: grid;
   place-items: center;
-  min-width: 26px;
-  height: 26px;
-  padding: 0 7px;
-  border-radius: 13px;
+  min-width: 21px;
+  height: 21px;
+  padding: 0 5px;
+  border-radius: 11px;
   background: var(--accent);
+  box-shadow: 0 0 0 2px var(--surface);
   color: var(--surface);
-  font-size: 16px;
+  font-size: 13px;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -320,8 +314,6 @@ body.hub {
 @media (max-width: 480px) {
   .hub-search-box input { font-size: 18px; padding-left: 46px; }
   .hub-search-icon { left: 16px; }
-  .hub-filters-toggle { font-size: 18px; padding: 0 14px; gap: 6px; }
-  .hub-chevron { display: none; }
   .hub-filters { padding: 6px 16px 14px; }
   .hub-chip { font-size: 16px; padding: 7px 14px 8px 11px; }
   .hub-chip input { width: 18px; height: 18px; }
