@@ -65,7 +65,8 @@ export const CODE_LENGTH = 3;
 const OLD_CODE_LENGTH = 6; // Links from before codes were 3 long still open their game.
 export const MOST_BYTES = 1800; // A message bigger than this is ignored. The host's balloons are the biggest.
 const MOST_BALLOONS = 24;
-const MOST_A_SECOND = 40; // Messages a player can send in a second; more are dropped.
+const MOST_A_SECOND = 40; // Messages a player can send in a second; more are dropped, apart from ALWAYS_HEARD.
+const ALWAYS_HEARD = new Set(['ready', 'go', 'done', 'leave']);
 // A player who goes and comes back as soon as this carries on as before, as when a laptop wakes up again.
 export const COMES_BACK_WITHIN_MS = 120_000;
 // A connection that's said nothing for this long, not even its keep-alive "ping", has died without closing.
@@ -341,7 +342,6 @@ export class RaceRoom {
   hear(player, text) {
     const { meta } = player;
     if (!meta?.id || typeof text !== 'string' || text.length > MOST_BYTES) return;
-    if (this.flooding(meta.id)) return;
     let message;
     try {
       message = JSON.parse(text);
@@ -349,6 +349,9 @@ export class RaceRoom {
       return;
     }
     if (!message || typeof message !== 'object') return;
+    // Being ready, starting, finishing and going always get through, however much else has come: each only
+    // matters once, and a finish lost would leave friends waiting for it.
+    if (!ALWAYS_HEARD.has(message.t) && this.flooding(meta.id)) return;
     const players = this.room.players().filter((each) => each.meta?.id);
     const others = players.filter((each) => each !== player);
     switch (message.t) {

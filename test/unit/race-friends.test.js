@@ -538,3 +538,16 @@ test('in Leap Trail, each runner goes to the others, with only what a runner mes
   assert.deepEqual(ben.last('runner'), { t: 'runner', from: 'aaaaaaaa', ms: 0, d: 0, x: 5, y: 0, s: 60, j: 0, w: 0, b: 0 });
   assert.equal(ana.last('runner'), undefined, 'nobody hears their own');
 });
+
+test('a finish always gets through, even straight after more messages than a second allows', () => {
+  const { join } = makeRoom();
+  const ana = join('aaaaaaaa');
+  const ben = join('bbbbbbbb');
+  ana.say({ t: 'ready' });
+  ben.say({ t: 'ready' });
+  // A burst, as when a runner passes a lot of stars at once: the last of them are dropped.
+  for (let k = 0; k < 60; k += 1) ana.say({ t: 'claim', k });
+  assert.ok(ben.heard.filter(({ t }) => t === 'claimed').length < 60);
+  ana.say({ t: 'done', ms: 5000, n: 12, w: 1 });
+  assert.deepEqual(ben.last('done'), { t: 'done', from: 'aaaaaaaa', ms: 5000, n: 12, w: 1 });
+});
