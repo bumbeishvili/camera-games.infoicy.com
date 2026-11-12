@@ -65,11 +65,11 @@ export const waterHand = (page, { target = 'next', turned = 'back', gain = 0.12,
     let pouring = false;
     if (glove.visible && wanted) {
       const to = view.at(wanted.x, wanted.y);
-      const from = bring === 'can' ? { x: glove.x, y: glove.y } : view.roseAt(glove.x, glove.y, game.tip, game.spoutSide);
+      const from = bring === 'can' ? { x: glove.x, y: glove.y } : view.waterAt(glove.x, glove.y, game.spoutSide);
       x += ((to.x - from.x) / innerWidth) * 1280 * rate;
       y += ((to.y - from.y) / innerHeight) * 720 * rate;
       // Once turned over, it stays turned while it's anywhere near, as a child holds it and moves it a little, rather
-      // than turning back and forth as the tipping can moves its water away.
+      // than turning back and forth.
       pouring = bring !== 'can' && Math.hypot(to.x - from.x, to.y - from.y) < close * innerHeight * (window.__lead?.pouring ? 4 : 1);
     } else if (!glove.visible) {
       // Lost, as a hand right at the edge of the picture can be: back towards the middle, as anyone would.

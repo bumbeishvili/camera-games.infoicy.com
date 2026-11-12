@@ -4,31 +4,33 @@
 // points are the ones a game is given.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { flowFor, handFacing, TURN, TURN_TARGETS, TurnReader } from '../../core/turn.js';
+import { flowFor, handFacing, TURN, TURN_TARGETS, TurnReader, worldFacing } from '../../core/turn.js';
 import { FRAME_ASPECT, feed, rightHand, setup } from './photo-hands.js';
 
-/** The hand in play's points, as the monitor gives them to a game, for a photo of the right hand. */
-function seen(name) {
+/** The hand in play's points, and its 3D points, as the monitor gives them to a game, for a photo of the right hand. */
+function seenWhole(name) {
   const { monitor, clock } = setup({}, 'right');
-  return feed(monitor, clock, 300, [rightHand(name)]).right.image;
+  const { image, world } = feed(monitor, clock, 300, [rightHand(name)]).right;
+  return { image, world };
 }
+const seen = (name) => seenWhole(name).image;
 
 /** A reader that has watched the hand check with this photo, so turning is measured from it. */
 function checkedWith(name) {
   const reader = new TurnReader();
-  const image = seen(name);
-  for (let i = 0; i < 20; i += 1) reader.sample(image, FRAME_ASPECT);
+  const { image, world } = seenWhole(name);
+  for (let i = 0; i < 20; i += 1) reader.sample(image, FRAME_ASPECT, world);
   reader.calibrate();
   return reader;
 }
 
 /** What it reads once a photo has been held for a while, on a clock that goes on from one photo to the next. */
 function hold(reader, name, ms = 600, clock = (reader.clock ??= { now: 10_000 })) {
-  const image = seen(name);
+  const { image, world } = seenWhole(name);
   let degrees = 0;
   for (let elapsed = 0; elapsed < ms; elapsed += 33) {
     clock.now += 33;
-    degrees = reader.update(image, FRAME_ASPECT, clock.now);
+    degrees = reader.update(image, FRAME_ASPECT, clock.now, world);
   }
   return degrees;
 }
@@ -101,7 +103,7 @@ test('a swap of sides only counts once it has lasted a moment, and a hand back a
 
 test('without a hand check, or with too little seen in one, it starts from the palm at the usual width', () => {
   const reader = new TurnReader();
-  assert.deepEqual(reader.start, { sign: 1, wide: TURN.defaultWide, checked: false });
+  assert.deepEqual(reader.start, { sign: 1, wide: TURN.defaultWide, world: 0, checked: false });
   reader.sample(seen('back'), FRAME_ASPECT);
   reader.calibrate();
   assert.equal(reader.start.checked, false, 'one look is too little');
@@ -116,8 +118,8 @@ test('without a hand check, or with too little seen in one, it starts from the p
 test('how much water a turn gives: none at rest, a trickle near the target, and all of it there', () => {
   for (const target of Object.values(TURN_TARGETS)) {
     assert.equal(flowFor(0, target), 0);
-    assert.equal(flowFor(target * 0.69, target), 0);
-    const near = flowFor(target * 0.85, target);
+    assert.equal(flowFor(target * 0.84, target), 0, 'none at all until close');
+    const near = flowFor(target * 0.92, target);
     assert.ok(near > 0.3 && near < 0.7, `${near}`);
     assert.equal(flowFor(target, target), 1);
     assert.equal(flowFor(180, target), 1);
@@ -125,4 +127,67 @@ test('how much water a turn gives: none at rest, a trickle near the target, and 
   // Resting, a hand held as it started never pours, even at the smallest target.
   const reader = checkedWith('palm');
   assert.equal(flowFor(hold(reader, 'palm'), TURN_TARGETS.little), 0);
+});
+
+test('turning back always counts at once: from right over, the first look of the palm is the palm', () => {
+  const reader = checkedWith('palm');
+  const clock = { now: 10_000 };
+  assert.ok(hold(reader, 'back', 600, clock) > 170);
+  // One frame of the palm, and it's on its starting side again, coming down at once.
+  const palm = seenWhole('palm');
+  clock.now += 33;
+  reader.update(palm.image, FRAME_ASPECT, clock.now, palm.world);
+  assert.equal(reader.sign, reader.start.sign);
+  assert.ok(hold(reader, 'palm', 200, clock) < 20, 'and back down within a fifth of a second');
+  // Even a palm only just its starting way round counts as back, as one coming round from side-on looks: here the
+  // palm's points pressed across towards the wrist, with no 3D points to help.
+  assert.ok(hold(reader, 'back', 600, clock) > 170);
+  const palmImage = seen('palm');
+  const wrist = palmImage[0];
+  const faint = palmImage.map((point) => ({ ...point, x: wrist.x + (point.x - wrist.x) * 0.3 }));
+  const { side } = handFacing(faint, FRAME_ASPECT);
+  assert.ok(side >= TURN.backSure && side < TURN.sure, `fainter than it takes to go over: ${side}`);
+  let degrees = 180;
+  for (let elapsed = 0; elapsed < 300; elapsed += 33) {
+    clock.now += 33;
+    degrees = reader.update(faint, FRAME_ASPECT, clock.now, null);
+  }
+  assert.equal(reader.sign, reader.start.sign, 'back on its own side, not stuck over');
+  assert.ok(degrees < 90, `${degrees}`);
+});
+
+test('the tracker\'s 3D points facing the camera the way the hand started overrule a hand that only looks the other way round', () => {
+  const reader = checkedWith('palm');
+  assert.equal(reader.start.world, Math.sign(worldFacing(seenWhole('palm').world)));
+  // The back of the hand's picture, but with the palm's 3D points, as when the tracker muddles which way round it is.
+  const clock = { now: 10_000 };
+  const back = seenWhole('back');
+  const palm = seenWhole('palm');
+  let degrees = 0;
+  for (let elapsed = 0; elapsed < 600; elapsed += 33) {
+    clock.now += 33;
+    degrees = reader.update(back.image, FRAME_ASPECT, clock.now, palm.world);
+  }
+  assert.ok(degrees < 30, `${degrees}`);
+  // With its own 3D points, the back of the hand is right over.
+  assert.ok(hold(reader, 'back', 600, clock) > 170);
+  // The palm's 3D points face the camera clearly enough to count, and the back's don't, on every photo of them.
+  for (const name of ['palm', 'palm-80']) assert.ok(worldFacing(seenWhole(name).world) * reader.start.world >= TURN.worldSure, name);
+  for (const name of ['back', 'back-80', 'back-60', 'back-45']) assert.ok(worldFacing(seenWhole(name).world) * reader.start.world < 0, name);
+});
+
+test('the hand check\'s usual width is where turning starts, not its widest, so a hand held as usual reads as not turned', () => {
+  const reader = new TurnReader();
+  // A check that mostly saw the palm as it usually is, and now and then a little wider.
+  const usual = seenWhole('palm');
+  const usualWide = handFacing(usual.image, FRAME_ASPECT).wide;
+  for (let i = 0; i < 14; i += 1) reader.sample(usual.image, FRAME_ASPECT, usual.world);
+  // The first finger moved a little further from the little finger.
+  const away = Math.sign(usual.image[5].x - usual.image[17].x) * 0.02;
+  const wider = usual.image.map((point, index) => (index >= 5 && index <= 8 ? { ...point, x: point.x + away } : point));
+  assert.ok(handFacing(wider, FRAME_ASPECT).wide > usualWide + 0.05, 'wider');
+  for (let i = 0; i < 6; i += 1) reader.sample(wider, FRAME_ASPECT, usual.world);
+  reader.calibrate();
+  assert.ok(Math.abs(reader.start.wide - usualWide) < 1e-9, `${reader.start.wide} and ${usualWide}`);
+  assert.ok(hold(reader, 'palm') < 5);
 });

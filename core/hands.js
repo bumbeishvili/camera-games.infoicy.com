@@ -163,6 +163,8 @@ function readCandidate(raw, aspect) {
     inFrame,
     tooSmall: size < MIN_PALM_SIZE,
     score: raw.score,
+    // The tracker's 3D points, in metres round the middle of the hand, unmirrored: for how it's turned (core/turn.js).
+    world: raw.world,
     // On a webcam's unmirrored picture the tracker's label names the real hand. Checked
     // on a photo with known anatomy, despite what its documentation suggests.
     side: raw.label ? raw.label.toLowerCase() : null,
@@ -190,6 +192,7 @@ class HandSide {
     this.openness = 0;
     this.fingers = Object.fromEntries(FINGER_NAMES.map((name) => [name, 0]));
     this.image = null;
+    this.world = null;
     this.centre = null;
     this.lastSeen = null;
     this.lastUpdate = null;
@@ -219,6 +222,7 @@ class HandSide {
     this.openness = 0;
     for (const name of FINGER_NAMES) this.fingers[name] = 0;
     this.image = null;
+    this.world = null;
     this.centre = null;
     this.lastSeen = null;
     this.lastUpdate = null;
@@ -235,6 +239,7 @@ class HandSide {
     const candidate = Number.isFinite(reading?.openness) ? reading : null;
     if (!candidate) {
       this.image = null;
+      this.world = null;
       if (this.lastSeen === null || now - this.lastSeen > LOST_GRACE_MS) {
         this.status = 'missing';
         this.reason = 'missing';
@@ -247,6 +252,7 @@ class HandSide {
 
     this.lastSeen = now;
     this.image = candidate.image;
+    this.world = candidate.world ?? null;
     this.centre = candidate.centre;
     this.openness += (candidate.openness - this.openness) * blend;
     for (const name of FINGER_NAMES) {
@@ -307,6 +313,7 @@ class HandSide {
       checked: this.checked,
       strictness: this.strictness,
       image: this.image,
+      world: this.world,
       // How far past the target towards this hand's best. Drives the speed bonus. For a shape, how sure it is.
       excess: shape.fingers ? ramp(this.shapeLevel, SHAPE_MADE, 1) : ramp(this.openness, this.target, Math.max(this.best, this.target + 0.01)),
       // The open move's shape, by name (see core/shapes.js).

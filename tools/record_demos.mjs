@@ -583,10 +583,10 @@ const FILMS = {
           if (glove.visible && plant) {
             const aim = garden.aimFor(plant);
             const to = view.at(aim.x, aim.y);
-            const rose = view.roseAt(glove.x, glove.y, game.tip, game.spoutSide);
-            x += ((to.x - rose.x) / innerWidth) * 1280 * 0.1;
-            y += ((to.y - rose.y) / innerHeight) * 720 * 0.1;
-            pouring = Math.hypot(to.x - rose.x, to.y - rose.y) < innerHeight * (game.flow > 0 ? 0.1 : 0.05);
+            const falls = view.waterAt(glove.x, glove.y, game.spoutSide);
+            x += ((to.x - falls.x) / innerWidth) * 1280 * 0.1;
+            y += ((to.y - falls.y) / innerHeight) * 720 * 0.1;
+            pouring = Math.hypot(to.x - falls.x, to.y - falls.y) < innerHeight * (game.flow > 0 ? 0.1 : 0.05);
           }
           window.__camera.show({ left: null, right: pouring ? 'back' : 'palm', scale: 0.62, rightOffsetX: x, rightOffsetY: y });
           if (performance.now() - started > 15_000) {

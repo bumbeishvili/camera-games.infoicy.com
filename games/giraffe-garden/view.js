@@ -16,7 +16,15 @@ const GRAVITY = 2.2;
 // The can, in its own size from its handle, which the glove holds: its body below, its spout out to one side, and
 // the rose at the spout's end where the water comes out.
 const ROSE = { x: 1.02, y: 0.18 };
-export const TIP_MOST = 1.15; // How far the can tips, all the way, in radians.
+// How far the can tips, in radians, for a tip of 1, which is the hand turned right over. It tips as far as the
+// hand turns: at the turn that's wanted, which pours, it has tipped POURING of the way.
+export const TIP_MOST = 1.35;
+export const POURING = 0.78;
+// Giraffe, behind a bush by the fence on the side away from the child's hand: how far in from the edge, where his
+// feet are, and how tall his body is, as shares of the screen.
+export const GIRAFFE = { x: 0.085, feet: 0.765, tall: 0.29 };
+// The bush in front of him: its top, just over the fence's, and how wide it is, as shares of the screen's height.
+const BUSH = { top: 0.565, wide: 0.44 };
 const MARKS = { bee: '🐝', honey: '🍯', snail: '🐌', hedgehog: '🦔', bunny: '🐰', apple: '🍎', carrot: '🥕', egg: '🥚', star: '⭐' };
 const PETALS = {
   daisy: { count: 10, colour: '#ffffff', edge: '#e8e4f0', middle: '#ffcf3f', long: 1 },
@@ -140,6 +148,14 @@ export class GardenView {
     const rx = side * ROSE.x * size;
     const ry = ROSE.y * size;
     return { x: x + Math.cos(angle) * rx - Math.sin(angle) * ry, y: y + Math.sin(angle) * rx + Math.cos(angle) * ry };
+  }
+
+  /**
+   * Where the water from a can held at (x, y) falls from, for what it waters: always where the rose is once the can
+   * is tipped to pour, so the water lands in the same place under the hand, however much further the hand turns.
+   */
+  waterAt(x, y, side) {
+    return this.roseAt(x, y, POURING, side);
   }
 
   /* ---------- what happens ---------- */
@@ -353,6 +369,7 @@ export class GardenView {
     const { garden } = model;
     this.drawGiraffe(model);
     ctx.drawImage(front, 0, 0, w, h);
+    this.drawBush(model);
     if (garden) {
       if (garden.plants.some((plant) => plant.hanging)) this.drawArch(garden);
       if (garden.cloud && garden.cloud.state !== 'gone') this.drawCloud(garden.cloud);
@@ -376,17 +393,76 @@ export class GardenView {
     if (!art) return;
     const { ctx, width: w, height: h } = this;
     const onLeft = model.side !== 'left';
-    const x = w * (onLeft ? 0.08 : 0.92);
-    const tall = h * 0.3;
-    let frame = art.frames.down.stand;
+    let frame = art.frames.stand;
     if (this.time < this.cheerUntil) frame = art.frames.cheer;
-    else if (model.waving && !this.reducedMotion) frame = Math.floor(this.time * 1.4) % 2 ? art.frames.wave : art.frames.down.stand;
-    const scale = tall / art.tall;
+    else if (model.waving && !this.reducedMotion) frame = Math.floor(this.time * 1.4) % 2 ? art.frames.wave : art.frames.stand;
+    const scale = (h * GIRAFFE.tall) / art.tall;
     ctx.save();
-    ctx.translate(x, h * 0.8);
-    ctx.scale(scale, scale);
+    ctx.translate(w * (onLeft ? GIRAFFE.x : 1 - GIRAFFE.x), h * GIRAFFE.feet);
+    // His pictures turn towards the right of the screen, so on the right he's flipped, to turn to the garden.
+    ctx.scale(onLeft ? scale : -scale, scale);
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(frame, -art.foot.x, -art.foot.y);
     ctx.restore();
+  }
+
+  /** The bush Giraffe stands behind, in front of the fence, so he looks over it. */
+  drawBush(model) {
+    if (!this.giraffe) return;
+    const { ctx, width: w, height: h } = this;
+    const bush = this.bushFor();
+    const x = w * (model.side !== 'left' ? GIRAFFE.x : 1 - GIRAFFE.x);
+    ctx.drawImage(bush.canvas, x - bush.width / 2, h * BUSH.top, bush.width, bush.height);
+  }
+
+  /** The bush, drawn once for the window's size: round clumps of leaves, darker below, with a few flowers. */
+  bushFor() {
+    const { height: h, ratio } = this;
+    if (this.bush?.h === h && this.bush.ratio === ratio) return this.bush;
+    const width = h * BUSH.wide;
+    const height = h * (GROUND - 0.02 - BUSH.top);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(width * ratio);
+    canvas.height = Math.round(height * ratio);
+    const ctx = canvas.getContext('2d');
+    ctx.scale(ratio, ratio);
+    // Each clump is [across, down, size], as shares of the bush's width and height, and of its height.
+    const clumps = [
+      [0.5, 0.3, 0.3], [0.3, 0.36, 0.27], [0.7, 0.36, 0.27], [0.14, 0.56, 0.27], [0.86, 0.56, 0.27],
+      [0.38, 0.6, 0.32], [0.62, 0.6, 0.32], [0.06, 0.8, 0.24], [0.94, 0.8, 0.24], [0.26, 0.82, 0.3], [0.74, 0.82, 0.3], [0.5, 0.82, 0.32],
+    ];
+    const round = (colour, grow, lift = 0) => {
+      ctx.fillStyle = colour;
+      for (const [across, down, size] of clumps) {
+        ctx.beginPath();
+        ctx.arc(across * width, down * height - lift * size * height, size * height * grow, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
+    round('#2f6b3a', 1.06);
+    round('#4f9a45', 1);
+    round('#6cbb55', 0.72, 0.22);
+    round('#8fd36a', 0.34, 0.5);
+    // A few small flowers on it, the same every time.
+    const flowers = [[0.32, 0.22], [0.7, 0.3], [0.18, 0.5], [0.52, 0.48], [0.84, 0.52], [0.4, 0.72], [0.66, 0.7], [0.12, 0.76], [0.9, 0.78]];
+    const petal = h * 0.008;
+    for (const [index, [across, down]] of flowers.entries()) {
+      const cx = across * width;
+      const cy = down * height;
+      ctx.fillStyle = index % 2 ? '#ffffff' : '#ffd2e4';
+      for (let i = 0; i < 5; i += 1) {
+        const angle = (i / 5) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(cx + Math.cos(angle) * petal, cy + Math.sin(angle) * petal, petal * 0.9, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#ffcf3f';
+      ctx.beginPath();
+      ctx.arc(cx, cy, petal * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    this.bush = { canvas, width, height, h, ratio };
+    return this.bush;
   }
 
   /** A wooden arch for the hanging baskets, with a chain down to each. */

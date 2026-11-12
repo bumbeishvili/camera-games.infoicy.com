@@ -12,9 +12,9 @@ import { GameSession, SPOKEN } from '../../core/session.js';
 import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { flowFor, TURN_TARGETS, TurnReader } from '../../core/turn.js';
-import { renderWalkers } from '../giraffe-maze/walkers.js';
 import { BEE_SECONDS, Garden, gardenNewAt, NEWS, PARTY_SECONDS, PLANT_COUNTS, SIP, SPREADS, SPREAD_NAMES, STREAM } from './garden.js';
-import { GardenView } from './view.js';
+import { giraffePixels, renderGiraffe } from './giraffe.js';
+import { GardenView, GIRAFFE, POURING } from './view.js';
 
 const byId = (id) => document.getElementById(id);
 const FINISH = 'The garden is in bloom!';
@@ -27,7 +27,7 @@ const STORY_SECONDS = 6; // Giraffe's words stay up this long, or until the firs
 const TURN_HINT_AFTER = 4; // Seconds holding the can without pouring, before saying how.
 const CLOSED_PROMPT_AFTER = 2.5; // Seconds of a closed hand before asking for it to open.
 const RESTING_AFTER = 15; // And before saying that resting is fine.
-const TIP_RATE = 10; // How quickly the can's tip on the screen follows the hand's turn.
+const TIP_RATE = 16; // How quickly the can's tip on the screen follows the hand's turn.
 const LET_GO_SHARE = 0.4; // A can tipped this little, by a hand that has closed, is put down.
 const POUR_LEVEL = 0.75;
 const BIRDS_LEVEL = 0.12;
@@ -61,6 +61,15 @@ const LABEL_FOR = { bees: 'bee', snails: 'snail', sprinkler: 'sprinkler', sunflo
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 
+/**
+ * How far the can tips, from 0 to 1, for a hand turned this many degrees when a turn of target is wanted: POURING
+ * of the way at the target, and on from there as far as the hand turns, so it follows the whole turn.
+ */
+export function tipFor(degrees, target) {
+  if (degrees <= target) return (POURING * Math.max(0, degrees)) / target;
+  return Math.min(1, POURING + ((1 - POURING) * (degrees - target)) / Math.max(1, 180 - target));
+}
+
 class GardenGame {
   chimeOnOpen = false; // The hand opens and closes all the time here, so a chime would be noise.
 
@@ -74,7 +83,9 @@ class GardenGame {
       },
     });
     try {
-      this.view.giraffe = renderWalkers([characterWithId('giraffe')]).giraffe;
+      // Drawn as big as he'll be shown on this screen, even full screen, so he's sharp.
+      const tallest = Math.max(window.innerHeight, window.screen?.height || 0);
+      this.view.giraffe = renderGiraffe(characterWithId('giraffe'), giraffePixels(tallest * GIRAFFE.tall, this.view.ratio));
     } catch (error) {
       // Without his picture the garden still works: Giraffe just isn't by the fence.
       console.warn('Could not draw Giraffe:', error);
@@ -342,13 +353,13 @@ class GardenGame {
   holdAndPour(dt, snapshot) {
     const hand = snapshot[snapshot.side];
     const glove = this.gloves[snapshot.side];
-    const degrees = this.turn.update(hand.image, this.session.camera.aspect, performance.now());
+    const degrees = this.turn.update(hand.image, this.session.camera.aspect, performance.now(), hand.world);
     const turned = clamp(degrees / this.target, 0, 1);
     if (!glove.visible || hand.status === 'missing') this.latched = false;
     else if (snapshot.handOpen) this.latched = true;
     else if (turned < LET_GO_SHARE) this.latched = false;
     const holding = glove.visible && (snapshot.handOpen || this.latched);
-    this.tip += ((holding ? turned : 0) - this.tip) * (1 - Math.exp(-dt * TIP_RATE));
+    this.tip += ((holding ? tipFor(degrees, this.target) : 0) - this.tip) * (1 - Math.exp(-dt * TIP_RATE));
     this.flow = holding ? flowFor(degrees, this.target) : 0;
     this.holding = holding;
     this.degrees = degrees;
@@ -360,10 +371,14 @@ class GardenGame {
     this.holdAndPour(dt, snapshot);
     const glove = this.gloves[snapshot.side];
     const can = glove.visible ? { x: glove.x / view.width, y: glove.y / view.height } : null;
-    const rose = glove.visible ? view.roseAt(glove.x, glove.y, this.tip, this.spoutSide) : null;
-    const water = rose && this.flow > 0 ? { x: rose.x / view.width, y: rose.y / view.height, flow: this.flow } : null;
+    // The water lands under the can as it is when pouring, wherever the can has tipped to: it falls from the rose.
+    const falls = glove.visible ? view.waterAt(glove.x, glove.y, this.spoutSide) : null;
+    const water = falls && this.flow > 0 ? { x: falls.x / view.width, y: falls.y / view.height, flow: this.flow } : null;
     garden.update(dt, { can, water });
-    if (water && garden.splash) view.pour(rose.x, rose.y, garden.splash.y * view.height, this.flow, garden.streamWidth(), dt, garden.splash.to * view.width);
+    if (water && garden.splash) {
+      const rose = view.roseAt(glove.x, glove.y, this.tip, this.spoutSide);
+      view.pour(rose.x, rose.y, garden.splash.y * view.height, this.flow, garden.streamWidth(), dt, garden.splash.to * view.width);
+    }
     if (garden.cloud?.state === 'raining') {
       const under = garden.landing(garden.cloud.x, garden.cloud.y + 0.05, 0.07);
       view.rain(garden.cloud.x, garden.cloud.y + 0.04, Math.min(...under.map((hit) => hit.y)), 0.06, dt);
@@ -395,7 +410,7 @@ class GardenGame {
       document.body.dataset.film = 'off';
     }
     // In the hand check, how the hand is held is where turning starts from.
-    if (screen === 'check') this.turn.sample(snapshot[snapshot.side].image, this.session.camera.aspect);
+    if (screen === 'check') this.turn.sample(snapshot[snapshot.side].image, this.session.camera.aspect, snapshot[snapshot.side].world);
     // During the countdown the glove and the can come out, so the child can find their hand.
     if (screen === 'countdown') {
       this.followHand(dt, snapshot);
@@ -499,8 +514,9 @@ class GardenGame {
       }
       if (seen && at.f > 0) {
         const rose = view.roseAt(each.x, each.y, at.tip, each.side);
-        const hits = garden.landing(rose.x / view.width, rose.y / view.height, STREAM);
-        view.pour(rose.x, rose.y, Math.min(...hits.map((hit) => hit.y)) * view.height, at.f, STREAM, dt, (hits[0].thing?.x ?? rose.x / view.width) * view.width);
+        const falls = view.waterAt(each.x, each.y, each.side);
+        const hits = garden.landing(falls.x / view.width, falls.y / view.height, STREAM);
+        view.pour(rose.x, rose.y, Math.min(...hits.map((hit) => hit.y)) * view.height, at.f, STREAM, dt, (hits[0].thing?.x ?? falls.x / view.width) * view.width);
       }
     }
   }

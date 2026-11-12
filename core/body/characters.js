@@ -336,6 +336,8 @@ const EXPRESSIONS = {
   // Brow angle, how open the eyes are, and which mouth.
   ready: { brow: -0.28, browY: 0, eye: 1, mouth: 'smile' },
   happy: { brow: 0.22, browY: 0.02, eye: 1, mouth: 'open' },
+  // Friendly, for a character just watching, as Giraffe does over his garden's bush: brows up and a smile.
+  glad: { brow: 0.16, browY: 0.015, eye: 1, mouth: 'smile' },
   strike: { brow: -0.5, browY: -0.01, eye: 1, mouth: 'open' },
   hurt: { brow: 0.42, browY: 0.02, eye: 0.16, mouth: 'wobble' },
   dizzy: { brow: 0.3, browY: 0.03, eye: 0.7, mouth: 'wobble' },
