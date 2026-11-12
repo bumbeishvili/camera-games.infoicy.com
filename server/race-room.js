@@ -1,6 +1,6 @@
 // Playing with friends, in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail, Giraffe's
-// Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher and the Lighthouse Keeper: who's in a room, and
-// what they pass to each other.
+// Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher, the Lighthouse Keeper and Giraffe's Garden: who's
+// in a room, and what they pass to each other.
 // The same rules run on Cloudflare (server/worker.js) and on this computer for the tests
 // (tools/race-server.mjs). Each game has rooms of its own. Nothing here is kept once everyone has gone, and no
 // camera picture ever comes here: only where each car or plane is, the moves a fighter makes and how it stands,
@@ -12,7 +12,8 @@
 //                                      many balloons a game of Balloon Pop has, and mode its maths challenge.
 //                                      In Giraffe's Maze, length is how many mazes, and mode their size and seed,
 //                                      and at the Smoothie Stand, how many customers, and how fast the fruit flies.
-//                                      In The Lighthouse Keeper, length is how many ships there are to bring home.
+//                                      In The Lighthouse Keeper, length is how many ships there are to bring home,
+//                                      and in Giraffe's Garden how many plants there are to grow.
 //                                      racing says they're in the middle of one, for someone back mid-race
 //   ready  {}                              they're waiting at the start
 //   go     {}                              the host starts with whoever is ready
@@ -26,7 +27,8 @@
 //   world  { ms, b, q, qa }                the host's balloons in Balloon Pop, which everyone plays with:
 //                                      each [id, x, y, r, colour, number, flags], and the sum being asked
 //   claim  { k }                           this player's hand got to balloon k: the first to says so has it.
-//                                      In Mighty Moves, k is a round this player's fighter has just won
+//                                      In Mighty Moves, k is a round this player's fighter has just won, and
+//                                      in Giraffe's Garden a sip of water for a plant: plant * 100 + which sip
 //   hit    { r, m, d, tot, sm, sg, sd }    Mighty Moves: their fighter makes move m in round r, doing d, and
 //                                      tot in all this round. sm is 1 for a small hit and sg for their
 //                                      fighter's own finishing move, and sd the side, l or r, if it has one.
@@ -81,6 +83,11 @@
 //                                      way it faces and its turret points, how fast it's going, how many shots it
 //                                      has fired, so the friend's game can show them coming, whether their child
 //                                      is resting, shown with little z's over it, and whether their hand is open
+//   can    { ms, u, y, v, tip, f, p }      where their watering can is in Giraffe's Garden: u how far along the row of
+//                                      plants, from the first to the last, so it's over the same plant on every
+//                                      screen however far apart each one's are, y how far down the screen, whether
+//                                      it can be seen, how far it's tipped and how much it's pouring, from 0 to 1,
+//                                      and p, its glove's 21 points, as in hand
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
@@ -88,7 +95,7 @@
 //   room   { you, members: [{ id, name, driver, ready, racing, host }] }   whenever that changes
 //   go     { level, length, laps, mode, racers, seed }   the countdown starts now, on the host's course (laps is
 //                                      length). seed is the same for everyone, for a game laid out by chance
-//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker, stand, ship, catcher, tank { from, ... } and done { from, ms, n, w }
+//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker, stand, ship, catcher, tank, can { from, ... } and done { from, ms, n, w }
 //                                      passed on from the others: ball only from the host, shot only to the host,
 //                                      and stand only from someone playing
 //   claimed { k, by }                      balloon k, or round k, went to player by, sent to everyone, them too
@@ -405,6 +412,24 @@ export function cleanTank(message) {
   };
 }
 
+/**
+ * Only what a watering can in Giraffe's Garden should hold, rounded: where it is, how far it's tipped and how much
+ * it's pouring, with its glove's 21 points while it can be seen, or none.
+ */
+export function cleanCan(message) {
+  const points = Array.isArray(message.p) && message.p.length === 42 ? message.p.map((value) => number(value, -4, 4, 2)) : [];
+  const seen = message.v ? 1 : 0;
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    u: number(message.u, -0.5, 1.5, 3),
+    y: number(message.y, -0.5, 1.5, 3),
+    v: seen,
+    tip: seen ? number(message.tip, 0, 1, 2) : 0,
+    f: seen ? number(message.f, 0, 1, 2) : 0,
+    p: seen ? points : [],
+  };
+}
+
 /** Only what a car message should hold, rounded, so nothing else can be passed on. */
 export function cleanCar(message) {
   return {
@@ -596,8 +621,9 @@ export class RaceRoom {
       case 'walker':
       case 'ship':
       case 'catcher':
-      case 'tank': {
-        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand, pose: cleanPose, racket: cleanRacket, runner: cleanRunner, walker: cleanWalker, ship: cleanShip, catcher: cleanCatcher, tank: cleanTank }[message.t](message);
+      case 'tank':
+      case 'can': {
+        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand, pose: cleanPose, racket: cleanRacket, runner: cleanRunner, walker: cleanWalker, ship: cleanShip, catcher: cleanCatcher, tank: cleanTank, can: cleanCan }[message.t](message);
         for (const other of others) other.send({ t: message.t, from: meta.id, ...moved });
         break;
       }

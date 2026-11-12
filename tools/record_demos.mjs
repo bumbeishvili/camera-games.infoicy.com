@@ -559,6 +559,48 @@ const FILMS = {
       return { found: stats.found, fruit: stats.fruit, prizes: stats.prizes, maze: index };
     }),
   },
+  'giraffe-garden': {
+    settings: { plants: 6, levels: { 'giraffe-garden': 2 } },
+    css: '.camera-frame { --camera-small: 22vw !important; } .garden-film { display: none !important; }',
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: null, right: 'palm', scale: 0.62 }));
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await wait(page, 800);
+    },
+    async play(page) {
+      // The palm holds the can over a thirsty plant, and the hand turns over to pour, its back to the camera, as a
+      // child would, one plant after another, and the bees come to each new flower.
+      await page.evaluate(() => new Promise((done) => {
+        let x = 0;
+        let y = 0;
+        const started = performance.now();
+        const timer = setInterval(() => {
+          const { game, garden, view, gloves } = window.__game;
+          const glove = gloves.right;
+          const plant = garden.nextPlant(glove.visible ? glove.x / innerWidth : 0.5);
+          let pouring = false;
+          if (glove.visible && plant) {
+            const aim = garden.aimFor(plant);
+            const to = view.at(aim.x, aim.y);
+            const rose = view.roseAt(glove.x, glove.y, game.tip, game.spoutSide);
+            x += ((to.x - rose.x) / innerWidth) * 1280 * 0.1;
+            y += ((to.y - rose.y) / innerHeight) * 720 * 0.1;
+            pouring = Math.hypot(to.x - rose.x, to.y - rose.y) < innerHeight * (game.flow > 0 ? 0.1 : 0.05);
+          }
+          window.__camera.show({ left: null, right: pouring ? 'back' : 'palm', scale: 0.62, rightOffsetX: x, rightOffsetY: y });
+          if (performance.now() - started > 15_000) {
+            clearInterval(timer);
+            done();
+          }
+        }, 33);
+      }));
+    },
+    report: (page) => page.evaluate(() => {
+      const { stats } = window.__game.garden;
+      return { flowers: stats.flowers, pours: stats.pours, prizes: stats.prizes };
+    }),
+  },
   'balloon-pop': {
     settings: { reach: 'none', pace: 'medium' },
     async ready(page) {

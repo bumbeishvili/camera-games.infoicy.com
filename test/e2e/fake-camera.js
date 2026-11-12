@@ -10,6 +10,8 @@
   const SLOT_X = { left: 330, right: 950 };
   // Which real hand each photo shows, which the tracker's label confirms. Flipped, a left
   // hand becomes a right hand, so a photo of either can stand in for both.
+  // open is the back of a left hand, so flipped for the right hand it arrives as the back of a right hand. palm and
+  // back are the same right hand from the front and from behind, for turning a hand over.
   const PHOTO_HAND = {
     open: 'left',
     relaxed: 'left',
@@ -17,6 +19,8 @@
     pointing: 'right',
     victory: 'right',
     'thumbs-up': 'right',
+    palm: 'right',
+    back: 'right',
   };
 
   const photos = {};
@@ -38,6 +42,7 @@
     rotate: 0, // Degrees, each hand turned the same way as seen by the child.
     brightness: 1, // Below 1 is a dimmer room.
     blur: 0, // In pixels, for a moving hand or a poor camera.
+    squeeze: 1, // Each hand's photo narrower across, as a hand turned part of the way to side-on looks.
   };
   const scene = { left: 'open', right: 'open', ...DEFAULTS };
 
@@ -107,6 +112,7 @@
     ctx.translate(centreX, centreY);
     ctx.rotate((scene.rotate * Math.PI) / 180);
     if (flip) ctx.scale(-1, 1);
+    ctx.scale(scene.squeeze, 1);
     ctx.drawImage(image, -width / 2, -height / 2, width, height);
     ctx.restore();
   }
@@ -152,7 +158,7 @@
   };
 
   // Load the photos up front so a scene change is instant.
-  ['open', 'fist', 'pointing', 'victory', 'thumbs-up', 'relaxed'].forEach(loadPhoto);
+  ['open', 'fist', 'pointing', 'victory', 'thumbs-up', 'relaxed', 'palm', 'back'].forEach(loadPhoto);
 
   Object.defineProperty(navigator, 'mediaDevices', {
     configurable: true,

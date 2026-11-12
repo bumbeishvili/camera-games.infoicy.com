@@ -1,6 +1,6 @@
 // Playing with friends, each on their own computer, in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves,
-// Bounce Back, Leap Trail, Giraffe's Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher and the
-// Lighthouse Keeper. One player makes a race, a flight, a game, a fight, a run or a battle and sends the link or
+// Bounce Back, Leap Trail, Giraffe's Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher, the
+// Lighthouse Keeper and Giraffe's Garden. One player makes a race, a flight, a game, a fight, a run or a battle and sends the link or
 // its code, and the others open it.
 // Their games talk through a small server (server/race-room.js), which only passes on what each game needs, such
 // as where each car or plane is, the name typed and who drives or flies. The camera picture never leaves the
@@ -334,7 +334,7 @@ export class FriendsRoom {
     } else if (message.t === 'go') {
       this.readyToGo = false;
       this.events.onGo?.(message);
-    } else if (['car', 'plane', 'score', 'hand', 'world', 'claimed', 'hit', 'pose', 'racket', 'ball', 'shot', 'runner', 'wiped', 'stand', 'ship', 'catcher', 'tank', 'walker'].includes(message.t)) {
+    } else if (['car', 'plane', 'score', 'hand', 'world', 'claimed', 'hit', 'pose', 'racket', 'ball', 'shot', 'runner', 'wiped', 'stand', 'ship', 'catcher', 'tank', 'walker', 'can'].includes(message.t)) {
       this.events.onMove?.(message.from, message);
     } else if (message.t === 'done') {
       this.events.onDone?.(message.from, message);

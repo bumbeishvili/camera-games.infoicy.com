@@ -1,0 +1,135 @@
+/* Giraffe's Garden: the garden fills the screen, under a band along the top with the flowers grown and the prizes
+   on the left, Giraffe's words in the middle, and the hand meter and the mirror on the right. */
+:root {
+  --meter-size: clamp(66px, 7vw, 92px);
+  --camera-small: clamp(140px, 15vw, 230px);
+}
+
+/* The mirror, in the top right corner, by the gear. */
+body:not([data-screen='check']) .camera-frame { left: auto; right: 70px; transform: none; }
+
+/* The hand meter, beside the mirror. */
+.hands-bar {
+  top: 12px;
+  bottom: auto;
+  left: auto;
+  right: calc(70px + var(--camera-small) + 12px);
+  transform: none;
+}
+body[data-screen='check'] .hands-bar { top: auto; bottom: 10px; left: 50%; right: auto; transform: translateX(-50%); }
+.meter { padding: 6px 6px 4px; border-radius: 20px; }
+.meter-caption { font-size: clamp(11px, 1vw, 13px); }
+
+/* ---------- the flowers grown, and the prizes ---------- */
+.garden-hud {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  top: 12px;
+  left: 12px;
+  align-items: center;
+  gap: 8px;
+}
+body[data-screen='playing'] .garden-hud,
+body[data-screen='countdown'] .garden-hud { display: flex; }
+.garden-hud .chip { min-width: clamp(64px, 7vw, 96px); padding: 4px 10px 6px; }
+.garden-hud .chip[hidden] { display: none; }
+.chip-flowers .chip-label::before { content: '🌼 '; }
+.chip-prizes .chip-label::before { content: '⭐ '; }
+
+/* ---------- Giraffe's words, in the middle of the band ---------- */
+.story {
+  top: 12px;
+  left: 50%;
+  transform: translateX(-62%);
+  width: min(30vw, 360px);
+}
+body[data-screen='playing']:has(.story.is-visible) .prompt { left: 50%; max-width: calc(100vw - 32px); }
+
+/* ---------- a little film: an open hand holding the can turns over, the can tips, and the flower grows ---------- */
+.film-soil { fill: #9a6a43; }
+.film-stem { fill: none; stroke: #4f9e3a; stroke-width: 4; stroke-linecap: round; }
+.film-leaf { fill: #4f9e3a; }
+.film-bloom { fill: #ff8ac2; stroke: #d9578f; stroke-width: 2; }
+.film-middle { fill: #ffd23f; }
+.film-drops circle { fill: #60b0ff; }
+.film-spout { fill: none; stroke: #2f8f86; stroke-width: 7; stroke-linecap: round; }
+.film-body { fill: #4bb3a8; stroke: var(--ink); stroke-width: 3; }
+.film-handle { fill: none; stroke: var(--ink); stroke-width: 5; stroke-linecap: round; }
+.film-hand rect { fill: #3ddc84; stroke: var(--ink); stroke-width: 3; }
+.film-finger { fill: none; stroke: #3ddc84; stroke-width: 6; stroke-linecap: round; }
+
+/* The can tips about its handle, held by the hand, and back. */
+.film-can { transform-origin: 77px 40px; animation: film-can 6s ease-in-out infinite; }
+/* The hand turns over, so it shows its back, and then turns back. */
+.film-hand { transform: translate(77px, 40px); animation: film-hand 6s ease-in-out infinite; }
+.film-drops { animation: film-drops 6s linear infinite; opacity: 0; }
+.film-flower { transform-origin: 150px 138px; animation: film-flower 6s ease-in-out infinite; }
+.film-bloom, .film-middle { transform-origin: 150px 92px; animation: film-bloom 6s ease-in-out infinite; }
+
+@keyframes film-can {
+  0%, 15% { transform: rotate(0deg); }
+  35%, 70% { transform: rotate(38deg); }
+  85%, 100% { transform: rotate(0deg); }
+}
+
+@keyframes film-hand {
+  0%, 15% { transform: translate(77px, 40px) scaleX(1); }
+  35%, 70% { transform: translate(77px, 40px) scaleX(-1); }
+  85%, 100% { transform: translate(77px, 40px) scaleX(1); }
+}
+
+@keyframes film-drops {
+  0%, 33% { opacity: 0; transform: translateY(-8px); }
+  36% { opacity: 1; transform: translateY(-8px); }
+  50% { opacity: 1; transform: translateY(6px); }
+  51% { opacity: 1; transform: translateY(-8px); }
+  66% { opacity: 1; transform: translateY(6px); }
+  70%, 100% { opacity: 0; transform: translateY(6px); }
+}
+
+@keyframes film-flower {
+  0%, 35% { transform: scaleY(0.45); }
+  70%, 92% { transform: scaleY(1); }
+  100% { transform: scaleY(0.45); }
+}
+
+@keyframes film-bloom {
+  0%, 55% { transform: scale(0.3); }
+  72%, 92% { transform: scale(1); }
+  100% { transform: scale(0.3); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .film-can, .film-hand, .film-drops, .film-flower, .film-bloom, .film-middle { animation-duration: 9s; }
+}
+
+/* The film goes up under the flowers grown, out of the way of the garden's plants. */
+.garden-film { top: 92px; bottom: auto; width: min(18vw, 28vh); }
+
+/* With friends: how much of the watering each one has done, the most first, along the top after the flowers. */
+.garden-scores {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 40vw;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.garden-scores[hidden] { display: none; }
+.garden-scores li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px 3px 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 4px 14px rgba(18, 48, 77, 0.18);
+  font-size: clamp(14px, 1.4vw, 17px);
+  font-weight: 700;
+}
+.garden-scores li.is-you { background: var(--sun); }
+.garden-scores img { width: 30px; height: 30px; border-radius: 50%; background: var(--surface-soft); }
+.garden-score-name { max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.garden-score { margin-left: 4px; font-variant-numeric: tabular-nums; }

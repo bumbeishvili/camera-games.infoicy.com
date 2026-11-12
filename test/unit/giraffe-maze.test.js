@@ -639,7 +639,7 @@ test('the game\'s rooms are known to both servers', () => {
     assert.match(source, /const GAMES = \[[^\]]*'giraffe-maze'/, file);
   }
   const friends = readFileSync(new URL('../../core/friends.js', import.meta.url), 'utf8');
-  assert.match(friends, /'walker'\]\.includes\(message\.t\)/, 'a friend\'s walker is passed on to the game');
+  assert.match(friends, /'walker'[^\]]*\]\.includes\(message\.t\)/, 'a friend\'s walker is passed on to the game');
 });
 
 test('every line the game says has its English and Georgian voice files', () => {

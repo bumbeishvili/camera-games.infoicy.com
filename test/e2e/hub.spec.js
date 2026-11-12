@@ -16,6 +16,7 @@ const GAMES = [
   { name: 'The Lighthouse Keeper', folder: 'lighthouse', start: 'Climb the lighthouse' },
   { name: 'Bounce Back', folder: 'bounce-back', start: 'Let’s play!' },
   { name: 'Giraffe’s Maze', folder: 'giraffe-maze', start: 'Into the maze!' },
+  { name: 'Giraffe’s Garden', folder: 'giraffe-garden', start: 'Water the garden' },
 ];
 
 test('the hub offers every game, and each one opens and comes back', async ({ page }) => {
@@ -201,6 +202,7 @@ test('typing in the search finds games by their name, what they\'re about and wh
     ['pirates', ['Sky Wings', 'Cannon Bay']],
     ['fruit', ['Giraffe’s Long Walk Home', 'Giraffe’s Smoothie Stand']],
     ['lighthouse', ['The Lighthouse Keeper']],
+    ['flowers', ['Giraffe’s Garden']],
     // Capitals, accents and apostrophes don't matter, and every word has to fit.
     ['TÉNNIS', ['Bounce Back']],
     ['giraffe\'s smoothie', ['Giraffe’s Smoothie Stand']],

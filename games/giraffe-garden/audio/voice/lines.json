@@ -1,0 +1,6 @@
+[
+  {"id": "garden-intro", "text": "My garden is so thirsty! Can you water it?", "ka": "ჩემს ბაღს ძალიან სწყურია! მორწყავ?", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "turn-to-pour", "text": "Turn your hand over to pour!", "ka": "ხელი გადააბრუნე და მორწყე!"},
+  {"id": "open-to-hold", "text": "Open your hand to hold the can!", "ka": "გაშალე ხელი, რომ სარწყავი დაიჭირო!"},
+  {"id": "in-bloom", "text": "The garden is in bloom!", "ka": "ბაღი აყვავდა!"}
+]

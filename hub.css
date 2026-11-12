@@ -552,6 +552,20 @@ body.hub {
 .art-maze-apple { fill: #e8433f; stroke: var(--ink); stroke-width: 2; }
 .art-maze-spot { fill: #b4682c; }
 .art-maze-eye { fill: var(--ink); }
+.game-art-garden { background: linear-gradient(#9fd8ff, #e6f6ff 70%); }
+.art-garden-fence { fill: #fff8ea; stroke: #d8c7a6; stroke-width: 2; }
+.art-garden-soil { fill: #9a6a43; }
+.art-garden-dry { fill: none; stroke: #bea53c; stroke-width: 4; stroke-linecap: round; }
+.art-garden-dry-leaf { fill: #bea53c; }
+.art-garden-stem { fill: none; stroke: #3f9e3a; stroke-width: 4; stroke-linecap: round; }
+.art-garden-leaf, .art-garden-bud { fill: #3f9e3a; }
+.art-garden-petal { fill: #ff8ac2; stroke: #d9578f; stroke-width: 2; }
+.art-garden-middle { fill: #ffd23f; }
+.art-garden-drop { fill: #60b0ff; }
+.art-garden-spout-ink { fill: none; stroke: var(--ink); stroke-width: 10; stroke-linecap: round; }
+.art-garden-spout { fill: none; stroke: #4bb3a8; stroke-width: 5; stroke-linecap: round; }
+.art-garden-can { fill: #4bb3a8; stroke: var(--ink); stroke-width: 3; }
+.art-garden-handle { fill: none; stroke: var(--ink); stroke-width: 5; stroke-linecap: round; }
 .art-paint-pink { fill: #ff7eb6; stroke: var(--ink); stroke-width: 2; }
 .art-paint-blue { fill: #3fb7ff; stroke: var(--ink); stroke-width: 2; }
 .art-paint-yellow { fill: #ffd23f; stroke: var(--ink); stroke-width: 2; }

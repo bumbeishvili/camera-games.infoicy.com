@@ -1,6 +1,6 @@
 # Camera Games: full details
 
-Camera games for children with hemiplegia, played by moving in front of a webcam. Opening the hand is what they practise. The right hand is the default, and the left can be chosen instead under the gear icon.
+Camera games for children with hemiplegia, played by moving in front of a webcam. Opening the hand is what they practise, and in Giraffe's Garden, turning it over. The right hand is the default, and the left can be chosen instead under the gear icon.
 
 They're played at <https://hemi.infoicy.com> in Google Chrome, on a computer with a webcam, or from this folder (see [Run it](#run-it)). The camera picture never leaves the computer, and once loaded they work offline, apart from playing with friends. Each game has ten levels, and a grown-up can set how open the hand has to be, how far to reach and how big a move has to be.
 
@@ -18,6 +18,7 @@ They're played at <https://hemi.infoicy.com> in Google Chrome, on a computer wit
 - **The Lighthouse Keeper:** mud from a storm has covered the windows and ships are lost at sea. Wiping a window clean with an open hand lets the light out, and brings a ship home. On their own or with friends, all wiping the same windows. See [below](#playing-the-lighthouse-keeper-with-friends).
 - **Bounce Back:** tennis with a big, slow, floaty ball, against the computer or a friend. The open hand is the racket, and only an open hand sends the ball back over the net. Resting never loses a point. See [below](#bounce-back).
 - **Giraffe's Maze:** Giraffe's friends are lost in a garden maze. The child's open hand leads him along the paths to each of them, and each friend found follows him into the next maze. A closed hand, or one that can't be seen, just leaves him waiting. On their own, or racing friends out of the same mazes. See [below](#giraffes-maze).
+- **Giraffe's Garden:** Giraffe's garden has dried up in the sun. The open hand holds his watering can, and turning the hand over tips it, so the water pours onto the plant below, which grows and flowers. Turning the hand over is turning the forearm, the hardest movement of all with hemiplegia. On their own or with friends, all watering the same garden. See [below](#giraffes-garden).
 
 Every game's grown-ups' panel, under the gear icon, has a way back to all the games. On the page for choosing a game, each game's card plays a film of it being played, with just its name, and pointing at a card shows a line about the game. With reduced motion turned on in the computer's settings, a film only plays while its card is pointed at.
 
@@ -41,6 +42,7 @@ index.html, hub.css, hub.js    the page for choosing a game, with its search and
 demos/                  the films of each game on that page, made with tools/record_demos.mjs
 core/                   what every game shares
   hands.js              decides whether a hand is open
+  turn.js               how far a hand is turned over, from the palm round to its back
   shapes.js, shapes-ui.js    other hand shapes a grown-up can choose for a game's moves, like pointing
   session.js            runs a game: title, hand check, countdown, play, finish
   shell.js, hud.js      the shared screens, hand meters, prompts and grown-ups' panel
@@ -74,8 +76,9 @@ games/
   lighthouse/           its storm and ships, the lamp room and its sounds
   bounce-back/          its rules and levels, the court, the players' pictures, and the ball on a friend's computer
   giraffe-maze/         its mazes and how the character walks, the game as it's played, the maze drawn, the characters' pictures and its voices
+  giraffe-garden/       its garden and levels, the garden drawn, its sounds and its voices
 tools/                  the local server, the local race server, and what prepares voices and sounds
-server/                 the server for playing with friends in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail, Giraffe's Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher and the Lighthouse Keeper: its rules, and the Cloudflare Worker that runs them
+server/                 the server for playing with friends in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail, Giraffe's Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher, the Lighthouse Keeper and Giraffe's Garden: its rules, and the Cloudflare Worker that runs them
 vendor/                 libraries, the tracking model and fonts
 test/                   unit tests, and Playwright tests for the hub and each game
 ```
@@ -704,6 +707,50 @@ Up to 4 children can race out of the same mazes, each on their own computer with
 
 Only the name typed, the character from the other games, the host's level, size, number of mazes and seed, where the character and the glove are in the maze, and each one's time go to friends. Never anything from the camera.
 
+## Giraffe's Garden
+
+Giraffe's garden has dried up in the sun, and the child waters it back to life with his watering can. It's the game about turning the hand over: with the hand held up, palm to the camera, turning it round until the back of the hand shows is turning the forearm, which with hemiplegia is the hardest movement of all, especially turning the palm up. It uses the same hand tracking as Balloon Pop, so it starts with the hand check and can be played sitting close to the camera.
+
+**How it's played.** The open hand takes hold of the can, and the glove holds its handle. Turning the hand over tips the can, as far as the hand is turned, and once it's turned far enough the water pours from the can's rose onto whatever is below: a plant there drinks it and grows, from a dry yellow shoot to a green one with a bud, and opens its flower once it has had enough, with a sparkle and a cheer. A little short of far enough, it only trickles. Giraffe watches over the fence, and cheers for each flower. Every plant in flower ends the game, and the bees come to the party. The finish card has the flowers grown, how many times the hand turned over to pour, and any prizes. Nobody can lose.
+
+**How the turn is measured** ([core/turn.js](core/turn.js)). It's measured from how the hand starts, as it's held in the hand check, so a hand that rests the other way round still has to turn to play. Two things in the tracker's points say how far it has gone: how wide the knuckles look for the length of the palm, which narrows as the hand turns side-on and widens again as the other side comes round, and which side of the hand faces the camera, from which way round the first and little fingers' knuckles are from the wrist, which swaps as it passes side-on. The tracker names the hand rightly from either side: on a photo of the back of a right hand it said right, 98% sure. A hand nearly side-on can look the wrong way round, as a palm squeezed to 30% of its width did, so a swap of sides only counts once it's clear and has lasted an eighth of a second. On real photos of one hand, its palm squeezed to 80% of its width read as 35°, to 60% as 50°, and the back of the hand at 45% of its width as 120°.
+
+- **How far to turn the hand over to pour,** as a grown-up chooses: a little (35°, the default), more (50°), or right over (110°, the back of the hand to the camera). The water starts as a trickle at seven tenths of that.
+- **How far apart the plants are,** which is how far there is to reach: close together, medium (the default), or far apart.
+- **Plants to grow:** 4, 6 (the default) or 8.
+- **Resting is never punished.** Nothing in the garden has a time limit, and nothing dries out or goes away: everything is still there when the hand comes back. A closed hand, or one that can't be seen, puts the can down. After a couple of seconds it asks for the hand to open, after 15 says resting is fine, and holding the can for a few seconds without pouring, it says to turn the hand over. A turned hand keeps hold of the can even if it reads a little less open, as a turned hand can.
+- **The water lands where it falls,** on what's highest under the rose, a little wider than the plant looks, for a hand that can't aim closely, and the drops fall onto what they water.
+- **Nothing flashes.** Plants grow and open slowly, water falls as small drops, a sparkle is a few small stars, and Giraffe and the creatures move gently. With reduced motion, nothing sways or bobs. Measured through pouring, growing and a flower opening, at level 1 and at level 10 with everything about, brightness changed by at most 1.1 out of 255 from one frame to the next, and nothing flickered. With a hand turning over and back several times a second, quicker than any child, 1.6% of the picture did, all of it the glove and the can copying the hand.
+
+**Levels** ([games/giraffe-garden/garden.js](games/giraffe-garden/garden.js)). Each level needs a little more water for each flower, from 1.6 seconds of pouring at level 1 to 2.4 at level 10, so each turn is held a little longer. On top of that, every level from 2 brings something new, which stays for the levels after it:
+
+| Level | What's new |
+|---|---|
+| 2 | **Bees and honey.** A bee flies in to each new flower, and away up to the prizes with its honey. |
+| 3 | **A hungry snail.** A snail munches one plant, which won't grow until the water sends it sliding off, happily. Two snails from level 9. |
+| 4 | **The sprinkler.** The can touching it, up on its post, takes it, and for 8 seconds of pouring the can waters a wide patch at once. It only runs down while the can pours. |
+| 5 | **A sunflower,** which grows twice as tall and needs twice the water. A tall plant catches the water from beside it too. |
+| 6 | **A thirsty hedgehog.** Filling its bowl, it drinks and leaves an apple. |
+| 7 | **A peekaboo bunny,** which pops up from its hole now and then. A splash makes it giggle and give a carrot, three at most. |
+| 8 | **Hanging baskets.** Two plants hang up high on an arch, and only a can reached up above them waters them. |
+| 9 | **A rain cloud.** The can touching it sets it raining across the garden for 7 seconds, with the hand at rest. |
+| 10 | **The magic bean,** which needs three flowers' water and grows up into the sky, with a golden egg at the top. |
+
+The newest things take the plants nearest the middle, so they're in easy reach. The first time each new thing comes along in a game, it has a small label beside it for a couple of seconds, in the language the voice speaks, and nothing new is said out loud. Missing any of it costs nothing, prizes fly up to their tally at the top, and the turn, how far apart the plants are and how many stay as a grown-up set them. The numbers are in `gardenLevel`, `EXTRAS` and `NEWS` in `garden.js`.
+
+### Watering Giraffe's Garden with friends
+
+Up to 4 children can water one garden together, each on their own computer with their own camera.
+
+- **Making and joining:** under **Play with friends** on the title card, a grown-up presses **Make a game** and tells their friends the 3-letter code, or sends the link. A friend types the code, or opens the link, and is in. A fifth is told the game already has four players.
+- **Starting:** everyone presses **Water the garden**. After the hand check, each waits until everyone is ready, and then all count down together. Whoever made the game can press **Start now**, and anyone can play on their own instead.
+- **One garden for everyone:** the host's number of plants, at the host's level, the plain garden without the levels' new things. Each child keeps their own hand, turn and how far apart their plants are, and each friend's can is over the same plant on every screen, however far apart each one's plants are.
+- **Everyone's can:** each child sees everyone else's can, grey and see-through, with their name over it and their glove holding it, tipping as they turn and pouring as they pour, where it really is, a moment ago.
+- **Watering together:** the water goes to a plant a sip at a time, a fifth of a second of pouring each. Each game claims the sips its child's can pours, and the server says whose each one is, the first to claim it having it. A plant grows by everyone's sips, so it grows the same on every screen and flowers on all of them at once, and two children watering it grow it twice as fast. A sip with no answer for a while is claimed again.
+- **The end:** when the last plant flowers, everyone's game finishes together, and the finish card says how much of the water each one gave, with "You watered the most!" or "Great watering!". A game with friends doesn't move anyone's own level on, and nobody's settings change. A friend who goes takes their can with them, and everyone else waters on.
+
+Only the name typed, the character from the other games, the host's level and number of plants, where the can is, how far it's tipped and pouring, and the sips of water each one gave go to friends. Never anything from the camera.
+
 ## Sound
 
 **A line is never cut off,** in any of the games, as nothing sounds more robotic. If something is being said, a new line waits for it to finish, after a short pause, and only the newest one waits, so a queue can't build up. A line that has waited more than 4 seconds is out of date and goes unsaid, and small remarks are simply dropped if anything's being said. Lines only stop mid-way if everything is stopping, such as when the panel opens.
@@ -744,11 +791,13 @@ Each recording is trimmed and set to the same level as the rest. Any lines not r
 
 **The maze** in Giraffe's Maze has Spider Catcher's real wood full of birds, kept quiet underneath. Nothing new was recorded for it. Giraffe's footsteps are Leap Trail's real steps on grass, quietly, eating a fruit is the Long Walk Home's real apple crunch, a friend found Spider Catcher's harp bounce with Mighty Moves' cheering, kept quiet, and a prize Mighty Moves' sparkle. A gate or a chest opens with Robot Rescue's barn lock, a sheep hops off with its cartoon boing, a bush goes with Spider Catcher's long grass, and the next maze comes in with Mighty Moves' swish. Each lost friend's call is a new line in their own voice, as in the other games with a mission, and the coach says the hint and the finish.
 
+**The garden** in Giraffe's Garden has Spider Catcher's real wood full of birds, kept quiet underneath, and the can's water is a real recording of a garden being watered, four seconds of it looped, which only plays while the can pours, as loud as it pours. A flower opening is Spider Catcher's harp bounce, a plant growing a step Mighty Moves' sparkle, played softly and a little higher each step, a snail sliding off Mighty Moves' swish, the bunny's giggle Robot Rescue's boing, and the hedgehog's drink the Long Walk Home's apple crunch. Giraffe says the first line in his own voice, as in the maze, and the coach says the hints and the finish.
+
 Where each sound came from is in [CREDITS.md](CREDITS.md).
 
 ## Privacy
 
-Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, except Google Analytics, and except that High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail, Giraffe's Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher and the Lighthouse Keeper may reach the server for playing with friends, which they only do once a grown-up makes or joins a race, a flight, a game, a fight, a run or a battle (see [Racing friends](#high-five-racers)), and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
+Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, except Google Analytics, and except that High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail, Giraffe's Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher, the Lighthouse Keeper and Giraffe's Garden may reach the server for playing with friends, which they only do once a grown-up makes or joins a race, a flight, a game, a fight, a run or a battle (see [Racing friends](#high-five-racers)), and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
 
 **Google Analytics** (`G-BPC62S5T34`) counts visits to every page, through [core/analytics.js](core/analytics.js): Google's tag says which page was opened, with what any website's visit tells it, such as the browser, the screen size and roughly where. Nothing from this site goes with it: never anything from the camera, and nothing about how a child plays. Google signals and ad personalisation are turned off, as this is a site for children. It sets Google's own cookies, which in some countries means a website should ask first. It never loads on this computer, as in the tests, so nothing leaves it there. Each page's security policy lets in Google's tag and analytics, and nothing else new.
 
@@ -779,6 +828,8 @@ There's no free footage of a person clapping, circling a hand or holding their a
 - **How Spider Catcher feels.** Whether the spiders are slow enough to catch with a real affected hand, whether closing within about a second of opening is long enough for a hand that closes slowly, how big the catching circle should be, and whether a child finds the spiders cute. It was only played with photos of an adult hand, moved about by the tests, and nobody has listened to its sound.
 - **How Bounce Back feels.** Whether the ball is slow enough for a real affected hand, how far from the hand a waiting ball should float, whether a child can tell the racket with strings from the dashed ring, and whether the long cartoon arms are funny or strange. It was only played with photos of an adult hand, moved about by the tests, nobody has listened to its sound, and playing with a friend was only tried with two browsers on one computer, not two computers far apart.
 - **How Giraffe's Maze feels.** Whether leading a character along a path is clear to a young child, whether he walks quickly enough, how big the paths should be for a real affected hand, whether a second of an open hand is right to wake the sheep, and whether rubbing the bush can be done with a weak hand. It was only played with photos of an adult hand, moved about by the tests, nobody has listened to its sound, and playing with friends was only tried with browsers on one computer. The friends' calls in Georgian need a native speaker to check them.
+- **Turning a real hand over.** The turn was only measured on photos of one adult hand, from the front and the back, and the front squeezed narrower to stand in for a hand part of the way round. A real hand turning, a child's hand, or one with hemiplegia, which may rest with the wrist bent, could read differently, and a hand right side-on may be lost for a moment. How far each of the three choices really asks a child to turn is for a therapist to judge.
+- **How Giraffe's Garden feels.** Whether tipping a can by turning the hand is clear to a young child, whether the water lands generously enough for an affected hand, whether reaching up to the baskets is too much, and whether the levels' creatures are fun or a distraction. It was only played with photos of an adult hand moved about by the tests, nobody has listened to its sound, playing with friends was only tried with browsers on one computer, and its Georgian lines and labels need a native speaker to check them.
 - **Hand shapes on a real hand.** Pointing, a peace sign and a thumbs up were each told apart on one photo of an adult hand. A child's hand, or one with hemiplegia, may hold a shape differently, and whether the thresholds suit one is for a therapist to judge. Three fingers and the grown-up's own choice of fingers have only been tested on the finger scores, and the new Georgian lines need a native speaker.
 - **Flying with the other hand, on a real child.** It was tested with photos of a fist and an open hand. A hand with hemiplegia might not read as a clear fist, and nobody has checked whether reaching out the second hand pulls the hand in play out of view.
 - **Kicks seen from the front.** The only kick footage available was filmed from the side, which confuses the tracker's left and right legs, so kicks were tested with a real standing body that had its legs moved by the test.
@@ -808,4 +859,4 @@ These games are not medical devices and don't replace therapy. Please check targ
 | Noto Sans Georgian font | 5.3.0 (Fontsource) | SIL Open Font License |
 | Sounds and voices | See [CREDITS.md](CREDITS.md) | Sounds are CC0 except the engine loop (CC-BY 3.0, credit required). Check the Georgian voices' terms before publishing the games: see CREDITS.md. |
 
-The test photos come from MediaPipe's test assets. The filmed test videos and the numbers taken from them are CC BY-SA 4.0: see CREDITS.md.
+The test photos come from MediaPipe's test assets, apart from one right hand from the front and the back, cropped from a photo by Evan-Amos on Wikimedia Commons, CC BY-SA 3.0: see CREDITS.md. The filmed test videos and the numbers taken from them are CC BY-SA 4.0: see CREDITS.md.
