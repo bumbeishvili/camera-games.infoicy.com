@@ -74,8 +74,9 @@ body[data-prizes='on'] .chip-prizes { display: grid !important; }
   100% { transform: scale(1); }
 }
 
-/* With friends: everyone's points, the most first, where the friends to find are on their own. */
-.maze-scores {
+/* In a race with friends: everyone, whoever is furthest on first, with a dot for each maze they're out of and a
+   flag once they're out of the last, where the friends to find are on their own. */
+.maze-race {
   display: flex;
   flex-wrap: wrap;
   max-width: 44vw;
@@ -84,9 +85,9 @@ body[data-prizes='on'] .chip-prizes { display: grid !important; }
   padding: 0;
   list-style: none;
 }
-.maze-scores[hidden] { display: none; }
+.maze-race[hidden] { display: none; }
 
-.maze-scores li {
+.maze-race li {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -97,12 +98,21 @@ body[data-prizes='on'] .chip-prizes { display: grid !important; }
   font-size: clamp(14px, 1.4vw, 17px);
   font-weight: 700;
 }
-.maze-scores li.is-you { background: var(--sun); }
-.maze-scores img { width: 30px; height: 30px; border-radius: 50%; background: var(--surface-soft); }
-.maze-score-name { max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.maze-score { margin-left: 4px; font-variant-numeric: tabular-nums; }
+.maze-race li.is-you { background: var(--sun); }
+.maze-race img { width: 30px; height: 30px; border-radius: 50%; background: var(--surface-soft); }
+.maze-race-name { max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.maze-race-dots { display: flex; gap: 3px; margin-left: 2px; }
+.maze-race-dots i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--ink);
+  background: #ffffff;
+}
+.maze-race-dots i.is-done { background: var(--good); }
+.maze-race-flag { font-size: 1.15em; line-height: 1; }
 
-/* With friends the fruit tally sits first, and the scores after it. */
+/* With friends the fruit tally sits first, and the race after it. */
 body[data-friends-race] .maze-found { display: none; }
 
 /* ---------- a friend's call, in the middle of the band ---------- */

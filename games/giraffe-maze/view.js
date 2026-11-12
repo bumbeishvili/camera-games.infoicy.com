@@ -17,6 +17,7 @@ const FOLLOWER = 0.84; // Friends following along are a little smaller.
 const STRIDE = 0.3; // Cells walked for each picture of a walk: about 8 pictures a second at a full walk.
 const WALK_FRAMES = ['stepA', 'stand', 'stepB', 'stand'];
 const LABEL_SECONDS = 2.4;
+const FLAG_FOOT = 0.26; // The flag by the way out in a race stands this far down the last cell, by its top hedge.
 const PRIZE_FLY_SECONDS = 0.8;
 const MARKS = { gem: '💎', key: '🔑', shoes: '👟', magnet: '🧲', crown: '👑', bird: '🐦', butterfly: '🦋', heart: '💛', star: '⭐' };
 const BUTTERFLY_COLOURS = [['#ff8ac2', '#ffd1e6'], ['#7cc7ff', '#d6efff'], ['#ffc94a', '#fff0b8'], ['#b98cff', '#e8dbff']];
@@ -224,7 +225,7 @@ export class MazeView {
    * the maze, so they're drawn once and reused. Nothing in them moves.
    */
   baseFor(layout) {
-    const key = `${layout.seed}:${layout.index}:${layout.lost.length}:${layout.size}:${this.width}x${this.height}`;
+    const key = `${layout.seed}:${layout.index}:${layout.race ? 'race' : 'own'}:${layout.size}:${this.width}x${this.height}`;
     if (this.bases.has(key)) return this.bases.get(key);
     const canvas = document.createElement('canvas');
     canvas.width = this.canvas.width;
@@ -287,13 +288,21 @@ export class MazeView {
     ctx.fillStyle = COLOURS.pathEdge;
     ctx.fillRect(0, entrance.y - s * 0.36, x0 + 4, 3);
     ctx.fillRect(0, entrance.y + s * 0.36 - 3, x0 + 4, 3);
-    if (layout.lost.length === 1) {
-      const exit = this.at(maze.cols, maze.row(layout.goal) + 0.5);
-      ctx.fillStyle = COLOURS.path;
-      ctx.fillRect(exit.x - 4, exit.y - s * 0.36, w - exit.x + 4, s * 0.72);
-      ctx.fillStyle = COLOURS.pathEdge;
-      ctx.fillRect(exit.x - 4, exit.y - s * 0.36, w - exit.x + 4, 3);
-      ctx.fillRect(exit.x - 4, exit.y + s * 0.36 - 3, w - exit.x + 4, 3);
+    // And the way out, on the right. In a race, it has a chequered line across it, to get over first.
+    const exit = this.at(maze.cols, maze.row(layout.goal) + 0.5);
+    ctx.fillStyle = COLOURS.path;
+    ctx.fillRect(exit.x - 4, exit.y - s * 0.36, w - exit.x + 4, s * 0.72);
+    ctx.fillStyle = COLOURS.pathEdge;
+    ctx.fillRect(exit.x - 4, exit.y - s * 0.36, w - exit.x + 4, 3);
+    ctx.fillRect(exit.x - 4, exit.y + s * 0.36 - 3, w - exit.x + 4, 3);
+    if (layout.race) {
+      const square = (s * 0.72) / 6;
+      for (let c = 0; c < 2; c += 1) {
+        for (let r = 0; r < 6; r += 1) {
+          ctx.fillStyle = (c + r) % 2 ? INK : '#ffffff';
+          ctx.fillRect(exit.x - square + c * square, exit.y - s * 0.36 + r * square, square, square);
+        }
+      }
     }
     ctx.fillStyle = 'rgb(180 150 100 / 0.35)';
     for (let i = 0; i < maze.count * 5; i += 1) {
@@ -323,7 +332,7 @@ export class MazeView {
     const { maze, start, goal } = layout;
     const half = HEDGE / 2;
     const pieces = [];
-    const exitRow = layout.lost.length === 1 ? maze.row(goal) : -1;
+    const exitRow = maze.row(goal);
     // Along each row line, between the cells above and below it, and round the top and bottom.
     for (let line = 0; line <= maze.rows; line += 1) {
       for (let c = 0; c < maze.cols; c += 1) {
@@ -387,9 +396,10 @@ export class MazeView {
     for (const item of layout.items) if (!item.gone || item.kind === 'chest') standing.push({ y: (item.pull?.y ?? item.y) + 0.12, draw: () => this.drawItem(item, layout) });
     for (const blocker of layout.blockers) standing.push({ y: blocker.y + 0.18, draw: () => this.drawBlocker(blocker) });
     for (const lost of layout.lost) {
-      if (lost.owner) continue;
+      if (lost.found) continue;
       standing.push({ y: lost.y + 0.05, draw: () => this.drawLost(lost, model) });
     }
+    if (layout.race) standing.push({ y: layout.maze.row(layout.goal) + FLAG_FOOT, draw: () => this.drawFlag(layout) });
     for (const walker of people) {
       if (walker.layoutIndex !== undefined && walker.layoutIndex !== layout.index) continue;
       standing.push({ y: walker.y + 0.06, draw: () => this.drawWalker(walker, CHARACTER) });
@@ -479,6 +489,45 @@ export class MazeView {
     ctx.restore();
   }
 
+  /** Where the flag stands in a race, in the last cell by the way out, in cells. */
+  flagAt(layout) {
+    return { x: layout.maze.cols - 0.2, y: layout.maze.row(layout.goal) + FLAG_FOOT };
+  }
+
+  /** In a race, a chequered flag by the way out, standing still. */
+  drawFlag(layout) {
+    const { ctx, cell: s } = this;
+    const where = this.flagAt(layout);
+    const foot = this.at(where.x, where.y);
+    const top = foot.y - s * 0.86;
+    this.drawShadow(foot.x, foot.y, s * 0.06);
+    ctx.save();
+    ctx.strokeStyle = INK;
+    ctx.lineCap = 'round';
+    ctx.lineWidth = Math.max(2, s * 0.03);
+    ctx.beginPath();
+    ctx.moveTo(foot.x, foot.y);
+    ctx.lineTo(foot.x, top);
+    ctx.stroke();
+    // The flag itself, to the left of its pole, over the maze rather than off the edge of the screen.
+    const wide = s * 0.36;
+    const high = s * 0.26;
+    for (let c = 0; c < 4; c += 1) {
+      for (let r = 0; r < 3; r += 1) {
+        ctx.fillStyle = (c + r) % 2 ? INK : '#ffffff';
+        ctx.fillRect(foot.x - wide + (c * wide) / 4, top + (r * high) / 3, wide / 4, high / 3);
+      }
+    }
+    ctx.lineWidth = Math.max(1.5, s * 0.012);
+    ctx.strokeRect(foot.x - wide, top, wide, high);
+    ctx.fillStyle = '#ffd23f';
+    ctx.beginPath();
+    ctx.arc(foot.x, top, s * 0.035, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
   /** A lost friend, waving, with a soft ring round their feet and a little call over their head. */
   drawLost(lost, model) {
     const { ctx, cell: s } = this;
@@ -490,7 +539,7 @@ export class MazeView {
     ctx.ellipse(x, y, s * (0.36 + swell), s * (0.36 + swell) * 0.4, 0, 0, Math.PI * 2);
     ctx.stroke();
     const art = model.art?.[lost.who] ?? null;
-    this.drawWalker({ x: lost.x, y: lost.y, art, wave: !lost.pending, cheer: lost.pending, facing: 2, phase: lost.k, colour: '#ff9ec7' }, CHARACTER);
+    this.drawWalker({ x: lost.x, y: lost.y, art, wave: true, facing: 2, phase: lost.k, colour: '#ff9ec7' }, CHARACTER);
     if (!art) return;
     // "!" in a little bubble, by the top of their head.
     const top = y - (art.head * CHARACTER * s) / art.tall;
@@ -745,7 +794,7 @@ export class MazeView {
     for (const glove of model.gloves ?? []) this.drawGlove(glove);
     this.drawEffects();
     this.drawFlying();
-    for (const walker of model.walkers ?? []) if (walker.name) this.drawTag(walker.name, this.at(walker.x, walker.y - 1.05));
+    for (const walker of model.walkers ?? []) if (walker.name) this.drawTag(walker.name, this.at(walker.x, walker.y - 1.05), walker.fade ?? 1);
     for (const label of this.labels) this.drawLabel(label);
     return null;
   }
@@ -977,9 +1026,12 @@ export class MazeView {
     }
   }
 
-  drawTag(text, at) {
+  /** A friend's name over their character, fading with them as they walk out of the maze. */
+  drawTag(text, at, alpha = 1) {
     const { ctx, palmSize } = this;
+    if (alpha <= 0.01) return;
     ctx.save();
+    ctx.globalAlpha = alpha;
     ctx.font = `600 ${Math.round(Math.max(13, palmSize * 0.36))}px Fredoka, sans-serif`;
     const width = ctx.measureText(text).width + 18;
     const height = Math.max(22, palmSize * 0.56);

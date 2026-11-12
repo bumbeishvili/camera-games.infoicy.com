@@ -53,7 +53,8 @@
 //                                      it, in cells, which way it faces and whether it's walking, whether their
 //                                      glove can be seen and is open, where it is, and p, its 21 points, as in hand.
 //                                      Everyone makes the same mazes from the host's mode, its size and a seed, and
-//                                      claims the fruit and lost friends it reaches
+//                                      races out of them, each with all the fruit in their own. Walking out of a
+//                                      maze, x goes past its right edge
 //   wipe   { w, c }                        The Lighthouse Keeper: their hand has wiped patches c of window w, each
 //                                      a whole number from 0 to WINDOW_PATCHES - 1, all of those since the last
 //                                      wipe, sent at most 10 times a second. Each patch is the first hand's to wipe

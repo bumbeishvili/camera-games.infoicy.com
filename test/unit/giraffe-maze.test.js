@@ -5,8 +5,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { MazeRun } from '../../games/giraffe-maze/play.js';
 import {
-  buildMaze, castFor, deadEnds, distances, DX, DY, edgeKey, EXTRAS, featuresFor, FOUND_SECONDS, friendsCast, LABELS,
-  MAZE_COUNTS, mazeLevel, mazeNewAt, modeWord, NEWS, newSeedWord, newsIsOn, newWalker, readMode, REACHES, seededRandom,
+  buildMaze, castFor, deadEnds, distances, DX, DY, edgeKey, EXTRAS, featuresFor, FOUND_SECONDS, LABELS, MAZE_COUNTS,
+  mazeLevel, mazeNewAt, modeWord, NEWS, newSeedWord, newsIsOn, newWalker, OUT_CELLS, readMode, REACHES, seededRandom,
   seedOf, SIZES, SLIDE_SECONDS, stepWalker, WALK, walkerAt, wayToward,
 } from '../../games/giraffe-maze/rules.js';
 import { cleanWalker, MAX_RACERS, mostIn, RaceRoom } from '../../server/race-room.js';
@@ -499,74 +499,104 @@ test('the friends lost in each maze are never the child\'s own character, and a 
   assert.ok(castFor(ROSTER, 'kit', 3, 1).includes('giraffe') || castFor(ROSTER, 'kit', 9, 1).includes('giraffe'), 'Giraffe can be lost when the child plays someone else');
 });
 
-/* ---------- with friends ---------- */
+/* ---------- racing friends ---------- */
 
-/** Friends' games: each makes the same mazes, and the server's claims are passed to them all. */
-function friendsGame(players = ['aaaa', 'bbbb'], { level = 3, size = 'medium', mazes = 2 } = {}) {
-  const characters = players.map((_, at) => ROSTER[at]);
-  const cast = friendsCast(ROSTER, characters, mazes, players.length + 1);
-  const claims = new Map();
+/** Friends' games, racing: each makes the same mazes from the same seed, and needs nothing from the others'. */
+function race(players = ['aaaa', 'bbbb'], { level = 3, size = 'medium', mazes = 2 } = {}) {
   const runs = {};
-  const claim = (by) => (k) => {
-    if (claims.has(k)) return;
-    claims.set(k, by);
-    for (const id of players) runs[id].claimed(k, by);
-  };
-  for (const id of players) runs[id] = new MazeRun({ seed: 'MAZEGO', size, level, cast, me: id, shared: { claim: claim(id) }, random: seededRandom(9) });
-  return { runs, claims, cast };
+  for (const id of players) {
+    const log = [];
+    const events = new Proxy({}, { get: (_, name) => (...args) => log.push([name, ...args]) });
+    runs[id] = new MazeRun({ seed: 'MAZEGO', size, level, mazes, race: true, events, random: seededRandom(9) });
+    runs[id].log = log;
+  }
+  return runs;
 }
 
-test('with friends, everyone\'s maze is the same, with more friends lost in it, and nobody\'s character among them', () => {
-  const { runs, cast } = friendsGame(['aaaa', 'bbbb', 'cccc']);
-  const [a, b, c] = Object.values(runs);
+const RESTING = { target: null, glove: null, open: false };
+
+test('with friends it\'s a race: everyone\'s mazes are the same, with nobody lost in them, and the way out on the right', () => {
+  const [a, b, c] = Object.values(race(['aaaa', 'bbbb', 'cccc'], { mazes: 3 }));
+  assert.deepEqual([a.race, a.mazes], [true, 3]);
   assert.deepEqual([...a.layout.maze.cells], [...b.layout.maze.cells]);
   assert.deepEqual(a.layout.items.map(({ k, cell }) => [k, cell]), c.layout.items.map(({ k, cell }) => [k, cell]));
-  assert.equal(a.layout.lost.length, 4, 'one more than there are players');
-  assert.ok(cast.flat().every((who) => !['giraffe', 'truffle', 'kit'].includes(who)));
-  assert.ok(a.layout.blockers.length === 0 && a.layout.items.every(({ kind }) => kind === 'fruit'), 'the plain maze, with its fruit');
-  const k = new Set(a.layout.items.map((item) => item.k).concat(a.layout.lost.map((lost) => lost.k)));
-  assert.equal(k.size, a.layout.items.length + a.layout.lost.length, 'everything has a number of its own to be claimed by');
+  for (const seed of SEEDS) {
+    for (const size of Object.keys(SIZES)) {
+      for (const level of [1, 10]) {
+        for (let index = 0; index < 5; index += 1) {
+          const plain = featuresFor(level, index, size, { extras: false });
+          const layout = buildMaze({ seed, index, size, level, features: plain, race: true });
+          const { maze, goal, start } = layout;
+          const where = `${seed} ${size} level ${level} maze ${index}`;
+          assert.deepEqual(layout.lost, [], `nobody is lost: ${where}`);
+          assert.equal(layout.race, true);
+          assert.equal(maze.col(goal), maze.cols - 1, `the way out is on the right: ${where}`);
+          assert.ok(distances(maze, start)[goal] > 0, `and can be got to: ${where}`);
+          assert.ok(layout.blockers.length === 0 && layout.items.every(({ kind }) => kind === 'fruit'), `the plain maze, with its fruit: ${where}`);
+          // The fruit is where it would be on their own, without the friend by the way out.
+          const own = buildMaze({ seed, index, size, level, features: plain });
+          assert.deepEqual([...layout.maze.cells], [...own.maze.cells], where);
+          assert.deepEqual(layout.items.map(({ cell, fruit }) => [cell, fruit]), own.items.map(({ cell, fruit }) => [cell, fruit]), where);
+          assert.equal(own.lost[0].cell, goal);
+          // Nothing lies on the way out, or anywhere only got to past it, as getting there is getting out.
+          const before = distances(maze, start, (cell, d) => maze.isOpen(cell, d) && cell !== goal);
+          assert.ok(layout.items.every(({ cell }) => cell !== goal && before[cell] >= 0), where);
+        }
+      }
+    }
+  }
 });
 
-test('with friends, whoever gets to a fruit or a friend first has it, and once all are found everyone moves on together', () => {
-  const { runs, claims } = friendsGame(['aaaa', 'bbbb']);
-  const [ana, ben] = [runs.aaaa, runs.bbbb];
+test('in a race, each goes through the mazes at their own pace, walking out of each, and nobody waits for anyone', () => {
+  const { aaaa: ana, bbbb: ben } = race(['aaaa', 'bbbb']);
   ana.begin();
   ben.begin();
-  // Ana leads the way; Ben rests.
+  // Ana leads the way, and Ben rests.
+  let furthestOut = 0;
   for (let t = 0; t < 400 && !ana.over; t += FRAME) {
     ana.update(FRAME, leader(ana, t));
-    ben.update(FRAME, { target: null, glove: null, open: false });
+    ben.update(FRAME, RESTING);
+    if (ana.phase === 'out') furthestOut = Math.max(furthestOut, ana.position.x - ana.layout.cols);
   }
-  assert.ok(ana.over && ben.over, 'the game ends for both');
-  assert.equal(ben.stats.found, 0);
-  assert.equal(ana.stats.found, ana.mazes * 3, 'Ana found them all');
-  assert.ok([...claims.values()].every((by) => by === 'aaaa'));
-  assert.equal(ben.index, ana.index, 'on the same maze');
-  // Ben's game saw all of Ana's finds.
-  assert.ok(ben.layout.lost.every((lost) => lost.owner === 'aaaa'));
+  assert.ok(ana.over, 'Ana got out of both');
+  assert.deepEqual([ana.stats.out, ana.stats.found], [2, 0]);
+  assert.deepEqual(said(ana, 'onOut').map(([, index, last]) => [index, last]), [[0, false], [1, true]]);
+  assert.equal(said(ana, 'onFound').length, 0);
+  // Out of each, she walked on through the way out, past the maze's edge, and is still out of it at the end.
+  assert.ok(Math.abs(furthestOut - (OUT_CELLS - 0.5)) < 1e-6, `${furthestOut}`);
+  assert.ok(ana.position.x > ana.layout.cols);
+  assert.ok(ana.stats.fruit > 3, `${ana.stats.fruit} fruit`);
+  // Ben is still at the way in of the first maze, as nothing waits for anyone, and all its fruit is still there.
+  assert.equal(ben.over, false);
+  assert.deepEqual([ben.index, ben.phase, ben.stats.out, ben.stats.walked], [0, 'walking', 0, 0]);
+  assert.ok(ben.layout.items.every(({ gone }) => !gone), 'Ana going by first leaves Ben just as much');
+  // Now Ben goes, and finds as much as she did along the same way.
+  for (let t = 0; t < 400 && !ben.over; t += FRAME) ben.update(FRAME, leader(ben, t));
+  assert.ok(ben.over);
+  assert.equal(ben.stats.out, 2);
+  assert.equal(ben.stats.fruit, ana.stats.fruit);
 });
 
-test('with friends, a friend already found by someone else can\'t be had again, and a claim lost on the way is sent again', () => {
-  const sent = [];
-  const cast = friendsCast(ROSTER, ['giraffe', 'truffle'], 1, 3);
-  const run = new MazeRun({ seed: 'MAZEGO', size: 'easy', level: 1, cast, me: 'aaaa', shared: { claim: (k) => sent.push(k) } });
+test('in a race, getting out is reaching the last cell by the way out, and a closed hand never gets anyone out', () => {
+  const [run] = Object.values(race(['aaaa'], { mazes: 2, size: 'easy' }));
   run.begin();
-  const [first, second] = run.layout.lost;
-  // Someone else got there first.
-  run.claimed(first.k, 'bbbb');
-  assert.equal(first.owner, 'bbbb');
-  const near = { target: first, glove: first, open: true };
-  for (let t = 0; t < 20; t += FRAME) run.update(FRAME, near);
-  assert.ok(!sent.includes(first.k), 'it isn\'t claimed again');
-  // Standing on another one, claimed, and nobody answers: it's claimed again now and then.
-  run.walker = newWalker(second.cell);
-  for (let t = 0; t < 3.5; t += FRAME) run.update(FRAME, { target: second, glove: second, open: true });
-  assert.ok(sent.filter((k) => k === second.k).length >= 3, `sent ${sent.filter((k) => k === second.k).length} times`);
-  assert.equal(second.owner, null, 'still waiting for the server to say');
-  run.claimed(second.k, 'aaaa');
-  assert.equal(second.owner, 'aaaa');
-  assert.equal(run.stats.found, 1);
+  const { maze, goal } = run.layout;
+  const way = maze.centre(goal);
+  // Standing in the cell next to it, with the hand closed on it, nothing happens however long it's held.
+  const beside = [0, 1, 2, 3].filter((d) => maze.isOpen(goal, d)).map((d) => maze.next(goal, d))[0];
+  run.walker = newWalker(beside);
+  for (let t = 0; t < 5; t += FRAME) run.update(FRAME, { target: way, glove: way, open: false });
+  assert.deepEqual([run.phase, run.walker.a, run.stats.out], ['walking', beside, 0]);
+  // An open hand on it, and the character walks up to it and out.
+  for (let t = 0; t < 5 && run.phase === 'walking'; t += FRAME) run.update(FRAME, { target: way, glove: way, open: true });
+  assert.equal(run.phase, 'out');
+  assert.equal(run.stats.out, 1);
+  for (let t = 0; t < FOUND_SECONDS + 0.05; t += FRAME) run.update(FRAME, RESTING);
+  assert.equal(run.phase, 'sliding');
+  assert.ok(run.position.x > maze.cols, 'out past the edge while the next maze comes in');
+  for (let t = 0; t < SLIDE_SECONDS + 0.05; t += FRAME) run.update(FRAME, RESTING);
+  assert.deepEqual([run.index, run.phase], [1, 'walking']);
+  assert.deepEqual(run.position, run.layout.maze.centre(run.layout.start), 'at the way in of the next one');
 });
 
 test('a friends\' game holds four, the fifth is told it\'s full, and each one\'s walker goes to the others, cleaned', () => {

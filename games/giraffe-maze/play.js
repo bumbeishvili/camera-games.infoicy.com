@@ -2,17 +2,16 @@
 // hand, what it picks up, what's in the way, and the friends it finds. No screen in this file: main.js gives it
 // where the glove is each frame, and draws what it says, so it can be tested on its own with a pretend child.
 //
-// With friends, everyone's game makes the same mazes from the host's seed. What can be had, the fruit and the lost
-// friends, goes to whoever gets there first, which the server decides: each game claims what its child's character
-// reaches, and is told who had it (claimed). Once all of a maze's lost friends are found, everyone moves on to the
-// next maze together, as every game hears the same claims.
+// With friends it's a race. Everyone's game makes the same mazes from the host's seed, with nobody lost in them,
+// and each child leads their character to the way out on the right of each maze, one maze after another, at their
+// own pace: whoever gets out of the last maze first has won. Each child has all the fruit in their own mazes, so a
+// child behind never finds less of it, and the race needs nothing from the server but who's where.
 import {
-  buildMaze, distances, edgeKey, EXTRAS, featuresFor, FOUND_SECONDS, mazeLevel, newWalker, REACHES, SLIDE_SECONDS,
-  stepWalker, Trail, WALK, walkerAt, wayBetween, wayToward,
+  buildMaze, distances, edgeKey, EXTRAS, facingOf, featuresFor, FOUND_SECONDS, mazeLevel, newWalker, OUT_CELLS, REACHES,
+  SLIDE_SECONDS, stepWalker, Trail, WALK, walkerAt, wayBetween, wayToward,
 } from './rules.js';
 
 export const FOLLOW_SPACING = 0.72; // Cells between each friend following along behind.
-const CLAIM_AGAIN_SECONDS = 1; // A claim not yet answered is sent again, in case the connection dropped it.
 const STUCK_AFTER = 1.2; // Seconds of an open hand the character can't get any nearer to, before it shows it.
 const LEAVE_SECONDS = 1; // A butterfly flies off over this long when its time is up.
 
@@ -21,14 +20,14 @@ const nothing = () => {};
 export class MazeRun {
   /**
    * seed is the word every maze of the game is made from, size how big they are, level the level played, and cast
-   * who is lost in each maze, as a list of character ids for each. ways is 'lead', to go where the hand leads, or
-   * 'find', to find the way to the hand. shared is { claim(k) } with friends, or null on their own, and me is this
-   * player's id with friends. events are told what happens: see main.js.
+   * who is lost in each maze on their own, as a list of character ids for each. ways is 'lead', to go where the hand
+   * leads, or 'find', to find the way to the hand. race is true with friends, for a race out of mazes mazes, with
+   * nobody lost in them. events are told what happens: see main.js.
    */
-  constructor({ seed, size = 'medium', level = 1, cast, ways = 'lead', shared = null, me = 'me', events = {}, random = Math.random }) {
-    Object.assign(this, { seed, size, level, cast, ways, shared, me, random });
+  constructor({ seed, size = 'medium', level = 1, cast = [], mazes = cast.length, ways = 'lead', race = false, events = {}, random = Math.random }) {
+    Object.assign(this, { seed, size, level, cast, ways, race, random });
     this.events = new Proxy(events, { get: (target, name) => target[name] ?? nothing });
-    this.mazes = cast.length;
+    this.mazes = mazes;
     this.plan = mazeLevel(level);
     this.time = 0;
     this.index = -1;
@@ -36,7 +35,7 @@ export class MazeRun {
     this.nextLayout = null;
     this.phase = 'ready';
     this.phaseTime = 0;
-    this.stats = { fruit: 0, found: 0, walked: 0, prizes: { butterfly: 0, gem: 0, crown: 0 }, keys: 0, gates: 0, sheep: 0, bushes: 0 };
+    this.stats = { fruit: 0, found: 0, out: 0, walked: 0, prizes: { butterfly: 0, gem: 0, crown: 0 }, keys: 0, gates: 0, sheep: 0, bushes: 0 };
     this.trail = new Trail();
     this.followers = [];
     this.butterflies = [];
@@ -49,17 +48,14 @@ export class MazeRun {
 
   /** The maze of the game at this index, with what's in it as it starts. */
   makeLayout(index) {
-    const lostCount = this.cast[index]?.length ?? 1;
-    const features = featuresFor(this.level, index, this.size, { extras: !this.shared });
-    const layout = buildMaze({ seed: this.seed, index, size: this.size, level: this.level, features, lostCount });
+    const features = featuresFor(this.level, index, this.size, { extras: !this.race });
+    const layout = buildMaze({ seed: this.seed, index, size: this.size, level: this.level, features, race: this.race });
     layout.features = features;
     layout.lost.forEach((lost, at) => {
-      lost.who = this.cast[index][at];
-      lost.owner = null;
-      lost.pending = false;
-      lost.claimedAt = -Infinity;
+      lost.who = this.cast[index]?.[at];
+      lost.found = false;
     });
-    for (const item of layout.items) Object.assign(item, { gone: false, pending: false, owner: null, pull: null });
+    for (const item of layout.items) Object.assign(item, { gone: false, pull: null });
     for (const blocker of layout.blockers) Object.assign(blocker, { open: false, progress: 0, waited: 0 });
     return layout;
   }
@@ -79,15 +75,16 @@ export class MazeRun {
     this.stuckFor = 0;
     this.lockedShown = false;
     this.waitingAt = null;
+    this.out = null; // In a race, once the way out is reached: { from, by }, where from and how far it has walked out.
   }
 
   get maze() {
     return this.layout.maze;
   }
 
-  /** Where the character is, in cells. */
+  /** Where the character is, in cells: beyond the maze's right edge as it walks out of it in a race. */
   get position() {
-    return walkerAt(this.layout.maze, this.walker);
+    return this.out ? this.outAt() : walkerAt(this.layout.maze, this.walker);
   }
 
   get over() {
@@ -139,12 +136,12 @@ export class MazeRun {
     this.time += dt;
     this.phaseTime += dt;
     if (this.phase === 'walking') this.walk(dt, input);
+    else if (this.phase === 'out') this.walkOut(dt);
     else this.moving = false;
     this.updateFollowers();
     this.updateButterflies(dt, input);
     this.updateBird(dt);
-    if (this.shared) this.claimAgain();
-    if (this.phase === 'found' && this.phaseTime >= FOUND_SECONDS) {
+    if ((this.phase === 'found' || this.phase === 'out') && this.phaseTime >= FOUND_SECONDS) {
       if (this.index < this.mazes - 1) {
         this.phase = 'sliding';
         this.phaseTime = 0;
@@ -186,7 +183,41 @@ export class MazeRun {
     }
     this.pickUp(at, dt);
     this.workOnBlockers(dt, input, at);
-    this.findFriends(at);
+    if (this.race) this.reachWayOut(at);
+    else this.findFriends(at);
+  }
+
+  /** In a race: the character has got to the way out of this maze, and walks on out of it by itself. */
+  reachWayOut(at) {
+    const way = this.layout.maze.centre(this.layout.goal);
+    if (Math.hypot(way.x - at.x, way.y - at.y) > REACHES.find) return;
+    this.out = { from: { ...at }, by: 0 };
+    this.stats.out += 1;
+    this.phase = 'out';
+    this.phaseTime = 0;
+    this.power = null;
+    this.events.onOut(this.index, this.index === this.mazes - 1);
+  }
+
+  /** Out of a maze, it walks to the middle of the last cell, and on out through the way out. */
+  walkOut(dt) {
+    const { out } = this;
+    const way = this.layout.maze.centre(this.layout.goal);
+    const first = Math.hypot(way.x - out.from.x, way.y - out.from.y);
+    const step = Math.min(first + OUT_CELLS - out.by, WALK.speed * dt);
+    out.by += step;
+    this.moving = step > 0.0005;
+    this.stats.walked += step;
+    this.walker.facing = out.by < first ? facingOf(way.x - out.from.x, way.y - out.from.y, 1) : 1;
+  }
+
+  /** Where it is, walking out. */
+  outAt() {
+    const { from, by } = this.out;
+    const way = this.layout.maze.centre(this.layout.goal);
+    const first = Math.hypot(way.x - from.x, way.y - from.y);
+    if (by < first) return { x: from.x + ((way.x - from.x) * by) / first, y: from.y + ((way.y - from.y) * by) / first };
+    return { x: way.x + Math.min(OUT_CELLS, by - first), y: way.y };
   }
 
   /** Whether the character can't get any nearer to an open hand, as when it's on the other side of a hedge. */
@@ -218,18 +249,9 @@ export class MazeRun {
   take(item, at) {
     switch (item.kind) {
       case 'fruit':
-        if (this.shared) {
-          if (item.pending || item.owner) return;
-          item.pending = true;
-          item.gone = true;
-          item.claimedAt = this.time;
-          this.events.onEat(item, false);
-          this.shared.claim(item.k);
-          return;
-        }
         item.gone = true;
         this.stats.fruit += 1;
-        this.events.onEat(item, true);
+        this.events.onEat(item);
         return;
       case 'key':
         item.gone = true;
@@ -312,63 +334,26 @@ export class MazeRun {
     this.events.onUnblock(blocker);
   }
 
+  /** On their own: reaching the friend lost in this maze. */
   findFriends(at) {
     for (const lost of this.layout.lost) {
-      if (lost.owner) continue;
+      if (lost.found) continue;
       if (Math.hypot(lost.x - at.x, lost.y - at.y) > REACHES.find) continue;
-      if (this.shared) {
-        // The server says who was first. Until it does, the friend waits where it is.
-        if (lost.pending && this.time - lost.claimedAt < CLAIM_AGAIN_SECONDS) continue;
-        lost.pending = true;
-        lost.claimedAt = this.time;
-        this.shared.claim(lost.k);
-        continue;
-      }
-      this.found(lost, this.me);
+      this.found(lost);
     }
   }
 
-  /** A lost friend is found, by this child or, with friends, by whoever got there first. */
-  found(lost, by) {
-    lost.owner = by;
-    lost.pending = false;
+  /** A lost friend is found, and follows along behind. */
+  found(lost) {
+    lost.found = true;
     lost.foundAt = this.time;
-    const mine = by === this.me;
-    if (mine) {
-      this.stats.found += 1;
-      this.followers.push({ who: lost.who, lost });
-    }
-    this.events.onFound(lost, by, mine);
-    if (this.layout.lost.every((each) => each.owner) && this.phase === 'walking') {
+    this.stats.found += 1;
+    this.followers.push({ who: lost.who, lost });
+    this.events.onFound(lost);
+    if (this.layout.lost.every((each) => each.found) && this.phase === 'walking') {
       this.phase = 'found';
       this.phaseTime = 0;
       this.power = null;
-    }
-  }
-
-  /** With friends: the server says who had k. */
-  claimed(k, by) {
-    const lost = this.layout.lost.find((each) => each.k === k);
-    if (lost) {
-      if (!lost.owner) this.found(lost, by);
-      return;
-    }
-    const item = this.layout.items.find((each) => each.k === k);
-    if (!item || item.owner) return;
-    item.owner = by;
-    item.gone = true;
-    item.pending = false;
-    if (by === this.me && item.kind === 'fruit') this.stats.fruit += 1;
-    this.events.onClaimed(item, by, by === this.me);
-  }
-
-  /** Anything claimed and not yet answered is claimed again now and then, in case the claim was lost on the way. */
-  claimAgain() {
-    for (const lost of this.layout.lost) {
-      if (lost.pending && !lost.owner && this.time - lost.claimedAt >= CLAIM_AGAIN_SECONDS) {
-        lost.claimedAt = this.time;
-        this.shared.claim(lost.k);
-      }
     }
   }
 
@@ -431,7 +416,7 @@ export class MazeRun {
   startBird(at) {
     const { maze } = this.layout;
     const from = maze.cellAt(at.x, at.y);
-    const to = this.layout.lost.find((each) => !each.owner)?.cell ?? this.layout.goal;
+    const to = this.layout.lost.find((each) => !each.found)?.cell ?? this.layout.goal;
     const cells = wayBetween(maze, from, to, (a, d) => maze.isOpen(a, d));
     this.bird = { cells, flown: 0, life: EXTRAS.birdTrail, from: { ...at } };
     this.events.onBird(this.bird);
@@ -461,8 +446,8 @@ export class MazeRun {
   /* ---------- for the screen and the tests ---------- */
 
   /**
-   * Where the character should go next, as a cell: the key while a gate is still locked, and otherwise the nearest
-   * friend still lost. For the tests and the films, which lead it there the way a child would.
+   * Where the character should go next, as a cell: the key while a gate is still locked, and otherwise the friend
+   * still lost, or in a race the way out. For the tests and the films, which lead it there the way a child would.
    */
   nextCell() {
     const { maze } = this.layout;
@@ -470,7 +455,7 @@ export class MazeRun {
     const key = this.layout.items.find((item) => item.kind === 'key' && !item.gone);
     if (key && !this.hasKey) return key.cell;
     const reach = distances(maze, from, (a, d) => maze.isOpen(a, d));
-    const left = this.layout.lost.filter((lost) => !lost.owner).sort((a, b) => reach[a.cell] - reach[b.cell]);
+    const left = this.layout.lost.filter((lost) => !lost.found).sort((a, b) => reach[a.cell] - reach[b.cell]);
     return left[0]?.cell ?? this.layout.goal;
   }
 
@@ -507,7 +492,7 @@ export class MazeRun {
 
   /** How many steps the character is from the friend still to find, along the paths, or -1. */
   stepsToFriend() {
-    const lost = this.layout.lost.find((each) => !each.owner);
+    const lost = this.layout.lost.find((each) => !each.found);
     if (!lost) return -1;
     return distances(this.layout.maze, this.walker.a, (a, d) => this.layout.maze.isOpen(a, d))[lost.cell];
   }

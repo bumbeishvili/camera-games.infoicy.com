@@ -265,7 +265,7 @@ for (const level of [1, 10]) {
     await page.evaluate(() => {
       const { run } = window.__game;
       const [lost] = run.layout.lost;
-      run.found(lost, run.me);
+      run.found(lost);
     });
     const changing = judge(await watchBrightness(page, 240));
     console.log(`level ${level}`, 'next maze', JSON.stringify(changing));

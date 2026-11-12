@@ -65,13 +65,11 @@ export const EXTRAS = {
   gems: 2, // In the dead ends, at most.
 };
 
-export const FOUND_SECONDS = 1.3; // A friend found cheers this long before the next maze.
+export const FOUND_SECONDS = 1.3; // A friend found, or the way out reached in a race, cheers this long before the next maze.
 export const SLIDE_SECONDS = 1.1; // The last maze fades away and the next comes in, over this long.
-export const FRUIT_SHARE = 0.36; // About this share of the cells have fruit on their own.
-export const FRIENDS_FRUIT_SHARE = 0.45; // And with friends, as there's more of them to share it.
+export const OUT_CELLS = 1.6; // Out of a maze in a race, the character walks on this far past the middle of the last cell.
+export const FRUIT_SHARE = 0.36; // About this share of the cells have fruit. In a race, each child has all of their own.
 export const FRUIT_KINDS = ['apple', 'orange', 'pear', 'banana', 'plum', 'peach'];
-// Points with friends: each fruit, and each lost friend found.
-export const POINTS = { fruit: 1, friend: 3 };
 
 /** What changes from level 1 to 10. */
 export function mazeLevel(level) {
@@ -128,6 +126,8 @@ export const LABELS = {
   bush: ['Rub the bush with your open hand!', 'ბუჩქს გაშლილი ხელით გადაუსვი!'],
   magnet: ['The magnet!', 'მაგნიტი!'],
   chest: ['Treasure!', 'განძი!'],
+  // In a race with friends, by the way out, as the first maze starts.
+  wayOut: ['The way out!', 'გასასვლელი!'],
 };
 
 /** What's new at a level, as [{ key, mark, name, nameKa }]. Nothing at level 1. */
@@ -402,17 +402,18 @@ export function addLoops(maze, count, random, keep = () => true) {
 export const deadEnds = (maze) => Array.from({ length: maze.count }, (_, id) => id).filter((id) => maze.degree(id) === 1);
 
 /**
- * One maze of a game, with all that's in it. Returns { maze, start, goal, lost, way, blockers, items }:
+ * One maze of a game, with all that's in it. Returns { maze, start, goal, lost, way, blockers, items, race }:
  *   start      the cell the character comes in at, on the left
- *   goal       on its own, the cell on the right where the lost friend waits, by the way out
- *   lost       the friends to find, each { id, k, cell, x, y }, k being its number for claiming with friends
+ *   goal       the cell on the right by the way out, as far along the paths as it can be: on their own, where the
+ *              lost friend waits, and in a race with friends, where getting out of the maze is
+ *   lost       the friend to find, on their own, as [{ id, k, cell, x, y }], and nobody in a race
  *   way        the cells from the start to the goal
  *   blockers   what stands in the way, each { id, kind, a, b, d, x, y }, between cells a and b, a on the start's side
  *   items      what's lying about, each { id, k, kind, cell, x, y, fruit }
- * seed and index make the same maze on every computer. features is what featuresFor says. lostCount is how many
- * friends are lost in it: one on their own, and with friends one more than there are players.
+ * seed and index make the same maze on every computer. features is what featuresFor says. race is true with
+ * friends, who race each other out of the mazes.
  */
-export function buildMaze({ seed, index = 0, size = 'medium', level = 1, features = featuresFor(level, index, size), lostCount = 1 }) {
+export function buildMaze({ seed, index = 0, size = 'medium', level = 1, features = featuresFor(level, index, size), race = false }) {
   const { cols, rows } = SIZES[size] ?? SIZES.medium;
   const random = seededRandom((seedOf(seed) * 31 + index * 7919 + 17) >>> 0);
   const startRow = Math.floor(rows / 2);
@@ -420,7 +421,7 @@ export function buildMaze({ seed, index = 0, size = 'medium', level = 1, feature
   const maze = digMaze(cols, rows, random, { start });
   const fromStart = distances(maze, start);
 
-  // On their own, the friend waits by the way out on the right, as far along the paths as it can be.
+  // The way out is on the right, as far along the paths as it can be. On their own, the friend waits by it.
   let goal = -1;
   for (let r = 0; r < rows; r += 1) {
     const id = r * cols + cols - 1;
@@ -457,12 +458,11 @@ export function buildMaze({ seed, index = 0, size = 'medium', level = 1, feature
   const open = (a, d) => maze.isOpen(a, d);
   way.splice(0, way.length, ...wayBetween(maze, start, goal, open));
 
-  // On their own, finding the friend ends the maze, so nothing goes where it could only be got to past them.
-  const beforeFriend = distances(maze, start, (a, d) => maze.isOpen(a, d) && a !== goal);
-  const taken = new Set([start]);
-  if (lostCount <= 1) {
-    for (let id = 0; id < maze.count; id += 1) if (beforeFriend[id] < 0) taken.add(id);
-  }
+  // Getting to the goal ends the maze, finding the friend or getting out, so nothing goes where it could only be
+  // got to past it, and nothing lies on it.
+  const beforeGoal = distances(maze, start, (a, d) => maze.isOpen(a, d) && a !== goal);
+  const taken = new Set([start, goal]);
+  for (let id = 0; id < maze.count; id += 1) if (beforeGoal[id] < 0) taken.add(id);
   const items = [];
   let itemNumber = 0;
   const add = (kind, cell, extra = {}) => {
@@ -472,34 +472,8 @@ export function buildMaze({ seed, index = 0, size = 'medium', level = 1, feature
     itemNumber += 1;
   };
 
-  // The lost friends. On their own, one, by the way out. With friends, spread out over the maze, as far from the
-  // start and from each other as they can be.
-  const lost = [];
-  const addLost = (cell) => {
-    taken.add(cell);
-    lost.push({ id: `lost-${index}-${lost.length}`, k: index * 1000 + lost.length, cell, ...maze.centre(cell) });
-  };
-  if (lostCount <= 1) {
-    addLost(goal);
-  } else {
-    const ends = new Set(deadEnds(maze));
-    const far = distances(maze, start);
-    for (let n = 0; n < lostCount; n += 1) {
-      let best = -1;
-      let bestScore = -Infinity;
-      for (let id = 0; id < maze.count; id += 1) {
-        if (taken.has(id) || far[id] < 2) continue;
-        const apart = lost.length ? Math.min(...lost.map((each) => distances(maze, each.cell)[id])) : far[id];
-        const score = apart * 2 + far[id] * 0.5 + (ends.has(id) ? 1.5 : 0) + random() * 0.5;
-        if (score > bestScore) {
-          bestScore = score;
-          best = id;
-        }
-      }
-      if (best < 0) break;
-      addLost(best);
-    }
-  }
+  // The lost friend, on their own, by the way out. In a race, nobody is lost: the way out is what everyone's after.
+  const lost = race ? [] : [{ id: `lost-${index}-0`, k: index * 1000, cell: goal, ...maze.centre(goal) }];
   const onWay = new Set(way);
 
   // The gate's key, somewhere that can be reached without going through the gate: a side path if there is one.
@@ -550,15 +524,14 @@ export function buildMaze({ seed, index = 0, size = 'medium', level = 1, feature
     if (cell !== undefined) add('gem', cell);
   }
 
-  // Fruit, mostly along the way to the friend, and some down the side paths.
-  const share = lostCount > 1 ? FRIENDS_FRUIT_SHARE : FRUIT_SHARE;
-  const fruitCount = Math.round(maze.count * share);
+  // Fruit, mostly along the way to the friend or the way out, and some down the side paths.
+  const fruitCount = Math.round(maze.count * FRUIT_SHARE);
   const alongWay = shuffle(way.filter((id) => !taken.has(id)), random);
   const elsewhere = shuffle(Array.from({ length: maze.count }, (_, id) => id).filter((id) => !taken.has(id) && !onWay.has(id)), random);
-  const pickFrom = lostCount > 1 ? shuffle([...alongWay, ...elsewhere], random) : [...alongWay.slice(0, Math.ceil(fruitCount * 0.6)), ...elsewhere, ...alongWay.slice(Math.ceil(fruitCount * 0.6))];
+  const pickFrom = [...alongWay.slice(0, Math.ceil(fruitCount * 0.6)), ...elsewhere, ...alongWay.slice(Math.ceil(fruitCount * 0.6))];
   for (const cell of pickFrom.slice(0, fruitCount)) add('fruit', cell, { fruit: FRUIT_KINDS[Math.floor(random() * FRUIT_KINDS.length) % FRUIT_KINDS.length] });
 
-  return { maze, start, goal, lost, way, blockers, items, size, cols, rows, index, seed };
+  return { maze, start, goal, lost, way, blockers, items, size, cols, rows, index, seed, race };
 }
 
 /* ---------- walking ---------- */
@@ -781,15 +754,4 @@ export function castFor(roster, mine, count, level = 1) {
   const others = roster.filter((id) => id !== mine);
   const from = (clampLevel(level) - 1) % others.length;
   return Array.from({ length: count }, (_, at) => others[(from + at) % others.length]);
-}
-
-/**
- * Who is lost in each maze with friends: anyone nobody is playing as, the same on every computer whoever works it
- * out. players is the characters everyone plays as.
- */
-export function friendsCast(roster, players, mazes, perMaze) {
-  const playing = new Set(players);
-  const free = roster.filter((id) => !playing.has(id));
-  const pool = free.length ? free : roster;
-  return Array.from({ length: mazes }, (_, maze) => Array.from({ length: perMaze }, (__, at) => pool[(maze * perMaze + at) % pool.length]));
 }

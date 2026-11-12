@@ -206,7 +206,7 @@ test('finding the way: the character finds its own way to the hand, round the co
   test.setTimeout(180_000);
   await startPlaying(page, { mazeWays: 'find', mazes: 2 });
   // The hand held still on the friend, a long way round from the way in.
-  await leadHand(page, { target: '(game) => game.run.layout.lost.find((lost) => !lost.owner) ?? null' });
+  await leadHand(page, { target: '(game) => game.run.layout.lost.find((lost) => !lost.found) ?? null' });
   await expectSoon(async () => (await state(page)).found, { timeout: 90_000 }).toBe(1);
   await stopHand(page);
 });

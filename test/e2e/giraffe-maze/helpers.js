@@ -34,7 +34,7 @@ export const state = (page) => page.evaluate(() => {
     prizes: { ...run.stats.prizes },
     hasKey: run.hasKey,
     power: run.power ? { ...run.power } : null,
-    lost: run.layout.lost.map(({ who, cell, owner, x, y }) => ({ who, cell, owner, x, y })),
+    lost: run.layout.lost.map(({ who, cell, found, x, y }) => ({ who, cell, found, x, y })),
     blockers: run.layout.blockers.map(({ kind, open, progress, x, y }) => ({ kind, open, progress, x, y })),
     items: run.layout.items.map(({ kind, gone, opened, x, y, cell }) => ({ kind, gone: Boolean(gone), opened: Boolean(opened), x, y, cell })),
     butterflies: run.butterflies.length,

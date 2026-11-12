@@ -1,20 +1,20 @@
 // Giraffe's Maze: Giraffe's friends are lost in a garden maze, and the child leads him to each one with an open hand.
 // The character walks along the paths towards the open hand, and waits while the hand is closed or can't be seen.
-// Each friend found follows along behind, into the next maze. On their own or with friends on their own computers,
-// all in the same maze. The rules are in rules.js and play.js, the maze is drawn by view.js, and the characters'
-// pictures come from walkers.js.
+// Each friend found follows along behind, into the next maze. With friends on their own computers it's a race out of
+// the same mazes instead, the first out of the last one winning. The rules are in rules.js and play.js, the maze is
+// drawn by view.js, and the characters' pictures come from walkers.js.
 import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
 import { Track } from '../../core/friends.js';
-import { FriendsPanel } from '../../core/friends-ui.js';
+import { FriendsPanel, time } from '../../core/friends-ui.js';
 import { Glove } from '../../core/glove.js';
 import { GameSession, SPOKEN } from '../../core/session.js';
 import { Sound } from '../../core/sound.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { FOLLOW_SPACING, MazeRun } from './play.js';
 import {
-  castFor, facingOf, FOUND_SECONDS, friendsCast, LABELS, MAZE_COUNTS, mazeNewAt, modeWord, NEWS, newSeedWord, POINTS,
-  REACH, readMode, SIZE_NAMES, SLIDE_SECONDS, Trail, WAYS,
+  castFor, facingOf, FOUND_SECONDS, LABELS, MAZE_COUNTS, mazeNewAt, modeWord, NEWS, newSeedWord, REACH, readMode,
+  SIZE_NAMES, SLIDE_SECONDS, Trail, WAYS,
 } from './rules.js';
 import { MazeView } from './view.js';
 import { renderWalkers } from './walkers.js';
@@ -22,6 +22,7 @@ import { renderWalkers } from './walkers.js';
 const byId = (id) => document.getElementById(id);
 const HINT = 'Lead the way with your open hand!';
 const FINISH = 'Everyone is found!';
+const RACE_FINISH = 'You did it! Great racing!'; // The end of a race with friends: one of the lines every game shares.
 const PRAISE = ['Nice one!', 'Great job!', 'Way to go!'];
 // What each friend calls out as their maze begins, in their own voice: see audio/voice/lines.json.
 const CALLS = {
@@ -48,15 +49,15 @@ const PRIZE_LANDS_AFTER = 800;
 // Which label goes with each thing a level brings, so the newest is named first.
 const LABEL_FOR = { butterflies: 'butterfly', gate: 'key', shoes: 'shoes', sheep: 'sheep', gems: 'gem', bird: 'bird', bush: 'bush', magnet: 'magnet', chest: 'chest' };
 
-// Playing with friends, each on their own computer. See core/friends-ui.js for what each of these is.
+// Racing friends, each on their own computer. See core/friends-ui.js for what each of these is.
 const MAZE_WORDS = {
   toggle: 'Play with friends',
   make: 'Make a game',
   codeLabel: 'A friend’s game code',
   codeName: 'Game code',
-  how: 'Tell your friends the code. Then you all press <b>Into the maze!</b>',
+  how: 'Tell your friends the code. Then you all press <b>Into the maze!</b> It’s a race: the first one out of the last maze wins.',
   leave: 'Leave this game',
-  privacy: 'Only your name, who you play as, where your character and glove are in the maze and what you find go to your friends. The camera picture stays on this computer.',
+  privacy: 'Only your name, who you play as, where your character and glove are in the maze and your time go to your friends. The camera picture stays on this computer.',
   alone: 'Play on your own',
   full: 'That game already has 4 players.',
   lost: 'Can’t reach the game. Check the internet, then try again.',
@@ -69,8 +70,11 @@ const MAZE_WORDS = {
 // smoothly from one to the next. Which maze, which way they face, and whether they're walking change half way.
 const WALKER_TRACK = { lerp: ['x', 'y', 'gx', 'gy'], lists: ['p'], steps: ['z', 'f', 'm', 'v', 'o'] };
 const FRIEND_GLOVE = { fill: '#e3e8ee', ink: '#9aa8b6' };
+const FADE_OUT_CELLS = 1; // Walking out of a maze in a race, a character fades away over its last cell.
 const round2 = (value) => Math.round(value * 100) / 100;
 const ids = ROSTER.map(({ id }) => id);
+/** How much of a character still shows, at x in a maze cols across: all of it inside, fading out past the way out. */
+const showing = (x, cols) => Math.min(1, Math.max(0, 1 - (x - cols) / FADE_OUT_CELLS));
 
 class MazeGame {
   chimeOnOpen = false; // The hand opens and closes all the time here, so a chime would be noise.
@@ -93,8 +97,6 @@ class MazeGame {
     this.events = this.runEvents();
     this.seedWord = newSeedWord();
     this.friendWalkers = new Map();
-    this.points = new Map();
-    this.waitingClaims = [];
     this.mode = 'solo';
     this.resetCounts();
     byId('finish-hero')?.closest('.finish-hero')?.insertAdjacentHTML('afterend', '<p id="finish-found" class="finish-found"></p><p id="finish-prizes" class="finish-prizes"></p>');
@@ -107,10 +109,9 @@ class MazeGame {
       portraits: () => session.portraits,
       onMove: (id, message) => this.fromFriend(id, message),
       onGone: (friend) => this.friendGone(friend),
-      // Whoever found the most, counting each friend found as three fruit. Equal ones share a place.
-      rank: (a, b) => b.dropped - a.dropped,
-      resultText: ({ dropped }) => `${dropped} ${dropped === 1 ? 'point' : 'points'}`,
-      titles: { first: 'You found the most!', other: 'Great finding!' },
+      // A race: whoever got out of the last maze first comes first, by their time, as in High Five Racers.
+      resultText: ({ ms }) => time(ms),
+      titles: { first: 'You were first out!', other: 'You made it out!' },
       startAfter: byId('start'),
       waitingBefore: byId('screen-finish'),
       resultsAfter: document.querySelector('#screen-finish .finish-hero'),
@@ -229,22 +230,18 @@ class MazeGame {
     this.mode = friendly ? 'friends' : 'solo';
     document.body.toggleAttribute('data-friends-race', Boolean(friendly));
     this.friendWalkers = new Map();
-    this.points = new Map();
-    this.waitingClaims = [];
+    this.outMs = null; // In a race, how long after "GO!" the child got out of the last maze.
+    this.session.finishLine = friendly ? RACE_FINISH : FINISH;
     if (friendly) {
-      // Everyone makes the same mazes from the host's seed, at the host's size, level and number of mazes, with
-      // one more friend lost in each than there are players.
+      // A race: everyone makes the same mazes from the host's seed, at the host's size, level and number of mazes,
+      // with nobody lost in them, and the first out of the last one wins. Each has all the fruit in their own.
       const { size, seed } = readMode(friendly.mode);
-      const players = [this.myCharacter().id, ...friendly.friends.map((friend) => friend.spec.id)];
       const mazes = MAZE_COUNTS.includes(friendly.length) ? friendly.length : 3;
-      const cast = friendsCast(ids, players, mazes, Math.min(5, friendly.racers.length + 1));
-      const me = this.friends.room.you;
-      this.run = new MazeRun({ seed, size, level: friendly.level, cast, ways: this.ways(), events: this.events, me, shared: { claim: (k) => this.friends.claim(k) } });
-      for (const id of friendly.racers) this.points.set(id, 0);
+      this.run = new MazeRun({ seed, size, level: friendly.level, mazes, race: true, ways: this.ways(), events: this.events });
       for (const friend of friendly.friends) {
-        this.friendWalkers.set(friend.id, { id: friend.id, spec: friend.spec, name: friend.spec.name, track: new Track(WALKER_TRACK), trail: new Trail(), glove: new Glove('right'), fade: 0, found: [], z: -1, walked: 0 });
+        this.friendWalkers.set(friend.id, { id: friend.id, spec: friend.spec, name: friend.spec.name, track: new Track(WALKER_TRACK), trail: new Trail(), glove: new Glove('right'), fade: 0, z: -1, walked: 0 });
       }
-      this.artFor([...players, ...cast.flat()]);
+      this.artFor([this.myCharacter().id, ...friendly.friends.map((friend) => friend.spec.id)]);
     } else {
       this.run = this.soloRun(level);
       this.artFor([this.myCharacter().id, ...this.run.cast.flat()]);
@@ -256,7 +253,7 @@ class MazeGame {
     this.showFound();
     this.showFruit();
     this.showPrizes();
-    this.showScores();
+    this.showRace();
     // Prizes only come from level 2, on the child's own.
     document.body.dataset.prizes = !friendly && level >= 2 ? 'on' : 'off';
   }
@@ -274,24 +271,21 @@ class MazeGame {
     return {
       onMazeStart: (index, layout) => {
         this.view.setLayout(layout);
-        // On their own, the friend lost in this maze calls out, and the new things in it are named.
+        // On their own, the friend lost in this maze calls out, and the new things in it are named. In a race, the
+        // way out is, as it starts.
         if (this.mode === 'solo') {
           const [lost] = layout.lost;
           if (lost && CALLS[lost.who]) this.story.say(lost.who, CALLS[lost.who]);
           this.nameNewThings(layout);
+        } else if (index === 0) {
+          this.view.introduce('wayOut', () => (this.run.phase === 'walking' ? this.view.flagAt(layout) : null));
         }
-        const waiting = this.waitingClaims;
-        this.waitingClaims = waiting.filter(({ k }) => Math.floor(k / 1000) > index);
-        for (const claim of waiting.filter(({ k }) => Math.floor(k / 1000) === index)) this.claimed(claim);
         this.showFound();
       },
       onEat: (item) => {
         sound().play('crunch', { gain: 0.45, rate: 0.95 + Math.random() * 0.15 });
         view().sparkle(item.pull?.x ?? item.x, item.pull?.y ?? item.y, '#ffffff');
         this.showFruit();
-      },
-      onClaimed: (item, by, mine) => {
-        if (mine) this.showFruit();
       },
       onKey: (item) => {
         sound().play('sparkle', { gain: 0.3 });
@@ -326,22 +320,23 @@ class MazeGame {
         setTimeout(() => this.showPrizes(true), PRIZE_LANDS_AFTER);
       },
       onButterfly: (fly) => view().introduce('butterfly', () => (fly.caught || fly.leaving ? null : { x: fly.x, y: fly.y - 0.4 })),
-      onFound: (lost, by, mine) => {
-        sound().play('found', { gain: mine ? 0.55 : 0.35 });
-        if (mine) sound().play('cheer', { gain: 0.16 });
+      onFound: (lost) => {
+        sound().play('found', { gain: 0.55 });
+        sound().play('cheer', { gain: 0.16 });
         view().hearts(lost.x, lost.y);
-        if (this.mode === 'friends') {
-          this.points.set(by, (this.points.get(by) ?? 0) + POINTS.friend);
-          this.friendWalkers.get(by)?.found.push(lost.who);
-          this.showScores();
-        }
-        if (mine) {
-          this.story.hide();
-          // Praise now and then, never over anything else being said.
-          if (this.praised % 2 === 0) sound().say(PRAISE[Math.floor(this.praised / 2) % PRAISE.length], { ifQuiet: true });
-          this.praised += 1;
-        }
+        this.story.hide();
+        this.praise();
         this.showFound();
+      },
+      // In a race, out of a maze: a cheer, and on the last one the time, which is the child's race time.
+      onOut: (index, last) => {
+        if (last) this.outMs = this.sinceGo;
+        sound().play('found', { gain: 0.55 });
+        sound().play('cheer', { gain: 0.16 });
+        const way = this.run.layout.maze.centre(this.run.layout.goal);
+        view().sparkle(way.x + 0.5, way.y);
+        if (!last) this.praise();
+        this.showRace();
       },
       onSlide: () => {
         sound().play('whoosh', { gain: 0.25, rate: 0.9 });
@@ -366,6 +361,12 @@ class MazeGame {
     for (const [key, target] of named) view.introduce(key, target);
   }
 
+  /** Praise now and then, never over anything else being said. */
+  praise() {
+    if (this.praised % 2 === 0) this.session.sound.say(PRAISE[Math.floor(this.praised / 2) % PRAISE.length], { ifQuiet: true });
+    this.praised += 1;
+  }
+
   /* ---------- each frame ---------- */
 
   update(dt, snapshot) {
@@ -376,6 +377,7 @@ class MazeGame {
     if (this.mode === 'friends') {
       this.friends.sendMove('walker', this.walkerState(input), this.sinceGo);
       this.updateFriends(dt);
+      this.showRace();
     }
     this.view.update(dt);
     this.restFor = input.open ? 0 : this.restFor + dt;
@@ -479,45 +481,29 @@ class MazeGame {
     };
   }
 
-  /** Something from a friend's game: where their character is, or who found something first. */
+  /** Something from a friend's game: where their character is, in whichever maze they've got to. */
   fromFriend(id, message) {
-    if (message.t === 'claimed') {
-      this.claimed(message);
-      return;
-    }
     if (message.t !== 'walker' || this.session.screen !== 'playing') return;
     this.friendWalkers.get(id)?.track.push(message, performance.now());
   }
 
-  /** Whoever got to k first has it: the fruit or the friend goes to them, and so do the points. */
-  claimed({ k, by }) {
-    if (this.mode !== 'friends' || !this.friends.current?.racers.includes(by)) return;
-    const maze = Math.floor(k / 1000);
-    if (maze > this.run.index) {
-      // From a maze this game hasn't got to yet, if a friend's game moved on a moment sooner.
-      this.waitingClaims.push({ k, by });
-      return;
-    }
-    if (maze < this.run.index) return;
-    const isFriend = k % 1000 < 100;
-    if (!isFriend && !this.run.layout.items.find((item) => item.k === k)?.owner) this.points.set(by, (this.points.get(by) ?? 0) + POINTS.fruit);
-    this.run.claimed(k, by);
-    this.showScores();
-  }
-
   friendGone(friend) {
     this.friendWalkers.delete(friend.id);
-    this.showScores();
+    this.showRace();
   }
 
-  /** Each friend's character and glove where they are in the maze, a moment ago, with whoever they've found. */
+  /**
+   * Each friend's character and glove where they are, a moment ago, if they're in the same maze as this child. One
+   * walking out of it fades away as it goes, and is gone once it's out.
+   */
   updateFriends(dt) {
     const now = performance.now();
     const { run } = this;
     for (const friend of this.friendWalkers.values()) {
       const at = friend.track.at(now);
       friend.at = at;
-      if (!at || at.z !== run.index) {
+      friend.out = at ? 1 - showing(at.x, run.layout.cols) : 0;
+      if (!at || at.z !== run.index || friend.out >= 0.99) {
         friend.shown = false;
         continue;
       }
@@ -530,7 +516,7 @@ class MazeGame {
       friend.trail.add(at.x, at.y);
       if (before) friend.walked += Math.hypot(at.x - before.x, at.y - before.y) > 0.001 ? Math.min(0.2, Math.hypot(at.x - before.x, at.y - before.y)) : 0;
       friend.shown = true;
-      const seen = Boolean(at.v);
+      const seen = Boolean(at.v) && friend.out === 0;
       friend.fade += ((seen ? 1 : 0) - friend.fade) * (1 - Math.exp(-dt * 8));
       const { glove } = friend;
       glove.visible = seen || friend.fade > 0.05;
@@ -585,23 +571,27 @@ class MazeGame {
     } else {
       const at = run.position;
       const justFound = run.phase === 'found' && run.followers.some(({ lost }) => run.time - (lost.foundAt ?? -Infinity) < FOUND_SECONDS);
-      walkers.push({
-        x: at.x,
-        y: at.y,
-        art: this.art[me],
-        facing: run.phase === 'found' ? 2 : run.walker.facing,
-        moving: run.moving,
-        walked: run.stats.walked,
-        cheer: justFound,
-        mine: true,
-        hasKey: run.hasKey,
-        power: run.power,
-        stuck: run.stuck,
-        followers: this.followersOf(run.trail, run.followers, run.stats.walked, run.moving),
-      });
+      // In a race, walking out of the maze, the character fades away as it goes.
+      const left = showing(at.x, run.layout.cols);
+      if (left > 0.01) {
+        walkers.push({
+          x: at.x,
+          y: at.y,
+          art: this.art[me],
+          facing: run.phase === 'found' ? 2 : run.walker.facing,
+          moving: run.moving,
+          walked: run.stats.walked,
+          cheer: justFound,
+          mine: true,
+          hasKey: run.hasKey,
+          power: run.power,
+          stuck: run.stuck,
+          alpha: left,
+          followers: this.followersOf(run.trail, run.followers, run.stats.walked, run.moving),
+        });
+      }
       for (const friend of this.friendWalkers.values()) {
         if (!friend.shown || !friend.at) continue;
-        const found = friend.found.map((who) => ({ who, lost: run.layout.lost.find((each) => each.owner === friend.id && each.who === who && run.time - (each.foundAt ?? -Infinity) < FOUND_SECONDS) }));
         walkers.push({
           x: friend.at.x,
           y: friend.at.y,
@@ -610,8 +600,8 @@ class MazeGame {
           moving: Boolean(friend.at.m),
           walked: friend.walked,
           name: friend.name,
-          alpha: 0.95,
-          followers: this.followersOf(friend.trail, found, friend.walked, Boolean(friend.at.m)),
+          alpha: 0.95 * (1 - friend.out),
+          fade: 1 - friend.out,
         });
       }
     }
@@ -643,9 +633,10 @@ class MazeGame {
     const list = byId('maze-found');
     if (!list) return;
     list.hidden = this.mode !== 'solo';
+    if (list.hidden) return;
     const portraits = this.session.portraits ?? {};
     const faces = this.run.cast.map(([who], index) => {
-      const found = index < this.run.index || (index === this.run.index && this.run.layout.lost.every((lost) => lost.owner));
+      const found = index < this.run.index || (index === this.run.index && this.run.layout.lost.every((lost) => lost.found));
       return { who, found, now: index === Math.max(0, this.run.index) && !found };
     });
     const key = faces.map(({ who, found, now }) => `${who}:${found}:${now}`).join(',');
@@ -677,33 +668,65 @@ class MazeGame {
     box.classList.add('is-caught');
   }
 
-  /** With friends, everyone's points as they play, the most first. */
-  showScores() {
-    const list = byId('maze-scores');
+  /**
+   * How many of the mazes each racer is out of, as a friend's game last said: the maze they're in, and whether
+   * they're walking out of it. All of them, once they've finished.
+   */
+  mazesOut(id) {
+    const { run } = this;
+    if (id === this.friends.room.you) return run.stats.out;
+    if (this.friends.results.has(id)) return run.mazes;
+    const at = this.friendWalkers.get(id)?.at;
+    if (!at) return 0;
+    return Math.min(run.mazes, at.z + (at.x > run.layout.cols ? 1 : 0));
+  }
+
+  /**
+   * In a race, everyone at the top as they play, whoever is furthest on first, with a dot for each maze and a flag
+   * once they're out of the last one. Equal ones stay in the order they came.
+   */
+  showRace() {
+    const list = byId('maze-race');
     const { current } = this.friends;
     list.hidden = this.mode !== 'friends' || !current;
     if (list.hidden) return;
     const portraits = this.session.portraits ?? {};
     const you = this.friends.room.you;
+    const { mazes } = this.run;
+    const finishedAt = (id) => this.friends.results.get(id)?.ms ?? (id === you ? this.outMs : null) ?? Infinity;
     const everyone = [{ id: you, name: 'You', who: this.myCharacter().id }, ...current.friends.filter((friend) => !friend.gone).map((friend) => ({ id: friend.id, name: friend.spec.name, who: friend.spec.id }))]
-      .map((each) => ({ ...each, n: this.points.get(each.id) ?? 0 }))
-      .sort((a, b) => b.n - a.n);
-    const key = everyone.map(({ id, n }) => `${id}:${n}`).join(',');
+      .map((each) => ({ ...each, out: this.mazesOut(each.id), at: finishedAt(each.id) }))
+      .sort((a, b) => b.out - a.out || (a.at === b.at ? 0 : a.at < b.at ? -1 : 1));
+    const key = everyone.map(({ id, out }) => `${id}:${out}`).join(',');
     if (list.dataset.key === key) return;
     list.dataset.key = key;
     list.replaceChildren(...everyone.map((each) => {
       const row = document.createElement('li');
       row.classList.toggle('is-you', each.id === you);
+      row.classList.toggle('is-out', each.out >= mazes);
+      row.dataset.out = String(each.out);
       const face = document.createElement('img');
       face.alt = '';
       face.src = portraits[each.who] ?? '';
       const name = document.createElement('span');
-      name.className = 'maze-score-name';
+      name.className = 'maze-race-name';
       name.textContent = each.name;
-      const score = document.createElement('span');
-      score.className = 'maze-score';
-      score.textContent = String(each.n);
-      row.append(face, name, score);
+      const dots = document.createElement('span');
+      dots.className = 'maze-race-dots';
+      dots.setAttribute('aria-label', `${each.out} of ${mazes} mazes`);
+      for (let maze = 0; maze < mazes; maze += 1) {
+        const dot = document.createElement('i');
+        dot.classList.toggle('is-done', maze < each.out);
+        dots.append(dot);
+      }
+      row.append(face, name, dots);
+      if (each.out >= mazes) {
+        const flag = document.createElement('span');
+        flag.className = 'maze-race-flag';
+        flag.setAttribute('aria-hidden', 'true');
+        flag.textContent = '🏁';
+        row.append(flag);
+      }
       return row;
     }));
   }
@@ -714,7 +737,8 @@ class MazeGame {
     const { sound } = this.session;
     sound.stopLoop('birds');
     this.story.hide();
-    if (this.mode === 'friends') this.friends.finished(this.sinceGo, { n: this.points.get(this.friends.room.you) ?? 0, w: 1 });
+    // The race time is when the child's character got out of the last maze, not the moment after when this card comes.
+    if (this.mode === 'friends') this.friends.finished(this.outMs ?? this.sinceGo, { n: this.run.stats.fruit, w: 1 });
     for (const glove of Object.values(this.gloves)) glove.hide();
     for (const friend of this.friendWalkers.values()) friend.shown = false;
   }
@@ -744,6 +768,8 @@ class MazeGame {
     const row = (value) => ({ left: hand === 'left' ? value : '', right: hand === 'right' ? value : '' });
     const prizes = Object.values(stats.prizes).reduce((sum, count) => sum + count, 0);
     this.friends.showResults();
+    // In a race nobody is found and there are no prizes, so the card only has the fruit, the times and the hand.
+    for (const id of ['found', 'prizes']) byId(`sum-left-${id}`).closest('tr').hidden = this.mode === 'friends';
     const portraits = this.session.portraits ?? {};
     const found = byId('finish-found');
     found.replaceChildren(...this.run.followers.map(({ who }) => {
@@ -760,7 +786,7 @@ class MazeGame {
       hero: stats.fruit,
       noun: 'game',
       rows: { found: row(stats.found), prizes: row(prizes) },
-      // Nobody can lose: every friend is found in the end.
+      // Nobody can lose: every friend is found in the end, and in a race everyone gets out.
       won: true,
       // A game with friends is on the host's level, so it doesn't move the child's own level on.
       countsForLevel: !this.friends.current,
@@ -787,7 +813,7 @@ new GameSession({
         <ol id="maze-found" class="maze-found" aria-label="Friends to find"></ol>
         <div class="chip chip-fruit"><span class="chip-label">Fruit</span><span id="chip-fruit" class="chip-value">0</span></div>
         <div class="chip chip-prizes"><span class="chip-label">Prizes</span><span id="chip-prizes" class="chip-value">0</span></div>
-        <ol id="maze-scores" class="maze-scores" hidden></ol>
+        <ol id="maze-race" class="maze-race" aria-label="The race" hidden></ol>
       </div>
       ${STORY_BOX}
       <div class="film maze-film" aria-hidden="true">
@@ -829,7 +855,7 @@ new GameSession({
         ${choice('mazeWays', 'find', 'The character finds its own way to the open hand')}
       </fieldset>
       <fieldset class="choice">
-        <legend>Friends to find in a game</legend>
+        <legend>Friends to find in a game (with friends, how many mazes to race out of)</legend>
         ${choice('mazes', '2', '2')}
         ${choice('mazes', '3', '3')}
         ${choice('mazes', '5', '5')}
