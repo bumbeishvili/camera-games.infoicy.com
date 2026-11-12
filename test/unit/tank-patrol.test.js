@@ -1484,16 +1484,30 @@ test('a shot of this child\'s that reaches the friend\'s tank is a hit and a poi
   assert.ok(duel.score.mine >= 2 + Math.floor(30 / (SAFE_SECONDS + 1)), `${duel.score.mine}`);
 });
 
-test('a friend who is resting can\'t be fired at, and isn\'t, and an uncertain hand doesn\'t fire either', () => {
+test('a friend who is resting can still be fired at and hit, with only the bubble after a hit in the way, and an uncertain hand doesn\'t fire', () => {
   const duel = battle();
+  const log = eventsOf(duel);
+  // Resting from the start: the crosshair takes it, and the first shot to get there is a hit.
   friendAt(duel, 14, 0, { r: 1 });
-  run(duel, 3, () => openAt(duel.friend.x, duel.friend.z));
-  assert.deepEqual([duel.stats.shots, duel.score.mine, duel.targets.length], [0, 0, 0]);
-  assert.equal(duel.locked, null);
-  // Back again, and the gun can fire at them.
-  friendAt(duel, 14, 0, { r: 0 });
-  run(duel, 1, () => openAt(duel.friend.x, duel.friend.z));
+  assert.equal(duel.friend.resting, true);
+  assert.deepEqual(duel.targets, [duel.friend]);
+  run(duel, 1.5, () => openAt(duel.friend.x, duel.friend.z));
+  assert.equal(duel.locked, duel.friend);
   assert.equal(duel.score.mine, 1);
+  assert.ok(duel.stats.shots >= 1);
+  // Still resting, the bubble after the hit is all that stops the next, as when they aren't.
+  assert.ok(log.count('friend-bonk') >= 1, 'shots in the bubble bounce off');
+  run(duel, SAFE_SECONDS, () => openAt(duel.friend.x, duel.friend.z));
+  assert.equal(duel.score.mine, 2);
+  assert.equal(duel.locked, duel.friend, 'the crosshair never lets go of a friend who rests');
+  // Starting to rest in the middle changes nothing either.
+  friendAt(duel, 14, 0, { r: 0 });
+  run(duel, SAFE_SECONDS, () => openAt(duel.friend.x, duel.friend.z));
+  friendAt(duel, 14, 0, { r: 1 });
+  assert.equal(duel.locked, duel.friend);
+  const before = duel.score.mine;
+  run(duel, SAFE_SECONDS + 1.5, () => openAt(duel.friend.x, duel.friend.z));
+  assert.ok(duel.score.mine > before, `${before} then ${duel.score.mine}`);
   // A hand that can't be read, or has gone, never fires, as on a patrol.
   for (const hand of ['unsure', 'none']) {
     const shots = duel.stats.shots;
@@ -1545,9 +1559,10 @@ test('the two tanks never go through each other', () => {
   run(duel, 0.2, { hand: 'none', pointer: null });
   assert.ok(Math.hypot(duel.tank.x - duel.friend.x, duel.tank.z - duel.friend.z) >= CLEAR - 0.01);
   assert.ok(valleyNav().isFree(duel.tank.x, duel.tank.z));
-  // Driving straight into it, as at a friend who's resting, which nothing stops short of: it never goes into it.
+  // Driving straight into it, with the hand on the far side, so it isn't driving at the tank and stopping short of
+  // it: it never goes into it.
   const { x, z } = duel.tank;
-  friendAt(duel, 12, 0.6, { r: 1 });
+  friendAt(duel, 12, 0.6);
   let nearest = Infinity;
   run(duel, 4, () => {
     nearest = Math.min(nearest, Math.hypot(duel.tank.x - duel.friend.x, duel.tank.z - duel.friend.z));

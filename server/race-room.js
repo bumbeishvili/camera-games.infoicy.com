@@ -79,7 +79,7 @@
 //   tank   { ms, x, z, h, a, s, n, r, o }   where their tank is in Tank Patrol, across and along the valley, which
 //                                      way it faces and its turret points, how fast it's going, how many shots it
 //                                      has fired, so the friend's game can show them coming, whether their child
-//                                      is resting, when it can't be fired at, and whether their hand is open
+//                                      is resting, shown with little z's over it, and whether their hand is open
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)

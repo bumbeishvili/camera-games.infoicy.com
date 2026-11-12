@@ -962,7 +962,7 @@ export class Field {
         const side = this.project(friend.x + 6, friend.y + 4 + rise, friend.z);
         labels.push({ x: side.x, y: side.y, words: '+1', alpha: clamp(Math.min(age / 0.3, (POINT_SECONDS - age) / 0.5), 0, 1) });
       }
-      // A tank whose child is resting is asleep, and can't be fired at.
+      // A tank whose child is resting is asleep, though it can still be hit.
       if (friend.resting) sleeping.push(this.project(friend.x + 2, friend.y + 7.6, friend.z));
     }
     if (friend && resting) sleeping.push(this.project(tank.x + 2, tank.y + 7.6, tank.z));

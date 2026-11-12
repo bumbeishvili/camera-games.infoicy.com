@@ -3,7 +3,7 @@
 // says, and a hit is decided by the game of the tank that fired it, which tells the other. Here they're two
 // separate browsers, talking through the race server on this computer (tools/race-server.mjs).
 import { expect, shot, show, test, waitForScreen } from '../helpers.js';
-import { biggestStep, brightnessThrough, openPatrol, pointAt, startPatrol, stopPointing } from './helpers.js';
+import { biggestStep, brightnessThrough, handGone, openPatrol, pointAt, startPatrol, stopPointing } from './helpers.js';
 
 const OPEN = [null, 'open', { scale: 0.7 }];
 
@@ -182,6 +182,23 @@ test('two friends battle from their own computers: each tank where it really is 
     const { mine, hits } = await each.evaluate(() => ({ mine: window.__game.patrol.score.mine, hits: window.__game.patrol.stats.hits }));
     expect(hits).toBe(mine);
   }
+
+  // Ben puts his hand down, and after a few seconds he's resting, with little z's over his tank on Ana's screen.
+  // His tank can still be hit: Ana's gun fires at it, and each hit counts for her on both screens.
+  await handGone(ben.page);
+  await expect.poll(async () => (await battleOf(ben.page)).resting, { timeout: 15_000 }).toBe(true);
+  await expect.poll(async () => (await battleOf(page)).friend.resting, { timeout: 5000 }).toBe(true);
+  const beforeRest = (await battleOf(page)).mine;
+  await pointAt(page, 'friend', 'open');
+  await expect.poll(async () => (await battleOf(page)).mine, { timeout: 15_000, intervals: [50] }).toBeGreaterThan(beforeRest);
+  expect((await battleOf(page)).friend.resting).toBe(true);
+  await page.waitForTimeout(400);
+  await shot(page, 'tanks-friends-hit-resting');
+  await pointAt(page, 'friend', 'fist');
+  await expect.poll(async () => {
+    const [here, there] = await Promise.all([battleOf(page), battleOf(ben.page)]);
+    return here.mine === there.theirs && there.theirs > beforeRest && there.resting;
+  }, { timeout: 10_000 }).toBe(true);
 
   // The time runs out for both together, and the finish card says who won, with both scores.
   for (const each of [page, ben.page]) {

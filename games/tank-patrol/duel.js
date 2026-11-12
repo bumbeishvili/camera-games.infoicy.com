@@ -5,8 +5,9 @@
 // A shot of this child's that reaches the friend's tank is a hit, decided here, as this is the game that fired
 // it, and a hit is a point for this child. The friend's game is told, and shows the hit on its own tank. Nothing
 // is ever taken away, and no tank is ever stopped: after a hit, the tank that was hit has a bubble round it for
-// a moment, which shots bounce off, and a tank whose child is resting can't be fired at at all. The battle lasts
-// as long as the host's game says, and whoever made the most hits wins. Equal hits share the win.
+// a moment, which shots bounce off. A tank whose child is resting can still be hit, as a friend's car keeps
+// going in a race. The battle lasts as long as the host's game says, and whoever made the most hits wins. Equal
+// hits share the win.
 //
 // There's no screen, sound or camera in this file, so it all runs in the unit tests.
 import { Patrol } from './patrol.js';
@@ -61,10 +62,10 @@ export class Duel extends Patrol {
     Object.assign(this.stats, { hitBy: 0 });
   }
 
-  /** What the gun can fire at: the friend's tank, unless their child is resting. */
+  /** What the gun can fire at: the friend's tank, resting or not, for as long as they're here. */
   get targets() {
     const { friend } = this;
-    return friend.state === 'rolling' && !friend.resting ? [friend] : [];
+    return friend.state === 'rolling' ? [friend] : [];
   }
 
   /** Whether this child's own tank is in its bubble after being hit. Once it's over, both bubbles go. */
@@ -87,7 +88,7 @@ export class Duel extends Patrol {
       return;
     }
     if (target.state !== 'rolling') return;
-    if (target.resting || this.friendSafe) {
+    if (this.friendSafe) {
       this.stats.bonks += 1;
       this.emit('friend-bonk', { friend: target });
       return;
@@ -108,8 +109,6 @@ export class Duel extends Patrol {
     if (!at || friend.state !== 'rolling') return 0;
     friend.turnRate = dt > 0 ? wrap(at.h - friend.heading) / dt : 0;
     Object.assign(friend, { x: at.x, z: at.z, y: groundY(at.x, at.z), heading: at.h, turret: at.a, speed: at.s, resting: Boolean(at.r), open: Boolean(at.o) });
-    // A child who has started resting isn't fired at, so the crosshair lets go.
-    if (friend.resting && this.locked === friend) this.locked = null;
     const fired = Math.max(0, Math.round(at.n ?? 0) - friend.shots);
     friend.shots = Math.max(friend.shots, Math.round(at.n ?? 0));
     return Math.min(SHOWN_AT_ONCE, fired);
