@@ -100,3 +100,7 @@ These are only used by the tests, and don't ship with the games' own folders. `t
 | `star-jumps.webm`, `jumps.webm` | [Jumping jacks and burpees](https://commons.wikimedia.org/wiki/File:Jumping_jacks_and_burpees.webm) | Taco fleur |
 | `squat.webm` | [Squat and Frontal Raise](https://commons.wikimedia.org/wiki/File:Squat_and_Frontal_Raise.webm) | Taco fleur |
 | `claps.webm`, `circles.webm`, `wings.webm`, `demo-fight.webm`, `demo-trail.webm` | Rendered with `tools/render_test_moves.py`, using the character Vita from [vrm-samples](https://github.com/madjin/vrm-samples), marked CC0 in its own metadata | Made for these tests |
+
+## The face tracker's model
+
+`vendor/mediapipe/face_landmarker.task`, which Gobble and Grow reads the mouth with, is Google's [MediaPipe Face Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker) model (float16, version 1), from MediaPipe's own model storage, [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0), unchanged. The hand and pose models beside it came from the same place, on the same terms.
