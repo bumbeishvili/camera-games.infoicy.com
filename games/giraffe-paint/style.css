@@ -1,0 +1,140 @@
+/* Giraffe's Paint Box: the sheet and its pots fill the screen, under a band along the top with the parts painted on
+   the left, Giraffe's words in the middle, and the hand meter and the mirror on the right. */
+:root {
+  --meter-size: clamp(66px, 7vw, 92px);
+  --camera-small: clamp(140px, 15vw, 230px);
+}
+
+/* The mirror, in the top right corner, by the gear. */
+body:not([data-screen='check']) .camera-frame { left: auto; right: 70px; transform: none; }
+
+/* The hand meter, beside the mirror. */
+.hands-bar {
+  top: 12px;
+  bottom: auto;
+  left: auto;
+  right: calc(70px + var(--camera-small) + 12px);
+  transform: none;
+}
+body[data-screen='check'] .hands-bar { top: auto; bottom: 10px; left: 50%; right: auto; transform: translateX(-50%); }
+.meter { padding: 6px 6px 4px; border-radius: 20px; }
+.meter-caption { font-size: clamp(11px, 1vw, 13px); }
+
+/* ---------- the parts painted, and whoever is hiding ---------- */
+.paint-hud {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  top: 12px;
+  left: 12px;
+  align-items: center;
+  gap: 8px;
+}
+body[data-screen='playing'] .paint-hud,
+body[data-screen='countdown'] .paint-hud { display: flex; }
+.paint-hud .chip { min-width: clamp(64px, 7vw, 96px); padding: 4px 10px 6px; }
+.paint-hud .chip[hidden] { display: none; }
+.chip-parts .chip-label::before { content: '🎨 '; }
+.chip-friend .chip-label::before { content: '❓ '; }
+
+/* ---------- Giraffe's words, in the middle of the band ---------- */
+.story {
+  top: 12px;
+  left: 50%;
+  transform: translateX(-62%);
+  width: min(30vw, 360px);
+}
+body[data-screen='playing']:has(.story.is-visible) .prompt { left: 50%; max-width: calc(100vw - 32px); }
+
+/* ---------- a little film: an open hand dips in the pot with the dot's colour, and paints the shape with it ---------- */
+.film-sheet { fill: #fffdf8; stroke: #c28a52; stroke-width: 4; }
+.film-shape { fill: none; stroke: var(--ink); stroke-width: 4; }
+.film-fill { fill: #f0504a; opacity: 0; animation: film-fill 8s linear infinite; }
+.film-row { fill: none; stroke: #f0504a; stroke-width: 22; stroke-linecap: round; stroke-dasharray: 70; stroke-dashoffset: 70; }
+.film-row-1 { animation: film-row-1 8s linear infinite; }
+.film-row-2 { animation: film-row-2 8s linear infinite; }
+.film-row-3 { animation: film-row-3 8s linear infinite; }
+.film-dot { fill: #f0504a; stroke: var(--ink); stroke-width: 2; }
+.film-pot rect { fill: #eef2f6; stroke: var(--ink); stroke-width: 3; }
+.film-pot ellipse { stroke: var(--ink); stroke-width: 3; }
+.film-pot-a ellipse { fill: #f0504a; }
+.film-pot-b ellipse { fill: #4a94ff; }
+.film-hand rect { fill: #3ddc84; stroke: var(--ink); stroke-width: 3; }
+.film-finger { fill: none; stroke: #3ddc84; stroke-width: 6; stroke-linecap: round; }
+.film-blob { fill: #f0504a; stroke: var(--ink); stroke-width: 2; }
+
+/* The hand goes down into the pot, up to the shape, and across it three times, there and back. */
+.film-hand { transform: translate(59px, 126px); animation: film-hand 8s ease-in-out infinite; }
+
+@keyframes film-hand {
+  0%, 10% { transform: translate(59px, 126px); }
+  22% { transform: translate(78px, 44px); }
+  36% { transform: translate(142px, 44px); }
+  42% { transform: translate(144px, 62px); }
+  56% { transform: translate(76px, 62px); }
+  62% { transform: translate(80px, 80px); }
+  76%, 90% { transform: translate(140px, 80px); }
+  100% { transform: translate(59px, 126px); }
+}
+
+@keyframes film-row-1 {
+  0%, 22% { stroke-dashoffset: 70; }
+  36%, 94% { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: 70; }
+}
+
+@keyframes film-row-2 {
+  0%, 42% { stroke-dashoffset: 70; }
+  56%, 94% { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: 70; }
+}
+
+@keyframes film-row-3 {
+  0%, 62% { stroke-dashoffset: 70; }
+  76%, 94% { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: 70; }
+}
+
+/* And once it's mostly painted, the shape fills itself in. */
+@keyframes film-fill {
+  0%, 77% { opacity: 0; }
+  84%, 94% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .film-hand, .film-fill, .film-row-1, .film-row-2, .film-row-3 { animation-duration: 12s; }
+}
+
+/* The film goes up under the parts painted, out of the way of the sheet and its pots. */
+.paint-film { top: 92px; bottom: auto; width: min(16vw, 25vh); }
+
+/* The finish card and the grown-ups' panel can save the picture. */
+.paint-save { font-size: 19px; }
+
+/* With friends: how everyone is getting on, the most first, along the top after the parts painted. */
+.paint-scores {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 40vw;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.paint-scores[hidden] { display: none; }
+.paint-scores li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px 3px 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 4px 14px rgba(18, 48, 77, 0.18);
+  font-size: clamp(14px, 1.4vw, 17px);
+  font-weight: 700;
+}
+.paint-scores li.is-you { background: var(--sun); }
+.paint-scores img { width: 30px; height: 30px; border-radius: 50%; background: var(--surface-soft); }
+.paint-score-name { max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.paint-score { margin-left: 4px; font-variant-numeric: tabular-nums; }
