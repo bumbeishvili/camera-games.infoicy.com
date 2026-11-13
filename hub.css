@@ -566,6 +566,17 @@ body.hub {
 .art-garden-spout { fill: none; stroke: #4bb3a8; stroke-width: 5; stroke-linecap: round; }
 .art-garden-can { fill: #4bb3a8; stroke: var(--ink); stroke-width: 3; }
 .art-garden-handle { fill: none; stroke: var(--ink); stroke-width: 5; stroke-linecap: round; }
+.game-art-goal { background: linear-gradient(#8fd0ff, #e4f5ff 55%); }
+.art-goal-grass { fill: #6fc253; }
+.art-goal-stripe { fill: #62b548; }
+.art-goal-line { fill: none; stroke: rgb(255 255 255 / 0.9); stroke-width: 3; }
+.art-goal-spot { fill: #fff; }
+.art-goal-trail { fill: none; stroke: #fff; stroke-width: 4; stroke-linecap: round; stroke-dasharray: 1 10; }
+.art-goal-frame-ink { fill: none; stroke: #8fa0b2; stroke-width: 15; stroke-linejoin: round; }
+.art-goal-frame { fill: none; stroke: #fff; stroke-width: 11; stroke-linejoin: round; }
+.art-goal-ring { fill: rgb(61 220 132 / 0.22); stroke: #3ddc84; stroke-width: 5; }
+.art-goal-ball { fill: #fff; stroke: var(--ink); stroke-width: 3; }
+.art-goal-patch { fill: #2b3440; }
 .art-paint-pink { fill: #ff7eb6; stroke: var(--ink); stroke-width: 2; }
 .art-paint-blue { fill: #3fb7ff; stroke: var(--ink); stroke-width: 2; }
 .art-paint-yellow { fill: #ffd23f; stroke: var(--ink); stroke-width: 2; }

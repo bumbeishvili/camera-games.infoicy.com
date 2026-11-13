@@ -1,10 +1,14 @@
 // Records what the real hand tracker reports for photos of hands, for the unit tests: test/fixtures/photo-hands.json
 // keeps it for each photo, as test/unit/photo-hands.js reads it. A photo can be squeezed across, as a hand turned
-// part of the way to side-on looks narrower: palm-60 is the palm photo at 60% of its width. Each photo is shown to
-// the tracker the game uses, on its own, for a few frames, as a camera would show it. Run it with the server going:
+// part of the way to side-on looks narrower: palm-60 is the palm photo at 60% of its width. It can be squeezed down
+// as well, as a hand tipped towards the camera looks shorter, and turned, for fingers that point somewhere other
+// than up: palm-short-60 is the palm at 60% of its height, and palm-turn-90 has it turned 90 degrees clockwise.
+// Each photo is shown to the tracker the game uses, on its own, for a few frames, as a camera would show it. Run it
+// with the server going:
 //
 //   npm start                     (in another terminal)
 //   node tools/record_hands.mjs palm=test/fixtures/photos/palm.jpg palm-60=test/fixtures/photos/palm.jpg@0.6
+//   node tools/record_hands.mjs palm-short-60=test/fixtures/photos/palm.jpg@1,0.6 palm-turn-90=test/fixtures/photos/palm.jpg@1,1,90
 import { chromium } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
@@ -14,10 +18,11 @@ const SITE = `http://localhost:${process.env.PORT ?? 8642}`;
 const OUT = resolve(ROOT, 'test/fixtures/photo-hands.json');
 const wanted = process.argv.slice(2).map((arg) => {
   const [name, rest] = arg.split('=');
-  const [file, squeeze = '1'] = rest.split('@');
-  return { name, file: resolve(file), squeeze: Number(squeeze) };
+  const [file, change = '1'] = rest.split('@');
+  const [squeeze = 1, shorten = 1, turn = 0] = change.split(',').map(Number);
+  return { name, file: resolve(file), squeeze, shorten, turn };
 });
-if (!wanted.length) throw new Error('Name the photos to record, as name=file or name=file@squeeze');
+if (!wanted.length) throw new Error('Name the photos to record, as name=file, name=file@squeeze or name=file@squeeze,shorten,degrees');
 
 const browser = await chromium.launch({ channel: 'chrome', args: ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=metal'] });
 const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
@@ -50,19 +55,24 @@ const recorded = await page.evaluate(async (photos) => {
     });
   };
   const out = {};
-  for (const { name, file, squeeze } of photos) {
+  for (const { name, file, squeeze, shorten, turn } of photos) {
     const image = new Image();
     image.src = `/recorder-photo/${encodeURIComponent(file)}`;
     await image.decode();
+    const [wide, tall] = [image.naturalWidth * squeeze, image.naturalHeight * shorten];
+    const angle = (turn * Math.PI) / 180;
     const canvas = document.createElement('canvas');
-    canvas.width = Math.round(image.naturalWidth * squeeze);
-    canvas.height = image.naturalHeight;
+    // Big enough for the photo however it's turned.
+    canvas.width = Math.round(Math.abs(wide * Math.cos(angle)) + Math.abs(tall * Math.sin(angle)));
+    canvas.height = Math.round(Math.abs(wide * Math.sin(angle)) + Math.abs(tall * Math.cos(angle)));
     const ctx = canvas.getContext('2d');
     // An empty picture first, so the tracker finds this hand afresh rather than following the last one.
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     for (let i = 0; i < 3; i += 1) await show(canvas);
-    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate(angle);
+    ctx.drawImage(image, -wide / 2, -tall / 2, wide, tall);
     let result = null;
     for (let i = 0; i < 6; i += 1) result = await show(canvas);
     out[name] = {
@@ -71,7 +81,7 @@ const recorded = await page.evaluate(async (photos) => {
     };
   }
   return out;
-}, wanted.map(({ name, file, squeeze }) => ({ name, file: basename(file), squeeze })));
+}, wanted.map(({ name, file, squeeze, shorten, turn }) => ({ name, file: basename(file), squeeze, shorten, turn })));
 await browser.close();
 
 const all = JSON.parse(readFileSync(OUT, 'utf8'));

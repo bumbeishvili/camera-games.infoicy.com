@@ -601,6 +601,43 @@ const FILMS = {
       return { flowers: stats.flowers, pours: stats.pours, prizes: stats.prizes };
     }),
   },
+  'giraffe-goal': {
+    settings: { goalSaves: 14, levels: { 'giraffe-goal': 3 } },
+    css: '.camera-frame { --camera-small: 22vw !important; } .goal-film { display: none !important; }',
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: null, right: 'palm', scale: 0.62 }));
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await wait(page, 600);
+    },
+    async play(page) {
+      // The open hand, held up, goes to each ring before its ball does, as a child would, and then to the star the
+      // save knocks out: a curling shot from the fox, and plain ones from the pig.
+      await page.evaluate(() => new Promise((done) => {
+        let x = 0;
+        let y = 0;
+        const started = performance.now();
+        const timer = setInterval(() => {
+          const { goal, gloves } = window.__game;
+          const glove = gloves.right;
+          const wanted = goal.wants();
+          if (glove.visible && wanted) {
+            x += (wanted.x - glove.x / innerWidth) * 1280 * 0.12;
+            y += (wanted.y - glove.y / innerHeight) * 720 * 0.12;
+          }
+          window.__camera.show({ left: null, right: 'palm', scale: 0.62, rightOffsetX: x, rightOffsetY: y });
+          if (performance.now() - started > 15_000) {
+            clearInterval(timer);
+            done();
+          }
+        }, 33);
+      }));
+    },
+    report: (page) => page.evaluate(() => {
+      const { saves, goals, stars, shots } = window.__game.goal.stats;
+      return { saves, goals, stars, shots };
+    }),
+  },
   'balloon-pop': {
     settings: { reach: 'none', pace: 'medium' },
     async ready(page) {

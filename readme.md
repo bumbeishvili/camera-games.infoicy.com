@@ -11,7 +11,7 @@ Movement-based games for children, played in front of a webcam.
 | ![Long Walk Home](demos/gif/long-walk-home.gif)<br>**Long Walk Home:** carry fruit to a hungry giraffe | ![Spider Catcher](demos/gif/spider-catcher.gif)<br>**Spider Catcher:** catch spiders, take them home |
 | ![Smoothie Stand](demos/gif/smoothie-stand.gif)<br>**Smoothie Stand:** slice fruit with an open hand | ![The Lighthouse Keeper](demos/gif/lighthouse.gif)<br>**Lighthouse Keeper:** wipe the windows clean |
 | ![Bounce Back](demos/gif/bounce-back.gif)<br>**Bounce Back:** hit a big, slow ball over the net with an open hand | ![Giraffe's Maze](demos/gif/giraffe-maze.gif)<br>**Giraffe's Maze:** lead Giraffe through a maze with an open hand |
-| ![Giraffe's Garden](demos/gif/giraffe-garden.gif)<br>**Giraffe's Garden:** turn your hand over to water the garden | |
+| ![Giraffe's Garden](demos/gif/giraffe-garden.gif)<br>**Giraffe's Garden:** turn your hand over to water the garden | ![Giraffe's Goal](demos/gif/giraffe-goal.gif)<br>**Giraffe's Goal:** save penalties with your hand held up like a high five |
 
 - Resting never costs anything.
 - Each game has 10 levels.

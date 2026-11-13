@@ -17,6 +17,7 @@ const GAMES = [
   { name: 'Bounce Back', folder: 'bounce-back', start: 'Let’s play!' },
   { name: 'Giraffe’s Maze', folder: 'giraffe-maze', start: 'Into the maze!' },
   { name: 'Giraffe’s Garden', folder: 'giraffe-garden', start: 'Water the garden' },
+  { name: 'Giraffe’s Goal', folder: 'giraffe-goal', start: 'Go in goal' },
 ];
 
 test('the hub offers every game, and each one opens and comes back', async ({ page }) => {
@@ -203,12 +204,13 @@ test('typing in the search finds games by their name, what they\'re about and wh
     ['fruit', ['Giraffe’s Long Walk Home', 'Giraffe’s Smoothie Stand']],
     ['lighthouse', ['The Lighthouse Keeper']],
     ['flowers', ['Giraffe’s Garden']],
+    ['penalty', ['Giraffe’s Goal']],
     // Capitals, accents and apostrophes don't matter, and every word has to fit.
     ['TÉNNIS', ['Bounce Back']],
     ['giraffe\'s smoothie', ['Giraffe’s Smoothie Stand']],
     ['  Spider   catcher ', ['Spider Catcher']],
-    // A plural finds what it's a plural of: Bounce Back's ball, and Balloon Pop's balloons.
-    ['balls', ['Balloon Pop', 'Bounce Back']],
+    // A plural finds what it's a plural of: Bounce Back's ball and Giraffe's Goal's, and Balloon Pop's balloons.
+    ['balls', ['Balloon Pop', 'Bounce Back', 'Giraffe’s Goal']],
   ];
   for (const [typed, names] of cases) {
     await test.step(typed, async () => {
@@ -242,7 +244,7 @@ test('each filter narrows the games to the ones it\'s about', async ({ page }) =
   const FILTERS = [
     ['Shooting', ['Robot Rescue', 'Tank Patrol', 'Cannon Bay', 'Sky Wings'], ['Balloon Pop', 'Bounce Back', 'Mighty Moves', 'Spider Catcher']],
     ['Racing, running and flying', ['High Five Racers', 'Leap Trail', 'Sky Wings'], ['Tank Patrol', 'Bounce Back', 'Balloon Pop']],
-    ['Sports', ['Bounce Back'], ['High Five Racers', 'Mighty Moves', 'Balloon Pop']],
+    ['Sports', ['Bounce Back', 'Giraffe’s Goal'], ['High Five Racers', 'Mighty Moves', 'Balloon Pop']],
     ['Fighting', ['Mighty Moves'], ['Robot Rescue', 'Bounce Back', 'Tank Patrol']],
     ['Puzzles and thinking', ['Balloon Pop'], ['Spider Catcher', 'Tank Patrol', 'Mighty Moves']],
     ['Stories and missions', ['Giraffe’s Long Walk Home', 'The Lighthouse Keeper', 'Spider Catcher', 'Giraffe’s Smoothie Stand', 'Robot Rescue'],
@@ -350,7 +352,7 @@ test('when no game matches, it says so, and one press shows them all again', asy
   // And from the line above the cards, which clears the search and the filters together.
   await filterNamed(page, 'Sports').check();
   await page.locator('#hub-search').fill('ball');
-  await expectOnly(page, ['Bounce Back']);
+  await expectOnly(page, ['Bounce Back', 'Giraffe’s Goal']);
   await page.locator('.hub-found-line .hub-show-all').click();
   await expect.poll(() => showing(page)).toHaveLength(all);
   await expect(filterNamed(page, 'Sports')).not.toBeChecked();
@@ -367,12 +369,12 @@ test('the search and filters work from the keyboard', async ({ page }) => {
   await page.keyboard.press('Tab');
   await expect(page.locator('#hub-search')).toBeFocused();
   await page.keyboard.type('ball');
-  await expectOnly(page, ['Balloon Pop', 'Bounce Back']);
+  await expectOnly(page, ['Balloon Pop', 'Bounce Back', 'Giraffe’s Goal']);
   // Escape empties the search box.
   await page.keyboard.press('Escape');
   await expect.poll(() => showing(page)).toHaveLength(all);
   await page.keyboard.type('ball');
-  await expectOnly(page, ['Balloon Pop', 'Bounce Back']);
+  await expectOnly(page, ['Balloon Pop', 'Bounce Back', 'Giraffe’s Goal']);
 
   await page.keyboard.press('Tab');
   await expect(toggle).toBeFocused();
@@ -385,7 +387,7 @@ test('the search and filters work from the keyboard', async ({ page }) => {
   await expect(filterNamed(page, 'Sports')).toBeFocused();
   await page.keyboard.press('Space');
   await expect(filterNamed(page, 'Sports')).toBeChecked();
-  await expectOnly(page, ['Bounce Back']);
+  await expectOnly(page, ['Bounce Back', 'Giraffe’s Goal']);
   // Enter chooses one too.
   await page.keyboard.press('Tab');
   await expect(filterNamed(page, 'Fighting')).toBeFocused();

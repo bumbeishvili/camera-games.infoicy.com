@@ -1,0 +1,6 @@
+[
+  {"id": "goal-intro", "text": "It’s penalties! Will you be our goalkeeper?", "ka": "პენალტებია! ჩვენი მეკარე იქნები?", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "hold-up", "text": "Hold your hand up, like a high five!", "ka": "ხელი მაღლა ასწიე, ხუთი მომეცი!"},
+  {"id": "open-to-save", "text": "Open your hand to save the ball!", "ka": "გაშალე ხელი, რომ ბურთი მოიგერიო!"},
+  {"id": "we-won", "text": "We won! What a goalkeeper!", "ka": "მოვიგეთ! რა მეკარე ხარ!"}
+]

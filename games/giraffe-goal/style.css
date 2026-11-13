@@ -1,0 +1,123 @@
+/* Giraffe's Goal: the pitch fills the screen, under a band along the top with the saves and the stars on the left,
+   Giraffe's words in the middle, and the hand meter and the mirror on the right. */
+:root {
+  --meter-size: clamp(66px, 7vw, 92px);
+  --camera-small: clamp(140px, 15vw, 230px);
+}
+
+/* The mirror, in the top right corner, by the gear. */
+body:not([data-screen='check']) .camera-frame { left: auto; right: 70px; transform: none; }
+
+/* The hand meter, beside the mirror. */
+.hands-bar {
+  top: 12px;
+  bottom: auto;
+  left: auto;
+  right: calc(70px + var(--camera-small) + 12px);
+  transform: none;
+}
+body[data-screen='check'] .hands-bar { top: auto; bottom: 10px; left: 50%; right: auto; transform: translateX(-50%); }
+.meter { padding: 6px 6px 4px; border-radius: 20px; }
+.meter-caption { font-size: clamp(11px, 1vw, 13px); }
+
+/* ---------- the saves made, and the stars ---------- */
+.goal-hud {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  top: 12px;
+  left: 12px;
+  align-items: center;
+  gap: 8px;
+}
+body[data-screen='playing'] .goal-hud,
+body[data-screen='countdown'] .goal-hud { display: flex; }
+.goal-hud .chip { min-width: clamp(64px, 7vw, 96px); padding: 4px 10px 6px; }
+.goal-hud .chip[hidden] { display: none; }
+.chip-saves .chip-label::before { content: '🧤 '; }
+.chip-stars .chip-label::before { content: '⭐ '; }
+
+/* ---------- Giraffe's words, in the middle of the band ---------- */
+.story {
+  top: 12px;
+  left: 50%;
+  transform: translateX(-62%);
+  width: min(30vw, 360px);
+}
+body[data-screen='playing']:has(.story.is-visible) .prompt { left: 50%; max-width: calc(100vw - 32px); }
+
+/* ---------- a little film: a hand that hangs down comes up like a high five, goes to the ring, and saves ---------- */
+.film-grass { fill: #6fc253; }
+.film-ring { fill: rgb(255 255 255 / 0.35); stroke: #ffffff; stroke-width: 5; }
+.film-ball circle { fill: #ffffff; stroke: var(--ink); stroke-width: 3; }
+.film-ball path { fill: #2b3440; }
+.film-hand rect { stroke: var(--ink); stroke-width: 3; }
+.film-finger-ink { fill: none; stroke: var(--ink); stroke-width: 14; stroke-linecap: round; }
+.film-finger { fill: none; stroke-width: 8; stroke-linecap: round; }
+.film-star { fill: #ffd23f; stroke: #d99a1f; stroke-width: 1.5; }
+
+/* The hand starts low, hanging down, comes up, and goes over to the ring. */
+.film-hand { animation: film-hand 6s ease-in-out infinite; }
+.film-hand-turn { animation: film-turn 6s ease-in-out infinite; }
+.film-hand rect { animation: film-colour 6s ease-in-out infinite; }
+.film-finger { animation: film-fingers 6s ease-in-out infinite; }
+/* The ball comes from far away, small, to the ring, and is saved there. */
+.film-ball { animation: film-ball 6s linear infinite; }
+.film-ring { transform-origin: 146px 60px; animation: film-ring 6s linear infinite; }
+.film-star { transform-origin: 146px 22px; animation: film-star 6s ease-in-out infinite; }
+
+@keyframes film-hand {
+  0%, 30% { transform: translate(62px, 104px); }
+  52%, 92% { transform: translate(146px, 76px); }
+  100% { transform: translate(62px, 104px); }
+}
+
+@keyframes film-turn {
+  0%, 10% { transform: rotate(150deg); }
+  26%, 92% { transform: rotate(0deg); }
+  100% { transform: rotate(150deg); }
+}
+
+@keyframes film-colour {
+  0%, 12% { fill: #ffc21a; }
+  26%, 92% { fill: #3ddc84; }
+  100% { fill: #ffc21a; }
+}
+
+@keyframes film-fingers {
+  0%, 12% { stroke: #ffc21a; }
+  26%, 92% { stroke: #3ddc84; }
+  100% { stroke: #ffc21a; }
+}
+
+@keyframes film-ball {
+  0%, 18% { transform: translate(34px, 112px) scale(0.2); opacity: 0; }
+  22% { transform: translate(38px, 108px) scale(0.22); opacity: 1; }
+  66% { transform: translate(146px, 60px) scale(1); opacity: 1; }
+  84% { transform: translate(146px, 60px) scale(1); opacity: 1; }
+  90%, 100% { transform: translate(146px, 60px) scale(0.8); opacity: 0; }
+}
+
+@keyframes film-ring {
+  0%, 18% { transform: scale(1.4); opacity: 0; }
+  22% { transform: scale(1.4); opacity: 1; }
+  66%, 84% { transform: scale(0.72); opacity: 1; }
+  90%, 100% { transform: scale(0.72); opacity: 0; }
+}
+
+@keyframes film-star {
+  0%, 66% { transform: scale(0); opacity: 0; }
+  74%, 88% { transform: scale(1); opacity: 1; }
+  94%, 100% { transform: scale(1); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .film-hand, .film-hand-turn, .film-hand rect, .film-finger, .film-ball, .film-ring, .film-star { animation-duration: 9s; }
+}
+
+/* The film is in the bottom corner on the side of the hand in play, where no ball comes, and Giraffe is on the other. */
+.goal-film { width: min(17vw, 25vh); }
+body[data-hands='right'] .goal-film { left: auto; right: 16px; }
+
+/* What the child is asked for goes along the bottom, on the grass, so it never hides a ball. */
+body[data-screen='playing'] .prompt { top: auto; bottom: 18px; }
