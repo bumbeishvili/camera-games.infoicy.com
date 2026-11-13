@@ -18,6 +18,7 @@ const GAMES = [
   { name: 'Giraffe’s Maze', folder: 'giraffe-maze', start: 'Into the maze!' },
   { name: 'Giraffe’s Garden', folder: 'giraffe-garden', start: 'Water the garden' },
   { name: 'Giraffe’s Goal', folder: 'giraffe-goal', start: 'Go in goal' },
+  { name: 'Frost Arena', folder: 'frost-arena', start: 'Join the team' },
 ];
 
 test('the hub offers every game, and each one opens and comes back', async ({ page }) => {
@@ -194,7 +195,7 @@ test('typing in the search finds games by their name, what they\'re about and wh
   const box = page.locator('#hub-search');
   const cases = [
     // A kind of game, and the start of one.
-    ['shoot', ['Sky Wings', 'Robot Rescue', 'Tank Patrol', 'Cannon Bay']],
+    ['shoot', ['Sky Wings', 'Robot Rescue', 'Tank Patrol', 'Cannon Bay', 'Frost Arena']],
     ['racing', ['High Five Racers', 'Leap Trail', 'Sky Wings']],
     // The game's own words.
     ['tennis', ['Bounce Back']],
@@ -205,6 +206,7 @@ test('typing in the search finds games by their name, what they\'re about and wh
     ['lighthouse', ['The Lighthouse Keeper']],
     ['flowers', ['Giraffe’s Garden']],
     ['penalty', ['Giraffe’s Goal']],
+    ['rifle', ['Frost Arena']],
     // Capitals, accents and apostrophes don't matter, and every word has to fit.
     ['TÉNNIS', ['Bounce Back']],
     ['giraffe\'s smoothie', ['Giraffe’s Smoothie Stand']],
@@ -242,7 +244,7 @@ test('each filter narrows the games to the ones it\'s about', async ({ page }) =
 
   // Some of the games each one finds, and some it mustn't.
   const FILTERS = [
-    ['Shooting', ['Robot Rescue', 'Tank Patrol', 'Cannon Bay', 'Sky Wings'], ['Balloon Pop', 'Bounce Back', 'Mighty Moves', 'Spider Catcher']],
+    ['Shooting', ['Robot Rescue', 'Tank Patrol', 'Cannon Bay', 'Sky Wings', 'Frost Arena'], ['Balloon Pop', 'Bounce Back', 'Mighty Moves', 'Spider Catcher']],
     ['Racing, running and flying', ['High Five Racers', 'Leap Trail', 'Sky Wings'], ['Tank Patrol', 'Bounce Back', 'Balloon Pop']],
     ['Sports', ['Bounce Back', 'Giraffe’s Goal'], ['High Five Racers', 'Mighty Moves', 'Balloon Pop']],
     ['Fighting', ['Mighty Moves'], ['Robot Rescue', 'Bounce Back', 'Tank Patrol']],
@@ -250,7 +252,8 @@ test('each filter narrows the games to the ones it\'s about', async ({ page }) =
     ['Stories and missions', ['Giraffe’s Long Walk Home', 'The Lighthouse Keeper', 'Spider Catcher', 'Giraffe’s Smoothie Stand', 'Robot Rescue'],
       ['Balloon Pop', 'Bounce Back', 'Mighty Moves', 'High Five Racers']],
     ['Catching and popping', ['Balloon Pop', 'Spider Catcher', 'Giraffe’s Smoothie Stand', 'Giraffe’s Long Walk Home'], ['The Lighthouse Keeper', 'Tank Patrol', 'Sky Wings']],
-    ['One hand', ['Balloon Pop', 'Tank Patrol', 'Bounce Back', 'High Five Racers'], ['Sky Wings', 'Mighty Moves', 'Leap Trail']],
+    ['One hand', ['Balloon Pop', 'Tank Patrol', 'Bounce Back', 'High Five Racers'], ['Sky Wings', 'Mighty Moves', 'Leap Trail', 'Frost Arena']],
+    ['Both hands', ['Frost Arena'], ['Balloon Pop', 'Tank Patrol', 'Sky Wings', 'Mighty Moves']],
     ['Both arms', ['Sky Wings'], ['Balloon Pop', 'Mighty Moves', 'Leap Trail']],
     ['Whole body', ['Mighty Moves', 'Leap Trail'], ['Sky Wings', 'Balloon Pop', 'Bounce Back']],
     ['Sitting down', ['Balloon Pop', 'Sky Wings', 'Tank Patrol', 'Bounce Back'], ['Mighty Moves']],

@@ -1,6 +1,6 @@
 # Camera Games: full details
 
-Camera games for children with hemiplegia, played by moving in front of a webcam. Opening the hand is what they practise, and in Giraffe's Garden, turning it over, and in Giraffe's Goal, holding it up with the wrist straight. The right hand is the default, and the left can be chosen instead under the gear icon.
+Camera games for children with hemiplegia, played by moving in front of a webcam. Opening the hand is what they practise, and in Giraffe's Garden, turning it over, and in Giraffe's Goal, holding it up with the wrist straight. Frost Arena is played with both hands at once, each with a job of its own. The right hand is the default, and the left can be chosen instead under the gear icon.
 
 They're played at <https://hemi.infoicy.com> in Google Chrome, on a computer with a webcam, or from this folder (see [Run it](#run-it)). The camera picture never leaves the computer, and once loaded they work offline, apart from playing with friends. Each game has ten levels, and a grown-up can set how open the hand has to be, how far to reach and how big a move has to be.
 
@@ -20,6 +20,7 @@ They're played at <https://hemi.infoicy.com> in Google Chrome, on a computer wit
 - **Giraffe's Maze:** Giraffe's friends are lost in a garden maze. The child's open hand leads him along the paths to each of them, and each friend found follows him into the next maze. A closed hand, or one that can't be seen, just leaves him waiting. On their own, or racing friends out of the same mazes. See [below](#giraffes-maze).
 - **Giraffe's Garden:** Giraffe's garden has dried up in the sun. The open hand holds his watering can, and turning the hand over tips it, so the water pours onto the plant below, which grows and flowers. Turning the hand over is turning the forearm, the hardest movement of all with hemiplegia. On their own or with friends, all watering the same garden. See [below](#giraffes-garden).
 - **Giraffe's Goal:** the cup final has gone to penalties, and Giraffe's team needs a goalkeeper. A kicker shoots once the child's hand is open and held up like a high five, a ring shows where the ball is coming, and the glove there saves it. An open hand with its wrist dropped doesn't count, and the balls go far out to the side and across the body on purpose. See [below](#giraffes-goal).
+- **Frost Arena:** a match of tag with rifles in a snowy yard, the child's team in blue, with Giraffe on it, against the computer's in red, seen from where the child stands. It's played with both hands, each with its own job: the hand in play turns to look and opens to fire, and the other opens to walk and makes a fist to change the magazine. See [below](#frost-arena).
 
 Every game's grown-ups' panel, under the gear icon, has a way back to all the games. On the page for choosing a game, each game's card plays a film of it being played, with just its name, and pointing at a card shows a line about the game. With reduced motion turned on in the computer's settings, a film only plays while its card is pointed at.
 
@@ -80,6 +81,7 @@ games/
   giraffe-maze/         its mazes and how the character walks, the game as it's played, the maze drawn, the characters' pictures and its voices
   giraffe-garden/       its garden and levels, the garden drawn, its sounds and its voices
   giraffe-goal/         its rules and levels, the pitch drawn, the kickers' pictures and its voices
+  frost-arena/          its rules and levels, the yard, the rifles and the players in 3D, its sounds and its voices
 tools/                  the local server, the local race server, and what prepares voices and sounds
 server/                 the server for playing with friends in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail, Giraffe's Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher, the Lighthouse Keeper and Giraffe's Garden: its rules, and the Cloudflare Worker that runs them
 vendor/                 libraries, the tracking model and fonts
@@ -801,6 +803,45 @@ The cup final has gone to penalties, and Giraffe's team needs a goalkeeper: the 
 
 A level's new kind of ball is the first to come, every other ball is a plain one from the pig, and the others take turns in between. The first time each new thing comes along in a game, it has a small label beside it for a couple of seconds, in the language the voice speaks, and nothing new is said out loud. Missing any of it costs nothing, stars fly up to their tally at the top, and how the hand has to be held, how far the balls go and how many saves win stay as a grown-up set them. The numbers are in `goalLevel`, `EXTRAS` and `NEWS` in `goal.js`.
 
+## Frost Arena
+
+A match of tag with rifles in a small snowy yard: the child's team in blue, with Giraffe on it, against the computer's in red. It's the game about using both hands at once, each with a job of its own, which children with hemiplegia find hard and which none of the other games ask for. It's a little more real to look at than the others: the child sees the yard from where they stand, down the sights of their rifle, with wooden crates, steel containers and concrete walls, pines and mountains beyond the fence, and real shadows. It was asked for as something like the small arena of a team shooter, and it's a yard, a layout and a look of its own. The players are the same characters as in the other games.
+
+- **The hand in play holds the rifle.** Moving it from side to side turns to look, as it turns the wheel in Cannon Bay, and held nearly in the middle, the view stays still. Opening it fires, by itself, one shot after another, at whoever is in the sights, and never at nothing, so no rounds go to waste. The sights are a ring in the middle of the screen, which goes onto whoever the rifle is on: yellow when it's on them, and green while it fires.
+- **The other hand is the helper.** Open, it walks forward the way the child is looking. A fist stops, and changes the magazine. Its own little sign at the bottom says what it's doing: Walk, Reload or No hand.
+- **Two rifles,** chosen under the gear icon: the Kalashnikov, slower, with each shot counting for more, and the M4, quicker and lighter. Either takes about two and a half seconds on someone to tag them out.
+- **Magazines without end, of thirty rounds each.** Changing one takes about two seconds, and the rifle can't fire meanwhile. An empty rifle says "Make a fist with your other hand to reload!", and if no fist comes within 4 seconds, a new magazine goes in by itself, so nobody is ever stuck. For a child who can't make a fist with that hand, a grown-up can have it go in at once.
+- **Nobody gets hurt.** Someone hit enough is tagged out: they sit down in a few stars, and are back at their own end 3 seconds later, where nothing can hit them for a moment. The child's health comes back by itself after a few seconds without being hit. Everyone has a ring on the snow under them in their team's colour.
+- **Winning:** the child's team wins with 5, 8 or 12 tags, as a grown-up chose. Giraffe helps, but his shots count for a third of the child's, so it's the child who wins it. The other team's tags only count when it's the child they tag, so it's never Giraffe who loses it.
+
+**For children with hemiplegia:**
+
+- **Only an open hand does anything.** A hand that's missing, closed, cut off by the edge of the picture, too far away or touching the other one never fires and never walks, and only a hand that's clearly a fist changes the magazine.
+- **Finding the other team is helped.** Each of them who's out of view has their face at the edge of the screen on the side they're on, with an arrow that way. **Help with aiming** says how near the middle of the sights someone has to be, and the view is drawn gently onto someone near the middle, unless the child is turning away.
+- **Walking never gets stuck.** Walking into a crate or a wall goes along it at the same speed and round its end, and with the rifle hand still, the child comes round to look where they're going. A child who's turning chooses which way round.
+- **On Gentle, the default,** the other team hardly ever hits, the child can't be tagged out, and the match can't be lost. On Medium and Tough the other team wins by tagging the child as many times as there are tags to win, with "So close!" and a way to play again straight away.
+- **Resting is always fine.** With neither hand doing anything for 4 seconds, everyone the computer plays stops where they are and waits, and nothing can happen.
+- **A little film** says what each hand does, until the child has walked, fired and changed a magazine by hand, and comes back if nothing has happened for a while.
+- **Nothing flashes.** There's no muzzle flash: a shot is a thin line that fades and a little soft smoke, and a hit is a puff of snow. Measured standing still through firing, a tag and a magazine change, at levels 1 and 10, brightness changed by less than 3 out of 255 from one frame to the next, and by less than 4 while walking, when the view itself is turning.
+
+**Levels** ([games/frost-arena/arena.js](games/frost-arena/arena.js)). Each level has the other team's shots land a little more often, has them start firing sooner, and has each of them take a few more hits. On top of that, every level from 2 brings something new, named on the title card and under the countdown:
+
+| Level | What's new |
+|---|---|
+| 2 | **Gold stars.** Each of the child's own tags is a gold star, counted along the top and on the finish card. |
+| 3 | **A shield carrier.** One of the other team holds a shield out in front: the first six shots bounce off it with a bonk, then it's down, and it's up again when they come back. |
+| 4 | **Three a side.** A second friend joins the child's team, and a third player the other. |
+| 5 | **A runner.** One of the other team is quick, never stands still while firing, and is tagged out sooner. |
+| 6 | **Double shots.** A crate turns up in the open: walking over it makes each shot count twice for 10 seconds, with a bar that runs down along the top. Missing it costs nothing, and another comes. |
+| 7 | **Snowfall.** It's snowing, the far end of the yard is lost in it, and nobody can see, or fire, as far. |
+| 8 | **The captain.** One of the other team takes twice the hits, and is worth two tags and two stars. |
+| 9 | **Snow boots.** A second kind of crate: walking is quicker for 12 seconds. |
+| 10 | **The champions, and the trophy.** The other team have gold crowns over their heads and all take more hits, and beating them wins the trophy. |
+
+Someone special on the other team has a badge beside their face. Crates and what they give wait while the child rests. Even at level 10 a match lasts no more than about twice as long as at level 1. The speed, how hard, the help with aiming, the rifle, the number of tags and how the magazine changes stay as a grown-up set them, and Gentle still can't be lost. Being beaten on Medium or Tough tries the same level again.
+
+It's played alone for now, against the computer's team: playing it with friends is the next thing to be added.
+
 ## Sound
 
 **A line is never cut off,** in any of the games, as nothing sounds more robotic. If something is being said, a new line waits for it to finish, after a short pause, and only the newest one waits, so a queue can't build up. A line that has waited more than 4 seconds is out of date and goes unsaid, and small remarks are simply dropped if anything's being said. Lines only stop mid-way if everything is stopping, such as when the panel opens.
@@ -845,6 +886,8 @@ Each recording is trimmed and set to the same level as the rest. Any lines not r
 
 **The pitch** in Giraffe's Goal has Tank Patrol's real countryside birds, kept quiet underneath. Nothing new was recorded for it. A kick is Mighty Moves' hand drum, a save High Five Racers' slap, and a ball going in a soft swish. The heavy ball lands with Cannon Bay's gavel, the bouncing ball boings with Robot Rescue's cartoon boing, a bubble pops with Balloon Pop's balloon, the golden ball and the cup have Mighty Moves' sparkle, the cup caught is Spider Catcher's harp bounce, and winning the match is Mighty Moves' cheering, kept quiet. Giraffe says the first line in his own voice, and the coach says the hints and the finish.
 
+**The yard** in Frost Arena has nothing new recorded for it. The rifles are Robot Rescue's real paintball markers, a little deeper for the Kalashnikov and higher for the M4, each shot a little different from the last, with its dry click for an empty magazine and its reload for a new one. A hit is Tank Patrol's paintball on a metal drum, kept quiet, a tag its little hop with Mighty Moves' sparkle, a shot off the shield and one landing on the child Mighty Moves' hand drum, and the child's steps in the snow are Leap Trail's, under Mighty Moves' music. Giraffe says his lines in his own voice, and the coach says the hints.
+
 Where each sound came from is in [CREDITS.md](CREDITS.md).
 
 ## Privacy
@@ -883,6 +926,7 @@ There's no free footage of a person clapping, circling a hand or holding their a
 - **Turning a real hand over.** The turn was only measured on photos of one adult hand, from the front and the back, and the front squeezed narrower to stand in for a hand part of the way round. The first version was tried by a grown-up with a real hand, and it didn't follow well: a hand held as usual read as already turned 20° to 30°, near where the water started, the can stopped tipping once the turn was enough, and a hand that had gone past side-on was slow to count as back, so the water could keep running after the hand turned back. Those are fixed and tested, with the hand check's photos made a little wider now and then, as a real hand varies, but a real hand hasn't tried it again yet. A real hand turning, a child's hand, or one with hemiplegia, which may rest with the wrist bent, could read differently, and a hand right side-on may be lost for a moment. How far each of the three choices really asks a child to turn is for a therapist to judge.
 - **How Giraffe's Garden feels.** Whether tipping a can by turning the hand is clear to a young child, whether the water lands generously enough for an affected hand, whether reaching up to the baskets is too much, and whether the levels' creatures are fun or a distraction. It was only played with photos of an adult hand moved about by the tests, nobody has listened to its sound, playing with friends was only tried with browsers on one computer, and its Georgian lines and labels need a native speaker to check them.
 - **Holding a real hand up.** Whether a hand is held up was only measured on photos of two adult hands held flat to the camera, made shorter to stand in for a hand tipped towards it, and turned for fingers that point to the side or hang down. There's no photo of a real dropped wrist in the tests, and no real hand has played it. A child's hand, a wrist that also tips towards the little finger, or an arm reaching up high, which tips the hand a little by itself, may all read differently. If a child's held-up hand doesn't count, *any open hand* under the gear icon takes the rule away.
+- **How Frost Arena feels, and both hands on a real child.** It was only played with photos of two adult hands on a fake camera, and by a made-up child in the unit tests. Whether a child with hemiplegia can keep one hand turning and firing while the other opens to walk, whether turning by moving the hand to one side is easy enough to find the other team with, whether the affected hand reads clearly as a fist for changing the magazine, and whether two and a half seconds on someone is the right length for a tag all need real children. Nobody has listened to its sound, and its Georgian lines need a native speaker to check them.
 - **How Giraffe's Goal feels.** Whether the balls are slow enough for a real affected hand, whether a child can hold the hand up for the three seconds a ball takes, whether the ring is clear, and whether reaching across is too far on *far*. It was only played with photos of an adult hand moved about by the tests, nobody has listened to its sound, and its Georgian lines and labels need a native speaker to check them.
 - **Hand shapes on a real hand.** Pointing, a peace sign and a thumbs up were each told apart on one photo of an adult hand. A child's hand, or one with hemiplegia, may hold a shape differently, and whether the thresholds suit one is for a therapist to judge. Three fingers and the grown-up's own choice of fingers have only been tested on the finger scores, and the new Georgian lines need a native speaker.
 - **Flying with the other hand, on a real child.** It was tested with photos of a fist and an open hand. A hand with hemiplegia might not read as a clear fist, and nobody has checked whether reaching out the second hand pulls the hand in play out of view.

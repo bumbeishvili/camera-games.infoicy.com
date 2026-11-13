@@ -1,0 +1,327 @@
+/* Frost Arena. */
+:root {
+  --meter-size: clamp(72px, 8.5vw, 108px);
+  --camera-small: clamp(130px, 15vw, 230px);
+  --blue: #2f6fed;
+  --red: #e0533a;
+}
+
+/* The mirror goes up by the gear while playing, so the middle of the yard can be seen. */
+body[data-screen='playing'] .camera-frame,
+body[data-screen='countdown'] .camera-frame {
+  left: auto;
+  right: 68px;
+  transform: none;
+}
+
+/* A prompt goes between the numbers and the mirror, at the top. */
+body[data-screen='playing'] .prompt,
+body[data-screen='playing']:has(.story.is-visible) .prompt {
+  top: 12px;
+  left: 57%;
+  max-width: 42vw;
+  width: max-content;
+  padding: 8px 20px 10px;
+  border-radius: 26px;
+  font-size: clamp(16px, 2vw, 28px);
+}
+
+/* The rifle hand's meter is at the bottom on its own side, and the helper hand's sign on the other. */
+.hands-bar {
+  left: 0;
+  right: 0;
+  transform: none;
+  justify-content: space-between;
+  padding: 0 12px;
+  pointer-events: none;
+}
+
+body[data-hands='right'] .hands-bar { justify-content: flex-end; }
+body[data-hands='left'] .hands-bar { justify-content: flex-start; }
+
+/* ---------- the numbers along the top ---------- */
+.chip-team .chip-label::before {
+  content: '';
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  margin-right: 0.35em;
+  border-radius: 50%;
+  border: 2px solid var(--ink);
+  vertical-align: -0.05em;
+}
+
+.chip-team.is-blue .chip-label::before { background: var(--blue); }
+.chip-team.is-red .chip-label::before { background: var(--red); }
+.chip-team small { font-size: 0.5em; font-weight: 700; opacity: 0.75; }
+
+/* A score that's gone up grows a little and settles: a move, not a flash. */
+.chip-team.is-up .chip-value,
+.chip-stars.is-up .chip-value { animation: score-up 0.5s ease-out; }
+
+@keyframes score-up {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.28); }
+  100% { transform: scale(1); }
+}
+
+.chip-bar .chip-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: clamp(90px, 11vw, 150px);
+}
+
+.bar {
+  flex: 1;
+  height: 0.5em;
+  background: #d9e3ec;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.bar-fill { display: block; height: 100%; width: 100%; border-radius: 999px; transition: width 0.2s linear; }
+.bar-fill.is-health { background: #3ddc84; }
+.bar-fill.is-rounds { background: #ffc21a; }
+.bar-fill.is-power { background: #4aa3ff; transition: width 0.25s linear; }
+
+.rounds-number { min-width: 1.3em; text-align: right; }
+.chip-rounds[data-state='low'] .bar-fill { background: #ff9a3c; }
+.chip-rounds[data-state='empty'] .rounds-number,
+.chip-rounds[data-state='changing'] .rounds-number { color: #c2410c; }
+
+/* Being hit: the health bar gives a little shake. */
+#chip-health-box.is-hurt .bar { animation: bar-shake 0.4s ease-out; }
+
+@keyframes bar-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  60% { transform: translateX(3px); }
+}
+
+/* ---------- the sights ---------- */
+.sight {
+  display: none;
+  position: fixed;
+  z-index: 2;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+body[data-screen='playing'] .sight,
+body[data-screen='countdown'] .sight { display: block; }
+body[data-sight='none'] .sight { display: none; }
+
+.sight-ring {
+  position: absolute;
+  left: -30px;
+  top: -30px;
+  width: 60px;
+  height: 60px;
+  border: 4px solid rgb(255 255 255 / 0.9);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgb(18 48 77 / 0.55), inset 0 0 0 2px rgb(18 48 77 / 0.55);
+  transition: border-color 0.15s linear, width 0.15s ease, height 0.15s ease, left 0.15s ease, top 0.15s ease;
+}
+
+.sight-dot {
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border: 2px solid rgb(18 48 77 / 0.7);
+  border-radius: 50%;
+}
+
+body[data-sight='on'] .sight-ring { border-color: #ffd23f; }
+body[data-sight='firing'] .sight-ring { border-color: #3ddc84; left: -24px; top: -24px; width: 48px; height: 48px; }
+body[data-sight='firing'] .sight-dot { background: #3ddc84; }
+body[data-sight='empty'] .sight-ring { border-color: #ff9a3c; border-style: dashed; }
+body[data-sight='changing'] .sight-ring { border-color: #b9c3cc; border-style: dashed; }
+
+/* ---------- where everyone is ---------- */
+.arena-marks { display: none; }
+body[data-screen='playing'] .arena-marks { display: block; position: relative; z-index: 2; }
+
+.arena-mark {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.arena-mark[data-where='none'] { display: none; }
+
+.arena-mark-face {
+  position: absolute;
+  left: -22px;
+  top: -52px;
+  width: 44px;
+  height: 44px;
+  background: var(--surface);
+  border: 3px solid var(--red);
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgb(18 48 77 / 0.3);
+  object-fit: cover;
+}
+
+.arena-mark[data-team='blue'] .arena-mark-face { border-color: var(--blue); }
+
+.arena-mark-bar {
+  position: absolute;
+  left: -24px;
+  top: -5px;
+  width: 48px;
+  height: 8px;
+  background: #d9e3ec;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.arena-mark-fill { display: block; height: 100%; width: 100%; background: var(--red); border-radius: 999px; transition: width 0.15s linear; }
+.arena-mark[data-team='blue'] .arena-mark-fill { background: var(--blue); }
+.arena-mark-arrow { display: none; }
+
+/* What someone special is, on the higher levels: a little badge at the corner of their face. */
+.arena-mark-badge {
+  position: absolute;
+  left: 8px;
+  top: -62px;
+  font-size: 20px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 1px rgb(18 48 77 / 0.5));
+}
+
+.arena-mark-badge:empty { display: none; }
+.arena-mark[data-where='left'] .arena-mark-badge,
+.arena-mark[data-where='right'] .arena-mark-badge { left: 12px; top: -40px; }
+
+/* Someone out of view: their face at the edge of the screen on the side they're on, with an arrow that way. */
+.arena-mark[data-where='left'] .arena-mark-face,
+.arena-mark[data-where='right'] .arena-mark-face { left: -26px; top: -26px; width: 52px; height: 52px; }
+.arena-mark[data-where='left'] .arena-mark-bar,
+.arena-mark[data-where='right'] .arena-mark-bar { top: 30px; }
+
+.arena-mark[data-where='left'] .arena-mark-arrow,
+.arena-mark[data-where='right'] .arena-mark-arrow {
+  display: block;
+  position: absolute;
+  top: -16px;
+  border-style: solid;
+  border-color: transparent;
+  filter: drop-shadow(0 0 1px rgb(18 48 77 / 0.8));
+}
+
+.arena-mark[data-where='right'] .arena-mark-arrow { left: 30px; border-width: 16px 0 16px 22px; border-left-color: var(--red); }
+.arena-mark[data-where='left'] .arena-mark-arrow { left: -52px; border-width: 16px 22px 16px 0; border-right-color: var(--red); }
+
+/* ---------- the helper hand's sign: what the other hand is doing ---------- */
+.helper {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  left: 16px;
+  bottom: 16px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 8px 10px;
+  background: var(--surface);
+  border: 4px solid #b9c3cc;
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+  font-size: clamp(13px, 1.3vw, 18px);
+  line-height: 1.15;
+}
+
+body[data-screen='playing'] .helper,
+body[data-screen='countdown'] .helper { display: flex; }
+body[data-hands='left'] .helper { left: auto; right: 16px; }
+body[data-helper='open'] .helper { border-color: #3ddc84; }
+body[data-helper='fist'] .helper { border-color: #ffc21a; }
+
+.helper-hand { width: clamp(34px, 3.4vw, 48px); height: auto; }
+.helper-hand rect { fill: #b9c3cc; stroke: var(--ink); stroke-width: 3; }
+.helper-hand path { fill: none; stroke: #b9c3cc; stroke-width: 7; stroke-linecap: round; }
+.helper-hand .helper-fist path { stroke: var(--ink); stroke-width: 2.5; }
+.helper-hand .helper-fist { display: none; }
+body[data-helper='open'] .helper .helper-hand rect { fill: #3ddc84; }
+body[data-helper='open'] .helper .helper-hand .helper-open path { stroke: #3ddc84; }
+body[data-helper='fist'] .helper .helper-open { display: none; }
+body[data-helper='fist'] .helper .helper-fist { display: block; }
+body[data-helper='fist'] .helper .helper-fist rect { fill: #ffc21a; }
+
+.helper-words { display: flex; flex-direction: column; }
+.helper-side::after { content: 'Left hand'; }
+body[data-hands='left'] .helper-side::after { content: 'Right hand'; }
+.helper-does::after { content: 'No hand'; }
+body[data-helper='open'] .helper-does::after { content: 'Walk'; }
+body[data-helper='fist'] .helper-does::after { content: 'Reload'; }
+
+/* ---------- a little film of what each hand does ---------- */
+.film {
+  left: 16px;
+  bottom: calc(16px + clamp(64px, 6.4vw, 84px) + 12px);
+  width: auto;
+  min-width: 0;
+  padding: 10px 14px;
+  background: var(--surface);
+}
+
+body[data-hands='left'] .film { left: auto; right: 16px; }
+
+.film-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: clamp(13px, 1.25vw, 18px);
+  white-space: nowrap;
+  animation: film-turn 9s ease-in-out infinite;
+}
+
+.film-walk { animation-delay: 3s; }
+.film-reload { animation-delay: 6s; }
+
+/* Each in turn, for three seconds, fading up and down slowly. */
+@keyframes film-turn {
+  0%, 30% { opacity: 1; }
+  38%, 94% { opacity: 0.4; }
+  100% { opacity: 1; }
+}
+
+.film .helper-hand { width: 30px; }
+.film .helper-hand rect { fill: #3ddc84; }
+.film .helper-hand .helper-open path { stroke: #3ddc84; }
+.film-reload .helper-open { display: none; }
+.film-reload .helper-fist { display: block; }
+.film-reload .helper-fist rect { fill: #ffc21a; }
+.film-walk .helper-hand,
+.film-reload .helper-hand { transform: scaleX(-1); }
+body[data-hands='left'] .film-fire .helper-hand { transform: scaleX(-1); }
+body[data-hands='left'] .film-walk .helper-hand,
+body[data-hands='left'] .film-reload .helper-hand { transform: none; }
+
+.film-sign { position: relative; width: 26px; height: 26px; flex: none; }
+.film-sign-fire { border: 4px solid #3ddc84; border-radius: 50%; box-shadow: 0 0 0 2px var(--ink); }
+.film-sign-fire::after { content: ''; position: absolute; left: 5px; top: 5px; width: 8px; height: 8px; background: var(--ink); border-radius: 50%; }
+.film-sign-walk::before,
+.film-sign-walk::after { content: ''; position: absolute; width: 9px; height: 15px; background: var(--ink); border-radius: 5px 5px 4px 4px; }
+.film-sign-walk::before { left: 2px; top: 9px; }
+.film-sign-walk::after { left: 15px; top: 1px; }
+.film-sign-reload::after { content: ''; position: absolute; left: 7px; top: 1px; width: 11px; height: 22px; background: #ffc21a; border: 2px solid var(--ink); border-radius: 3px; transform: skewX(-8deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .film-row { animation-duration: 18s; }
+  .chip-team.is-up .chip-value,
+  .chip-stars.is-up .chip-value,
+  #chip-health-box.is-hurt .bar { animation: none; }
+}

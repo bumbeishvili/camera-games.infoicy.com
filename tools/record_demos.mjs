@@ -638,6 +638,45 @@ const FILMS = {
       return { saves, goals, stars, shots };
     }),
   },
+  'frost-arena': {
+    settings: { arenaPace: 'medium', levels: { 'frost-arena': 3 } },
+    css: '.camera-frame { --camera-small: 24vw !important; } .helper { display: flex !important; }',
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: 'open', right: 'open', scale: 0.7 }));
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await wait(page, 500);
+    },
+    async play(page) {
+      // Both hands, each at its own job: the rifle hand turns to whoever can be seen, or the way to go, and is open
+      // on someone in the sights. The other is open to walk, and a fist when the magazine wants changing.
+      await page.evaluate(() => new Promise((done) => {
+        const started = performance.now();
+        let across = 0;
+        let goal = { x: -6.5, z: 0 };
+        const timer = setInterval(() => {
+          const { match } = window.__game;
+          const { child } = match;
+          const seen = match.inPlay(1).filter((other) => match.sees(child, other)).sort((a, b) => Math.hypot(a.x - child.x, a.z - child.z) - Math.hypot(b.x - child.x, b.z - child.z))[0];
+          if (Math.hypot(child.x - goal.x, child.z - goal.z) < 2.5) goal = { x: goal.x < 0 ? 6.5 : -6.5, z: -goal.z - 3 };
+          const to = seen ?? goal;
+          const wanted = Math.atan2(to.x - child.x, -(to.z - child.z));
+          const off = Math.atan2(Math.sin(wanted - child.heading), Math.cos(wanted - child.heading));
+          across += (Math.max(-1, Math.min(1, off * 1.6)) * 150 - across) * 0.12;
+          const changing = child.rounds <= 12 && !seen && child.reloadLeft === 0;
+          window.__camera.show({ left: changing || child.rounds === 0 ? 'fist' : seen ? null : 'open', right: seen ? 'open' : 'fist', scale: 0.7, rightOffsetX: across });
+          if (performance.now() - started > 16_000) {
+            clearInterval(timer);
+            done();
+          }
+        }, 50);
+      }));
+    },
+    report: (page) => page.evaluate(() => {
+      const { tags, shots, byHand, walked } = window.__game.match.stats;
+      return { tags, shots, byHand, walked: Math.round(walked) };
+    }),
+  },
   'balloon-pop': {
     settings: { reach: 'none', pace: 'medium' },
     async ready(page) {

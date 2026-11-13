@@ -1,0 +1,12 @@
+[
+  {"id": "giraffe-starts", "text": "Tag the red team! I’m right beside you!", "ka": "დაიჭირე წითელი გუნდი! მე შენ გვერდით ვარ!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "giraffe-nice", "text": "Nice one!", "ka": "ყოჩაღ!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "giraffe-one-more", "text": "One more!", "ka": "კიდევ ერთი!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "giraffe-back", "text": "Back at our end! Off we go again!", "ka": "ისევ ჩვენს მხარეს ვართ! წავედით თავიდან!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "finish", "text": "We won the match!", "ka": "მატჩი მოვიგეთ!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "so-close", "text": "So close!", "ka": "კინაღამ გამოგივიდა!"},
+  {"id": "open-to-fire", "text": "Open your hand to fire!", "ka": "გაშალე ხელი, რომ ესროლო!"},
+  {"id": "open-to-walk", "text": "Open your other hand to walk!", "ka": "გაშალე მეორე ხელი, რომ იარო!"},
+  {"id": "fist-to-reload", "text": "Make a fist with your other hand to reload!", "ka": "მეორე ხელი მუშტად შეკარი, რომ გადატენო!"},
+  {"id": "find-them", "text": "Turn to find them! Follow the arrows!", "ka": "მობრუნდი და იპოვე ისინი! ისრებს მიჰყევი!"}
+]

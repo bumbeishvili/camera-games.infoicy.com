@@ -12,6 +12,7 @@ Movement-based games for children, played in front of a webcam.
 | ![Smoothie Stand](demos/gif/smoothie-stand.gif)<br>**Smoothie Stand:** slice fruit with an open hand | ![The Lighthouse Keeper](demos/gif/lighthouse.gif)<br>**Lighthouse Keeper:** wipe the windows clean |
 | ![Bounce Back](demos/gif/bounce-back.gif)<br>**Bounce Back:** hit a big, slow ball over the net with an open hand | ![Giraffe's Maze](demos/gif/giraffe-maze.gif)<br>**Giraffe's Maze:** lead Giraffe through a maze with an open hand |
 | ![Giraffe's Garden](demos/gif/giraffe-garden.gif)<br>**Giraffe's Garden:** turn your hand over to water the garden | ![Giraffe's Goal](demos/gif/giraffe-goal.gif)<br>**Giraffe's Goal:** save penalties with your hand held up like a high five |
+| ![Frost Arena](demos/gif/frost-arena.gif)<br>**Frost Arena:** a match of tag in the snow with both hands: one looks round and fires, the other walks and reloads | |
 
 - Resting never costs anything.
 - Each game has 10 levels.

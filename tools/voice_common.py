@@ -26,6 +26,7 @@ VOICE_DIRS = [
     ROOT / "games" / "giraffe-maze" / "audio" / "voice",
     ROOT / "games" / "giraffe-garden" / "audio" / "voice",
     ROOT / "games" / "giraffe-goal" / "audio" / "voice",
+    ROOT / "games" / "frost-arena" / "audio" / "voice",
 ]
 # Rendering is slow, so this can pick out one folder: VOICE_ONLY=sky-wings npm run voice
 if os.environ.get("VOICE_ONLY"):

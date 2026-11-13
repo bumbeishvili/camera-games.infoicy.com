@@ -577,6 +577,24 @@ body.hub {
 .art-goal-ring { fill: rgb(61 220 132 / 0.22); stroke: #3ddc84; stroke-width: 5; }
 .art-goal-ball { fill: #fff; stroke: var(--ink); stroke-width: 3; }
 .art-goal-patch { fill: #2b3440; }
+
+.game-art-arena { background: linear-gradient(#bfd9ee, #e6f1f9); }
+.art-arena-peak { fill: #a9bfd4; }
+.art-arena-cap { fill: #f6fafd; }
+.art-arena-pine { fill: #2f6b4a; }
+.art-arena-snow { fill: #eef3f8; }
+.art-arena-fence { fill: none; stroke: #a97b49; stroke-width: 5; }
+.art-arena-container { fill: #3f7f9c; stroke: var(--ink); stroke-width: 3; }
+.art-arena-rib { fill: none; stroke: rgb(18 48 77 / 0.25); stroke-width: 4; }
+.art-arena-ring-red { fill: none; stroke: #e0533a; stroke-width: 5; }
+.art-arena-them rect,
+.art-arena-them circle { fill: #ff8fb0; stroke: var(--ink); stroke-width: 3; }
+.art-arena-their-rifle { fill: none; stroke: #3a3f47; stroke-width: 6; stroke-linecap: round; }
+.art-arena-sight { fill: rgb(61 220 132 / 0.18); stroke: #3ddc84; stroke-width: 5; }
+.art-arena-ticks { fill: none; stroke: #3ddc84; stroke-width: 5; stroke-linecap: round; }
+.art-arena-wood { fill: #9a5f2e; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
+.art-arena-steel { fill: #3a3f47; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
+.art-arena-barrel { fill: none; stroke: #3a3f47; stroke-width: 7; stroke-linecap: round; }
 .art-paint-pink { fill: #ff7eb6; stroke: var(--ink); stroke-width: 2; }
 .art-paint-blue { fill: #3fb7ff; stroke: var(--ink); stroke-width: 2; }
 .art-paint-yellow { fill: #ffd23f; stroke: var(--ink); stroke-width: 2; }
