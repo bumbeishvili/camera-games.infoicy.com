@@ -594,7 +594,8 @@ export class Arena {
   /** At the end of a fight, a bubble or glow that's left fades away, and a friend who came to help goes. */
   clearPowerUps() {
     this.showPowerUps();
-    if (this.helper) this.helper.leaving = true;
+    // A friend fighting on the child's side stays for the cheering.
+    if (this.helper && !this.helper.ally) this.helper.leaving = true;
   }
 
   /** The bubble caught a hit, and goes in a soft puff. */
@@ -628,6 +629,8 @@ export class Arena {
     helper.action = null;
     helper.reaction = null;
     helper.leaveIn = undefined;
+    helper.ally = false;
+    helper.live = null;
     helper.hold('wave');
     helper.body.root.scale.setScalar(0.01);
     helper.grow = 0;
@@ -635,6 +638,26 @@ export class Arena {
     this.helper = helper;
     this.scene.add(helper.body.root);
     this.dust(new THREE.Vector3(helper.x, 0, helper.z), 6);
+  }
+
+  /**
+   * A friend fighting on the child's side, in a fight together, each on their own computer: they stand where a
+   * helper would, a little behind, for the whole fight, and copy the friend's body as the child's own fighter
+   * copies the child's (see setLive, with 'helper').
+   */
+  showAlly(spec) {
+    this.showHelper(spec);
+    if (!this.helper) return;
+    this.helper.ally = true;
+    this.helper.hold(null);
+  }
+
+  /** The friend's fighter makes one of the friend's moves, at the computer's fighter, and stays. */
+  allyStrike(move, side = 'right') {
+    const { helper, npc } = this;
+    if (!helper?.ally || !npc) return;
+    helper.hold(null);
+    helper.play(CLIPS[move] ? move : 'palm', { side: side === 'left' ? 'left' : 'right', gap: helper.gapTo(npc) });
   }
 
   /** The friend joins in with the child's big move, and then goes. */
@@ -800,7 +823,14 @@ export class Arena {
     this.halo.visible = false;
     this.dizzyStars.visible = false;
     this.hideBall();
-    this.hideHelper();
+    // A helper goes with the round. A friend fighting on the child's side stays where they are, ready again.
+    if (this.helper?.ally) {
+      this.helper.hold(null);
+      this.helper.action = null;
+      this.helper.reaction = null;
+    } else {
+      this.hideHelper();
+    }
     if (this.player) this.player.ducking = false;
   }
 

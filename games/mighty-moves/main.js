@@ -5,6 +5,8 @@
 //
 // A child can fight the computer, or a friend on their own computer: each child's own computer watches
 // them, and each of their fighter's moves goes across to the friend's: see fight.js and core/friends-ui.js.
+// With a friend it's together, both of them against the computer's fighter, or against each other, as whoever
+// made the fight chooses.
 import { BODY_SAY, BodyGame, byElementId } from '../../core/body/game.js';
 import { ICONS } from '../../core/body/icons.js';
 import { viewProblem } from '../../core/body/reader.js';
@@ -32,8 +34,8 @@ const POWER_UPS = { shield: '🫧', glow: '⚡', helper: '🤝' };
 // The coin emoji is silver and small, so in the fight a coin is drawn as a gold one instead.
 const markHtml = (id) => (id === 'coin' ? '<span class="coin-mark"></span>' : NEW_THINGS[id].mark);
 
-const DEFAULTS = { moveSize: 'small', jumps: 'yes', level: 'gentle', rounds: 3, fighter: 'giraffe' };
-const CHOICES = { jumps: String, level: String, rounds: Number };
+const DEFAULTS = { moveSize: 'small', jumps: 'yes', level: 'gentle', rounds: 3, fightFriends: 'together', fighter: 'giraffe' };
+const CHOICES = { jumps: String, level: String, rounds: Number, fightFriends: String };
 const ROUNDS = [1, 3];
 
 // Fighting a friend, each on their own computer: see core/friends-ui.js for what each of these is.
@@ -43,8 +45,13 @@ const FIGHT_WORDS = {
   codeLabel: 'A friend’s fight code',
   codeName: 'Fight code',
   how: 'Tell your friend the code. Then you both choose a fighter and press <b>Fight!</b>',
+  // Together or against each other, as whoever made the fight chooses: see teams in core/friends-ui.js.
+  teamLegend: 'How to fight',
+  together: 'Together',
+  against: 'Against each other',
+  howTogether: 'Tell your friend the code. Then you both choose a fighter and press <b>Fight!</b>, and fight the computer side by side.',
   leave: 'Leave this fight',
-  privacy: 'Only your name, who you fight as, and how your fighter moves go to your friend. The camera picture stays on this computer.',
+  privacy: 'Only your name, who you fight as, whether you chose together or against each other, and how your fighter moves go to your friend. The camera picture stays on this computer.',
   alone: 'Fight the computer',
   full: 'That fight already has 2 fighters.',
   lost: 'Can’t reach the fight. Check the internet, then try again.',
@@ -133,6 +140,11 @@ class MightyMoves extends BodyGame {
       // Whoever won the fight, and then by rounds.
       rank: (a, b) => Number(b.won) - Number(a.won) || b.dropped - a.dropped,
       resultText: ({ dropped }) => `won ${dropped} ${dropped === 1 ? 'round' : 'rounds'}`,
+      // With a friend, together or against each other: the grown-ups' choice, which the friends box can change too.
+      teams: {
+        get: () => (this.settings.fightFriends === 'against' ? 'against' : 'together'),
+        set: (choice) => this.chooseTeams(choice),
+      },
       startAfter: byElementId('start'),
       waitingBefore: byElementId('screen-finish'),
       resultsAfter: byElementId('finish-line'),
@@ -171,6 +183,7 @@ class MightyMoves extends BodyGame {
     byElementId('fight-again').addEventListener('click', () => this.playAgain());
     byElementId('other-fighter').addEventListener('click', () => {
       this.confetti.stop();
+      this.arena.hideHelper();
       this.arena.resetRound();
       this.arena.setFighter('npc', null);
       this.arena.player.presenting = true;
@@ -185,7 +198,19 @@ class MightyMoves extends BodyGame {
     });
   }
 
+  /** Together or against each other, chosen in the friends box: kept with the grown-ups' settings, and shown there. */
+  chooseTeams(choice) {
+    this.changeSettings({ fightFriends: choice });
+    const input = document.querySelector(`input[name="fightFriends"][value="${choice}"]`);
+    if (input) input.checked = true;
+  }
+
   settingChanged(change) {
+    if ('fightFriends' in change && this.friends) {
+      if (this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
+      this.friends.showTeams();
+      this.showOpponent();
+    }
     if ('moveSize' in change) this.reader.personal = { jump: null, squat: null, leg: null, hand: null };
     // What the cards say is new depends on the computer's strength.
     if ('level' in change) this.levelUi.refresh();
@@ -209,7 +234,10 @@ class MightyMoves extends BodyGame {
     this.showOpponent();
   }
 
-  /** In a fight with a friend, the opponent is the friend, as whoever they've chosen, and can't be changed. */
+  /**
+   * In a fight against a friend, the opponent is the friend, as whoever they've chosen, and can't be changed. In
+   * one together with them, it's one of the computer's fighters, the same for both, chosen as the fight starts.
+   */
   showOpponent() {
     const { room } = this.friends ?? {};
     const friend = room?.inRoom ? room.members.find(({ id }) => id !== room.you) : null;
@@ -217,6 +245,12 @@ class MightyMoves extends BodyGame {
     button.disabled = Boolean(room?.inRoom);
     button.classList.toggle('is-friend', Boolean(room?.inRoom));
     const portrait = byElementId('opponent-portrait');
+    if (room?.inRoom && this.friends.together) {
+      portrait.hidden = true;
+      byElementId('opponent-name').textContent = 'The computer';
+      byElementId('opponent-change').textContent = friend ? 'You and your friend fight it together' : 'Not here yet. Send them the link.';
+      return;
+    }
     if (!room?.inRoom) {
       if (this.opponent) this.pickOpponent(0, this.opponent);
       byElementId('opponent-change').textContent = 'Tap to change';
@@ -268,7 +302,16 @@ class MightyMoves extends BodyGame {
 
   /** Who the child is fighting: their friend's fighter, or the computer's. */
   get rivalSpec() {
-    return this.rival?.spec ?? this.opponent;
+    return this.rival?.spec ?? this.teamRival ?? this.opponent;
+  }
+
+  /**
+   * Together with a friend, the computer's fighter is the same on both computers: one that's neither of theirs,
+   * chosen by the number the server gives everyone as it starts.
+   */
+  teamOpponent(friendly, friend) {
+    const others = ROSTER.filter((spec) => spec.id !== this.chosen.id && spec.id !== friend.spec.id);
+    return others[Math.abs(friendly.seed ?? 0) % others.length];
   }
 
   /* ---------- the fight ---------- */
@@ -277,15 +320,23 @@ class MightyMoves extends BodyGame {
     const { arena, settings } = this;
     // With a friend, it's the host's level and number of rounds, which doesn't move anyone's own level on.
     const friendly = this.friends.current;
-    this.rival = friendly?.friends[0] ?? null;
+    const friend = friendly?.friends[0] ?? null;
+    // Together, the friend is on the child's side, and the two of them fight one of the computer's fighters.
+    this.team = Boolean(friendly?.team && friend);
+    this.ally = this.team ? friend : null;
+    this.rival = this.team ? null : friend;
+    this.teamRival = this.team ? this.teamOpponent(friendly, friend) : null;
     document.body.toggleAttribute('data-friends-race', Boolean(friendly));
+    document.body.toggleAttribute('data-friends-team', this.team);
     const levelNumber = friendly ? friendly.level : this.startLevel();
     const rules = fightLevelOf(levelNumber);
-    const champion = rules.champion && !friendly;
+    const champion = rules.champion && (!friendly || this.team);
     const rival = this.rivalSpec;
     arena.setFighter('player', this.chosen);
     arena.setFighter('npc', rival);
+    arena.hideHelper();
     arena.resetRound();
+    if (this.team) arena.showAlly(this.ally.spec);
     arena.setTheme(rules.theme);
     document.body.dataset.place = rules.theme;
     arena.setChampion(champion);
@@ -293,15 +344,17 @@ class MightyMoves extends BodyGame {
     arena.setView('intro');
     arena.player.body.setExpression('happy', 2.5);
     arena.npc.body.setExpression('happy', 2.5);
-    byElementId('versus-player').textContent = this.chosen.name;
+    byElementId('versus-player').textContent = this.teamName();
     byElementId('versus-npc').textContent = champion ? `👑 ${rival.name}` : rival.name;
 
     this.fight = new Fight({
       rounds: friendly && ROUNDS.includes(friendly.length) ? friendly.length : settings.rounds,
-      level: friendly ? FRIEND_LEVEL : NPC_LEVELS[settings.level] ?? NPC_LEVELS.gentle,
+      // Together, the computer is as strong as this child's own grown-up has set it, and can't knock them out.
+      level: friendly && !this.team ? FRIEND_LEVEL : NPC_LEVELS[settings.level] ?? NPC_LEVELS.gentle,
       levelNumber,
       focusSide: settings.hands,
-      friend: Boolean(friendly),
+      friend: Boolean(friendly) && !this.team,
+      ally: this.team,
       onEvent: (event) => this.onFightEvent(event),
     });
     this.goAt = performance.now();
@@ -339,7 +392,7 @@ class MightyMoves extends BodyGame {
     const rival = this.rivalSpec;
     byElementId('player-portrait').src = portraits[chosen.id];
     byElementId('npc-portrait').src = portraits[rival.id];
-    byElementId('player-name').textContent = chosen.name;
+    byElementId('player-name').textContent = this.teamName();
     byElementId('npc-name').textContent = this.fight.levelRules.champion ? `👑 ${rival.name}` : rival.name;
     this.lastNumbers = {};
     const { prizes, powerUps } = this.fight.levelRules;
@@ -350,6 +403,11 @@ class MightyMoves extends BodyGame {
     }
     byElementId('prizes').hidden = !prizes.length && !powerUps.length;
     this.showPowerUpBadges();
+  }
+
+  /** The child's fighter's name, with the friend's beside it when they fight together. */
+  teamName() {
+    return this.team && this.ally ? `${this.chosen.name} + ${this.ally.spec.name}` : this.chosen.name;
   }
 
   /** The power-ups waiting to be used, as small badges next to the prizes. */
@@ -372,7 +430,7 @@ class MightyMoves extends BodyGame {
     const { fight } = this;
     this.arena.resetRound();
     this.arena.setView('fight');
-    if (fight.player.helper) this.arena.showHelper(this.helperSpec());
+    if (fight.player.helper && !fight.ally) this.arena.showHelper(this.helperSpec());
     this.reader.forget();
     this.lastNumbers = {};
     for (const id of ['player-hp', 'npc-hp']) {
@@ -404,9 +462,10 @@ class MightyMoves extends BodyGame {
       this.coach.beginRound();
       this.setScreen('fight');
       if (this.fight.levelRules.champion) this.firstSight('champion');
-      // The friend's computer was ahead, and this round is already theirs, or this child's.
+      // The friend's computer was ahead, and this round is already theirs, or this child's, or the two of them's.
       const early = this.settledEarly?.get(this.fight.round);
-      if (early) this.fight.settleRound(early);
+      if (early && this.fight.ally) this.fight.teamRoundWon();
+      else if (early) this.fight.settleRound(early);
     }
   }
 
@@ -428,6 +487,8 @@ class MightyMoves extends BodyGame {
         fight.update(dt);
         if (fight.state === 'fighting') this.updateHud();
       }
+      // Together, the friend's moves still take the computer's fighter down, and that shows.
+      if (fight.ally && fight.state === 'fighting') this.updateHud();
       return;
     }
 
@@ -559,10 +620,10 @@ class MightyMoves extends BodyGame {
       byElementId(id).style.width = `${value}%`;
     };
     setWidth('player-hp', fight.player.hp / RULES.maxHp, 'playerHp');
-    setWidth('npc-hp', fight.npc.hp / RULES.maxHp, 'npcHp');
+    setWidth('npc-hp', fight.npc.hp / fight.npcMax, 'npcHp');
     setWidth('player-power', fight.player.power / 100, 'power');
     byElementId('player-hp').classList.toggle('is-low', fight.player.hp < 30);
-    byElementId('npc-hp').classList.toggle('is-low', fight.npc.hp < 30);
+    byElementId('npc-hp').classList.toggle('is-low', fight.npc.hp < 0.3 * fight.npcMax);
     byElementId('power-bar').classList.toggle('is-full', fight.player.power >= 100);
 
     if (lastNumbers.round !== fight.round) {
@@ -620,6 +681,7 @@ class MightyMoves extends BodyGame {
       prize: () => this.onPrize(event),
       'power-up': () => this.onPowerUp(event),
       team: () => this.onTeam(event),
+      'ally-hit': () => this.onAllyHit(event),
       charged: () => this.arena.setCharged(event.who === 'player'),
       'round-end': () => this.onRoundEnd(event),
       'fight-end': () => this.onFightEnd(event),
@@ -759,16 +821,25 @@ class MightyMoves extends BodyGame {
   /** Something from the friend's computer: one of their fighter's moves, their body, or whose a round is. */
   fromFriend(id, message) {
     const { fight } = this;
-    if (!fight?.friend) return;
+    if (!fight?.friend && !fight?.ally) return;
+    const friend = fight.ally ? this.ally : this.rival;
     if (message.t === 'pose') {
-      if (id === this.rival?.id) this.friendBody?.push(message, performance.now());
+      if (id === friend?.id) this.friendBody?.push(message, performance.now());
       return;
     }
     if (message.t === 'claimed') {
-      this.roundSettled(message.k, message.by === this.friends.room.you ? 'player' : 'npc');
+      if (fight.ally) this.teamRoundSettled(message.k);
+      else this.roundSettled(message.k, message.by === this.friends.room.you ? 'player' : 'npc');
       return;
     }
-    if (message.t !== 'hit' || id !== this.rival?.id || message.r !== fight.round || !MOVES[message.m]) return;
+    if (message.t !== 'hit' || id !== friend?.id || !MOVES[message.m]) return;
+    if (fight.ally) {
+      // A move from a later round says this one is won already, as it is for both.
+      if (message.r > fight.round) fight.teamRoundWon();
+      else if (message.r === fight.round) fight.allyHit(message.m, { side: { l: 'left', r: 'right' }[message.sd] ?? null, small: Boolean(message.sm), signature: Boolean(message.sg), damage: message.d, total: message.tot });
+      return;
+    }
+    if (message.r !== fight.round) return;
     fight.perform('npc', message.m, {
       side: { l: 'left', r: 'right' }[message.sd] ?? null,
       small: Boolean(message.sm),
@@ -776,6 +847,47 @@ class MightyMoves extends BodyGame {
       damage: message.d,
       total: message.tot,
     });
+  }
+
+  /* ---------- fighting together with a friend ---------- */
+
+  /** Together: each of the child's moves that lands goes to the friend's computer, with all they've done this round. */
+  sendTeamHit({ move, side, small, signature, damage, total }) {
+    const hit = { r: this.fight.round, m: move, d: damage, tot: total, sm: small ? 1 : 0, sg: signature ? 1 : 0, sd: side ? side[0] : '' };
+    this.friends.sendHit(hit, performance.now() - this.goAt);
+  }
+
+  /** Together: the friend's move has landed on the computer's fighter, and their fighter here makes it. */
+  onAllyHit({ move, side, small, signature, damage }) {
+    const { arena } = this;
+    this.sound.swing(move);
+    // Their fighter makes the move, if it's still beside the child's.
+    if (arena.helper?.ally) {
+      arena.allyStrike(move, side ?? 'right');
+      arena.hitLanded({ attacker: 'helper', target: 'npc', move, blocked: false, signature, small });
+    }
+    this.sound.impact(move, { blocked: false, signature, small });
+    const top = arena.toScreen(arena.fighterTop('npc'));
+    if (damage > 0) this.callout(String(Math.max(1, Math.round(damage))), { kind: 'is-number', x: top.x + 0.03, y: top.y });
+    if (small) return;
+    // Its name over the friend's fighter, as the child's own moves have theirs.
+    const { name, label, labelKa } = MOVES[move];
+    const ka = this.settings.language === 'ka';
+    const spec = this.ally.spec;
+    let shown;
+    if (signature) shown = ka ? spec.signatureKa ?? spec.signature : spec.signature;
+    else if (name) shown = this.translate(`${name}!`).replace('!', '');
+    else shown = ka ? labelKa : label;
+    const feet = arena.helperFeet();
+    if (shown) this.callout(shown, { kind: 'is-friend', x: feet.x, y: Math.max(0.12, feet.y - 0.34) });
+    this.updateHud();
+  }
+
+  /** Together: a round is won on the friend's computer, so it's won here, now or as soon as it starts. */
+  teamRoundSettled(round) {
+    const { fight } = this;
+    if (round > fight.round) this.settledEarly.set(round, 'player');
+    else if (round === fight.round) fight.teamRoundWon();
   }
 
   /**
@@ -807,6 +919,15 @@ class MightyMoves extends BodyGame {
   /** The friend has gone, in the middle of a fight: it's over, and it's the child's. */
   friendGone(friend) {
     const { fight } = this;
+    // Together, the child fights on by themselves, and the friend's fighter goes.
+    if (fight?.ally && friend.id === this.ally?.id) {
+      fight.allyGone();
+      this.arena.hideHelper();
+      this.team = false;
+      byElementId('player-name').textContent = this.teamName();
+      this.friendWentAway = true;
+      return;
+    }
     if (!fight?.friend || friend.id !== this.rival?.id || fight.state === 'over') return;
     clearTimeout(this.afterRound);
     clearTimeout(this.knockoutWait);
@@ -814,7 +935,10 @@ class MightyMoves extends BodyGame {
     fight.friendGone();
   }
 
-  onHit({ attacker, target, move, damage, blocked, bubble, reasons, signature, small }) {
+  onHit(event) {
+    const { attacker, target, move, damage, blocked, bubble, reasons, signature, small } = event;
+    // Together, what the child's move did goes to the friend's computer, where their fighter makes it too.
+    if (this.fight.ally && !this.fight.allyLeft && attacker === 'player') this.sendTeamHit(event);
     this.arena.hitLanded({ attacker, target, move, blocked, signature, small });
     // The bubble has its own soft sound, in place of the block's.
     if (!bubble) this.sound.impact(move, { blocked, signature, small });
@@ -865,6 +989,11 @@ class MightyMoves extends BodyGame {
     const [won, lost] = winner === 'player' ? [arena.player, arena.npc] : [arena.npc, arena.player];
     won.hold('win');
     lost.hold('dizzy');
+    // Together, the friend's computer hears the round is won, and their fighter here cheers too.
+    if (this.fight.ally && winner === 'player') {
+      this.friends.claim(this.fight.round);
+      if (arena.helper?.ally) arena.helper.hold('win');
+    }
     this.sound.say(SAY.knockout);
     this.sound.cheer(winner === 'player' ? 0.6 : 0.3);
     if (over) return;
@@ -892,7 +1021,7 @@ class MightyMoves extends BodyGame {
     clearTimeout(this.knockoutWait);
     this.hideCoach();
     // A friend's finish card fills in with how this child did.
-    if (this.fight.friend) this.friends.finished(performance.now() - this.goAt, { w: winner === 'player' ? 1 : 0, n: this.fight.player.roundsWon });
+    if (this.fight.friend || this.fight.ally) this.friends.finished(performance.now() - this.goAt, { w: winner === 'player' ? 1 : 0, n: this.fight.player.roundsWon });
     this.camera.stop();
     this.reader.forget();
     this.latestBody = null;
@@ -919,9 +1048,11 @@ class MightyMoves extends BodyGame {
       : `${Math.round(stats.activeSeconds)} seconds`;
     byElementId('finish-prizes').innerHTML = this.prizeWords();
     byElementId('finish-prizes').hidden = !this.fight.levelRules.prizes.length;
-    byElementId('finish-line').textContent = this.friendWentAway
-      ? `Your friend had to go. ${this.chosen.name} had ${minutes} of moving.`
-      : `${this.chosen.name} won ${player.roundsWon} of ${stats.rounds.length} ${stats.rounds.length === 1 ? 'round' : 'rounds'}, with ${minutes} of moving.`;
+    const rounds = `${player.roundsWon} of ${stats.rounds.length} ${stats.rounds.length === 1 ? 'round' : 'rounds'}`;
+    let line = `${this.chosen.name} won ${rounds}, with ${minutes} of moving.`;
+    if (this.friendWentAway) line = `Your friend had to go. ${this.chosen.name} had ${minutes} of moving.`;
+    else if (this.team && this.ally) line = `${this.chosen.name} and ${this.ally.spec.name} won ${rounds} together, with ${minutes} of moving.`;
+    byElementId('finish-line').textContent = line;
     this.friendWentAway = false;
     this.fillTallyCards(byElementId('finish-tally'), this.exerciseCards());
     byElementId('sum-left-strikes').textContent = String(stats.strikes.left);
@@ -935,7 +1066,7 @@ class MightyMoves extends BodyGame {
       : 'The hands were too far away to read in any arm move.';
     // A fight that's won moves on a level, and one that's lost stays on it. Fighting a friend is on the host's
     // level, so it doesn't move anyone's own level on.
-    if (this.fight.friend) {
+    if (this.fight.friend || this.fight.ally) {
       this.levels.last = null;
       this.levelUi.refresh();
     } else {
@@ -969,12 +1100,16 @@ class MightyMoves extends BodyGame {
   copyBodies(now) {
     const seen = this.camera.running && this.reader.hasPose && !this.bodyLost();
     this.arena.setLive('player', seen ? this.reader.pose : null);
-    if (!this.fight?.friend) {
+    const { fight } = this;
+    if (!fight?.friend && !(fight?.ally && !fight.allyLeft)) {
       this.arena.setLive('npc', null);
       return;
     }
     const theirs = this.friendBody?.at(now);
-    this.arena.setLive('npc', theirs?.p?.length === BODY_KEYS.length ? bodyFrom(theirs.p) : null);
+    const body = theirs?.p?.length === BODY_KEYS.length ? bodyFrom(theirs.p) : null;
+    // Against a friend, their fighter is the other corner's. Together, it's the one beside the child's own.
+    this.arena.setLive('npc', fight.ally ? null : body);
+    if (fight.ally) this.arena.setLive('helper', body);
     // An empty list says the camera can't see this child, so the friend's computer stops copying them.
     if (SEND_BODY_SCREENS.has(this.screen)) this.friends.sendMove('pose', { p: seen ? bodyList(this.reader.pose) : [] }, now - this.goAt);
   }
@@ -1099,6 +1234,11 @@ mountBodyShell({
       <legend>Length of a fight</legend>
       <label><input type="radio" name="rounds" value="1"> One round</label>
       <label><input type="radio" name="rounds" value="3"> Best of three, with a rest between</label>
+    </fieldset>
+    <fieldset class="choice">
+      <legend>With a friend</legend>
+      <label><input type="radio" name="fightFriends" value="together"> Together: both of you against the computer’s fighter, side by side</label>
+      <label><input type="radio" name="fightFriends" value="against"> Against each other</label>
     </fieldset>`,
 });
 

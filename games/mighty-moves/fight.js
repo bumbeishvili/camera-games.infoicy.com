@@ -10,7 +10,18 @@
 // it's the same on both computers, and each fighter's health is all the other's moves have done to it this
 // round. A knockout waits for the server to say whose round it is, in case both got there at once: see
 // settleRound.
+//
+// A friend can be fought with, too, rather than against: together, both children fight the computer's fighter,
+// each on their own computer, with their own coach and the computer's turns just as on their own. The computer's
+// fighter has twice the health, and what's left of it is what both children's moves have left, so it's the same on
+// both computers: each child's computer says all its child's moves have done this round, and takes the same from
+// the friend's. The computer can never knock either child out, so a round is always the two of them's in the end,
+// and nobody can lose.
 import { COMBOS, COMBO_SECONDS, EXERCISES, MOVES, PRIZE_ORDER, RULES, fightLevel } from './moves.js';
+
+// Together with a friend: how much more health the computer's fighter has, for the two of them, and how low the
+// computer can take a child's, however hard a grown-up has set it, which is as low as it goes on Gentle.
+export const TEAM = { health: 2, mercy: 20 };
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 // To the hundredth, as the server passes it on, so both computers add up the same.
@@ -72,11 +83,17 @@ export class Fight {
    * level is the computer's strength in moves.js. focusSide is the side being worked on.
    * levelNumber is the level, from 1 to 10: see fightLevel in moves.js, which the coach follows.
    */
-  constructor({ rounds = 3, level, levelNumber = 1, focusSide = 'right', friend = false, onEvent = () => {} }) {
+  constructor({ rounds = 3, level, levelNumber = 1, focusSide = 'right', friend = false, ally = false, onEvent = () => {} }) {
     this.totalRounds = rounds;
-    this.level = level;
+    // With a friend on the child's own side, the computer can't knock the child out: see TEAM.
+    this.ally = Boolean(ally) && !friend;
+    this.level = this.ally ? { ...level, mercy: Math.max(level.mercy ?? 0, TEAM.mercy) } : level;
     this.levelNumber = levelNumber;
     this.friend = friend;
+    // How much health the computer's fighter starts a round with, and all the friend's moves have done to it this
+    // round, as their computer says.
+    this.npcMax = RULES.maxHp * (this.ally ? TEAM.health : 1);
+    this.allyDealt = 0;
     const rules = fightLevel(levelNumber);
     // A friend isn't the champion, and there's no trophy for beating them. Gems are for getting out of the way
     // of the computer's moves, which a friend's fighter doesn't make. A shield bubble would stop a hit that only
@@ -86,7 +103,8 @@ export class Fight {
       champion: false,
       prizes: rules.prizes.filter((kind) => kind !== 'gem' && kind !== 'trophy'),
       powerUps: rules.powerUps.filter((kind) => kind !== 'shield'),
-    } : rules;
+      // Together, the friend stands where a helper would, so no other helper comes.
+    } : this.ally ? { ...rules, powerUps: rules.powerUps.filter((kind) => kind !== 'helper') } : rules;
     this.focusSide = focusSide;
     this.onEvent = onEvent;
 
@@ -114,7 +132,9 @@ export class Fight {
     this.round += 1;
     this.player.freshRound();
     this.npc.freshRound();
+    this.npc.hp = this.npcMax;
     this.dealt = 0;
+    this.allyDealt = 0;
     this.idleSeconds = 0;
     this.state = 'fighting';
     this.emit('round-start', { round: this.round, last: this.isLastRound() });
@@ -382,7 +402,13 @@ export class Fight {
     // On the gentlest level the computer can't take a child below this, however it goes.
     if (action.who === 'npc' && this.level.mercy) damage = Math.min(damage, Math.max(0, target.hp - this.level.mercy));
 
-    target.hp = clamp(target.hp - damage, 0, RULES.maxHp);
+    if (this.ally && target.who === 'npc') {
+      // Together, the computer's fighter has what both children's moves have left it.
+      this.dealt = round2(this.dealt + damage);
+      target.hp = this.teamLeft();
+    } else {
+      target.hp = clamp(target.hp - damage, 0, RULES.maxHp);
+    }
     if (action.who === 'player') {
       this.stats.damage += damage;
       if (!action.small) {
@@ -396,6 +422,8 @@ export class Fight {
       move: action.move,
       side: action.side,
       damage,
+      // Together: all the child's moves have done this round, for the friend's computer.
+      total: this.dealt,
       blocked,
       small: action.small,
       times: action.times,
@@ -432,6 +460,48 @@ export class Fight {
     this.emit('hit', { ...details, damage: action.damage, blocked: false });
     if (target.hp <= 0) this.knockedOut(action.who);
     else if (action.who === 'player' && !action.small) this.countBigMove();
+  }
+
+  /* ---------- together with a friend ---------- */
+
+  /** Together: what the computer's fighter has left, after all both children's moves have done this round. */
+  teamLeft() {
+    return clamp(this.npcMax - this.dealt - this.allyDealt, 0, this.npcMax);
+  }
+
+  /**
+   * Together: one of the friend's moves has landed on the computer's fighter, on their computer. total is all their
+   * moves have done this round, so one missed while the connection was down is made up by the next. Returns
+   * whether it was taken.
+   */
+  allyHit(move, { side = null, small = false, signature = false, damage = 0, total = 0 } = {}) {
+    if (!this.ally || this.state !== 'fighting' || !MOVES[move] || !Number.isFinite(total)) return false;
+    this.allyDealt = Math.max(this.allyDealt, round2(Math.max(0, total)));
+    this.npc.hp = this.teamLeft();
+    this.emit('ally-hit', { move, side, small, signature, damage });
+    if (this.npc.hp <= 0) this.endRound('player');
+    return true;
+  }
+
+  /** Together: the friend's computer says this round is won, as it is for both. */
+  teamRoundWon() {
+    if (!this.ally || this.state !== 'fighting') return;
+    this.npc.hp = 0;
+    this.endRound('player');
+  }
+
+  /**
+   * Together, and the friend has gone: the child fights on, and the computer's fighter has one fighter's health
+   * again, with no more gone from it than it had lost.
+   */
+  allyGone() {
+    if (!this.ally || this.allyLeft) return;
+    this.allyLeft = true;
+    const left = Math.min(this.npc.hp, RULES.maxHp);
+    this.npcMax = RULES.maxHp;
+    this.allyDealt = 0;
+    this.dealt = round2(RULES.maxHp - left);
+    if (this.state === 'fighting') this.npc.hp = this.teamLeft();
   }
 
   /** Against a friend, a knockout waits, with nothing moving, for the server to say whose round it is. */

@@ -358,6 +358,9 @@ test('the grown-ups\' panel pauses the fight and remembers what it\'s told', asy
   await page.locator('input[name="jumps"][value="no"]').check();
   await page.locator('input[name="level"][value="tough"]').check();
   await page.locator('input[name="rounds"][value="1"]').check();
+  // With a friend: together unless a grown-up says otherwise.
+  await expect(page.locator('input[name="fightFriends"][value="together"]')).toBeChecked();
+  await page.locator('input[name="fightFriends"][value="against"]').check();
   await page.locator('#close-panel').click();
   await expect.poll(async () => (await fightState(page)).time).toBeGreaterThan(paused.time);
 
@@ -369,11 +372,11 @@ test('the grown-ups\' panel pauses the fight and remembers what it\'s told', asy
   await page.reload();
   await expect(page.locator('body')).toHaveAttribute('data-ready', 'yes');
   await page.locator('#open-panel').click();
-  for (const [name, value] of [['moveSize', 'small'], ['hands', 'left'], ['jumps', 'no'], ['level', 'tough'], ['rounds', '1']]) {
+  for (const [name, value] of [['moveSize', 'small'], ['hands', 'left'], ['jumps', 'no'], ['level', 'tough'], ['rounds', '1'], ['fightFriends', 'against']]) {
     await expect(page.locator(`input[name="${name}"][value="${value}"]`)).toBeChecked();
   }
   const stored = await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('camera-games-settings'))).sort());
-  expect(stored).toEqual(['fighter', 'hands', 'jumps', 'language', 'level', 'moveSize', 'rounds', 'sound', 'strictness', 'voice']);
+  expect(stored).toEqual(['fightFriends', 'fighter', 'hands', 'jumps', 'language', 'level', 'moveSize', 'rounds', 'sound', 'strictness', 'voice']);
 });
 
 test('fighters at either end of the mat stay on the mat, and every fighter can fight and show every move', async ({ page }) => {

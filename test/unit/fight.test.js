@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { CLIPS } from '../../games/mighty-moves/clips.js';
 import { Coach } from '../../games/mighty-moves/coach.js';
-import { Fight } from '../../games/mighty-moves/fight.js';
+import { Fight, TEAM } from '../../games/mighty-moves/fight.js';
 import { ARRIVES, CAN_BE_TWICE, COMBOS, DEFENCES, EXERCISES, MOVES, NEW_THINGS, NPC_LEVELS, ORDER, PRIZES, RULES, fightLevel, levelHas, newThingsAt } from '../../games/mighty-moves/moves.js';
 import { DEMOS } from '../../core/body/demos.js';
 import { ICONS } from '../../core/body/icons.js';
@@ -1310,6 +1310,124 @@ test('against a friend who has gone, the fight is over, and it\'s the child\'s',
   assert.equal(ana.fight.state, 'over');
   assert.deepEqual(ana.events.at(-1), { type: 'fight-end', winner: 'player', walkover: true });
   assert.equal(ana.fight.perform('player', 'stomp', { exercise: 'squat' }), null);
+});
+
+test('together with a friend, the computer\'s fighter has twice the health, and what\'s left is what both children\'s moves have left it', () => {
+  const { fight, events } = setup({ ally: true });
+  assert.equal(fight.ally, true);
+  assert.equal(fight.npc.hp, RULES.maxHp * TEAM.health);
+  fight.perform('player', 'stomp', { exercise: 'squat', side: 'right' });
+  run(fight, 1);
+  const mine = lastHit(events);
+  assert.ok(mine.damage > 0);
+  // What goes to the friend's computer: all this child's moves have done this round.
+  assert.equal(mine.total, mine.damage);
+  assert.equal(fight.npc.hp, RULES.maxHp * 2 - mine.damage);
+  // The friend's computer says what theirs have done, and their fighter is seen making the move.
+  assert.equal(fight.allyHit('kick', { side: 'left', damage: 12, total: 30 }), true);
+  assert.equal(fight.npc.hp, RULES.maxHp * 2 - mine.damage - 30);
+  assert.deepEqual(events.at(-1), { type: 'ally-hit', move: 'kick', side: 'left', small: false, signature: false, damage: 12 });
+  // One missed while the connection was down is made up by the next, and one that comes late takes nothing back.
+  fight.allyHit('palm', { damage: 10, total: 55 });
+  assert.equal(fight.npc.hp, RULES.maxHp * 2 - mine.damage - 55);
+  fight.allyHit('palm', { damage: 10, total: 40 });
+  assert.equal(fight.npc.hp, RULES.maxHp * 2 - mine.damage - 55);
+  // Nothing that isn't a move, or a number, is taken.
+  assert.equal(fight.allyHit('teleport', { total: 500 }), false);
+  assert.equal(fight.allyHit('palm', { total: NaN }), false);
+  assert.equal(fight.state, 'fighting');
+  // The child's own next move adds to their own total.
+  fight.perform('player', 'stomp', { exercise: 'squat', side: 'right' });
+  run(fight, 1);
+  assert.ok(lastHit(events).total > mine.total);
+  assert.equal(fight.npc.hp, RULES.maxHp * 2 - lastHit(events).total - 55);
+});
+
+test('together, a round is the two of them\'s once the computer\'s fighter is out, whoever\'s move it was, and so is the fight', () => {
+  const { fight, events } = setup({ ally: true, rounds: 3 });
+  // The friend's move finishes it.
+  fight.allyHit('palm', { damage: 50, total: RULES.maxHp * 2 });
+  assert.deepEqual([fight.state, fight.player.roundsWon, fight.npc.roundsWon], ['break', 1, 0]);
+  const end = events.find(({ type }) => type === 'round-end');
+  assert.deepEqual([end.winner, end.over], ['player', false]);
+  // The next round starts afresh: what either did in the last one doesn't carry over.
+  fight.beginRound();
+  assert.deepEqual([fight.npc.hp, fight.allyDealt, fight.dealt], [RULES.maxHp * 2, 0, 0]);
+  // A move of the friend's from the round before, coming late, does nothing: main.js only passes on this round's.
+  // The friend's computer got there first, and says the round is won: it is, for both, and that's the fight.
+  fight.teamRoundWon();
+  assert.deepEqual([fight.state, fight.winner, fight.player.roundsWon], ['over', 'player', 2]);
+  assert.deepEqual(events.at(-1), { type: 'fight-end', winner: 'player' });
+  // Once it's over, nothing more is taken.
+  assert.equal(fight.allyHit('palm', { total: 10 }), false);
+});
+
+test('together, the computer can never knock a child out, however hard a grown-up has set it', () => {
+  const tough = { ...NPC_LEVELS.tough };
+  assert.equal(tough.mercy, 0);
+  const { fight } = setup({ ally: true, level: tough });
+  assert.equal(fight.level.mercy, TEAM.mercy);
+  for (let i = 0; i < 40; i += 1) {
+    fight.perform('npc', 'flying');
+    run(fight, 1);
+  }
+  assert.equal(fight.state, 'fighting');
+  assert.equal(fight.player.hp, TEAM.mercy);
+  // On their own, at the same strength, that's a round lost.
+  const alone = setup({ level: tough });
+  for (let i = 0; i < 40 && alone.fight.state === 'fighting'; i += 1) {
+    alone.fight.perform('npc', 'flying');
+    run(alone.fight, 1);
+  }
+  assert.equal(alone.fight.npc.roundsWon, 1);
+  // Gentle's own mercy, which is the same, stays as it is.
+  assert.equal(setup({ ally: true, level: { ...NPC_LEVELS.gentle } }).fight.level.mercy, NPC_LEVELS.gentle.mercy);
+});
+
+test('together, it\'s the level as it is on their own, with its prizes and its champion, but no other helper: the friend is the helper', () => {
+  const team = new Fight({ level: MEDIUM, levelNumber: 10, ally: true });
+  const rules = fightLevel(10);
+  assert.ok(rules.powerUps.includes('helper'));
+  assert.deepEqual(team.levelRules.powerUps, rules.powerUps.filter((kind) => kind !== 'helper'));
+  assert.deepEqual(team.levelRules.prizes, rules.prizes);
+  assert.equal(team.levelRules.champion, rules.champion);
+  // Against a friend isn't together, whatever else is said.
+  assert.equal(new Fight({ level: MEDIUM, friend: true, ally: true }).ally, false);
+  assert.equal(new Fight({ level: MEDIUM }).npcMax, RULES.maxHp);
+});
+
+test('together, a friend who goes leaves the child to fight on, against a fighter with one fighter\'s health', () => {
+  const { fight, events } = setup({ ally: true });
+  fight.allyHit('palm', { damage: 30, total: 30 });
+  assert.equal(fight.npc.hp, 170);
+  fight.allyGone();
+  // No more than one fighter's health, and no more gone from it than it had lost.
+  assert.deepEqual([fight.npc.hp, fight.npcMax, fight.state], [100, 100, 'fighting']);
+  fight.perform('player', 'stomp', { exercise: 'squat', side: 'right' });
+  run(fight, 1);
+  assert.equal(fight.npc.hp, 100 - lastHit(events).damage);
+  // A fighter that was nearly out stays nearly out.
+  const late = setup({ ally: true });
+  late.fight.allyHit('palm', { damage: 30, total: 180 });
+  late.fight.allyGone();
+  assert.equal(late.fight.npc.hp, 20);
+  late.fight.beginRound();
+  assert.equal(late.fight.npc.hp, 100, 'and the next round is one fighter\'s too');
+  // Gone twice is gone once.
+  late.fight.allyGone();
+  assert.equal(late.fight.npc.hp, 100);
+});
+
+test('the coach gives the computer its turns when the friend is on the child\'s side, as it does on their own', () => {
+  const { fight } = setup({ ally: true, level: { ...NPC_LEVELS.medium } });
+  const coach = new Coach({ fight, reader: fakeReader({ moving: true }) });
+  coach.beginRound();
+  for (let t = 0; t < 120; t += 0.1) {
+    fight.noteActivity(0.1);
+    coach.update(0.1);
+    fight.update(0.1);
+  }
+  assert.ok(coach.defences >= 1);
 });
 
 test('the coach never gives a friend\'s fighter a turn of its own', () => {
