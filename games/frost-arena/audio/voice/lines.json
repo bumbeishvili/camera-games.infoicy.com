@@ -6,5 +6,9 @@
   {"id": "finish", "text": "We won the match!", "ka": "მატჩი მოვიგეთ!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
   {"id": "so-close", "text": "So close!", "ka": "კინაღამ გამოგივიდა!"},
   {"id": "paused", "text": "Paused. Show your hands to play!", "ka": "პაუზა. თამაშისთვის ხელები აჩვენე!"},
-  {"id": "show-other", "text": "Show your other hand to walk!", "ka": "მეორე ხელიც აჩვენე, რომ იარო!"}
+  {"id": "show-other", "text": "Show your other hand to walk!", "ka": "მეორე ხელიც აჩვენე, რომ იარო!"},
+  {"id": "rivals-start", "text": "Everyone for themselves!", "ka": "ყველა თავისთვის!"},
+  {"id": "you-won", "text": "You won the match!", "ka": "მატჩი მოიგე!"},
+  {"id": "great-game", "text": "Great game!", "ka": "კარგი თამაში იყო!"},
+  {"id": "hands-away", "text": "Show your hands to play!", "ka": "თამაშისთვის ხელები აჩვენე!"}
 ]

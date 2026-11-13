@@ -219,20 +219,15 @@ export function buildRifle(kind) {
 
 /** One of the characters, in their team's vest, with their rifle. */
 class Player {
-  constructor(trooper, scene, blob) {
+  /** ours says whether they're on the side of whoever is playing here: with friends, a team isn't always blue or red. */
+  constructor(trooper, scene, blob, ours = trooper.team === 0) {
     this.trooper = trooper;
     this.fighter = new Fighter3D(characterWithId(trooper.who) ?? characterWithId('giraffe'));
     this.fighter.root.scale.setScalar(SIZE);
     this.fighter.root.traverse((node) => {
       if (node.isMesh) node.castShadow = true;
     });
-    // Their rifle, held in front of them in both hands. The characters are chunky, so it's a little bigger than
-    // life, to be seen for what it is from across the yard. It points the way they face, which for them is +z.
-    this.rifle = buildRifle(trooper.rifle);
-    this.rifle.root.scale.setScalar(1.3);
-    this.rifle.root.rotation.set(0, Math.PI, 0);
-    this.rifle.root.position.set(0, 0.34, 0.36);
-    this.fighter.torso.add(this.rifle.root);
+    this.holdRifle();
     this.pose = makePose();
     this.root = new THREE.Group();
     this.root.add(this.fighter.root);
@@ -250,7 +245,7 @@ class Player {
     this.shieldDown = 0;
     // A ring on the snow under them in their team's colour, so nobody is in doubt whose side anyone is on,
     // whatever they're wearing.
-    this.ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.66, 28), new THREE.MeshBasicMaterial({ color: TEAM_COLOURS[trooper.team], transparent: true, opacity: 0.85, depthWrite: false }));
+    this.ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.66, 28), new THREE.MeshBasicMaterial({ color: TEAM_COLOURS[ours ? 0 : 1], transparent: true, opacity: 0.85, depthWrite: false }));
     this.ring.rotation.x = -Math.PI / 2;
     this.ring.position.y = 0.03;
     this.root.add(this.ring);
@@ -265,8 +260,29 @@ class Player {
     this.shown = 1;
   }
 
+  /**
+   * Their rifle, held in front of them in both hands. The characters are chunky, so it's a little bigger than
+   * life, to be seen for what it is from across the yard. It points the way they face, which for them is +z. A
+   * friend's is whichever their own game says they chose, which is only known once it has said.
+   */
+  holdRifle() {
+    this.rifle?.root.removeFromParent();
+    this.rifleKind = this.trooper.rifle;
+    this.rifle = buildRifle(this.rifleKind);
+    this.rifle.root.scale.setScalar(1.3);
+    this.rifle.root.rotation.set(0, Math.PI, 0);
+    this.rifle.root.position.set(0, 0.34, 0.36);
+    this.fighter.torso.add(this.rifle.root);
+  }
+
   update(dt, reducedMotion) {
     const { trooper, pose, fighter } = this;
+    // A friend who has gone is gone from the yard.
+    if (trooper.state === 'gone') {
+      this.root.visible = false;
+      return;
+    }
+    if (trooper.rifle !== this.rifleKind) this.holdRifle();
     const out = trooper.state === 'out';
     this.sit = damp(this.sit, out ? 1 : 0, 6, dt);
     // Just back at their end, they shimmer for a moment: nothing can hit them yet.
@@ -415,15 +431,16 @@ export class Yard {
     for (let z = -YARD.halfZ; z <= YARD.halfZ; z += 5) for (const x of [-YARD.halfX - 0.1, YARD.halfX + 0.1]) fence.add(part(post, wood, x, 1.15, z));
     scene.add(fence);
 
-    // Each team's end, marked on the snow in its colour, and a flag at each.
-    for (const [team, z] of [[0, YARD.halfZ - 1.6], [1, -YARD.halfZ + 1.6]]) {
+    // Each end, marked on the snow in the colour of whoever's it is, and a flag at each: see showEnds.
+    this.ends = [[0, YARD.halfZ - 1.6], [1, -YARD.halfZ + 1.6]].map(([team, z]) => {
       const mat = new THREE.Mesh(new THREE.PlaneGeometry(18, 2.6), new THREE.MeshStandardMaterial({ color: TEAM_COLOURS[team], transparent: true, opacity: 0.22, roughness: 1 }));
       mat.rotation.x = -Math.PI / 2;
       mat.position.set(0, 0.015, z);
       const pole = part(new THREE.CylinderGeometry(0.05, 0.05, 4.2, 8), concrete, 10 * (team ? -1 : 1), 2.1, z + (team ? -0.9 : 0.9));
       const flag = part(new THREE.BoxGeometry(1.3, 0.8, 0.03), new THREE.MeshStandardMaterial({ color: TEAM_COLOURS[team], roughness: 0.9 }), pole.position.x + 0.68, 3.7, pole.position.z);
       scene.add(mat, pole, flag);
-    }
+      return { z, mat, flag };
+    });
 
     // Pines and mountains beyond the fence, the same every game.
     const random = steady(31);
@@ -513,6 +530,22 @@ export class Yard {
 
   /* ---------- a new match ---------- */
 
+  /**
+   * Each end of the yard is the colour of whoever comes in there, as whoever is playing here sees them: blue for
+   * their own side and red for anyone to be tagged. Alone and together that's blue at the near end and red at
+   * the far one. Against each other, the player's own start is the blue one, if it's at an end.
+   */
+  showEnds() {
+    const { child, troopers } = this.match;
+    for (const end of this.ends) {
+      const there = troopers.filter(({ home }) => Math.abs(home.z - end.z) < 3);
+      const ours = there.length ? there.some(({ team }) => team === child.team) : end.z > 0;
+      const colour = TEAM_COLOURS[ours ? 0 : 1];
+      end.mat.material.color.set(colour);
+      end.flag.material.color.set(colour);
+    }
+  }
+
   setMatch(match) {
     for (const player of this.players.values()) player.dispose();
     this.players.clear();
@@ -523,10 +556,11 @@ export class Yard {
     if (!match) return;
     for (const trooper of match.troopers) {
       if (trooper === match.child) continue;
-      const player = new Player(trooper, this.scene, this.blob);
+      const player = new Player(trooper, this.scene, this.blob, trooper.team === match.child.team);
       player.shadow.visible = this.quality < 2;
       this.players.set(trooper, player);
     }
+    this.showEnds();
     // The child's own rifle, down the right of the picture, as they'd see it held at the shoulder.
     this.rifle = buildRifle(match.child.rifle);
     this.rifle.root.traverse((node) => {

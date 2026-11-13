@@ -1,6 +1,6 @@
 // Playing with friends, in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail, Giraffe's
-// Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher, the Lighthouse Keeper and Giraffe's Garden: who's
-// in a room, and what they pass to each other.
+// Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher, the Lighthouse Keeper, Giraffe's Garden and Frost
+// Arena: who's in a room, and what they pass to each other.
 // The same rules run on Cloudflare (server/worker.js) and on this computer for the tests
 // (tools/race-server.mjs). Each game has rooms of its own. Nothing here is kept once everyone has gone, and no
 // camera picture ever comes here: only where each car or plane is, the moves a fighter makes and how it stands,
@@ -38,6 +38,10 @@
 //                                      game saw it, and tot is how many have so far
 //                                      In Tank Patrol, a shot of theirs has hit the friend's tank, as their
 //                                      game decides: m is the kind of shot, and tot how many hits they've made
+//                                      In Frost Arena, against each other, a shot of theirs has hit another
+//                                      player, as their game decides: r is which one, by their place in the order
+//                                      everyone joined, from 1, sm is 1 for the lighter rifle, and tot how many
+//                                      hits they've made on that player
 //   pose   { ms, p }                       Mighty Moves: their body, for their fighter to copy, as POSE_NUMBERS
 //                                      numbers about where their hands and feet are and how they lean (see
 //                                      BODY_KEYS in games/mighty-moves/clips.js), or none when it can't be seen
@@ -86,14 +90,25 @@
 //                                      way it faces and its turret points, how fast it's going, how many shots it
 //                                      has fired, so the friend's game can show them coming, whether their child
 //                                      is resting, shown with little z's over it, and whether their hand is open
+//   trooper { ms, x, z, h, s, p, f, n, k, v, u, g, r, o, a, b }   where they are in Frost Arena's yard, which way
+//                                      they face, how fast they're going and whether that's a sprint, whether
+//                                      they're firing, how many shots they've fired, so a friend's game can show
+//                                      them, which of the two rifles, how much they have left, whether they're
+//                                      sitting out after being tagged, only just back, or have their hands out of
+//                                      the picture, o, how many times each of the others has tagged them out, in
+//                                      the order everyone joined, which is how every game counts the same tags,
+//                                      a, how many times they've been tagged out in all, and b, who by the last
+//                                      time, as that one's number
 //   foes   { ms, e, s, n }                 playing together against the computer's, from the host's game, which runs
 //                                      them for everyone: in Tank Patrol, e is each robot tank still rolling, s each
-//                                      shell coming over, and n how it's going, and in Cannon Bay e is each pirate
-//                                      ship afloat and s each of their cannonballs. Each of e and s is a row of
-//                                      numbers, and n is numbers: see wire in games/tank-patrol/team.js and
-//                                      games/cannon-bay/team.js. Only numbers pass
+//                                      shell coming over, and n how it's going, in Cannon Bay e is each pirate
+//                                      ship afloat and s each of their cannonballs, and in Frost Arena e is Giraffe
+//                                      and each of the red team. Each of e and s is a row of numbers, and n is
+//                                      numbers: see wire in games/tank-patrol/team.js, games/cannon-bay/team.js and
+//                                      games/frost-arena/team.js. Only numbers pass. If the host has gone, or isn't
+//                                      playing, it's from the first of those playing: see runnerOf
 //   tag    { k, n }                        this player's shot has hit the computer's k, n times in all so far, as
-//                                      their own game decides. Only the host's game hears it, as it runs them
+//                                      their own game decides. Only the game that runs them hears it
 //   can    { ms, u, y, v, tip, f, p }      where their watering can is in Giraffe's Garden: u how far along the row of
 //                                      plants, from the first to the last, so it's over the same plant on every
 //                                      screen however far apart each one's are, y how far down the screen, whether
@@ -107,9 +122,10 @@
 //                                      the host's, so everyone can see how the game is going to be played
 //   go     { level, length, laps, mode, team, racers, seed }   the countdown starts now, on the host's course
 //                                      (laps is length). seed is the same for everyone, for a game laid out by chance
-//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker, stand, ship, catcher, tank, can, foes, tag { from, ... } and done { from, ms, n, w }
-//                                      passed on from the others: ball and foes only from the host, shot and tag
-//                                      only to the host, and stand only from someone playing
+//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker, stand, ship, catcher, tank, can, trooper, foes, tag { from, ... } and done { from, ms, n, w }
+//                                      passed on from the others: ball only from the host, shot only to the host,
+//                                      foes only from the game that runs the computer's side and tag only to it,
+//                                      and stand only from someone playing
 //   claimed { k, by }                      balloon k, or round k, went to player by, sent to everyone, them too
 //   wiped  { w, c, by }                    patches c of window w went to player by, as theirs wiped them first,
 //                                      sent to everyone, them too. Those in a wipe that had gone to someone else
@@ -448,6 +464,37 @@ export function cleanCan(message) {
   };
 }
 
+const MOST_IN_THE_YARD = 4; // Frost Arena: as many as can play, and so as many counts of who tagged whom.
+
+/**
+ * Only what a player in Frost Arena's yard should hold, rounded: where they are and which way they face, how
+ * fast they're going and whether that's a sprint, whether they're firing, how many shots they've fired, which
+ * rifle, how much they have left, whether they're sitting out, only just back or have their hands out of the
+ * picture, how many times each of the others has tagged them out, always that many whole numbers, whatever
+ * came, how many times in all, and who by the last time, or -1 for nobody.
+ */
+export function cleanTrooper(message) {
+  const counts = Array.isArray(message.o) ? message.o : [];
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    x: number(message.x, -25, 25, 2),
+    z: number(message.z, -20, 20, 2),
+    h: number(message.h, -7, 7, 3),
+    s: number(message.s, 0, 20, 1),
+    p: message.p ? 1 : 0,
+    f: message.f ? 1 : 0,
+    n: number(message.n, 0, 100_000, 0),
+    k: message.k ? 1 : 0,
+    v: number(message.v, 0, 1000, 0),
+    u: message.u ? 1 : 0,
+    g: message.g ? 1 : 0,
+    r: message.r ? 1 : 0,
+    o: Array.from({ length: MOST_IN_THE_YARD }, (_, index) => number(counts[index], 0, 1000, 0)),
+    a: number(message.a, 0, 100_000, 0),
+    b: typeof message.b === 'number' && Number.isFinite(message.b) ? number(message.b, -1, 99, 0) : -1,
+  };
+}
+
 /**
  * Only what the host's game should tell of the computer's side, playing together against it: rows of numbers, and
  * nothing else. e is each of them, s each thing they've fired, and n how it's going. What each number means is the
@@ -482,6 +529,15 @@ const byJoining = (a, b) => a.meta.joined - b.meta.joined || (a.meta.id < b.meta
 /** Who hosts: whoever has been in the room longest. */
 function hostOf(players) {
   return players.reduce((first, player) => (!first || player.meta.joined < first.meta.joined || (player.meta.joined === first.meta.joined && player.meta.id < first.meta.id) ? player : first), null);
+}
+
+/**
+ * Whose game runs the computer's side, playing together against it: the host's, while they're playing. If
+ * they've gone in the middle, or are in the room without playing, it's the first of those playing, which is how
+ * each game works it out for itself too, so the game goes on for the rest.
+ */
+function runnerOf(players) {
+  return hostOf(players.filter((each) => each.meta.racing)) ?? hostOf(players);
 }
 
 /**
@@ -647,15 +703,15 @@ export class RaceRoom {
         break;
       }
       case 'foes':
-        // Only the host's game runs the computer's side, for everyone playing together against it.
-        if (hostOf(players) !== player) return;
+        // Only one game runs the computer's side, for everyone playing together against it.
+        if (runnerOf(players) !== player) return;
         for (const other of others) other.send({ t: 'foes', from: meta.id, ...cleanFoes(message) });
         break;
       case 'tag': {
-        // And so only the host's game hears of a hit on one of them, and only from someone playing.
-        const host = hostOf(players);
-        if (!meta.racing || host === player || !host) return;
-        host.send({ t: 'tag', from: meta.id, ...cleanTag(message) });
+        // And so only that game hears of a hit on one of them, and only from someone playing.
+        const runner = runnerOf(players);
+        if (!meta.racing || runner === player || !runner) return;
+        runner.send({ t: 'tag', from: meta.id, ...cleanTag(message) });
         break;
       }
       case 'car':
@@ -668,8 +724,9 @@ export class RaceRoom {
       case 'ship':
       case 'catcher':
       case 'tank':
+      case 'trooper':
       case 'can': {
-        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand, pose: cleanPose, racket: cleanRacket, runner: cleanRunner, walker: cleanWalker, ship: cleanShip, catcher: cleanCatcher, tank: cleanTank, can: cleanCan }[message.t](message);
+        const moved = { car: cleanCar, plane: cleanPlane, hand: cleanHand, pose: cleanPose, racket: cleanRacket, runner: cleanRunner, walker: cleanWalker, ship: cleanShip, catcher: cleanCatcher, tank: cleanTank, trooper: cleanTrooper, can: cleanCan }[message.t](message);
         for (const other of others) other.send({ t: message.t, from: meta.id, ...moved });
         break;
       }

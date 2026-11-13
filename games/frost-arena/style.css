@@ -62,6 +62,7 @@ body[data-screen='countdown'] .hands-bar { display: none; }
 
 /* A score that's gone up grows a little and settles: a move, not a flash. */
 .chip-team.is-up .chip-value,
+.chip-mine.is-up .chip-value,
 .chip-stars.is-up .chip-value { animation: score-up 0.5s ease-out; }
 
 @keyframes score-up {
@@ -274,6 +275,27 @@ body[data-screen='playing'] .arena-marks { display: block; position: relative; z
 .arena-mark-fill { display: block; height: 100%; width: 100%; background: var(--red); border-radius: 999px; transition: width 0.12s linear; }
 .arena-mark[data-team='blue'] .arena-mark-fill { background: var(--blue); }
 .arena-mark-arrow { display: none; }
+
+/* With friends: a friend's name, under how much they have left. */
+.arena-mark-name {
+  position: absolute;
+  left: -60px;
+  top: 5px;
+  width: 120px;
+  overflow: hidden;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 0 3px rgb(18 48 77 / 0.95), 0 1px 2px rgb(18 48 77 / 0.9);
+}
+
+.arena-mark-name:empty { display: none; }
+.arena-mark[data-where='left'] .arena-mark-name,
+.arena-mark[data-where='right'] .arena-mark-name { top: 39px; }
 
 /* What someone special is, on the higher levels: a little badge at the corner of their face. */
 .arena-mark-badge {
@@ -559,6 +581,7 @@ body[data-hands='left'] .how-side.is-aim .how-hand::after { content: 'Left hand'
 
 @media (prefers-reduced-motion: reduce) {
   .chip-team.is-up .chip-value,
+  .chip-mine.is-up .chip-value,
   .chip-stars.is-up .chip-value,
   .vitals.is-hurt { animation: none; }
   .tick { transition: none; }

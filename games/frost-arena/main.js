@@ -7,14 +7,23 @@
 // camera's picture as the tracker sees them. What fires, changes the magazine and sprints can each be given to
 // something else a hand can do with its fingers, on either hand, under the gear icon.
 //
+// With friends, each on their own computer, up to four are in the same yard: together on the blue team against
+// the computer's red team (team.js), or everyone for themselves (rivals.js), as whoever made the match chooses.
+// See core/friends-ui.js for making and joining one.
+//
 // How the hands are read is in controls.js, the rules are in arena.js, and the picture is in yard.js.
 import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
+import { Track } from '../../core/friends.js';
+import { FriendsPanel } from '../../core/friends-ui.js';
 import { GameSession } from '../../core/session.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { ArenaSound } from './arena-sound.js';
-import { HEALTH, MAGAZINE, Match, POWERS, RIFLES, TAGS_TO_WIN, newsAt } from './arena.js';
+import { HEALTH, LEVELS, MAGAZINE, Match, POWERS, RIFLES, TAGS_TO_WIN, newsAt } from './arena.js';
 import { ACTIONS, BINDINGS, Controls, GESTURES, SENSITIVITY } from './controls.js';
+import { Rivals } from './rivals.js';
+import { PLAYER_LOOKS, TROOPER_TRACK } from './squad.js';
+import { TeamMatch } from './team.js';
 import { Yard } from './yard.js';
 
 // Each of these has a rendered voice file: see audio/voice/lines.json.
@@ -26,6 +35,12 @@ const FINISH = 'We won the match!';
 const SO_CLOSE = 'So close!';
 const PAUSED = 'Paused. Show your hands to play!';
 const SHOW_OTHER = 'Show your other hand to walk!';
+// With friends: nothing waits for anyone, so there's no pause to speak of, and against each other there's no
+// Giraffe to say anything.
+const HANDS_AWAY = 'Show your hands to play!';
+const RIVALS_START = 'Everyone for themselves!';
+const YOU_WON = 'You won the match!';
+const GREAT_GAME = 'Great game!';
 
 const STORY_SECONDS = 3.2; // How long a character's picture stays up after speaking.
 const HOW_AT_MOST_SECONDS = 40; // How long the card that says what each hand does stays up, at most...
@@ -43,6 +58,31 @@ const FROM_SECONDS = 1.1; // How long the mark for where a hit came from takes t
 
 // What's over the head of someone special on the other team, on the higher levels.
 const BADGES = { shield: '🛡️', runner: '💨', captain: '🎖️' };
+const AWAY = '✋'; // And beside a friend whose hands are out of the picture.
+
+// With friends, each on their own computer: see core/friends-ui.js for what each of these is.
+const ARENA_WORDS = {
+  toggle: 'Play with friends',
+  make: 'Make a match',
+  codeLabel: 'A friend’s match code',
+  codeName: 'Match code',
+  how: 'Tell your friends the code. Then you all press <b>Join the team</b>, and it’s everyone for themselves.',
+  // Together or against each other, as whoever made the match chooses: see teams in core/friends-ui.js.
+  together: 'Together',
+  against: 'Against each other',
+  howTogether: 'Tell your friends the code. Then you all press <b>Join the team</b>, and tag the red team together.',
+  leave: 'Leave this match',
+  privacy: 'Only your name, whether you chose together or against each other, how hard and how many tags, where you are in the yard and which way you’re looking, which rifle you have and when it fires, how many hits and tags you make, how much you have left, and whether your hands are in the picture go to your friends. Together, the game of whoever made the match also sends where Giraffe and the red team are. The camera picture stays on this computer.',
+  alone: 'Play on your own',
+  full: 'That match already has 4 players.',
+  lost: 'Can’t reach the match. Check the internet, then try again.',
+  left: 'You’ve left the match.',
+  badCode: 'A match code is 3 letters and numbers.',
+  busy: 'Playing',
+  still: 'still playing',
+};
+// What the numbers along the top are called: playing alone or together with friends, and against them.
+const CHIP_LABELS = { alone: ['Blue', 'Red'], team: ['Blue', 'Red'], rivals: ['You', 'Friend'] };
 
 const byId = (id) => document.getElementById(id);
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
@@ -74,7 +114,35 @@ class ArenaGame {
     this.feed = [];
     this.hitFor = 0;
     this.from = [];
+    this.mode = 'alone'; // Or with friends: 'team', together against the red team, or 'rivals', against each other.
+    this.tracks = new Map(); // Where each friend is, from what their game sends, by their id.
+    this.goAt = 0;
     this.startPreview();
+    // A match with friends, if someone makes or joins one.
+    const { settings } = session;
+    this.friends = new FriendsPanel({
+      game: 'frost-arena',
+      linkKey: 'arena',
+      words: ARENA_WORDS,
+      // Everyone here plays with Giraffe. The host's number of tags says how many win it, for each player
+      // together or for the first to them against each other, and how hard they chose is how hard it is together.
+      hello: () => ({ driver: 'giraffe', level: session.levels.current, length: settings.arenaWin, mode: settings.arenaHard }),
+      // Together or against each other: a choice in the panel, which the friends box can change too.
+      teams: {
+        get: () => (settings.arenaFriends === 'against' ? 'against' : 'together'),
+        set: (choice) => this.chooseTeams(choice),
+      },
+      screen: () => session.screen,
+      portraits: () => session.portraits,
+      onMove: (id, message) => this.fromFriend(id, message),
+      onGone: (friend) => this.friendGone(friend),
+      // Whoever made the most tags, and equal ones share the place.
+      rank: (a, b) => b.dropped - a.dropped,
+      resultText: ({ dropped }) => `${dropped} ${dropped === 1 ? 'tag' : 'tags'}`,
+      startAfter: byId('start'),
+      waitingBefore: byId('screen-finish'),
+      resultsAfter: document.querySelector('#screen-finish .finish-hero'),
+    });
     const game = this;
     this.debug = {
       yard: this.yard,
@@ -84,6 +152,9 @@ class ArenaGame {
       },
       get game() {
         return game;
+      },
+      get friends() {
+        return game.friends;
       },
     };
   }
@@ -155,18 +226,51 @@ class ArenaGame {
     this.showControls(this.controls.out);
   }
 
-  /** Everything but the rifle and the number of tags can change in the middle of a match: those are for the next one. */
-  settingChanged() {
+  /**
+   * Everything but the rifle and the number of tags can change in the middle of a match: those are for the next
+   * one. With friends, how hard it is is the host's, for everyone, so only this player's own help with aiming
+   * changes.
+   */
+  settingChanged(change = {}) {
+    // The friends' games hear the host's number of tags, how hard, and whether it's together, for the next match.
+    if (('arenaWin' in change || 'arenaHard' in change || 'arenaFriends' in change) && this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
+    if ('arenaFriends' in change) this.friends.showTeams();
     this.controls.setSensitivity(this.session.settings.arenaSens);
     this.controls.setBindings(this.bindings());
     this.showBindings();
     if (this.preview) return;
     const { level, assist } = this.settings();
-    this.match.configure({ level, assist });
+    this.match.configure(this.mode === 'alone' ? { level, assist } : { assist });
+  }
+
+  /** Together or against each other, chosen in the friends box: kept with the other settings, and shown there. */
+  chooseTeams(choice) {
+    this.session.changeSettings({ arenaFriends: choice });
+    const input = document.querySelector(`input[name="arenaFriends"][value="${choice}"]`);
+    if (input) input.checked = true;
+  }
+
+  /** With friends, the start waits until they're ready too. */
+  holdStart(go) {
+    return this.friends.holdStart(go);
+  }
+
+  /** How long since "GO!", by the clock on the wall, for the friends' games. */
+  get sinceGo() {
+    return performance.now() - this.goAt;
   }
 
   /* ---------- a new match ---------- */
 
+  /**
+   * level, from 1 to 10, brings what the levels bring: see levelPlan in arena.js.
+   *
+   * With friends it's as whoever made the match chose. Together, everyone is on the blue team with Giraffe,
+   * against a red team the host's game runs for all of them, as hard as the host chose. Against each other it's
+   * everyone for themselves, with nobody played by the computer. Either way it's the plain match to the host's
+   * number of tags, with this player's own rifle, help with aiming and way of holding it, and it doesn't move
+   * anyone's own level on.
+   */
   prepare(level = 1) {
     const { sound } = this.session;
     this.story.hide();
@@ -182,7 +286,26 @@ class ArenaGame {
     this.feed = [];
     byId('feed').replaceChildren();
     sound.lost = false;
-    this.match = new Match({ ...this.settings(), levelNumber: level, onEvent: (event) => this.onEvent(event) });
+    const friendly = this.friends.current;
+    const others = friendly?.friends ?? [];
+    this.mode = !others.length ? 'alone' : friendly.team ? 'team' : 'rivals';
+    this.tracks = new Map(others.map((friend) => [friend.id, { slot: friend.slot, track: new Track(TROOPER_TRACK) }]));
+    const onEvent = (event) => this.onEvent(event);
+    if (this.mode === 'alone') {
+      this.match = new Match({ ...this.settings(), levelNumber: level, onEvent });
+    } else {
+      const { rifle, assist } = this.settings();
+      // Each friend by the name they typed, or by that of the character they look like here.
+      const nameOf = (friend) => this.friends.room.members.find((member) => member.id === friend.id)?.name || characterWithId(PLAYER_LOOKS[friend.slot])?.name || '';
+      const players = [{ slot: friendly.mySlot, name: '' }, ...others.map((friend) => ({ slot: friend.slot, name: nameOf(friend) }))];
+      const shared = { slot: friendly.mySlot, players, tags: TAGS_TO_WIN.includes(friendly.length) ? friendly.length : TAGS_TO_WIN[1], rifle, assist, onEvent };
+      this.match = this.mode === 'team' ? new TeamMatch({ ...shared, level: LEVELS[friendly.mode] ? friendly.mode : 'medium', runs: friendly.hosting, seed: friendly.seed }) : new Rivals(shared);
+    }
+    document.body.toggleAttribute('data-friends-race', Boolean(friendly));
+    document.body.dataset.match = this.mode;
+    const [first, second] = CHIP_LABELS[this.mode];
+    byId('chip-blue-label').textContent = first;
+    byId('chip-red-label').textContent = second;
     this.yard.setMatch(this.match);
     // The sensitivity and what each hand does are as they were last chosen: see settingChanged.
     this.controls.reset();
@@ -198,9 +321,12 @@ class ArenaGame {
 
   begin() {
     const { sound } = this.session;
+    this.goAt = performance.now();
     this.match.begin();
     sound.startMatch();
-    this.sayAsGiraffe(GIRAFFE_STARTS);
+    // Against each other there's no Giraffe in the yard: it's said, and nobody's picture goes up.
+    if (this.mode === 'rivals') sound.say(RIVALS_START);
+    else this.sayAsGiraffe(GIRAFFE_STARTS);
   }
 
   /* ---------- what happens ---------- */
@@ -219,8 +345,13 @@ class ArenaGame {
       },
       tagged: () => this.onTagged(event, away(event.trooper)),
       back: () => {
-        if (event.trooper === child) this.sayAsGiraffe(GIRAFFE_BACK, { quietly: true });
+        if (event.trooper === child && this.mode !== 'rivals') this.sayAsGiraffe(GIRAFFE_BACK, { quietly: true });
       },
+      // With friends: a hit of this player's on one of the red team goes to the game that runs them, and one on
+      // a friend goes to that friend's game, which counts it.
+      tag: () => this.friends.sendTag(event.id, event.hits),
+      zap: () => this.friends.sendHit({ r: event.slot + 1, m: 'tag', d: 1, tot: event.hits, sm: event.rifle === 'm4' ? 1 : 0, sg: 0, sd: '' }, this.sinceGo),
+      gone: () => this.buildMarks(),
       empty: () => sound.empty(),
       reload: () => {
         if (event.trooper === child) sound.reload();
@@ -236,11 +367,13 @@ class ArenaGame {
       resting: () => {
         if (event.on) this.story.hide();
       },
-      won: () => this.end(FINISH),
+      won: () => this.end(this.mode === 'rivals' ? YOU_WON : FINISH),
       lost: () => {
         sound.lost = true;
         this.end(SO_CLOSE);
       },
+      // Against each other, someone else got to the tags first: nobody loses, and everyone has the tags they made.
+      over: () => this.end(GREAT_GAME),
     };
     handlers[event.type]?.();
   }
@@ -271,12 +404,19 @@ class ArenaGame {
     const mine = by === match.child;
     sound.tagged({ mine, away });
     this.say(by, trooper);
+    if (mine) document.body.dataset.hit = 'tag';
+    // Against each other, the first number is this player's own tags, and the second whoever of the others has most.
+    if (this.mode === 'rivals') {
+      if (mine) this.bump('chip-blue-box');
+      else if (by && by === match.leader) this.bump('chip-red-box');
+      return;
+    }
     if (trooper.team === match.child.team) {
       this.bump('chip-red-box');
       return;
     }
     this.bump('chip-blue-box');
-    if (mine) document.body.dataset.hit = 'tag';
+    if (mine && this.mode === 'team') this.bump('chip-mine-box');
     if (match.left === 1) this.sayAsGiraffe(GIRAFFE_ONE_MORE, { quietly: true });
     else if (mine && match.left > 1) {
       this.tagsSaid += 1;
@@ -290,9 +430,13 @@ class ArenaGame {
     const ka = this.session.settings.language === 'ka';
     const nameOf = (each) => {
       if (each === child) return ka ? 'შენ' : 'You';
-      const character = characterWithId(each.who);
+      // A friend goes by the name they typed.
+      if (each?.name) return each.name;
+      const character = characterWithId(each?.who);
       return (ka ? character?.nameKa : character?.name) ?? '';
     };
+    // Someone a friend's game says was tagged out by nobody this game knows of: there's nothing to say.
+    if (!by || !trooper) return;
     const line = document.createElement('li');
     line.dataset.mine = String(by === child);
     for (const [each, role] of [[by, 'by'], [trooper, 'out']]) {
@@ -343,15 +487,28 @@ class ArenaGame {
       shown[key] = value;
       apply(value);
     };
-    set('blue', score[0], (value) => {
+    // Alone or together: the blue team's tags of those that win it, and the red team's. Against each other:
+    // this player's own, and those of whoever of the others has most, by their name.
+    const leader = this.mode === 'rivals' ? match.leader : null;
+    set('blue', this.mode === 'rivals' ? match.mine : score[0], (value) => {
       byId('chip-blue').textContent = String(value);
       byId('race-progress-fill').style.width = `${Math.round(Math.min(1, value / goal) * 100)}%`;
     });
     set('goal', goal, (value) => {
       byId('chip-goal').textContent = `of ${value}`;
     });
-    set('red', score[1], (value) => {
+    set('red', this.mode === 'rivals' ? (leader ? score[leader.number] : 0) : score[1], (value) => {
       byId('chip-red').textContent = String(value);
+    });
+    if (this.mode === 'rivals') {
+      set('leader', leader?.name || CHIP_LABELS.rivals[1], (value) => {
+        byId('chip-red-label').textContent = value;
+      });
+    }
+    // Together, how many of the blue team's tags are this player's own.
+    set('mine', this.mode === 'team' ? match.stats.tags : -1, (value) => {
+      byId('chip-mine-box').hidden = value < 0;
+      byId('chip-mine').textContent = String(Math.max(0, value));
     });
     const out = child.state !== 'in';
     set('health', out ? 0 : Math.ceil((child.health / HEALTH) * 50), (value) => {
@@ -459,17 +616,20 @@ class ArenaGame {
     holder.replaceChildren();
     const portraits = this.session.portraits ?? {};
     const { child } = this.match;
-    this.marks = this.match.troopers.filter((trooper) => trooper !== child).map((trooper) => {
+    this.marks = this.match.troopers.filter((trooper) => trooper !== child && trooper.state !== 'gone').map((trooper) => {
       const root = document.createElement('div');
       root.className = 'arena-mark';
       root.dataset.team = trooper.team === child.team ? 'blue' : 'red';
       root.dataset.where = 'none';
-      root.innerHTML = '<span class="arena-mark-arrow"></span><img class="arena-mark-face" alt=""><span class="arena-mark-badge"></span><span class="arena-mark-bar"><span class="arena-mark-fill"></span></span>';
+      root.innerHTML = '<span class="arena-mark-arrow"></span><img class="arena-mark-face" alt=""><span class="arena-mark-badge"></span><span class="arena-mark-bar"><span class="arena-mark-fill"></span></span><span class="arena-mark-name"></span>';
       root.querySelector('img').src = portraits[trooper.who] ?? '';
       // Someone special, on the higher levels, has a badge beside their face that says what they are.
-      root.querySelector('.arena-mark-badge').textContent = BADGES[trooper.part] ?? (trooper.champion ? '👑' : '');
+      const badge = root.querySelector('.arena-mark-badge');
+      badge.textContent = BADGES[trooper.part] ?? (trooper.champion ? '👑' : '');
+      // A friend has their name under their face. It goes in as text, never as markup.
+      root.querySelector('.arena-mark-name').textContent = trooper.name ?? '';
       holder.append(root);
-      return { trooper, root, fill: root.querySelector('.arena-mark-fill'), where: 'none', width: -1, spottedAt: -Infinity };
+      return { trooper, root, badge, fill: root.querySelector('.arena-mark-fill'), where: 'none', width: -1, away: false, spottedAt: -Infinity };
     });
   }
 
@@ -516,6 +676,12 @@ class ArenaGame {
         mark.width = width;
         mark.fill.style.width = `${width * 10}%`;
       }
+      // A friend whose hands are out of the picture has a hand beside their face: they're standing where they are.
+      const away = !trooper.bot && Boolean(trooper.resting);
+      if (mark.away !== away) {
+        mark.away = away;
+        mark.badge.textContent = away ? AWAY : '';
+      }
     }
   }
 
@@ -550,7 +716,9 @@ class ArenaGame {
   update(dt, snapshot) {
     const { match, session, yard, controls } = this;
     const out = controls.update(snapshot, session.camera.aspect, performance.now(), dt, { slow: match.aimSlow() });
+    if (this.mode !== 'alone') this.followFriends();
     match.update(dt, out);
+    if (this.mode !== 'alone') this.tellFriends();
     // The match may have just finished.
     if (session.screen !== 'playing') return;
     yard.update(dt);
@@ -574,6 +742,45 @@ class ArenaGame {
       this.shown.how = how;
       document.body.dataset.how = how;
     }
+  }
+
+  /* ---------- with friends ---------- */
+
+  /** Each friend goes where their game last said they were, a moment ago, so they move smoothly. */
+  followFriends() {
+    const { match } = this;
+    const now = performance.now();
+    for (const { slot, track } of this.tracks.values()) match.placeFriend(match.playerAt(slot), track.at(now));
+  }
+
+  /**
+   * Where this player is, for the friends' games, and from the game that runs Giraffe and the red team, where
+   * those are. Ten times a second at most: see sendMove in core/friends.js.
+   */
+  tellFriends() {
+    const { match, friends } = this;
+    if (match.state !== 'playing') return;
+    friends.sendMove('trooper', match.childWire(), this.sinceGo);
+    if (this.mode === 'team' && match.runs) friends.sendMove('foes', match.wire(), this.sinceGo);
+  }
+
+  /** Something from a friend's game: where they are, where the host's game has the computer's players, or a hit. */
+  fromFriend(id, message) {
+    const { match, mode } = this;
+    const friend = this.tracks.get(id);
+    if (!friend || mode === 'alone' || this.preview) return;
+    if (message.t === 'trooper') friend.track.push(message, performance.now());
+    else if (message.t === 'foes' && mode === 'team') match.follow(message);
+    else if (message.t === 'tag' && mode === 'team') match.friendTagged(friend.slot, message.k, message.n);
+    // Against each other: r is which player was hit, by their place, from 1, and it's only theirs to count.
+    else if (message.t === 'hit' && mode === 'rivals' && message.r - 1 === match.slot) match.hitBy(friend.slot, message.sm ? 'm4' : 'ak', message.tot);
+  }
+
+  /** A friend has gone in the middle, and is gone from the yard. The rest carry on: see friendGone in team.js and rivals.js. */
+  friendGone(friend) {
+    const known = this.tracks.get(friend.id);
+    if (!known || this.mode === 'alone' || this.preview) return;
+    this.match.friendGone(known.slot);
   }
 
   idle(dt, snapshot) {
@@ -610,8 +817,8 @@ class ArenaGame {
 
   prompt(snapshot, dt) {
     const { session, match } = this;
-    // With neither hand in the picture it's paused, and that's all there is to say.
-    if (match.resting) return this.once('paused', PAUSED);
+    // With neither hand in the picture it's paused, and that's all there is to say. With friends nothing waits.
+    if (match.resting) return this.mode === 'alone' ? this.once('paused', PAUSED) : this.once('away', HANDS_AWAY);
     const needed = session.handsPrompt(snapshot, dt);
     // A closed hand is a trigger pulled here, not a hand to be opened.
     if (needed && !needed.key.startsWith('closed')) {
@@ -625,16 +832,20 @@ class ArenaGame {
 
   finished() {
     const { sound } = this.session;
+    // The friends' finish cards fill in with how many tags this player made.
+    if (this.friends.current) this.friends.finished(this.sinceGo, { n: this.match.stats.tags, w: 1 });
     sound.stopMatch();
     this.story.hide();
     document.body.dataset.sight = 'none';
     document.body.dataset.hit = 'off';
     document.body.dataset.how = 'off';
     for (const mark of this.marks) mark.root.dataset.where = 'none';
+    this.friends.showResults();
   }
 
   summary() {
-    const { stats, score, plan } = this.match;
+    const { match, mode } = this;
+    const { stats, score, plan } = match;
     const { hands } = this.session.settings;
     // The card has a column for the hand in play, and everything goes in it.
     const aim = (value) => ({ left: hands === 'left' ? value : '', right: hands === 'right' ? value : '' });
@@ -643,19 +854,24 @@ class ArenaGame {
     // The prizes of the higher levels, in one row, with only those this level has.
     const prizes = [plan.stars && `🌟 ${stats.stars}`, plan.power && `📦 ${stats.crates}`, plan.trophy && stats.trophy && '🏆'].filter(Boolean).join('  ');
     byId('sum-left-prizes').closest('tr').hidden = !plan.stars;
+    // Against each other there are no teams: the row for the score is this player's tags and the most anyone else made.
+    byId('sum-left-score').closest('tr').firstElementChild.textContent = mode === 'rivals' ? 'You : the best of the others' : 'Blue : Red';
     const accuracy = stats.shots ? `${Math.round((stats.hits / stats.shots) * 100)}%` : '–';
     return {
       hero: stats.tags,
       noun: 'match',
       rows: {
-        score: aim(`${score[0]} : ${score[1]}`),
+        // Against each other: this player's tags, and those of whoever of the others made most.
+        score: aim(mode === 'rivals' ? `${match.mine} : ${Math.max(0, ...match.friends.map((friend) => score[friend.number]))}` : `${score[0]} : ${score[1]}`),
         accuracy: aim(`${accuracy} of ${stats.shots}`),
         out: aim(String(stats.out)),
         walked: move(`${Math.round(stats.walked)} m`),
         magazines: move(String(stats.reloads)),
         prizes: aim(prizes),
       },
-      won: this.match.state !== 'lost',
+      won: match.state !== 'lost',
+      // A match with friends doesn't move anyone's own level on.
+      countsForLevel: !this.friends.current,
     };
   }
 }
@@ -688,8 +904,9 @@ new GameSession({
     hudTop: `
       <div class="hud-top">
         <div class="chips">
-          <div id="chip-blue-box" class="chip chip-team is-blue"><span class="chip-label">Blue</span><span class="chip-value"><span id="chip-blue">0</span> <small id="chip-goal">of 10</small></span></div>
-          <div id="chip-red-box" class="chip chip-team is-red"><span class="chip-label">Red</span><span id="chip-red" class="chip-value">0</span></div>
+          <div id="chip-blue-box" class="chip chip-team is-blue"><span id="chip-blue-label" class="chip-label">Blue</span><span class="chip-value"><span id="chip-blue">0</span> <small id="chip-goal">of 10</small></span></div>
+          <div id="chip-red-box" class="chip chip-team is-red"><span id="chip-red-label" class="chip-label">Red</span><span id="chip-red" class="chip-value">0</span></div>
+          <div id="chip-mine-box" class="chip chip-mine" hidden><span class="chip-label">You</span><span id="chip-mine" class="chip-value">0</span></div>
           <div id="chip-stars-box" class="chip chip-stars" hidden><span class="chip-label">Stars</span><span class="chip-value"><span aria-hidden="true">🌟</span> <span id="chip-stars">0</span></span></div>
           <div id="chip-power-box" class="chip chip-bar" hidden><span class="chip-label"><span id="chip-power-mark" aria-hidden="true"></span> <span id="chip-power-name"></span></span><span class="chip-value"><span class="bar"><span id="chip-power" class="bar-fill is-power"></span></span></span></div>
         </div>
@@ -747,12 +964,17 @@ new GameSession({
         ${choice('arenaHard', 'tough', 'Tough')}
       </fieldset>
       <fieldset class="choice">
-        <legend>Tags to win</legend>
+        <legend>Tags to win (together with friends, that many for each of you. Against each other, the first to them)</legend>
         ${TAGS_TO_WIN.map((tags) => choice('arenaWin', String(tags), String(tags))).join('')}
+      </fieldset>
+      <fieldset class="choice">
+        <legend>With friends</legend>
+        ${choice('arenaFriends', 'together', 'Together: everyone on the blue team, against the red team')}
+        ${choice('arenaFriends', 'against', 'Against each other: everyone for themselves, with no red team')}
       </fieldset>`,
   },
-  defaults: { arenaRifle: 'ak', arenaSens: 'medium', arenaAssist: 'on', arenaHard: 'medium', arenaWin: 10, arenaFire: BINDINGS.fire, arenaReload: BINDINGS.reload, arenaSprint: BINDINGS.sprint },
-  choices: { arenaRifle: String, arenaSens: String, arenaAssist: String, arenaHard: String, arenaWin: Number, arenaFire: String, arenaReload: String, arenaSprint: String },
+  defaults: { arenaRifle: 'ak', arenaSens: 'medium', arenaAssist: 'on', arenaHard: 'medium', arenaWin: 10, arenaFire: BINDINGS.fire, arenaReload: BINDINGS.reload, arenaSprint: BINDINGS.sprint, arenaFriends: 'together' },
+  choices: { arenaRifle: String, arenaSens: String, arenaAssist: String, arenaHard: String, arenaWin: Number, arenaFire: String, arenaReload: String, arenaSprint: String, arenaFriends: String },
   tagline: (side) => `A team match, played like a shooter on a phone. Your ${side} hand looks round, and closing it fires. Your other hand is the stick.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

@@ -16,7 +16,7 @@ Movement-based games for children, played in front of a webcam.
 
 - Resting never costs anything.
 - Each game has 10 levels.
-- Play with friends on their own computers in 13 of the games: make a game on the title card and send them the link or its 3-letter code. Mighty Moves, Bounce Back, Tank Patrol and Cannon Bay are for two, together or against each other as whoever makes the game chooses, and the rest are everyone playing in the same game.
+- Play with friends on their own computers in 14 of the games: make a game on the title card and send them the link or its 3-letter code. Mighty Moves, Bounce Back, Tank Patrol and Cannon Bay are for two, and Frost Arena for up to four, together or against each other as whoever makes the game chooses, and the rest are everyone playing in the same game.
 - A grown-up can change the settings under the gear icon, including which hand shape makes a game's move, like pointing instead of an open hand.
 - The camera picture stays on your computer. The site counts visits with Google Analytics.
 

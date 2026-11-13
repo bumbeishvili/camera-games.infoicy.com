@@ -2,7 +2,7 @@
 // is moved smoothly from what their game sends.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanBall, cleanCar, cleanFoes, cleanHand, cleanName, cleanRacket, cleanShip, cleanShot, cleanTag, cleanTank, COMES_BACK_WITHIN_MS, idFor, makeCode, MAX_RACERS, MOST_BYTES, MOST_FOES, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
+import { cleanBall, cleanCar, cleanFoes, cleanHand, cleanName, cleanRacket, cleanShip, cleanShot, cleanTag, cleanTank, cleanTrooper, COMES_BACK_WITHIN_MS, idFor, makeCode, MAX_RACERS, MOST_BYTES, MOST_FOES, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
 import { BODY_KEYS } from '../../games/mighty-moves/clips.js';
 import { Track } from '../../core/friends.js';
 import { CarTrack, codeInLink } from '../../games/high-five-racers/friends.js';
@@ -657,6 +657,73 @@ test('what\'s told of the computer\'s side is only numbers, in rows, no more of 
   assert.deepEqual(cleanTag({ k: -4, n: 'lots', picture: 'not this' }), { k: 0, n: 0 });
   assert.deepEqual(cleanTag({ k: 2_000_000, n: 5000 }), { k: 1_000_000, n: 1000 });
   assert.ok(MOST_BYTES >= 1800);
+});
+
+test('in Frost Arena up to four are in the yard, and each one\'s game tells the others where they are and who has tagged them', () => {
+  assert.equal(mostIn('frost-arena'), 4);
+  const { join } = makeRoom(mostIn('frost-arena'));
+  const [ana, ben, cal, dee] = ['aaaaaaaa', 'bbbbbbbb', 'cccccccc', 'dddddddd'].map((id) => join(id));
+  assert.equal(join('eeeeeeee'), null, 'a fifth is told it\'s full');
+  for (const each of [ana, ben, cal, dee]) each.say({ t: 'ready' });
+  assert.deepEqual(dee.last('go').racers, ['aaaaaaaa', 'bbbbbbbb', 'cccccccc', 'dddddddd']);
+  ben.say({ t: 'trooper', ms: 1500.4, x: -13.987, z: 12.004, h: 1.5708, s: 3.24, p: 1, f: 1, n: 12, k: 1, v: 63.4, u: 0, g: 0, r: 0, o: [2, 0, 1, 0], a: 4.2, b: 21, picture: 'not this' });
+  const heard = { t: 'trooper', from: 'bbbbbbbb', ms: 1500, x: -13.99, z: 12, h: 1.571, s: 3.2, p: 1, f: 1, n: 12, k: 1, v: 63, u: 0, g: 0, r: 0, o: [2, 0, 1, 0], a: 4, b: 21 };
+  for (const each of [ana, cal, dee]) assert.deepEqual(each.last('trooper'), heard);
+  assert.equal(ben.last('trooper'), undefined, 'nobody hears their own');
+  // Against each other, a hit on another player is decided by the game that fired, and everyone else hears: r is
+  // which player, sm the lighter rifle, and tot how many so far.
+  ana.say({ t: 'hit', ms: 2000, r: 3, m: 'tag', d: 1, tot: 7, sm: 1, sg: 0, sd: '' });
+  assert.deepEqual(cal.last('hit'), { t: 'hit', from: 'aaaaaaaa', ms: 2000, r: 3, m: 'tag', d: 1, tot: 7, sm: 1, sg: 0, sd: '' });
+  assert.equal(ana.last('hit'), undefined);
+});
+
+test('a trooper message holds only what it should, rounded and kept to the yard, always with four counts, and well under the most a message can be', () => {
+  assert.deepEqual(Object.keys(cleanTrooper({})), ['ms', 'x', 'z', 'h', 's', 'p', 'f', 'n', 'k', 'v', 'u', 'g', 'r', 'o', 'a', 'b']);
+  assert.deepEqual(cleanTrooper({}), { ms: 0, x: 0, z: 0, h: 0, s: 0, p: 0, f: 0, n: 0, k: 0, v: 0, u: 0, g: 0, r: 0, o: [0, 0, 0, 0], a: 0, b: -1 });
+  assert.deepEqual(
+    cleanTrooper({ ms: -1, x: 'far', z: 999, h: 9, s: 99, p: 'yes', f: 'yes', n: -3, k: 2, v: 5000, u: 1, g: 'no', r: 0, o: [1.4, 'two', -3, 5000, 9, 9], a: 'lots', b: 'you', picture: 'not this' }),
+    { ms: 0, x: 0, z: 20, h: 7, s: 20, p: 1, f: 1, n: 0, k: 1, v: 1000, u: 1, g: 1, r: 0, o: [1, 0, 0, 1000], a: 0, b: -1 },
+  );
+  assert.deepEqual(cleanTrooper({ b: 500, a: 1e9, o: 'everyone' }), { ...cleanTrooper({}), b: 99, a: 100_000 });
+  assert.deepEqual(cleanTrooper({ b: -7, o: 'everyone' }), { ...cleanTrooper({}), b: -1 });
+  const biggest = JSON.stringify({ t: 'trooper', from: 'abcdefghijkl', ...cleanTrooper({ ms: 3_599_999, x: -24.99, z: -19.99, h: -3.142, s: 19.9, p: 1, f: 1, n: 99_999, k: 1, v: 999, u: 1, g: 1, r: 1, o: [999, 999, 999, 999], a: 99_999, b: 99 }) });
+  assert.ok(biggest.length < 220, `${biggest.length} characters`);
+});
+
+test('if whoever was running the computer\'s side goes, or is here without playing, the first of those playing runs it for the rest', () => {
+  const foes = { e: [[20, 1, -2, 3.1, 80, 100, 2, 1, 2.6, -1]], s: [], n: [3, 0, 15, 1, 2, 0, 0, 0, 0] };
+  const { join, leave } = makeRoom(mostIn('frost-arena'));
+  const [ana, ben, cal] = ['aaaaaaaa', 'bbbbbbbb', 'cccccccc'].map((id) => join(id));
+  for (const each of [ana, ben, cal]) each.say({ t: 'ready' });
+  // Ana made the match, so hers runs Giraffe and the red team.
+  ben.say({ t: 'foes', ms: 100, ...foes });
+  assert.equal(cal.last('foes'), undefined);
+  cal.say({ t: 'tag', k: 20, n: 1 });
+  assert.equal(ana.last('tag').from, 'cccccccc');
+  assert.equal(ben.last('tag'), undefined);
+  // She goes in the middle. Ben was next in, so his takes them over: what it says of them is passed on, and
+  // Cal's hits go to it.
+  leave(ana);
+  ben.say({ t: 'foes', ms: 200, ...foes });
+  assert.deepEqual(cal.last('foes'), { t: 'foes', from: 'bbbbbbbb', ms: 200, ...foes });
+  cal.say({ t: 'foes', ms: 250, ...foes });
+  assert.equal(ben.last('foes'), undefined, 'and only his');
+  cal.say({ t: 'tag', k: 20, n: 2 });
+  assert.deepEqual(ben.last('tag'), { t: 'tag', from: 'cccccccc', k: 20, n: 2 });
+
+  // Someone who came first but isn't in this match doesn't get in the way of it either.
+  const other = makeRoom(mostIn('frost-arena'));
+  const [dee, eli, fay] = ['dddddddd', 'eeeeeeee', 'ffffffff'].map((id) => other.join(id));
+  eli.say({ t: 'ready' });
+  fay.say({ t: 'ready' });
+  dee.say({ t: 'ready' });
+  // All three play, Dee finishes first, and the other two carry on.
+  dee.say({ t: 'done', ms: 5000, n: 1, w: 1 });
+  eli.say({ t: 'foes', ms: 5100, ...foes });
+  assert.deepEqual(fay.last('foes'), { t: 'foes', from: 'eeeeeeee', ms: 5100, ...foes });
+  fay.say({ t: 'tag', k: 21, n: 4 });
+  assert.deepEqual(eli.last('tag'), { t: 'tag', from: 'ffffffff', k: 21, n: 4 });
+  assert.equal(dee.last('tag'), undefined);
 });
 
 test('a finish always gets through, even straight after more messages than a second allows', () => {
