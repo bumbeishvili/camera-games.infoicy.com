@@ -507,12 +507,16 @@ test('what each hand does is chosen with the same picture chips as every game\'s
   // a pointing one is down, and drags the view. Nothing else on that hand can be given to pointing then.
   await page.locator('#open-panel').click();
   await chip('open', 'point').check({ force: true });
+  await page.locator('#close-panel').click();
+  // It's so at once, with nothing else changed: the card says pointing, and the open hand that was down is let go of.
+  await expect(page.locator('.how-side.is-aim')).toContainText('point, and drag: look round');
+  await expect(page.locator('.how-side.is-aim')).toContainText('any other hand: let go, to drag again');
+  expect(await page.evaluate(() => window.__game.controls.aim.drag)).toBe('point');
+  await page.locator('#open-panel').click();
   await handOf('reload', 'aim').check({ force: true });
   await expect(chip('reload', 'point')).toBeDisabled();
   await handOf('reload', 'move').check({ force: true });
   await page.locator('#close-panel').click();
-  await expect(page.locator('.how-side.is-aim')).toContainText('point, and drag: look round');
-  await expect(page.locator('.how-side.is-aim')).toContainText('any other hand: let go, to drag again');
   await expect(page.locator('#pad')).toHaveAttribute('data-state', 'seen');
   const from = degrees((await matchIs(page)).heading);
   await hands(page, { aim: { x: 0.3 } });
