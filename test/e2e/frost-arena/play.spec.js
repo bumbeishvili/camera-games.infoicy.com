@@ -461,6 +461,18 @@ test('what each hand does is chosen with the same picture chips as every game\'s
   // that hand: its thumb is taken there now, so it's given the first thing that's free, pointing, and from there
   // to two fingers. The fire button goes over to that side, the card says so, and it's that hand that fires.
   await page.locator('#open-panel').click();
+  // The panel says how the game is running on this computer, so a grown-up can tell a slow game from a slow computer.
+  await expect(page.locator('#panel-pace')).toHaveText(/^This computer is drawing \d+ pictures a second and reading the hands \d+ times a second\./, { timeout: 5000 });
+  const pace = await page.evaluate(() => ({ ...window.__game.session.pace }));
+  expect(pace.frames).toBeGreaterThan(20);
+  expect(pace.frames).toBeLessThan(70);
+  expect(pace.looks).toBeGreaterThan(8);
+  expect(pace.looks).toBeLessThan(35);
+  // Under about 45 pictures a second it says so, and what can help. With the camera off there are no hands to read.
+  await page.evaluate(() => window.__game.hud.showPace({ frames: 31, looks: 12 }, true));
+  await expect(page.locator('#panel-pace')).toHaveText('This computer is drawing 31 pictures a second and reading the hands 12 times a second. That’s slow for these games: closing other tabs and programs, and plugging the computer in, can help.');
+  await page.evaluate(() => window.__game.hud.showPace({ frames: 60, looks: 0 }, false));
+  await expect(page.locator('#panel-pace')).toHaveText('This computer is drawing 60 pictures a second.');
   await chip('reload', 'thumb').check({ force: true });
   await handOf('fire', 'move').check({ force: true });
   await expect(chip('fire', 'point')).toBeChecked();
@@ -635,6 +647,54 @@ test('the higher levels bring what they say: a shield carrier, three a side, a c
   const end = await matchIs(page);
   expect([end.state, end.stats.trophy, end.stats.stars]).toEqual(['won', 1, 2]);
   await expect(page.locator('#sum-right-prizes')).toContainText('🏆');
+});
+
+test('on a big, sharp screen the yard draws no more pixels than it takes to look sharp, so it stays smooth', async ({ browser }) => {
+  // A laptop's own screen, at two pixels for each of the page's: six million of them, drawn sixty times a second
+  // or more, is what makes a game like this run slowly.
+  const context = await browser.newContext({ baseURL: test.info().project.use.baseURL, viewport: { width: 1512, height: 982 }, deviceScaleFactor: 2 });
+  const big = await context.newPage();
+  await openGame(big, {}, GAME);
+  const drawn = () => big.evaluate(() => {
+    const { yard } = window.__game;
+    const canvas = yard.renderer.domElement;
+    return { width: canvas.width, height: canvas.height, sharp: yard.renderer.getPixelRatio(), shown: [canvas.clientWidth, canvas.clientHeight], quality: yard.quality };
+  });
+  const full = await drawn();
+  expect(full.shown).toEqual([1512, 982]);
+  // Sharper than one for one, and no more than about three million in all.
+  expect(full.sharp).toBeGreaterThan(1.3);
+  expect(full.sharp).toBeLessThan(1.6);
+  expect(full.width * full.height).toBeLessThan(3_300_000);
+  expect(full.width * full.height).toBeGreaterThan(2_900_000);
+  // It still fills the screen, in the right shape.
+  expect(Math.abs(full.width / full.height - 1512 / 982)).toBeLessThan(0.01);
+  // A computer that turns out slow gives up sharpness first, and then its real shadows.
+  const slow = () => big.evaluate(() => {
+    const { yard } = window.__game;
+    for (let i = 0; i < 95; i += 1) yard.watchSpeed(1 / 30);
+    return yard.quality;
+  });
+  expect(await slow()).toBe(1);
+  expect((await drawn()).sharp).toBe(1);
+  expect((await drawn()).width).toBe(1512);
+  expect(await slow()).toBe(0);
+  expect(await big.evaluate(() => window.__game.yard.renderer.shadowMap.enabled)).toBe(false);
+  // One that keeps up is left alone: a frame in time, sixty times a second, never counts as slow.
+  await big.reload();
+  await expect(big.locator('#start')).toBeVisible();
+  expect(await big.evaluate(() => {
+    const { yard } = window.__game;
+    for (let i = 0; i < 400; i += 1) yard.watchSpeed(1 / 60);
+    return yard.quality;
+  })).toBe(2);
+  await context.close();
+  // A small window, at one for one, is drawn as it is.
+  const small = await browser.newContext({ baseURL: test.info().project.use.baseURL, viewport: { width: 1280, height: 720 } });
+  const page = await small.newPage();
+  await openGame(page, {}, GAME);
+  expect(await page.evaluate(() => [window.__game.yard.renderer.domElement.width, window.__game.yard.renderer.domElement.height])).toEqual([1280, 720]);
+  await small.close();
 });
 
 test('the match makes no requests off this computer, and the page refuses to', async ({ page, pageErrors }) => {

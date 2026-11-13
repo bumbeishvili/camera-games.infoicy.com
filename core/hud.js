@@ -391,6 +391,9 @@ class PanelHand {
   }
 }
 
+// Fewer pictures a second than this, and a game feels slow.
+const SLOW_BELOW = 45;
+
 export class Hud {
   /**
    * choices names the game's own settings in the panel, as radio groups, or as a drop-down for one with a long
@@ -491,6 +494,17 @@ export class Hud {
   setGiven(given) {
     this.given = { ...given };
     if (this.shapes) this.picker.set({ ...this.given, open: choiceOf(this.shapes.open) });
+  }
+
+  /**
+   * How it's running, at the foot of the panel: pictures drawn a second, and looks at the hands a second while
+   * the camera is on. Under about 45 pictures a second a game feels slow, and the panel says what can help.
+   */
+  showPace({ frames, looks }, camera) {
+    if (!this.panel.open) return;
+    const hands = camera ? ` and reading the hands ${looks} times a second` : '';
+    const slow = frames < SLOW_BELOW ? ' That’s slow for these games: closing other tabs and programs, and plugging the computer in, can help.' : '';
+    byId('panel-pace').textContent = `This computer is drawing ${frames} pictures a second${hands}.${slow}`;
   }
 
   showShapeHint(move) {

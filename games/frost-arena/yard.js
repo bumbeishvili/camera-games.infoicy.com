@@ -16,8 +16,13 @@ import { BLOCKS, EYES, RIFLES, YARD, forwardOf, reachAlong } from './arena.js';
 const FOV = 62;
 const SPRINT_FOV = 1.05; // Sprinting, the view opens out a little.
 const SIZE = 0.95; // The characters, beside the crates.
-const SLOW_FRAME_SECONDS = 1 / 34;
+// A frame that takes longer than this has missed its turn on a screen that shows 60 a second. With more than half
+// of them late for a second and a half, the picture is made cheaper to draw.
+const SLOW_FRAME_SECONDS = 1 / 45;
 const SLOW_CHECK_FRAMES = 90;
+// How many pixels are drawn at most. A big, sharp screen has twice as many as anyone can tell apart in a game
+// that's moving, and drawing them all is what makes it run slowly: this many keeps it smooth, and still sharp.
+const MOST_PIXELS = 3_200_000;
 const TRACERS = 10;
 const TRACER_SECONDS = 0.09;
 const FLAKES = 500; // Snowflakes in the air, from the level where it snows.
@@ -341,7 +346,6 @@ export class Yard {
     this.canvas = canvas;
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
@@ -515,11 +519,21 @@ export class Yard {
     this.scene.add(crate);
   }
 
+  /**
+   * How many pixels are drawn for each one of the page's: as sharp as the screen, up to twice, as long as that's
+   * no more than MOST_PIXELS in all, and never sharper than one for one on a computer that has turned out slow.
+   */
+  sharpness(width, height) {
+    if ((this.quality ?? 2) < 2) return 1;
+    return Math.max(1, Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(MOST_PIXELS / (width * height))));
+  }
+
   resize() {
     const width = window.innerWidth;
     const height = window.innerHeight;
     this.width = width;
     this.height = height;
+    this.renderer.setPixelRatio(this.sharpness(width, height));
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     // A little wider on a tall window, so there's as much to see either side.
@@ -727,7 +741,6 @@ export class Yard {
     if (!slow || this.quality === 0) return;
     this.quality -= 1;
     if (this.quality === 1) {
-      this.renderer.setPixelRatio(1);
       this.resize();
     } else {
       this.renderer.shadowMap.enabled = false;

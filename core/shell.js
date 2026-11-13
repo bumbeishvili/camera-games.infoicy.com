@@ -165,6 +165,7 @@ export function mountShell({
     <div class="panel-actions">
       <button id="recheck" class="soft-button" type="button">Check hands again</button>
     </div>
+    <p id="panel-pace" class="small-print panel-pace"></p>
     <p class="small-print">These games are not medical devices and don’t replace therapy. Please check targets and how long to play with the child’s therapist, and stop if anything hurts.</p>
   </dialog>`);
 }

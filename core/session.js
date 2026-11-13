@@ -108,6 +108,8 @@ export class GameSession {
     this.missingSeconds = 0;
     this.wasHandOpen = false;
     this.lastFrameTime = performance.now();
+    // How it's running, for the grown-ups' panel: pictures drawn and looks at the hands, counted over a second.
+    this.pace = { frames: 0, looks: 0, drawn: 0, looked: 0, since: performance.now() };
     this.retryAfterProblem = () => this.beginCheck();
   }
 
@@ -185,6 +187,7 @@ export class GameSession {
     this.levelUi.refresh();
 
     this.camera.onResult = ({ hands, aspect }) => {
+      this.pace.looked += 1;
       this.hud.updateHands(this.monitor.update(hands, performance.now(), aspect));
     };
     this.camera.onTrackerError = (message) => console.error('Hand tracking error:', message);
@@ -482,6 +485,19 @@ export class GameSession {
     hud.panelHands.right.update(monitor.snapshot.right, monitor.snapshot.otherHandSeen);
   }
 
+  /**
+   * How many pictures were drawn, and how many times the hands were looked at, in the last second: for the
+   * panel, so a grown-up can see whether a game that feels slow is this computer being slow.
+   */
+  countPace(now) {
+    const { pace } = this;
+    pace.drawn += 1;
+    if (now - pace.since < 1000) return;
+    const seconds = (now - pace.since) / 1000;
+    Object.assign(pace, { frames: Math.round(pace.drawn / seconds), looks: Math.round(pace.looked / seconds), drawn: 0, looked: 0, since: now });
+    this.hud.showPace(pace, this.camera.running);
+  }
+
   tick(now) {
     requestAnimationFrame((next) => this.tick(next));
     // 60 frames a second is plenty. On a 120 Hz screen the extra frames would only take
@@ -489,6 +505,7 @@ export class GameSession {
     if (now - this.lastFrameTime < MIN_FRAME_MS) return;
     const dt = Math.min(0.05, Math.max(0, now - this.lastFrameTime) / 1000);
     this.lastFrameTime = now;
+    this.countPace(now);
 
     // A stalled tracker must look like no hands, never like hands frozen open.
     if (this.camera.running && performance.now() - this.camera.lastResultAt > TRACKER_STALL_MS) {
