@@ -2,17 +2,19 @@
 // off. One hand does it all. Moving it from side to side turns the ship's wheel, opening it raises the
 // sails, and the cannons fire by themselves at any pirate ship in a firing zone. This file runs it from
 // start to finish. The rules are in battle.js, the picture is in sea.js, and the ships are in ships.js.
-// With a friend on their own computer, it's ship against ship, with no pirates: see duel.js.
+// With a friend on their own computer, as whoever makes the game chooses: both ships against the pirates
+// together (team.js), or ship against ship, with no pirates (duel.js).
 import { renderPortraits } from '../../core/body/portraits.js';
 import { byId as characterWithId, ROSTER } from '../../core/body/roster.js';
-import { Track } from '../../core/friends.js';
+import { Track, seededRandom } from '../../core/friends.js';
 import { FriendsPanel } from '../../core/friends-ui.js';
 import { GameSession, SPOKEN } from '../../core/session.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { BaySound } from './bay-sound.js';
-import { Battle, HEARTS, MOST_AT_ONCE, levelPlan, newsAt, newsFor } from './battle.js';
+import { Battle, HEARTS, MOST_AT_ONCE, PACES, levelPlan, newsAt, newsFor } from './battle.js';
 import { Duel, SHIP_TRACK, duelSeconds, duelStart, shipWire } from './duel.js';
 import { Bay } from './sea.js';
+import { TeamBattle } from './team.js';
 
 // Every one of these has a rendered voice file: see audio/voice/lines.json.
 const MISSION = 'Pirates want our treasure! Help me drive them off!';
@@ -40,8 +42,8 @@ const CAPTAINS = {
   tur: 'Tur here! Nobody sails like a mountain goat!',
 };
 
-const DEFAULTS = { bayPace: 'slow', bayCannons: 'open', bayLevel: 'gentle', bayShips: 6 };
-const CHOICES = { bayPace: String, bayCannons: String, bayLevel: String, bayShips: Number };
+const DEFAULTS = { bayPace: 'slow', bayCannons: 'open', bayLevel: 'gentle', bayShips: 6, bayFriends: 'together' };
+const CHOICES = { bayPace: String, bayCannons: String, bayLevel: String, bayShips: Number, bayFriends: String };
 
 const AFTER_WIN_SECONDS = 2.2; // A moment to see Giraffe cheering, after the last ship has gone down.
 const AFTER_LOST_SECONDS = 1.4;
@@ -97,8 +99,13 @@ const BAY_WORDS = {
   codeLabel: 'A friend’s game code',
   codeName: 'Game code',
   how: 'Tell your friend the code. Then you both press <b>Set sail!</b>',
+  // Together or against each other, as whoever made the game chooses: see teams in core/friends-ui.js.
+  together: 'Together',
+  against: 'Against each other',
+  howTogether: 'Tell your friend the code. Then you both press <b>Set sail!</b>, and drive the pirates off together.',
+  teamTitle: 'You saved the treasure together!',
   leave: 'Leave this game',
-  privacy: 'Only your name, who you play as, where your ship is and the hits it makes go to your friend. The camera picture stays on this computer.',
+  privacy: 'Only your name, who you play as, whether you chose together or against each other, where your ship is, the hits it makes and whether you’re resting go to your friend. Together, the game of whoever made it also sends where the pirate ships and their cannonballs are. The camera picture stays on this computer.',
   alone: 'Play on your own',
   full: 'That game already has 2 players.',
   lost: 'Can’t reach the game. Check the internet, then try again.',
@@ -117,10 +124,11 @@ const clock = (seconds) => {
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
 };
 
-function shuffled(list) {
+/** random is where the chance comes from: one both friends share, for an order that's the same on both screens. */
+function shuffled(list, random = Math.random) {
   const out = [...list];
   for (let i = out.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(random() * (i + 1));
     [out[i], out[j]] = [out[j], out[i]];
   }
   return out;
@@ -140,6 +148,7 @@ class CannonBay {
     this.pirateSpecs = ROSTER.filter(({ id }) => id !== 'giraffe');
     this.bay = new Bay(byElement('game'), characterWithId('giraffe'), this.pirateSpecs);
     this.duel = null; // With a friend, ship against ship: see duel.js and prepare().
+    this.team = null; // Or with them against the pirates: see team.js.
     this.friendTrack = null; // Where the friend's game says their ship is.
     this.goAt = 0;
     this.buildMarks();
@@ -159,8 +168,14 @@ class CannonBay {
       linkKey: 'bay',
       words: BAY_WORDS,
       // Each child sails as themselves, so their own settings stay theirs: only the host's ships to beat, which
-      // say how long it lasts, are everyone's.
-      hello: () => ({ driver: session.settings.fighter ?? '', level: session.levels.current, length: session.settings.bayShips }),
+      // say how many pirates there are or how long a duel lasts, and with pirates about, the host's speed, so
+      // that they can keep up with both ships, are everyone's.
+      hello: () => ({ driver: session.settings.fighter ?? '', level: session.levels.current, length: session.settings.bayShips, mode: session.settings.bayPace }),
+      // Together or against each other: the grown-ups' choice, which the friends box can change too.
+      teams: {
+        get: () => (session.settings.bayFriends === 'against' ? 'against' : 'together'),
+        set: (choice) => this.chooseTeams(choice),
+      },
       screen: () => session.screen,
       portraits: () => session.portraits,
       onMove: (id, message) => this.fromFriend(id, message),
@@ -216,9 +231,16 @@ class CannonBay {
    */
   makeBattle(level = this.session.level ?? 1) {
     const { bayShips, bayPace, bayLevel, bayCannons } = this.session.settings;
-    const { duel } = this;
+    const { duel, team } = this;
     const settings = { pace: bayPace, level: bayLevel, cannons: bayCannons, onEvent: (event) => this.onBattle(event) };
-    if (duel) {
+    this.captains = null;
+    if (team) {
+      // The same captains, in the same order, on both screens, from the chance both games were given. The friend's
+      // ship comes after them, and is one of its own.
+      this.captains = shuffled(this.pirateSpecs.map(({ id }) => id), seededRandom(team.seed)).slice(0, team.ships);
+      this.order = [...this.captains, this.bay.friendShipKey(team.friend.spec, { ally: true })];
+      this.battle = new TeamBattle({ ...settings, pace: team.pace, ships: team.ships, slot: team.slot, runs: team.hosting });
+    } else if (duel) {
       this.order = [this.bay.friendShipKey(duel.friend.spec)];
       this.battle = new Battle({ ...settings, ships: 0, levelNumber: 1, start: duelStart(duel.slot) });
       this.battle.addFriend(duelStart(1 - duel.slot));
@@ -255,25 +277,37 @@ class CannonBay {
 
   settingChanged(change) {
     const { battle } = this;
-    if ('bayPace' in change) battle.setPace(change.bayPace);
+    // With a friend against the pirates, both ships sail at the host's speed.
+    if ('bayPace' in change && !this.team) battle.setPace(change.bayPace);
     if ('bayLevel' in change) {
       battle.setLevel(change.bayLevel);
       this.bay.shapeZones();
     }
     if ('bayCannons' in change) battle.cannons = change.bayCannons;
-    if ('bayShips' in change && battle.state === 'ready' && !this.duel) this.makeBattle();
-    // A friend hosted by this child plays for as long as this child's ships to beat say.
-    if ('bayShips' in change && this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
+    if ('bayShips' in change && battle.state === 'ready' && !this.duel && !this.team) this.makeBattle();
+    // A friend hosted by this child plays this child's ships to beat, at this child's speed, together or not.
+    if (('bayShips' in change || 'bayPace' in change || 'bayFriends' in change) && this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
+    if ('bayFriends' in change) this.friends.showTeams();
+  }
+
+  /** Together or against each other, chosen in the friends box: kept with the grown-ups' settings, and shown there. */
+  chooseTeams(choice) {
+    this.session.changeSettings({ bayFriends: choice });
+    const input = document.querySelector(`input[name="bayFriends"][value="${choice}"]`);
+    if (input) input.checked = true;
   }
 
   /* ---------- the round ---------- */
 
   prepare(level = 1) {
-    // With a friend, it's ship against ship, for as long as the host's ships to beat say, and that doesn't
-    // move anyone's own level on.
+    // With a friend it's as whoever made the game chose: both ships against the host's number of pirates, which
+    // the host's game runs for both, or ship against ship, for as long as the host's ships to beat say. Neither
+    // moves anyone's own level on.
     const friendly = this.friends.current;
     const friend = friendly?.friends[0] ?? null;
-    this.duel = friend ? new Duel({ seconds: duelSeconds(friendly.length), slot: friendly.mySlot, friend }) : null;
+    const together = Boolean(friend && friendly.team);
+    this.team = together ? { friend, slot: friendly.mySlot, hosting: friendly.hosting, ships: friendly.length, pace: PACES[friendly.mode] ? friendly.mode : 'slow', seed: friendly.seed, alone: false } : null;
+    this.duel = friend && !together ? new Duel({ seconds: duelSeconds(friendly.length), slot: friendly.mySlot, friend }) : null;
     this.friendTrack = friend ? new Track(SHIP_TRACK) : null;
     document.body.toggleAttribute('data-friends-race', Boolean(this.duel));
     this.resetHelp();
@@ -320,12 +354,13 @@ class CannonBay {
   update(dt, snapshot) {
     const { battle, session } = this;
     // The friend's ship goes where their game says first, so the cannons fire at where it's seen.
-    if (this.duel) this.followFriend(dt);
+    if (this.duel || this.team) this.followFriend(dt);
     const input = this.readHand(snapshot);
     const wasOpen = battle.open;
     battle.update(dt, input);
     if (input.open && !wasOpen) session.sound.sailsUp();
     if (this.duel) this.updateDuel(dt);
+    if (this.team) this.updateTeam();
     this.bay.update(dt);
 
     session.sound.sailing(battle.speed / battle.pace.speed, battle.sails);
@@ -363,7 +398,7 @@ class CannonBay {
       }
     } else if (battle.state !== 'sailing') {
       // Behind the finish card, the friend's ship goes on as their game last said.
-      if (this.duel) this.followFriend(dt);
+      if (this.duel || this.team) this.followFriend(dt);
       battle.update(dt, {});
     }
     this.bay.update(dt);
@@ -374,7 +409,7 @@ class CannonBay {
   }
 
   finished() {
-    const { session, battle, duel } = this;
+    const { session, battle, duel, team } = this;
     // Whatever's still floating over to the ship counts on the card.
     battle.collectAll();
     session.sound.stopSea();
@@ -385,17 +420,19 @@ class CannonBay {
     document.body.dataset.film = 'off';
     session.finishLine = duel ? DUEL_DONE : battle.state === 'lost' ? LOST : WON;
     // The friend's finish card fills in with how this child did.
-    if (this.friends.current) this.friends.finished(this.sinceGo, { n: duel ? duel.mine : battle.beaten, w: 1 });
+    // Together, it's how many of the pirate ships were this child's.
+    if (this.friends.current) this.friends.finished(this.sinceGo, { n: duel ? duel.mine : team ? battle.beatenBy.mine : battle.beaten, w: 1 });
   }
 
   summary() {
     const { beaten, plan, stats } = this.battle;
-    const { duel, session } = this;
+    const { duel, team, session } = this;
     const { hands } = session.settings;
     const { gold } = stats;
     const count = (value) => ({ left: hands === 'left' ? value : 0, right: hands === 'right' ? value : 0 });
-    // With a friend, it's the hits that count, and there's no gold, as nobody sinks.
-    const rows = { beaten: count(duel ? duel.mine : beaten), gold: count(gold) };
+    // Against a friend, it's the hits that count, and there's no gold, as nobody sinks. Together, the row is how
+    // many of the pirate ships were this child's, and the big number how many the two beat between them.
+    const rows = { beaten: count(duel ? duel.mine : team ? this.battle.beatenBy.mine : beaten), gold: count(gold) };
     this.labelRow('beaten', duel ? 'Hits on your friend’s ship' : 'Ships beaten');
     this.labelRow('gold', 'Gold picked up', Boolean(duel));
     // The prizes of the higher levels, in one row, with only those this level has.
@@ -407,7 +444,8 @@ class CannonBay {
     if (!this.friends.current) document.querySelector('#screen-finish h2').textContent = session.translate(session.finishLine);
     const hero = duel ? duel.mine : beaten;
     const noun = byElement('finish-hero')?.nextSibling;
-    if (noun?.nodeType === Node.TEXT_NODE) noun.textContent = duel ? ` ${hero === 1 ? 'hit' : 'hits'}` : ' pirate ships beaten';
+    const together = Boolean(team) && !team.alone;
+    if (noun?.nodeType === Node.TEXT_NODE) noun.textContent = duel ? ` ${hero === 1 ? 'hit' : 'hits'}` : together ? ' beaten together' : ' pirate ships beaten';
     // Being sunk, which only Medium and Tough allow, means trying the same level again. A game with a friend
     // doesn't move anyone's own level on.
     return { hero, noun: 'battle', rows, won: this.battle.state !== 'lost', countsForLevel: !this.friends.current };
@@ -450,10 +488,13 @@ class CannonBay {
       },
       'pirate-fire': () => sound.theirCannon(away(event.pirate.x, event.pirate.z)),
       splash: () => sound.splash(away(event.x, event.z), event.size),
+      // A friend's hit on a pirate ship shows, and is heard on their own computer.
       hit: () => {
-        sound.hit(away(event.x, event.z));
+        if (!event.theirs) sound.hit(away(event.x, event.z));
         if (event.friend) this.scored();
       },
+      // Together, the game that runs the pirates hears of each hit this child's game has made.
+      tag: () => this.friends.sendTag(event.id, event.hits),
       struck: () => sound.struck(),
       hurt: () => {
         sound.hurt();
@@ -519,9 +560,21 @@ class CannonBay {
     const { battle, duel } = this;
     const at = this.friendTrack?.at(performance.now());
     if (!at || !battle.friend) return;
-    battle.placeFriend({ x: at.x, z: at.z, heading: at.h, speed: at.s, sails: at.v }, dt);
-    const fired = duel.newlyFired(at.f);
+    battle.placeFriend({ x: at.x, z: at.z, heading: at.h, speed: at.s, sails: at.v, resting: Boolean(at.r) }, dt);
+    // In a duel they come at the child's ship. Together, they go for the pirate the friend is firing at.
+    const fired = (duel ?? battle).newlyFired(at.f);
     if (fired > 0) battle.friendFired(fired);
+  }
+
+  /**
+   * Together: where the child's ship is, for the friend's game, and from the game that runs the pirates, where
+   * they and their cannonballs are. Once the friend has gone, there's nobody to tell.
+   */
+  updateTeam() {
+    const { battle } = this;
+    if (!battle.friend) return;
+    this.friends.sendMove('ship', shipWire(battle), this.sinceGo);
+    if (battle.runs && battle.state === 'sailing') this.friends.sendMove('foes', battle.wire(), this.sinceGo);
   }
 
   /** The duel's clock, and where the child's ship is, for the friend's game. */
@@ -542,9 +595,20 @@ class CannonBay {
     this.friends.sendHit({ r: 1, m: 'ball', d: 1, tot: duel.scored() }, this.sinceGo);
   }
 
-  /** Something from the friend's game: where their ship is, or a hit it says it made. */
+  /**
+   * Something from the friend's game. In a duel: where their ship is, or a hit it says it made. Together: where
+   * their ship is, and from the game that runs the pirates, where those and their cannonballs are, or to it, a
+   * hit the friend's ball has made on one.
+   */
   fromFriend(id, message) {
-    const { duel } = this;
+    const { duel, team, battle } = this;
+    if (team) {
+      if (id !== team.friend.id) return;
+      if (message.t === 'ship') this.friendTrack?.push(message, performance.now());
+      else if (message.t === 'foes' && this.session.screen === 'playing') battle.follow(message);
+      else if (message.t === 'tag' && this.session.screen === 'playing') battle.friendTagged(message.k, message.n);
+      return;
+    }
     if (!duel || id !== duel.friend.id) return;
     if (message.t === 'ship') {
       this.friendTrack?.push(message, performance.now());
@@ -555,9 +619,18 @@ class CannonBay {
     }
   }
 
-  /** The friend has gone, in the middle: their ship goes with them, and the battle is over for the child. */
+  /**
+   * The friend has gone, in the middle, and their ship goes with them. A duel is over for the child. Together,
+   * the child carries on against the pirates by themselves, with half the hits still to make: see team.js.
+   */
   friendGone(friend) {
-    const { duel, battle, session } = this;
+    const { duel, team, battle, session } = this;
+    if (team && friend.id === team.friend.id) {
+      battle.friendGone();
+      team.alone = true;
+      this.showCaptains();
+      return;
+    }
     if (!duel || friend.id !== duel.friend.id) return;
     battle.removeFriend();
     if (session.screen === 'playing') battle.stop();
@@ -643,7 +716,8 @@ class CannonBay {
     }
     if (battle.atLimit > LIMIT_PROMPT_FROM) return { key: 'limit', text: TURN_BACK, side: null };
     if (this.film === 'wheel' && this.wheelPromptLeft > 0) return { key: 'turn-wheel', text: TURN_WHEEL, side: null };
-    const pirateNear = battle.afloat.length > 0;
+    // A friend's ship on the child's side isn't one to sail beside and fire at.
+    const pirateNear = battle.afloat.some((each) => !each.ally);
     if (pirateNear && session.playSeconds > BESIDE_AFTER_SECONDS && this.sinceFired > BESIDE_AFTER_SECONDS && this.besideShown < BESIDE_SHOWN_FOR) {
       this.showingBeside = true;
       return { key: 'beside', text: SAIL_BESIDE, side: null };
@@ -790,7 +864,8 @@ class CannonBay {
   buildCaptainsRow() {
     const row = byElement('bay-captains');
     row.replaceChildren();
-    this.captainFaces = this.order.map((id) => {
+    // Together with a friend, their ship is in the order too, after the captains, and isn't one of them.
+    this.captainFaces = (this.captains ?? this.order).map((id) => {
       const face = document.createElement('img');
       face.className = 'captain-face';
       face.alt = '';
@@ -925,11 +1000,13 @@ class CannonBay {
       if (mark.pirate !== pirate) {
         mark.pirate = pirate;
         // A friend's ship has their face and their name over it.
-        const friend = pirate.friend ? this.duel?.friend.spec : null;
+        const friend = pirate.friend ? (this.duel ?? this.team)?.friend.spec : null;
         mark.face.src = this.session.portraits[friend?.id ?? this.order[pirate.index % this.order.length]] ?? '';
         mark.name.textContent = friend?.name ?? '';
         mark.root.dataset.kind = pirate.kind;
         mark.root.dataset.friend = friend ? 'yes' : 'no';
+        // A friend on the child's side has their ship's blue round their face and name.
+        mark.root.dataset.ally = pirate.ally ? 'yes' : 'no';
       }
       const badge = pirate.key ? '🗝️' : pirate.cage ? '🛟' : pirate.kind === 'king' ? '👑' : '';
       if (mark.badge.textContent !== badge) mark.badge.textContent = badge;
@@ -1051,10 +1128,15 @@ new GameSession({
         <label><input type="radio" name="bayLevel" value="tough"> Tough</label>
       </fieldset>
       <fieldset class="choice">
-        <legend>Ships to beat</legend>
+        <legend>Ships to beat (together with a friend, each takes twice the hits. Against each other, the duel lasts 2, 3 or 4 minutes)</legend>
         <label><input type="radio" name="bayShips" value="4"> 4</label>
         <label><input type="radio" name="bayShips" value="6"> 6</label>
         <label><input type="radio" name="bayShips" value="9"> 9</label>
+      </fieldset>
+      <fieldset class="choice">
+        <legend>With a friend</legend>
+        <label><input type="radio" name="bayFriends" value="together"> Together: both ships against the pirates, side by side</label>
+        <label><input type="radio" name="bayFriends" value="against"> Against each other: ship against ship, with no pirates</label>
       </fieldset>`,
   },
   defaults: DEFAULTS,

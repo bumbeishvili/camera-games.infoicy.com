@@ -35,18 +35,21 @@ export function shipWire(battle) {
     s: round(battle.speed, 1),
     v: round(battle.sails, 2),
     f: battle.stats.shots,
+    // Whether the child is resting, which matters with the two of them on the same side: see team.js.
+    r: battle.resting ? 1 : 0,
   };
 }
 
 /**
  * A friend's ship between what their game sends, for Track in core/friends.js: where it is and its speed and
  * sails go smoothly from one message to the next, its heading the short way round, and the balls it has fired
- * change half way. With nothing new for a moment, it carries on the way it was going.
+ * and whether their child is resting change half way. With nothing new for a moment, it carries on the way it
+ * was going.
  */
 export const SHIP_TRACK = {
   lerp: ['x', 'z', 's', 'v'],
   angles: ['h'],
-  steps: ['f'],
+  steps: ['f', 'r'],
   guess: (last, seconds) => {
     const forward = forwardOf(last.h);
     return { x: last.x + forward.x * last.s * seconds, z: last.z + forward.z * last.s * seconds };

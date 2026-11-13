@@ -204,7 +204,7 @@ const PIRATE = {
 const WEAVE = { turn: 0.75, every: 1.4 }; // How far each way, in radians, and how quickly a weaving pirate turns.
 const GIVE_WAY = { within: 82, cone: degrees(42), turn: 2.2 }; // The child's ship steers round a pirate right in front of it.
 // Nobody sails into the place the child is watching from, behind their ship, and blocks the view.
-const VIEW_KEPT_CLEAR = { behind: 72, radius: 50 };
+export const VIEW_KEPT_CLEAR = { behind: 72, radius: 50 };
 const SPAWN = { away: [270, 340], angle: [degrees(15), degrees(62)], room: 60, tries: 24 };
 const ROW = { speed: 7, seconds: 13, startOut: 20, aside: 1.05 };
 // What a beaten ship leaves floating: a line of gold leading from where it went down towards the child.
@@ -345,6 +345,7 @@ export class Battle {
     this.nextPirate = 0;
     this.spawnIn = 0;
     this.broadsideIn = PIRATE.firstBroadside;
+    this.ballsFired = 0; // Each of the pirates' cannonballs has a number, for a friend's game to know it by.
     this.zones = { left: this.emptyZone(), right: this.emptyZone() };
     this.shots = []; // The child's.
     this.balls = []; // The pirates'.
@@ -396,9 +397,22 @@ export class Battle {
     return this.pirates.filter(({ state }) => state === 'sailing');
   }
 
-  /** What the cannons can fire at: afloat, and not hidden under the water or in smoke. */
+  /** What the cannons can fire at: afloat, and not hidden under the water or in smoke, or a friend's ship on the child's side. */
   canTarget(pirate) {
-    return pirate.state === 'sailing' && !pirate.under && !(pirate.smoke > 0);
+    return pirate.state === 'sailing' && !pirate.under && !(pirate.smoke > 0) && !pirate.ally;
+  }
+
+  /**
+   * The ship a pirate is after: the child's. With a friend's ship on the child's side, it's one of the two: see
+   * team.js. Whichever it is has a place, a heading, a speed and how hard it's turning.
+   */
+  preyOf() {
+    return this;
+  }
+
+  /** Whether the pirates wait, sailing in circles: while the child rests. */
+  get paused() {
+    return this.resting;
   }
 
   get targets() {
@@ -422,7 +436,7 @@ export class Battle {
   }
 
   fill() {
-    while (this.waiting > 0 && this.afloat.filter((pirate) => !pirate.little).length < this.mostAtOnce) this.spawn();
+    while (this.waiting > 0 && this.afloat.filter((pirate) => !pirate.little && !pirate.friend).length < this.mostAtOnce) this.spawn();
   }
 
   /**
@@ -482,29 +496,30 @@ export class Battle {
       .map(([key]) => (key === 'hearts' ? { kind: 'heart' } : { kind: 'power', power: key }));
   }
 
-  /** Somewhere for a ship to come from, out in front of the child if there's water there. */
-  findOpenWater() {
+  /** Somewhere for a ship to come from, out in front of the ship it's after, the child's, if there's water there. */
+  findOpenWater(prey = this) {
     const chart = getChart();
     const { random } = this;
     const fits = (x, z) => chart.room(x, z) >= SPAWN.room && Math.hypot(x, z) < WORLD.limit - 40;
     for (let attempt = 0; attempt < SPAWN.tries; attempt += 1) {
       // Out in front to begin with, and anywhere at all if that's all land.
       const spread = attempt < SPAWN.tries / 2 ? between(random, SPAWN.angle) : random() * Math.PI;
-      const direction = this.heading + spread * (random() < 0.5 ? -1 : 1);
+      const direction = prey.heading + spread * (random() < 0.5 ? -1 : 1);
       const away = between(random, SPAWN.away);
-      const x = this.x + Math.sin(direction) * away;
-      const z = this.z - Math.cos(direction) * away;
+      const x = prey.x + Math.sin(direction) * away;
+      const z = prey.z - Math.cos(direction) * away;
       if (fits(x, z)) return { x, z };
     }
-    const forward = forwardOf(this.heading);
-    return { x: this.x + forward.x * SPAWN.away[0], z: this.z + forward.z * SPAWN.away[0] };
+    const forward = forwardOf(prey.heading);
+    return { x: prey.x + forward.x * SPAWN.away[0], z: prey.z + forward.z * SPAWN.away[0] };
   }
 
   spawn() {
     this.waiting -= 1;
-    const { x, z } = this.findOpenWater();
+    const prey = this.preyOf({ index: this.nextPirate });
+    const { x, z } = this.findOpenWater(prey);
     const role = this.roles[this.nextPirate] ?? { kind: this.kindFor(this.nextPirate) };
-    const pirate = this.makePirate(role.kind, x, z, this.nextPirate);
+    const pirate = this.makePirate(role.kind, x, z, this.nextPirate, prey);
     pirate.cage = Boolean(role.cage);
     pirate.key = Boolean(role.key);
     this.nextPirate += 1;
@@ -512,7 +527,8 @@ export class Battle {
     this.emit('spawn', { pirate });
   }
 
-  makePirate(kind, x, z, index) {
+  /** A pirate ship of a kind, at a place, pointing more or less at the ship it's after. */
+  makePirate(kind, x, z, index, prey = this) {
     const { random } = this;
     const hits = Math.max(3, Math.round(this.level.shipHits * SHIP_KINDS[kind].hits));
     return {
@@ -521,7 +537,7 @@ export class Battle {
       maxHits: hits,
       x,
       z,
-      heading: headingTo(this.x - x, this.z - z) + (random() - 0.5),
+      heading: headingTo(prey.x - x, prey.z - z) + (random() - 0.5),
       speed: this.pace.speed * PIRATE.chase,
       state: 'sailing',
       hitsLeft: hits,
@@ -575,14 +591,15 @@ export class Battle {
     if (dt > 0) pirate.turning = damp(pirate.turning, clamp(turnBetween(pirate.heading, before) / (PIRATE.turn * dt), -1, 1), 3, dt);
   }
 
-  /** Where a pirate wants to be, level with the child's ship and out to one side of it. */
+  /** Where a pirate wants to be, level with the ship it's after, the child's, and out to one side of it. */
   stationFor(pirate) {
     const chart = getChart();
-    const across = rightOf(this.heading);
+    const prey = this.preyOf(pirate);
+    const across = rightOf(prey.heading);
     const out = Math.min(PIRATE.alongside + (pirate.index % this.mostAtOnce) * PIRATE.alongsideMore, this.level.zone.reach * 0.85);
-    const spot = (side) => ({ x: this.x + across.x * side * out, z: this.z + across.z * side * out });
+    const spot = (side) => ({ x: prey.x + across.x * side * out, z: prey.z + across.z * side * out });
     // With the child's ship turning hard, it can only keep up on the inside of the turn.
-    if (Math.abs(this.turning) > 0.5) pirate.childSide = this.turning > 0 ? 1 : -1;
+    if (Math.abs(prey.turning) > 0.5) pirate.childSide = prey.turning > 0 ? 1 : -1;
     const wanted = spot(pirate.childSide);
     if (chart.room(wanted.x, wanted.z) > 30) return wanted;
     pirate.childSide = -pirate.childSide;
@@ -592,9 +609,10 @@ export class Battle {
   /** Somewhere out in front of the child's ship, to sail to and be chased. */
   sendAway(pirate, seconds = between(this.random, PIRATE.awaySeconds)) {
     const { random } = this;
-    const direction = this.heading + between(random, PIRATE.awayTo.angle) * (random() < 0.5 ? -1 : 1);
+    const prey = this.preyOf(pirate);
+    const direction = prey.heading + between(random, PIRATE.awayTo.angle) * (random() < 0.5 ? -1 : 1);
     const away = between(random, PIRATE.awayTo.away);
-    pirate.spot = { x: this.x + Math.sin(direction) * away, z: this.z - Math.cos(direction) * away };
+    pirate.spot = { x: prey.x + Math.sin(direction) * away, z: prey.z - Math.cos(direction) * away };
     pirate.mode = 'away';
     pirate.modeLeft = seconds;
   }
@@ -624,8 +642,10 @@ export class Battle {
       if (pirate.bubbled === 0) this.emit('unbubbled', { pirate });
       return;
     }
-    const dx = this.x - pirate.x;
-    const dz = this.z - pirate.z;
+    // The ship it's after: the child's, or with a friend on the child's side, one of the two.
+    const prey = this.preyOf(pirate);
+    const dx = prey.x - pirate.x;
+    const dz = prey.z - pirate.z;
     const away = Math.hypot(dx, dz);
 
     // Round the far side of the island is too far to wait for anyone, so it comes from somewhere nearer.
@@ -633,11 +653,11 @@ export class Battle {
     pirate.sinceHit += dt;
     const stuck = pirate.pressed > PIRATE.stuckAfter && away > PIRATE.stuckAway;
     if (away > PIRATE.relocateAway || stuck || (pirate.sinceHit > PIRATE.relocateUnhit && away > PIRATE.closeEnough)) {
-      const { x, z } = this.findOpenWater();
-      Object.assign(pirate, { x, z, heading: headingTo(this.x - x, this.z - z), mode: 'chase', pressed: 0, chasing: 0, sinceHit: 0 });
+      const { x, z } = this.findOpenWater(prey);
+      Object.assign(pirate, { x, z, heading: headingTo(prey.x - x, prey.z - z), mode: 'chase', pressed: 0, chasing: 0, sinceHit: 0 });
       return;
     }
-    if (this.resting) {
+    if (this.paused) {
       pirate.mode = 'circle';
       this.sailPirate(pirate, pirate.heading + pirate.way * PIRATE.circleTurn, PIRATE.circle, dt);
       return;
@@ -648,7 +668,7 @@ export class Battle {
     // Slowed by a snowball, it takes longer to reload too.
     pirate.fireIn -= dt * (pirate.frosted > 0 ? FROST.reload : 1);
     pirate.modeLeft -= dt;
-    if (pirate.sinceHit % PIRATE.slowsEvery > PIRATE.slowsEvery - PIRATE.slowsFor && away < PIRATE.slowsWithin && Math.abs(this.turning) > PIRATE.slowsWhenTurning) {
+    if (pirate.sinceHit % PIRATE.slowsEvery > PIRATE.slowsEvery - PIRATE.slowsFor && away < PIRATE.slowsWithin && Math.abs(prey.turning) > PIRATE.slowsWhenTurning) {
       this.sailPirate(pirate, pirate.heading, PIRATE.slowShare, dt);
       const off = turnBetween(headingTo(dx, dz), pirate.heading);
       this.fireWhenSideOn(pirate, away, off, off >= 0 ? 1 : -1);
@@ -667,13 +687,13 @@ export class Battle {
         pirate.chasing = 0;
         pirate.modeLeft = between(this.random, PIRATE.sideSeconds) * this.plan.side;
         // The side it's on already, rather than crossing the child's bows to get to the other.
-        const across = rightOf(this.heading);
+        const across = rightOf(prey.heading);
         pirate.childSide = -dx * across.x - dz * across.z >= 0 ? 1 : -1;
       } else {
         // Straight for the child, and for a place beside them from further off, a little faster the
         // longer it goes on, so that nobody can be left going round and round out of reach.
         pirate.chasing += dt;
-        const station = away > PIRATE.far ? this.stationFor(pirate) : this;
+        const station = away > PIRATE.far ? this.stationFor(pirate) : prey;
         const share = ((away > PIRATE.far ? PIRATE.catchUp : PIRATE.chase) + Math.min(PIRATE.keenestMore, pirate.chasing * PIRATE.keener)) * this.quicker(pirate);
         this.sailPirate(pirate, headingTo(station.x - pirate.x, station.z - pirate.z), share, dt);
       }
@@ -716,33 +736,36 @@ export class Battle {
 
   /** Side on to the child and going the same way, as ships really did, and firing when it's ready. */
   sailAlongside(pirate, dt) {
+    const prey = this.preyOf(pirate);
     const station = this.stationFor(pirate);
     const toX = station.x - pirate.x;
     const toZ = station.z - pirate.z;
     const gap = Math.hypot(toX, toZ);
-    const keepUp = this.speed / this.pace.speed;
+    const keepUp = prey.speed / this.pace.speed;
     const forward = forwardOf(pirate.heading);
     const ahead = toX * forward.x + toZ * forward.z;
     // Well off its station it heads for it, and on it it goes the same way as the child's ship.
     const share = Math.max(0.2, Math.min(PIRATE.catchUp, keepUp + ahead * 0.012));
     const onStation = clamp(gap / 40, 0, 1);
-    const wanted = this.heading + turnBetween(headingTo(toX, toZ), this.heading) * onStation;
+    const wanted = prey.heading + turnBetween(headingTo(toX, toZ), prey.heading) * onStation;
     this.sailPirate(pirate, wanted, share, dt);
-    const dx = this.x - pirate.x;
-    const dz = this.z - pirate.z;
+    const dx = prey.x - pirate.x;
+    const dz = prey.z - pirate.z;
     const off = turnBetween(headingTo(dx, dz), pirate.heading);
     this.fireWhenSideOn(pirate, Math.hypot(dx, dz), off, off >= 0 ? 1 : -1);
   }
 
   fireWhenSideOn(pirate, away, off, facing) {
-    if (pirate.burstLeft > 0 || pirate.fireIn > 0 || this.broadsideIn > 0 || away > PIRATE.leaveRange) return;
+    // Broadsides at any one ship come a while apart, so each child has as many as on their own.
+    const prey = this.preyOf(pirate);
+    if (pirate.burstLeft > 0 || pirate.fireIn > 0 || prey.broadsideIn > 0 || away > PIRATE.leaveRange) return;
     if (SHIP_KINDS[pirate.kind].quiet || pirate.under || pirate.smoke > 0) return;
     if (Math.abs(Math.abs(off) - Math.PI / 2) > PIRATE.beamWithin) return;
     pirate.burstLeft = Math.max(1, this.level.balls + this.plan.balls + SHIP_KINDS[pirate.kind].balls);
     pirate.burstIn = 0;
     pirate.burstSide = facing;
     pirate.fireIn = between(this.random, this.level.fireEvery) * this.plan.fireEvery;
-    this.broadsideIn = this.level.apart * this.plan.apart;
+    prey.broadsideIn = this.level.apart * this.plan.apart;
   }
 
   carryOnFiring(pirate, dt) {
@@ -754,9 +777,10 @@ export class Battle {
     this.fireBall(pirate);
   }
 
-  /** A slow ball in a high arc, to where the child's ship looks like being when it lands. */
+  /** A slow ball in a high arc, to where the ship it's after, the child's, looks like being when it lands. */
   fireBall(pirate) {
     const { random } = this;
+    const prey = this.preyOf(pirate);
     const side = rightOf(pirate.heading);
     const forward = forwardOf(pirate.heading);
     const along = GUN_SPOTS[pirate.burstLeft % GUN_SPOTS.length];
@@ -765,21 +789,22 @@ export class Battle {
       y: GUN_HEIGHT,
       z: pirate.z + forward.z * along + side.z * pirate.burstSide * HULL.beam,
     };
-    const dx = this.x - from.x;
-    const dz = this.z - from.z;
+    const dx = prey.x - from.x;
+    const dz = prey.z - from.z;
     const away = Math.hypot(dx, dz);
     const seconds = clamp(away / BALL.speed, BALL.shortest, BALL.longest);
     // Most land just beside the ship, near enough to see, and only some are aimed true.
-    const mine = forwardOf(this.heading);
-    const across = rightOf(this.heading);
+    const mine = forwardOf(prey.heading);
+    const across = rightOf(prey.heading);
     const aimedTrue = random() < this.level.hitChance;
     const out = aimedTrue ? (random() - 0.5) * BALL.near : (HULL.beam + BALL.hitWiden + between(random, BALL.miss)) * (random() < 0.5 ? -1 : 1);
-    const ahead = (random() - 0.5) * (aimedTrue ? BALL.near : BALL.missAlong) + this.speed * seconds;
+    const ahead = (random() - 0.5) * (aimedTrue ? BALL.near : BALL.missAlong) + prey.speed * seconds;
     const to = {
-      x: this.x + mine.x * ahead + across.x * out,
-      z: this.z + mine.z * ahead + across.z * out,
+      x: prey.x + mine.x * ahead + across.x * out,
+      z: prey.z + mine.z * ahead + across.z * out,
     };
-    const ball = { from, to, t: 0, seconds, arc: BALL.arc + away * BALL.arcPerUnit, x: from.x, y: from.y, z: from.z, harmless: this.resting, pirate };
+    this.ballsFired += 1;
+    const ball = { id: this.ballsFired, from, to, t: 0, seconds, arc: BALL.arc + away * BALL.arcPerUnit, x: from.x, y: from.y, z: from.z, harmless: this.resting, pirate, prey };
     this.balls.push(ball);
     this.emit('pirate-fire', { pirate, ball });
   }
@@ -799,22 +824,25 @@ export class Battle {
   /**
    * The friend's ship, at { x, z, heading }. It's fired at like a pirate ship, but it never sinks, as a hit
    * on it is only a point, its captain never calls out as a pirate does, and it never fires here: their game
-   * does that, and says so.
+   * does that, and says so. With ally, it's on the child's side instead, against the pirates, and the cannons
+   * never fire at it: see team.js.
    */
-  addFriend({ x, z, heading = 0 }) {
+  addFriend({ x, z, heading = 0 }, { ally = false } = {}) {
     const friend = this.makePirate('ship', x, z, 0);
-    Object.assign(friend, { friend: true, heading, speed: 0, sails: 0, mode: 'friend', maxHits: Infinity, hitsLeft: Infinity, fireIn: Infinity, spoke: true, gun: 0 });
+    Object.assign(friend, { friend: true, ally, heading, speed: 0, sails: 0, mode: 'friend', maxHits: Infinity, hitsLeft: Infinity, fireIn: Infinity, spoke: true, gun: 0, resting: false, broadsideIn: PIRATE.firstBroadside });
     this.friend = friend;
     this.pirates.push(friend);
     return friend;
   }
 
-  /** Where the friend's game says their ship is now, as { x, z, heading, speed, sails }. */
-  placeFriend({ x, z, heading, speed, sails }, dt = 0) {
+  /** Where the friend's game says their ship is now, as { x, z, heading, speed, sails }, and whether their child is resting. */
+  placeFriend({ x, z, heading, speed, sails, resting = false }, dt = 0) {
     const { friend } = this;
     if (!friend) return;
     const before = friend.heading;
-    Object.assign(friend, { x, z, heading, speed, sails });
+    // As for the child's own ship, there's a moment after a rest before any pirate fires at it.
+    if (friend.resting && !resting) friend.broadsideIn = Math.max(friend.broadsideIn, PIRATE.afterRest);
+    Object.assign(friend, { x, z, heading, speed, sails, resting: Boolean(resting) });
     if (dt > 0) friend.turning = damp(friend.turning, clamp(turnBetween(heading, before) / (SAIL.turn * dt), -1, 1), 3, dt);
   }
 
@@ -826,10 +854,24 @@ export class Battle {
   friendFired(count) {
     const { friend } = this;
     if (!friend || this.state !== 'sailing') return;
+    // On the child's side, they're firing at a pirate: the nearest one to them that their cannons could reach.
+    let at = null;
+    if (friend.ally) {
+      let least = this.level.zone.reach * 1.15;
+      for (const pirate of this.targets) {
+        const away = Math.hypot(pirate.x - friend.x, pirate.z - friend.z);
+        if (away < least) {
+          least = away;
+          at = pirate;
+        }
+      }
+      if (!at) return;
+    }
+    const aim = at ?? this;
     const forward = forwardOf(friend.heading);
     const across = rightOf(friend.heading);
-    // From the side of their ship that faces the child's.
-    const side = (this.x - friend.x) * across.x + (this.z - friend.z) * across.z >= 0 ? 1 : -1;
+    // From the side of their ship that faces what they're firing at: the child's, in a duel.
+    const side = (aim.x - friend.x) * across.x + (aim.z - friend.z) * across.z >= 0 ? 1 : -1;
     friend.burstSide = side;
     for (let i = 0; i < Math.min(count, FRIEND_FIRE.most); i += 1) {
       friend.gun = (friend.gun + 1) % GUN_SPOTS.length;
@@ -839,9 +881,9 @@ export class Battle {
         y: GUN_HEIGHT,
         z: friend.z + forward.z * along + across.z * side * HULL.beam,
       };
-      const away = Math.hypot(this.x - from.x, this.z - from.z);
+      const away = Math.hypot(aim.x - from.x, aim.z - from.z);
       // As quick and as low as the child's own, rather than a pirate's high arcs, as that's what they are.
-      const ball = { from, to: { x: this.x, z: this.z }, lands: SHOT.height, t: 0, seconds: clamp(away / SHOT.speed, SHOT.shortest, SHOT.longest), arc: SHOT.arc + away * SHOT.arcPerUnit, x: from.x, y: from.y, z: from.z, harmless: true, homing: true, pirate: friend };
+      const ball = { from, to: { x: aim.x, z: aim.z }, lands: SHOT.height, t: 0, seconds: clamp(away / SHOT.speed, SHOT.shortest, SHOT.longest), arc: SHOT.arc + away * SHOT.arcPerUnit, x: from.x, y: from.y, z: from.z, harmless: true, homing: true, at, pirate: friend };
       this.balls.push(ball);
       this.emit('pirate-fire', { pirate: friend, ball });
     }
@@ -1057,11 +1099,12 @@ export class Battle {
     pirate.hitsLeft -= 1;
     pirate.hitLeft = 0.35;
     pirate.sinceHit = 0;
-    this.stats.hits += 1;
-    this.emit('hit', { pirate, x: shot.x, y: shot.y, z: shot.z, fire: shot.fire ?? null });
+    // A hit by a friend on the child's side, which their game tells this one about, is theirs: see team.js.
+    if (!shot.theirs) this.stats.hits += 1;
+    this.emit('hit', { pirate, x: shot.x, y: shot.y, z: shot.z, fire: shot.fire ?? null, theirs: Boolean(shot.theirs) });
     this.knockSails(pirate, shot);
     if (pirate.hitsLeft <= 0) {
-      this.beat(pirate);
+      this.beat(pirate, shot);
       return;
     }
     this.fireDoes(pirate, shot);
@@ -1118,8 +1161,8 @@ export class Battle {
     }
   }
 
-  /** Its sails come down and it slowly sinks, and its crew has already got away in the lifeboat. */
-  beat(pirate) {
+  /** Its sails come down and it slowly sinks, and its crew has already got away in the lifeboat. shot is the one that did it. */
+  beat(pirate, shot = {}) {
     pirate.state = 'sinking';
     pirate.mode = 'sinking';
     pirate.burstLeft = 0;
@@ -1130,7 +1173,7 @@ export class Battle {
       this.stats.littles += 1;
       this.dropPrizes(pirate);
       this.emit('little-beaten', { pirate, left: this.left });
-      if (this.left === 0) this.wonIn = WON_AFTER;
+      if (this.left === 0) this.allBeaten();
       return;
     }
     this.stats.beaten += 1;
@@ -1139,9 +1182,14 @@ export class Battle {
     if (pirate.kind === 'raft') this.split(pirate);
     this.dropGold(pirate);
     this.dropPrizes(pirate);
-    this.emit('beaten', { pirate, boat, beaten: this.stats.beaten, left: this.left });
-    if (this.left === 0) this.wonIn = WON_AFTER;
+    this.emit('beaten', { pirate, boat, beaten: this.stats.beaten, left: this.left, theirs: Boolean(shot.theirs) });
+    if (this.left === 0) this.allBeaten();
     else this.spawnIn = PIRATE.nextIn;
+  }
+
+  /** Every pirate ship is beaten: the battle is won, once the last one has had a moment to start going down. */
+  allBeaten() {
+    if (this.wonIn === null) this.wonIn = WON_AFTER;
   }
 
   /** A raft coming apart: two little rafts go off either way, to be chased. */
@@ -1411,8 +1459,9 @@ export class Battle {
   moveBalls(dt) {
     for (const ball of this.balls) {
       ball.t = Math.min(1, ball.t + dt / ball.seconds);
-      // A friend's goes to wherever the child's ship has got to, as their game's balls go to where it is there.
-      if (ball.homing) Object.assign(ball.to, this.sideFacing(ball.from.x, ball.from.z));
+      // A friend's goes to wherever the child's ship has got to, as their game's balls go to where it is there,
+      // or to the pirate they're firing at, with them on the child's side.
+      if (ball.homing) Object.assign(ball.to, ball.at ? { x: ball.at.x, z: ball.at.z } : this.sideFacing(ball.from.x, ball.from.z));
       const { from, to, t } = ball;
       ball.x = from.x + (to.x - from.x) * t;
       ball.z = from.z + (to.z - from.z) * t;
@@ -1436,7 +1485,8 @@ export class Battle {
   landBall(ball) {
     // One of a friend's, which only their game decides: a hit it has said it made shows as this one lands.
     if (ball.homing) {
-      if (this.strikesDue > 0 && this.state === 'sailing') this.strike(ball.to);
+      // One at a pirate only shows where they're firing: the hit itself shows as the game that runs the pirate counts it.
+      if (!ball.at && this.strikesDue > 0 && this.state === 'sailing') this.strike(ball.to);
       return;
     }
     const onHull = !ball.harmless && !this.resting && this.state === 'sailing' && this.distanceFromHull(ball.to.x, ball.to.z) <= HULL.beam + BALL.hitWiden;
@@ -1607,6 +1657,7 @@ export class Battle {
       if (this.spawnIn <= 0) this.fill();
     }
     this.broadsideIn = Math.max(0, this.broadsideIn - dt);
+    if (this.friend) this.friend.broadsideIn = Math.max(0, this.friend.broadsideIn - dt);
     for (const pirate of this.pirates) this.movePirate(pirate, dt);
     this.pirates = this.pirates.filter(({ state }) => state !== 'gone');
     this.keepApart();

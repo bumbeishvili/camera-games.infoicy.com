@@ -39,6 +39,10 @@ const WHITE = new THREE.Color('#ffffff');
 // With a friend who is Giraffe too, their ship has his spotted sails and him at the helm, but a red hull, so that
 // it can't be taken for the child's own.
 const FRIEND_GIRAFFE = { ...LOOKS.giraffe, hull: '#d9463b', upper: '#ffe2d6', trim: '#ffd23f', bottom: '#7a2218', flag: '#d9463b' };
+// A friend on the child's side, against the pirates: the child's own kind of ship, with its spotted sails and a
+// star on its flag, and a blue hull, so that it can't be taken for the child's own or for any pirate's, whoever
+// the friend plays as.
+const ALLY_SHIP = { ...LOOKS.giraffe, hull: '#2f6fed', upper: '#dbe8ff', trim: '#ffd23f', bottom: '#1d3f8f', flag: '#2f6fed' };
 
 // A soap bubble: nearly clear in the middle and paler towards its edge, with a little shine on it, which
 // is what makes it read as a bubble. Its opacity only ever changes slowly.
@@ -761,13 +765,14 @@ export class Bay {
    * With a friend, the ship they sail, in the colours of their character from the other games and with them at
    * the helm: a pirate captain's ship, as there are no pirates then, or for Giraffe, whose own ship is the
    * child's, one in other colours, made the first time it's needed. Returns its name in the fleet, for the
-   * battle's order.
+   * battle's order. With ally, they're on the child's side against the pirates, who have their captains' ships,
+   * so it's a ship of its own, like the child's with a blue hull, with the friend's character at the helm.
    */
-  friendShipKey(spec) {
-    if (this.fleet.has(spec.id)) return spec.id;
-    const key = `friend:${spec.id}`;
+  friendShipKey(spec, { ally = false } = {}) {
+    if (!ally && this.fleet.has(spec.id)) return spec.id;
+    const key = `${ally ? 'ally' : 'friend'}:${spec.id}`;
     if (!this.fleet.has(key)) {
-      const look = spec.id === 'giraffe' ? FRIEND_GIRAFFE : LOOKS[spec.id];
+      const look = ally ? ALLY_SHIP : spec.id === 'giraffe' ? FRIEND_GIRAFFE : LOOKS[spec.id];
       const ship = new PirateShip(spec, look);
       ship.lifeboat = new Lifeboat(look);
       ship.rock = { pitch: 0, roll: 0, y: 0 };

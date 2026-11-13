@@ -8,7 +8,8 @@ import { getChart } from '../../games/cannon-bay/chart.js';
 import { Duel, SHIP_TRACK, duelSeconds, duelStart, shipWire } from '../../games/cannon-bay/duel.js';
 import { WORLD, heightAt } from '../../games/sky-wings/island-map.js';
 import { Track } from '../../core/friends.js';
-import { cleanShip } from '../../server/race-room.js';
+import { MOST_BYTES, cleanFoes, cleanShip, cleanTag } from '../../server/race-room.js';
+import { MOST_BALLS, MOST_PIRATES, TEAM_HITS, TeamBattle } from '../../games/cannon-bay/team.js';
 
 const STEP = 1 / 30;
 const OPEN = { open: true, seen: true, drive: 1, steer: 0 };
@@ -1680,7 +1681,8 @@ test('what\'s sent about the ship is what the server passes on, and a friend\'s 
   run(battle, 3, { ...OPEN, steer: 1 });
   battle.heading += Math.PI * 6;
   const wire = shipWire(battle);
-  assert.deepEqual(Object.keys(wire), ['x', 'z', 'h', 's', 'v', 'f']);
+  assert.deepEqual(Object.keys(wire), ['x', 'z', 'h', 's', 'v', 'f', 'r']);
+  assert.equal(wire.r, 0, 'sailing, with the hand open, isn\'t resting');
   assert.ok(Math.abs(wire.h) <= Math.PI, 'the same way round, however many times it has gone round');
   assert.deepEqual(cleanShip({ ms: 100, ...wire }), { ms: 100, ...wire });
   // Between two messages it goes smoothly, and with nothing new for a moment, it carries on as it was going.
@@ -1730,4 +1732,463 @@ test('a friend\'s hits that are shown together are heard as one thud, which is n
   assert.equal(played[0][0], 'thud');
   sound.hit(0);
   assert.ok(played[0][1] <= played[1][1] * 1.2, 'about as loud as a hit of the child\'s own, close by');
+});
+
+/* ---------- together with a friend, against the pirates ---------- */
+
+/** A child's ship, as their game sends it and the server passes it on, and as the other game is told of it. */
+const shipHeard = (battle) => {
+  const { x, z, h, s: speed, v, r } = cleanShip(shipWire(battle));
+  return { x, z, heading: h, speed, sails: v, resting: Boolean(r) };
+};
+/** What the host's game tells of its pirates and their cannonballs, as the server passes it on. */
+const piratesHeard = (battle) => cleanFoes(JSON.parse(JSON.stringify(battle.wire())));
+
+/**
+ * Two games of a battle together: whoever made it, whose game runs the pirates, and their friend. Each has what
+ * happens in it written down. A hit the friend's game makes is told to the host's, unless a test loses it.
+ */
+function teamUp(settings = {}) {
+  const both = { tags: [], losing: false, hostGone: false, sinceWire: 0 };
+  const make = (slot, seed) => {
+    const log = [];
+    const battle = new TeamBattle({
+      slot,
+      runs: slot === 0,
+      random: seeded(seed),
+      ...settings,
+      onEvent: (event) => {
+        log.push(event);
+        if (event.type === 'tag' && !both.losing) both.tags.push(cleanTag({ k: event.id, n: event.hits }));
+      },
+    });
+    battle.begin();
+    return { battle, log, count: (type, when = () => true) => log.filter((event) => event.type === type && when(event)).length };
+  };
+  both.host = make(0, 7);
+  both.guest = make(1, 11);
+  return both;
+}
+
+/** Both games for a while, each hearing of the other as they do through the server, the pirates ten times a second. */
+function runTeam(both, seconds, hostHand = () => OPEN, guestHand = () => OPEN, before = () => {}) {
+  const [host, guest] = [both.host.battle, both.guest.battle];
+  for (let i = 0; i < seconds / STEP; i += 1) {
+    before();
+    if (!both.hostGone) {
+      if (host.friend) host.placeFriend(shipHeard(guest), STEP);
+      host.update(STEP, hostHand());
+    }
+    if (guest.friend) guest.placeFriend(shipHeard(host), STEP);
+    guest.update(STEP, guestHand());
+    for (const tag of both.tags.splice(0)) host.friendTagged(tag.k, tag.n);
+    both.sinceWire += STEP;
+    if (both.sinceWire >= 0.1 && host.friend && guest.friend && !both.hostGone) {
+      both.sinceWire = 0;
+      guest.follow(piratesHeard(host));
+    }
+  }
+}
+
+/**
+ * One of the host's pirates, its first unless a test says which, kept this far off one ship's bow, and the others
+ * far away, none of them firing. Once it's beaten, they all stay far away.
+ */
+function pinBeside(both, ship, off = Math.PI / 2, away = 90, which = null) {
+  const host = both.host.battle;
+  const afloat = host.afloat.filter((each) => !each.friend);
+  const pirate = which ?? afloat[0];
+  const direction = ship.heading + off;
+  if (pirate.state === 'sailing') Object.assign(pirate, { x: ship.x + Math.sin(direction) * away, z: ship.z - Math.cos(direction) * away, heading: ship.heading, runAt: -1, fireIn: 100, burstLeft: 0 });
+  for (const other of afloat) if (other !== pirate) Object.assign(other, { x: ship.x - Math.sin(ship.heading) * 700, z: ship.z + Math.cos(ship.heading) * 700, fireIn: 100, burstLeft: 0 });
+  return pirate;
+}
+
+/** A child who has got the idea, for a game with a friend's ship in it: for the nearest pirate, and then alongside it. */
+const teamHand = (battle) => () => {
+  const nearest = battle.targets.slice().sort((a, b) => Math.hypot(a.x - battle.x, a.z - battle.z) - Math.hypot(b.x - battle.x, b.z - battle.z))[0];
+  if (!nearest) return OPEN;
+  const to = Math.atan2(nearest.x - battle.x, -(nearest.z - battle.z));
+  if (Math.hypot(nearest.x - battle.x, nearest.z - battle.z) > battle.level.zone.reach * 0.8) return wheelFor(battle, to);
+  const off = Math.atan2(Math.sin(to - battle.heading), Math.cos(to - battle.heading));
+  return wheelFor(battle, to - (off >= 0 ? 1 : -1) * (Math.PI / 2));
+};
+
+const piratesOf = (battle) => battle.afloat.filter((each) => !each.friend);
+
+test('together, there are as many pirate ships as the host chose, each taking twice the hits, the two ships start side by side, and only the host\'s game runs the pirates', () => {
+  const both = teamUp({ ships: 4, level: 'tough' });
+  const [host, guest] = [both.host.battle, both.guest.battle];
+  assert.deepEqual([host.total, guest.total, host.left, guest.left], [4, 4, 4, 4]);
+  assert.deepEqual([host.runs, guest.runs], [true, false]);
+  // Each game has its own ship in its own place, and the friend's in the other, as in a duel.
+  for (const [battle, slot] of [[host, 0], [guest, 1]]) {
+    assert.deepEqual([battle.x, battle.z], [duelStart(slot).x, duelStart(slot).z]);
+    assert.deepEqual([battle.friend.x, battle.friend.z], [duelStart(1 - slot).x, duelStart(1 - slot).z]);
+    // The friend's ship is on the child's side: never fired at, and it's drawn after the pirates' ships.
+    assert.equal(battle.friend.ally, true);
+    assert.equal(battle.targets.includes(battle.friend), false);
+    assert.equal(battle.friend.index, 4);
+    // The plain battle, whatever anyone's level: nothing a level brings.
+    assert.equal(battle.levelNumber, 1);
+    assert.equal(Object.values(battle.plan).some((value) => value === true), false);
+    // The pirates are as on Gentle, so nobody can be sunk, but the firing zones are this child's own, from Tough.
+    assert.equal(battle.level.canLose, false);
+    assert.deepEqual([battle.level.hitChance, battle.level.balls, battle.level.fireEvery], [LEVELS.gentle.hitChance, LEVELS.gentle.balls, LEVELS.gentle.fireEvery]);
+    assert.equal(battle.level.zone.reach, LEVELS.tough.zone.reach);
+    assert.equal(battle.level.shipHits, LEVELS.gentle.shipHits * TEAM_HITS);
+  }
+  assert.equal(TEAM_HITS, 2);
+  // One more pirate is about at a time than on their own, and the friend's ship isn't counted as one of them.
+  assert.equal(host.mostAtOnce, MOST_AT_ONCE + 1);
+  assert.equal(piratesOf(host).length, Math.min(4, MOST_AT_ONCE + 1));
+  assert.ok(piratesOf(host).every(({ maxHits, kind }) => maxHits === LEVELS.gentle.shipHits * 2 && kind === 'ship'));
+  assert.deepEqual([piratesOf(guest).length, guest.waiting], [0, 0], 'none of its own');
+});
+
+test('the friend\'s game shows the host\'s pirate ships: the same ones, where they are, moving smoothly between what it\'s told', () => {
+  const both = teamUp({ pace: 'fast' });
+  const [host, guest] = [both.host.battle, both.guest.battle];
+  runTeam(both, 0.5);
+  assert.equal(both.guest.count('spawn'), piratesOf(host).length, 'each comes in once');
+  let biggestStep = 0;
+  let furthestOut = 0;
+  for (let i = 0; i < 20 / STEP; i += 1) {
+    const before = new Map(piratesOf(guest).map((pirate) => [pirate, { x: pirate.x, z: pirate.z }]));
+    runTeam(both, STEP, teamHand(host), teamHand(guest));
+    for (const [pirate, was] of before) if (pirate.state === 'sailing') biggestStep = Math.max(biggestStep, Math.hypot(pirate.x - was.x, pirate.z - was.z));
+    for (const pirate of piratesOf(guest)) {
+      const theirs = host.pirates.find(({ index, friend }) => index === pirate.index && !friend);
+      if (theirs) furthestOut = Math.max(furthestOut, Math.hypot(pirate.x - theirs.x, pirate.z - theirs.z));
+    }
+  }
+  assert.deepEqual(piratesOf(guest).map(({ index, kind, maxHits }) => [index, kind, maxHits]), piratesOf(host).map(({ index, kind, maxHits }) => [index, kind, maxHits]));
+  assert.ok(furthestOut < 12, `${furthestOut} units out`);
+  // And never jump: no more in a frame than a fast pirate ship could sail in a few.
+  assert.ok(biggestStep < 6, `${biggestStep} in one frame`);
+  // The captains are numbered as on the host's screen, so each has the same ship and face on both.
+  assert.equal(guest.nextPirate, host.nextPirate);
+});
+
+test('a hit of the friend\'s shows on their own screen at once and counts in the host\'s game, and the pirate ship they beat goes down on both, and is theirs', () => {
+  const both = teamUp();
+  const [host, guest] = [both.host.battle, both.guest.battle];
+  // One pirate ship, beside the friend's ship and well away from the host's, with a few hits to go.
+  const pirate = pinBeside(both, guest);
+  pirate.hitsLeft = pirate.maxHits = 6;
+  const pin = () => pinBeside(both, guest, Math.PI / 2, 90, pirate);
+  runTeam(both, 0.5, () => CLOSED, () => CLOSED, pin);
+  const seen = guest.pirates.find(({ index, friend }) => index === pirate.index && !friend);
+  assert.ok(seen);
+  assert.equal(seen.maxHits, 6);
+  // The friend opens their hand. As their first ball lands, it shows on their screen, and the host's game hears.
+  for (let i = 0; i < 300 && !both.guest.count('tag'); i += 1) runTeam(both, STEP, () => CLOSED, () => OPEN, pin);
+  assert.equal(both.guest.count('tag'), 1);
+  assert.equal(seen.hitsLeft, 5, 'on their own screen at once');
+  assert.equal(pirate.hitsLeft, 5, 'and counted by the game that runs it');
+  assert.deepEqual([guest.stats.hits, host.stats.hits], [1, 0], 'it\'s the friend\'s hit, not the host\'s');
+  assert.equal(both.host.count('hit', ({ theirs }) => theirs), 1, 'which shows on the host\'s screen as theirs');
+  // They keep firing, and beat it. It goes down on both screens, and it's theirs on both.
+  runTeam(both, 8, () => CLOSED, () => OPEN, pin);
+  assert.deepEqual([pirate.state === 'sailing', seen.state === 'sailing'], [false, false]);
+  assert.deepEqual([host.stats.beaten, guest.stats.beaten], [1, 1]);
+  assert.deepEqual([host.beatenBy, guest.beatenBy], [{ mine: 0, theirs: 1 }, { mine: 1, theirs: 0 }]);
+  assert.deepEqual([both.host.count('beaten'), both.guest.count('beaten')], [1, 1]);
+  assert.equal(both.host.log.find(({ type }) => type === 'beaten').theirs, true);
+  assert.equal(guest.stats.hits, 6, 'no more hits than it took');
+  // Its crew rows away on both screens, and each child has gold floating towards their own ship.
+  assert.deepEqual([host.boats.length, guest.boats.length], [1, 1]);
+  assert.ok(guest.coins.length > 0);
+});
+
+test('the host\'s hits show on the friend\'s screen as they\'re made, without counting as the friend\'s, and the friend\'s balls are seen going for the pirate they fire at', () => {
+  const both = teamUp();
+  const [host, guest] = [both.host.battle, both.guest.battle];
+  const pirate = pinBeside(both, host, -Math.PI / 2);
+  pirate.hitsLeft = pirate.maxHits = 8;
+  const pin = () => pinBeside(both, host, -Math.PI / 2, 90, pirate);
+  guest.newlyFired(0);
+  runTeam(both, 3, () => OPEN, () => CLOSED, pin);
+  const seen = guest.pirates.find(({ index, friend }) => index === pirate.index && !friend);
+  assert.ok(host.stats.hits >= 2);
+  assert.equal(seen.hitsLeft, pirate.hitsLeft);
+  assert.equal(both.guest.count('hit', ({ theirs }) => theirs), host.stats.hits);
+  assert.equal(both.guest.count('tag'), 0);
+  assert.deepEqual([guest.stats.hits, guest.stats.shots], [0, 0]);
+  // The host's balls, on the friend's screen, go for that pirate ship, and land on it without doing anything there.
+  const fired = guest.newlyFired(shipWire(host).f);
+  assert.ok(fired > 0);
+  guest.friendFired(fired);
+  const theirs = guest.balls.filter(({ homing }) => homing);
+  assert.equal(theirs.length, fired);
+  assert.ok(theirs.every(({ at, harmless }) => at === seen && harmless));
+  const hearts = guest.hearts;
+  runTeam(both, 1.5, () => CLOSED, () => CLOSED, pin);
+  assert.equal(guest.balls.filter(({ homing }) => homing).length, 0);
+  assert.deepEqual([guest.hearts, guest.stats.struck], [hearts, 0]);
+  // With no pirate within their reach, there's nothing to show them firing at.
+  seen.x += 5000;
+  guest.friendFired(2);
+  assert.equal(guest.balls.filter(({ homing }) => homing).length, 0);
+});
+
+test('a hit that never reaches the host\'s game is made up for, and a pirate ship the friend has just beaten isn\'t fired at again while the host\'s game catches up', () => {
+  const both = teamUp();
+  const [host, guest] = [both.host.battle, both.guest.battle];
+  const pirate = pinBeside(both, guest);
+  pirate.hitsLeft = pirate.maxHits = 12;
+  const pin = () => pinBeside(both, guest, Math.PI / 2, 90, pirate);
+  runTeam(both, 0.5, () => CLOSED, () => CLOSED, pin);
+  const seen = guest.pirates.find(({ index, friend }) => index === pirate.index && !friend);
+  both.losing = true;
+  for (let i = 0; i < 300 && !both.guest.count('tag'); i += 1) runTeam(both, STEP, () => CLOSED, () => OPEN, pin);
+  assert.deepEqual([seen.hitsLeft, pirate.hitsLeft], [11, 12]);
+  // For a moment the friend's screen keeps their hits, while the host's game might still be about to count them.
+  // A ball that was already on its way lands too.
+  runTeam(both, 0.4, () => CLOSED, () => CLOSED, pin);
+  assert.equal(seen.hitsLeft, 12 - both.guest.count('tag'));
+  runTeam(both, 2.4, () => CLOSED, () => CLOSED, pin);
+  assert.equal(seen.hitsLeft, 12, 'they never got there');
+  const lost = both.guest.count('tag');
+  both.losing = false;
+  for (let i = 0; i < 300 && both.guest.count('tag') === lost; i += 1) runTeam(both, STEP, () => CLOSED, () => OPEN, pin);
+  assert.equal(pirate.hitsLeft, 12 - (lost + 1), 'all of them, now');
+  // With its last hit made on the friend's screen, their cannons leave it alone until the host's game says it's beaten.
+  runTeam(both, 1, () => CLOSED, () => CLOSED, pin);
+  both.losing = true;
+  pirate.hitsLeft = 1;
+  runTeam(both, 0.3, () => CLOSED, () => CLOSED, pin);
+  assert.equal(seen.hitsLeft, 1);
+  for (let i = 0; i < 300 && seen.hitsLeft > 0; i += 1) runTeam(both, STEP, () => CLOSED, () => OPEN, pin);
+  assert.equal(seen.hitsLeft, 0);
+  assert.equal(guest.targets.includes(seen), false);
+  const { shots } = guest.stats;
+  runTeam(both, 0.8, () => CLOSED, () => OPEN, pin);
+  assert.ok(guest.stats.shots - shots <= 1, 'at most one that was already loaded');
+  assert.equal(seen.state, 'sailing', 'only the host\'s game says it\'s beaten');
+});
+
+test('every other pirate goes for the friend\'s ship, none for a child who\'s resting while the other sails on, and they only circle and wait when both are resting', () => {
+  const both = teamUp({ ships: 6 });
+  const [host, guest] = [both.host.battle, both.guest.battle];
+  assert.equal(host.preyOf({ index: 0 }), host);
+  assert.equal(host.preyOf({ index: 1 }), host.friend);
+  assert.equal(host.preyOf({ index: 2 }), host);
+  // After a while of both sailing, each pirate is nearer the ship it's after than the other one.
+  runTeam(both, 25);
+  for (const pirate of piratesOf(host)) {
+    const prey = host.preyOf(pirate);
+    const other = prey === host ? host.friend : host;
+    assert.ok(Math.hypot(pirate.x - prey.x, pirate.z - prey.z) < Math.hypot(pirate.x - other.x, pirate.z - other.z) + 60, `pirate ${pirate.index}`);
+  }
+  // The friend closes their hand, and after a few seconds is resting: every pirate goes for the host's ship, and
+  // they don't wait, on either screen.
+  runTeam(both, REST_AFTER + 0.6, () => OPEN, () => CLOSED);
+  assert.deepEqual([guest.resting, host.friend.resting, host.resting], [true, true, false]);
+  assert.ok(piratesOf(host).every((pirate) => host.preyOf(pirate) === host));
+  assert.deepEqual([host.paused, guest.paused], [false, false]);
+  assert.ok(piratesOf(host).every(({ mode }) => mode !== 'circle'));
+  // No ball that lands on the resting child's ship does anything to it.
+  const hearts = guest.hearts;
+  ballOnHull(guest);
+  runTeam(both, 0.3, () => OPEN, () => CLOSED);
+  assert.equal(guest.hearts, hearts);
+  // The host rests too: now the pirates circle and wait, and stop firing, on both screens.
+  runTeam(both, REST_AFTER + 0.6, () => CLOSED, () => CLOSED);
+  assert.deepEqual([host.resting, host.paused, guest.paused], [true, true, true]);
+  assert.ok(piratesOf(host).every(({ mode }) => mode === 'circle'));
+  const fired = both.host.count('pirate-fire');
+  runTeam(both, 12, () => CLOSED, () => CLOSED);
+  assert.equal(both.host.count('pirate-fire'), fired);
+  // The friend opens their hand again: the pirates set off, all of them for the friend's ship now.
+  runTeam(both, 0.5, () => CLOSED, () => OPEN);
+  assert.deepEqual([guest.resting, host.paused, guest.paused], [false, false, false]);
+  assert.ok(piratesOf(host).every((pirate) => host.preyOf(pirate) === host.friend));
+});
+
+test('a pirate\'s cannonball shows on both screens and only costs a heart on the screen of the ship it lands on, with broadsides at each ship as far apart as on their own', () => {
+  const both = teamUp();
+  const [host, guest] = [both.host.battle, both.guest.battle];
+  runTeam(both, 1);
+  // A pirate after the friend's ship fires a ball that's aimed true.
+  host.level = { ...host.level, hitChance: 1 };
+  const pirate = piratesOf(host).find((each) => host.preyOf(each) === host.friend);
+  Object.assign(pirate, { x: guest.x + 90, z: guest.z, burstSide: -1 });
+  host.fireBall(pirate);
+  const ball = host.balls.at(-1);
+  assert.equal(ball.prey, host.friend);
+  assert.ok(ball.id > 0);
+  runTeam(both, 0.2);
+  const shown = guest.balls.find(({ id }) => id === ball.id);
+  assert.ok(shown, 'it\'s on the friend\'s screen too');
+  assert.equal(shown.prey, guest);
+  assert.deepEqual([shown.to.x, shown.to.z, shown.seconds], [Math.round(ball.to.x * 10) / 10, Math.round(ball.to.z * 10) / 10, Math.round(ball.seconds * 100) / 100]);
+  assert.equal(both.guest.count('pirate-fire'), both.host.count('pirate-fire'));
+  const [hers, his] = [host.hearts, guest.hearts];
+  runTeam(both, 4);
+  assert.equal(guest.hearts, his - 1, 'it landed on the friend\'s ship, on the friend\'s screen');
+  assert.equal(host.hearts, hers, 'and cost the host nothing');
+  assert.equal(both.guest.count('hurt'), 1);
+  assert.equal(guest.balls.some(({ id }) => id === ball.id), false, 'and it doesn\'t come again');
+  // Hearts stop at one for both, whatever each one's own How hard.
+  for (let i = 0; i < 12; i += 1) {
+    ballOnHull(guest);
+    guest.update(STEP, OPEN);
+  }
+  assert.deepEqual([guest.hearts, guest.state], [1, 'sailing']);
+  // Word from the host's game that still has a ball in it, coming just after that ball has landed here, doesn't
+  // bring it back to land a second time.
+  host.fireBall(pirate);
+  const again = host.balls.at(-1);
+  const word = piratesHeard(host);
+  guest.follow(word);
+  const copy = guest.balls.find(({ id }) => id === again.id);
+  assert.ok(copy);
+  copy.t = 0.999;
+  guest.update(STEP, OPEN);
+  assert.equal(guest.balls.some(({ id }) => id === again.id), false, 'it has landed');
+  guest.follow(word);
+  assert.equal(guest.balls.some(({ id }) => id === again.id), false, 'and doesn\'t come again');
+  // A broadside at one ship doesn't hold up one at the other: each has its own time between them.
+  host.broadsideIn = 0;
+  host.friend.broadsideIn = 0;
+  const [mine, theirs] = [piratesOf(host).find((each) => host.preyOf(each) === host), piratesOf(host).find((each) => host.preyOf(each) === host.friend)];
+  for (const each of [mine, theirs]) Object.assign(each, { burstLeft: 0, fireIn: 0 });
+  host.fireWhenSideOn(mine, 100, Math.PI / 2, 1);
+  assert.ok(host.broadsideIn > 4 && host.friend.broadsideIn === 0);
+  host.fireWhenSideOn(theirs, 100, Math.PI / 2, 1);
+  assert.ok(theirs.burstLeft > 0 && host.friend.broadsideIn > 4);
+});
+
+test('a battle together can be played right through with any number of ships: both games agree on every count, both win together, and nobody is sunk', () => {
+  for (const [ships, pace] of [[4, 'slow'], [6, 'medium'], [9, 'fast']]) {
+    const both = teamUp({ ships, pace });
+    const [host, guest] = [both.host.battle, both.guest.battle];
+    const hands = [teamHand(host), teamHand(guest)];
+    let seconds = 0;
+    let apart = 0;
+    while ((host.state === 'sailing' || guest.state === 'sailing') && seconds < 1500) {
+      runTeam(both, 0.5, ...hands);
+      seconds += 0.5;
+      if (host.state !== guest.state) apart += 0.5;
+    }
+    assert.deepEqual([host.state, guest.state], ['won', 'won'], `${ships} ships, after ${seconds} seconds`);
+    assert.ok(apart <= 1, `${ships} ships: they finish together, not ${apart} seconds apart`);
+    assert.deepEqual([host.stats.beaten, guest.stats.beaten, host.left, guest.left], [ships, ships, 0, 0]);
+    assert.equal(host.beatenBy.mine + host.beatenBy.theirs, ships);
+    assert.deepEqual(guest.beatenBy, { mine: host.beatenBy.theirs, theirs: host.beatenBy.mine });
+    assert.deepEqual([both.host.count('beaten'), both.guest.count('beaten')], [ships, ships]);
+    // Both had pirates to fire at, and every hit the host's game counted for the friend was one the friend made.
+    const counted = both.host.count('hit', ({ theirs }) => theirs);
+    assert.ok(host.stats.hits > 0 && counted > 0 && counted <= guest.stats.hits, `${ships} ships: ${host.stats.hits} and ${counted} of ${guest.stats.hits}`);
+    assert.ok(guest.stats.hits - counted <= ships * 2, `${ships} ships: ${guest.stats.hits - counted} hits landed on a ship already beaten`);
+    // The pirates fired at both, nobody was sunk, and the friend's game never ran a pirate of its own.
+    assert.ok(both.host.count('pirate-fire') > 4 && both.guest.count('pirate-fire') > 4);
+    assert.ok(host.hearts >= 1 && guest.hearts >= 1);
+    assert.deepEqual([both.host.count('lost'), both.guest.count('lost'), guest.runs], [0, 0, false]);
+    assert.ok(seconds < 900, `${ships} ships: ${seconds} seconds`);
+  }
+});
+
+test('a friend who goes leaves the one who made the battle to finish it, with half the hits still to make', () => {
+  const both = teamUp({ ships: 4 });
+  const [host, guest] = [both.host.battle, both.guest.battle];
+  const hands = [teamHand(host), teamHand(guest)];
+  while (host.stats.beaten < 1) runTeam(both, 0.5, ...hands);
+  const was = piratesOf(host).map(({ index, hitsLeft }) => ({ index, hitsLeft }));
+  const beaten = host.stats.beaten;
+  host.friendGone();
+  assert.deepEqual([host.together, host.friend, host.total, host.left], [false, null, 4, 4 - beaten]);
+  assert.deepEqual(piratesOf(host).map(({ index, hitsLeft }) => ({ index, hitsLeft })), was.map(({ index, hitsLeft }) => ({ index, hitsLeft: Math.max(1, Math.ceil(hitsLeft / 2)) })));
+  assert.equal(host.level.shipHits, LEVELS.gentle.shipHits, 'and those still to come take the usual number');
+  assert.equal(host.mostAtOnce, MOST_AT_ONCE);
+  assert.ok(host.balls.every(({ homing }) => !homing));
+  host.friendGone();
+  assert.equal(host.left, 4 - beaten, 'only once');
+  // Every pirate is after the host's ship now, and the host finishes it.
+  assert.ok(piratesOf(host).every((pirate) => host.preyOf(pirate) === host));
+  const hand = teamHand(host);
+  for (let t = 0; t < 900 && host.state === 'sailing'; t += STEP) host.update(STEP, hand());
+  assert.deepEqual([host.state, host.stats.beaten], ['won', 4]);
+  assert.equal(host.beatenBy.mine + host.beatenBy.theirs, 4);
+});
+
+test('if whoever made the battle goes, the friend\'s game takes the pirates over as they are, and the battle can still be won', () => {
+  const both = teamUp({ ships: 6 });
+  const [host, guest] = [both.host.battle, both.guest.battle];
+  const hands = [teamHand(host), teamHand(guest)];
+  while (host.stats.beaten < 2) runTeam(both, 0.5, ...hands);
+  runTeam(both, 0.3, ...hands);
+  const was = piratesOf(guest).map(({ index, x, z, hitsLeft }) => ({ index, x, z, hitsLeft }));
+  const [beaten, mine] = [guest.stats.beaten, guest.beatenBy.mine];
+  both.hostGone = true;
+  guest.friendGone();
+  assert.deepEqual([guest.runs, guest.together], [true, false]);
+  // The same pirate ships, where they were, with half the hits they had left, and the rest still to come.
+  const still = was.filter(({ hitsLeft }) => hitsLeft > 0);
+  assert.deepEqual(piratesOf(guest).filter(({ index }) => still.some((each) => each.index === index)).map(({ index, x, z, hitsLeft }) => ({ index, x, z, hitsLeft })), still.map(({ index, x, z, hitsLeft }) => ({ index, x, z, hitsLeft: Math.max(1, Math.ceil(hitsLeft / 2)) })));
+  assert.equal(guest.total, 6);
+  assert.equal(guest.waiting + piratesOf(guest).length + guest.stats.beaten, 6);
+  // Now they're this game's to run: they go for this ship, fire at it, and more come, until all six are beaten.
+  const hand = teamHand(guest);
+  const from = both.guest.log.length;
+  for (let t = 0; t < 900 && guest.state === 'sailing'; t += STEP) guest.update(STEP, hand());
+  assert.deepEqual([guest.state, guest.stats.beaten, guest.left], ['won', 6, 0]);
+  assert.equal(guest.beatenBy.mine, mine + (6 - beaten), 'what they beat from here is theirs');
+  const since = both.guest.log.slice(from);
+  assert.ok(since.some(({ type }) => type === 'spawn'), 'more came');
+  assert.ok(since.filter(({ type }) => type === 'pirate-fire').length > 0);
+  assert.equal(since.filter(({ type }) => type === 'tag').length, 0, 'and there\'s nobody to tell of a hit');
+  // Anything more from the old host's game is ignored.
+  const afloat = piratesOf(guest).length;
+  guest.follow(piratesHeard(host));
+  assert.equal(piratesOf(guest).length, afloat);
+});
+
+test('a friend who goes before it has begun leaves a battle for one, on either side', () => {
+  for (const slot of [0, 1]) {
+    const battle = new TeamBattle({ slot, runs: slot === 0, ships: 4, random: seeded(5) });
+    battle.friendGone();
+    assert.deepEqual([battle.runs, battle.total, battle.waiting, battle.level.shipHits], [true, 4, 4, LEVELS.gentle.shipHits], `slot ${slot}`);
+    battle.begin();
+    const hand = teamHand(battle);
+    for (let t = 0; t < 900 && battle.state === 'sailing'; t += STEP) battle.update(STEP, hand());
+    assert.deepEqual([battle.state, battle.stats.beaten], ['won', 4], `slot ${slot}`);
+  }
+});
+
+test('what the host\'s game tells of its pirates and their cannonballs is what the server passes on, never too much for one message, and nonsense is passed over', () => {
+  const both = teamUp({ pace: 'fast', ships: 9 });
+  const [host, guest] = [both.host.battle, both.guest.battle];
+  runTeam(both, 12, teamHand(host), teamHand(guest));
+  const pirate = piratesOf(host)[0];
+  for (let i = 0; i < 3; i += 1) host.fireBall(pirate);
+  const wire = host.wire();
+  assert.ok(wire.e.length >= 3 && wire.s.length >= 3);
+  assert.deepEqual(cleanFoes({ ms: 1234, ...wire }), { ms: 1234, ...wire });
+  assert.deepEqual(wire.n.slice(1), [9, host.beatenBy.mine, host.beatenBy.theirs, 0, 0]);
+  // With more pirate ships and balls than there could ever be, at the far edge of the sea, it still fits.
+  host.pirates = [host.friend, ...Array.from({ length: 30 }, (_, index) => ({ ...pirate, index: index % 9, x: -1999.9, z: -1999.9, heading: -3.141, speed: 99.9, hitsLeft: 120, maxHits: 120 }))];
+  host.balls = Array.from({ length: 40 }, (_, index) => ({ id: 999_000 + index, from: { x: -1999.9, y: 5, z: -1999.9 }, to: { x: -1999.9, z: -1999.9 }, t: 0.123, seconds: 3.19, arc: 110.5, prey: host.friend, pirate }));
+  const most = host.wire();
+  assert.deepEqual([most.e.length, most.s.length], [MOST_PIRATES, MOST_BALLS]);
+  const sent = JSON.stringify({ t: 'foes', ms: 3_599_999, ...most });
+  assert.ok(sent.length < MOST_BYTES, `${sent.length} characters`);
+  assert.deepEqual(cleanFoes(most).s, most.s);
+  // Nonsense from the other game does no harm: rows that aren't rows of numbers are passed over.
+  const quiet = new TeamBattle({ slot: 1, runs: false, random: seeded(3) });
+  quiet.begin();
+  quiet.follow({ e: [null, [1, 2], 'three', [99, 0, 0, 0, 0, 0, 5, 5, 1], [1.5, 0, 0, 0, 0, 0, 5, 5, 1]], s: [[1], {}], n: ['x'] });
+  quiet.follow({});
+  quiet.follow({ e: 'all', s: 7, n: null });
+  quiet.follow(null);
+  assert.deepEqual([piratesOf(quiet).length, quiet.balls.length, quiet.state, quiet.stats.beaten], [0, 0, 'sailing', 0]);
+});
+
+test('a battle together\'s messages are passed on to the game, and its hits go from the game to the room', () => {
+  const main = readFileSync(new URL('../../games/cannon-bay/main.js', import.meta.url), 'utf8');
+  assert.match(main, /tag: \(\) => this\.friends\.sendTag\(event\.id, event\.hits\)/);
+  assert.match(main, /battle\.friendTagged\(message\.k, message\.n\)/);
+  assert.match(main, /battle\.follow\(message\)/);
+  assert.match(main, /this\.friends\.sendMove\('foes', battle\.wire\(\), this\.sinceGo\)/);
 });

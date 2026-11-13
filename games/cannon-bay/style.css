@@ -161,7 +161,8 @@ body[data-film-part='wheel'] .film-boat { animation: film-boat-turns 3s ease-in-
 }
 
 /* ---------- where the pirate ships are ---------- */
-.marks { display: none; }
+/* A layer of their own, so that one mark can go over another without going over anything else. */
+.marks { display: none; position: relative; z-index: 2; }
 
 body[data-screen='playing'] .marks { display: block; }
 
@@ -398,3 +399,11 @@ body[data-friends-race][data-screen] .bay-captains { display: none; }
 
 .mark[data-where='off'][data-friend='yes'] .mark-name { top: 34px; }
 .mark[data-friend='yes'][data-state='fired-on'] .mark-name { border-color: #3ddc84; }
+
+/* A friend on the child's side, against the pirates, has their ship's blue round their face and their name, so
+   they're never taken for a pirate captain with the same face. The arrow to them, when they're out of view, too.
+   Their mark goes over any pirate's that's in the same place, so their name can always be read. */
+.mark[data-ally='yes'] { z-index: 3; }
+.mark[data-ally='yes'] .mark-face,
+.mark[data-ally='yes'] .mark-name { border-color: #2f6fed; }
+.mark[data-where='off'][data-ally='yes'] .mark-arrow::after { border-left-color: #2f6fed; }

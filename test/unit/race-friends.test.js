@@ -694,13 +694,13 @@ test('in Cannon Bay, each ship goes to the other with only what a ship should ho
   ana.say({ t: 'ready' });
   ben.say({ t: 'ready' });
 
-  ana.say({ t: 'ship', ms: 1500.4, x: -180.12345, z: 860.456, h: 0.123456, s: 23.456, v: 0.8765, f: 12, picture: 'not this', name: 'Ana' });
-  assert.deepEqual(ben.last('ship'), { t: 'ship', from: 'aaaaaaaa', ms: 1500, x: -180.12, z: 860.46, h: 0.123, s: 23.5, v: 0.88, f: 12 });
+  ana.say({ t: 'ship', ms: 1500.4, x: -180.12345, z: 860.456, h: 0.123456, s: 23.456, v: 0.8765, f: 12, r: 'yes', picture: 'not this', name: 'Ana' });
+  assert.deepEqual(ben.last('ship'), { t: 'ship', from: 'aaaaaaaa', ms: 1500, x: -180.12, z: 860.46, h: 0.123, s: 23.5, v: 0.88, f: 12, r: 1 });
   assert.equal(ana.last('ship'), undefined, 'nobody hears their own');
   // Anything that isn't a ship's is kept within what a ship could be.
   ben.say({ t: 'ship', x: 'far', z: 99_999, h: -50, s: -3, v: 7, f: 2.6 });
-  assert.deepEqual(ana.last('ship'), { t: 'ship', from: 'bbbbbbbb', ms: 0, x: 0, z: 2000, h: -7, s: 0, v: 1, f: 3 });
-  assert.deepEqual(cleanShip({}), { ms: 0, x: 0, z: 0, h: 0, s: 0, v: 0, f: 0 });
+  assert.deepEqual(ana.last('ship'), { t: 'ship', from: 'bbbbbbbb', ms: 0, x: 0, z: 2000, h: -7, s: 0, v: 1, f: 3, r: 0 });
+  assert.deepEqual(cleanShip({}), { ms: 0, x: 0, z: 0, h: 0, s: 0, v: 0, f: 0, r: 0 });
 
   // The game of the ship that fired says it hit, with how many it has, so one lost is made up by the next.
   ana.say({ t: 'hit', ms: 2000.2, r: 1, m: 'ball', d: 1, tot: 3, picture: 'not this' });
@@ -708,6 +708,6 @@ test('in Cannon Bay, each ship goes to the other with only what a ship should ho
   assert.equal(ana.last('hit'), undefined);
   ana.say({ t: 'done', ms: 180_000, n: 42, w: 1 });
   assert.deepEqual(ben.last('done'), { t: 'done', from: 'aaaaaaaa', ms: 180_000, n: 42, w: 1 });
-  const biggest = JSON.stringify({ t: 'ship', from: 'abcdefghijkl', ...cleanShip({ ms: 3_599_999, x: -1999.99, z: -1999.99, h: -6.999, s: 99.9, v: 0.99, f: 999_999 }) });
+  const biggest = JSON.stringify({ t: 'ship', from: 'abcdefghijkl', ...cleanShip({ ms: 3_599_999, x: -1999.99, z: -1999.99, h: -6.999, s: 99.9, v: 0.99, f: 999_999, r: 1 }) });
   assert.ok(biggest.length < 160, `${biggest.length} long`);
 });

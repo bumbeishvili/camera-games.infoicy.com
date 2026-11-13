@@ -71,9 +71,10 @@
 //                                      what's left of their order, and a how many claimed fruit the stand has
 //                                      counted. Each player claims the fruit their glove slices, and its id says
 //                                      what kind of fruit it was. Their glove goes as hand, and their points as score
-//   ship   { ms, x, z, h, s, v, f }        where their ship is in Cannon Bay: where on the water, which way it
-//                                      heads, how fast, how far its sails are up, from 0 to 1, and f, how many
-//                                      cannonballs it has fired so far, for the other game to show them coming
+//   ship   { ms, x, z, h, s, v, f, r }     where their ship is in Cannon Bay: where on the water, which way it
+//                                      heads, how fast, how far its sails are up, from 0 to 1, f, how many
+//                                      cannonballs it has fired so far, for the other game to show them coming,
+//                                      and whether their child is resting
 //   catcher { ms, x, y, v, o, p, z, h, m, n }   their glove in Spider Catcher: where it is in the garden, as a child
 //                                      playing with the right hand and a little reach help would see it, 0 to 1 across
 //                                      and down, whether it can be seen and is open, and p, its 21 points, as in hand.
@@ -87,8 +88,10 @@
 //                                      is resting, shown with little z's over it, and whether their hand is open
 //   foes   { ms, e, s, n }                 playing together against the computer's, from the host's game, which runs
 //                                      them for everyone: in Tank Patrol, e is each robot tank still rolling, s each
-//                                      shell coming over, and n how it's going. Each of e and s is a row of numbers,
-//                                      and n is numbers: see wire in games/tank-patrol/team.js. Only numbers pass
+//                                      shell coming over, and n how it's going, and in Cannon Bay e is each pirate
+//                                      ship afloat and s each of their cannonballs. Each of e and s is a row of
+//                                      numbers, and n is numbers: see wire in games/tank-patrol/team.js and
+//                                      games/cannon-bay/team.js. Only numbers pass
 //   tag    { k, n }                        this player's shot has hit the computer's k, n times in all so far, as
 //                                      their own game decides. Only the host's game hears it, as it runs them
 //   can    { ms, u, y, v, tip, f, p }      where their watering can is in Giraffe's Garden: u how far along the row of
@@ -375,7 +378,8 @@ export function cleanStand(message) {
 
 /**
  * Only what a ship in Cannon Bay should hold, rounded: where it is on the water and which way it heads, how
- * fast it goes, how far its sails are up, and f, how many cannonballs it has fired so far.
+ * fast it goes, how far its sails are up, f, how many cannonballs it has fired so far, and whether its child is
+ * resting.
  */
 export function cleanShip(message) {
   return {
@@ -386,6 +390,7 @@ export function cleanShip(message) {
     s: number(message.s, 0, 100, 1),
     v: number(message.v, 0, 1, 2),
     f: number(message.f, 0, 1_000_000, 0),
+    r: message.r ? 1 : 0,
   };
 }
 

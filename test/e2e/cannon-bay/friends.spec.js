@@ -1,7 +1,8 @@
-// Playing Cannon Bay with a friend: two children, each on their own computer with their own camera, battle each
-// other, ship against ship, with no pirates. Each game sails its own ship, decides its own hits and sends them,
-// and shows the friend's ship where it really is. Here they're two separate browsers, talking through the race
-// server on this computer (tools/race-server.mjs).
+// Playing Cannon Bay with a friend: two children, each on their own computer with their own camera. Against each
+// other it's ship against ship, with no pirates. Together, both ships drive off the pirates, which the game of
+// whoever made the battle runs for both. Either way each game sails its own ship, decides its own hits and sends
+// them, and shows the friend's ship where it really is. Here they're two separate browsers, talking through the
+// race server on this computer (tools/race-server.mjs).
 import { expect, openGame, show, shot, test, waitForScreen } from '../helpers.js';
 import { expectSoon, HAND_SCALE } from './helpers.js';
 
@@ -141,9 +142,10 @@ test('two friends battle ship against ship: each one\'s ship where it really is 
   test.setTimeout(420_000);
   const sockets = [];
   page.on('websocket', (socket) => sockets.push(socket.url()));
-  await openGame(page, { bayShips: 4, bayPace: 'slow', bayLevel: 'gentle', sound: true, levels: { [GAME]: 3 } }, GAME);
+  await openGame(page, { bayShips: 4, bayPace: 'slow', bayLevel: 'gentle', bayFriends: 'against', sound: true, levels: { [GAME]: 3 } }, GAME);
   const code = await makeGame(page, 'Ana');
   expect(page.url()).toContain(`#bay=${code}`);
+  await expect(page.locator('input[name="friends-team"][value="against"]')).toBeChecked();
 
   // The friend has their own speed, how hard and ships to beat, and is someone else in the other games.
   const ben = await secondPlayer(browser);
@@ -275,6 +277,303 @@ test('two friends battle ship against ship: each one\'s ship where it really is 
   await ben.context.close();
 });
 
+/** How a battle together is on one child's screen. */
+const teamView = (page) => page.evaluate(() => {
+  const { battle, game, bay, session } = window.__game;
+  const { friend } = battle;
+  const ship = friend ? bay.shipFor(friend) : null;
+  return {
+    team: Boolean(game.team),
+    duel: Boolean(game.duel),
+    runs: battle.runs ?? null,
+    slot: battle.slot ?? null,
+    total: battle.total,
+    left: battle.left,
+    beaten: battle.stats.beaten,
+    by: battle.beatenBy ?? null,
+    waiting: battle.waiting,
+    pace: battle.pace.speed,
+    reach: battle.level.zone.reach,
+    canLose: battle.level.canLose,
+    level: battle.levelNumber,
+    hearts: battle.hearts,
+    hits: battle.stats.hits,
+    resting: battle.resting,
+    paused: battle.paused,
+    state: battle.state,
+    me: { x: battle.x, z: battle.z },
+    friend: friend ? { x: friend.x, z: friend.z, ally: Boolean(friend.ally), resting: Boolean(friend.resting), captain: ship?.spec.id ?? null, seen: Boolean(ship?.root.visible), hull: ship?.look.hull } : null,
+    hull: bay.hero.look.hull,
+    pirates: battle.afloat.filter((each) => !each.friend).map(({ index, x, z, hitsLeft, maxHits }) => ({ index, x, z, hitsLeft, maxHits })),
+    balls: battle.balls.filter(({ homing }) => !homing).map(({ id, prey }) => ({ id, mine: prey === battle })),
+    captains: game.captains,
+    ownLevel: session.levels.current,
+  };
+});
+
+/**
+ * In the game that runs the pirates: its first one stays beside one of the two ships, with a few hits to go, and
+ * the others far away, none of them firing, so a test is about one thing. Runs until it's let go.
+ */
+const holdPirateBeside = (page, whose, hits = 6) => page.evaluate(([who, left]) => {
+  clearInterval(window.__holding);
+  const { battle } = window.__game;
+  const pirate = battle.afloat.find((each) => !each.friend);
+  pirate.hitsLeft = pirate.maxHits = left;
+  window.__held = pirate.index;
+  window.__holding = setInterval(() => {
+    const ship = who === 'friend' ? battle.friend : battle;
+    if (!ship) return;
+    const direction = ship.heading + Math.PI / 2;
+    for (const each of battle.afloat) {
+      if (each.friend) continue;
+      const away = each === pirate ? 95 : -640;
+      const way = each === pirate ? direction : ship.heading;
+      Object.assign(each, { x: ship.x + Math.sin(way) * away, z: ship.z - Math.cos(way) * away, mode: 'away', spot: { x: each.x, z: each.z }, modeLeft: 5, runAt: -1, fireIn: 100, burstLeft: 0 });
+      if (each === pirate) each.heading = ship.heading;
+    }
+  }, 16);
+  return pirate.index;
+}, [whose, hits]);
+
+test('two friends sail together against the pirates: the same pirate ships on both screens, each one\'s hits counting, and both winning together', async ({ page, browser }) => {
+  test.setTimeout(480_000);
+  const sockets = [];
+  page.on('websocket', (socket) => sockets.push(socket.url()));
+  // Together is how it comes. Ana's own battles are on Tough, at level 3, which a battle together leaves alone.
+  await openGame(page, { bayShips: 4, bayPace: 'slow', bayLevel: 'tough', levels: { [GAME]: 3 } }, GAME);
+  const code = await makeGame(page, 'Ana');
+  await expect(page.locator('input[name="friends-team"][value="together"]')).toBeChecked();
+  await expect(page.locator('#friends-how')).toContainText('drive the pirates off together');
+
+  // The friend has chosen against each other for the games they make, has their own speed and ships to beat, and
+  // is someone else in the other games. They play the host's game, together.
+  const ben = await secondPlayer(browser);
+  await openGame(ben.page, { bayShips: 9, bayPace: 'fast', bayLevel: 'gentle', fighter: 'kit', bayFriends: 'against' }, GAME, `#bay=${code}`);
+  await nameIs(ben.page, 'Ben');
+  await expect(page.locator('#friends-here')).toContainText('Ben');
+  await expect(ben.page.locator('input[name="friends-team"][value="together"]')).toBeChecked();
+  await expect(ben.page.locator('input[name="friends-team"][value="against"]')).toBeDisabled();
+  await expect(ben.page.locator('#friends-teams-whose')).toHaveText('Ana chose.');
+  // Both close their hands once the hand check is done, so for now nobody fires.
+  await bothPlaying(page, ben.page, [FIST, FIST]);
+
+  // Ana's battle for both: her 4 pirate ships, each taking twice the hits, at her speed, with nothing from the
+  // levels. The pirates are as on Gentle for both, and each has their own firing zones. Her game runs the pirates.
+  const [ana, his] = [await teamView(page), await teamView(ben.page)];
+  expect([ana.team, his.team, ana.duel, his.duel]).toEqual([true, true, false, false]);
+  expect([ana.runs, his.runs, ana.slot, his.slot]).toEqual([true, false, 0, 1]);
+  expect([ana.total, his.total, ana.level, his.level]).toEqual([4, 4, 1, 1]);
+  expect([ana.pace, his.pace]).toEqual([24, 24]);
+  expect([ana.canLose, his.canLose]).toEqual([false, false]);
+  expect(his.reach).toBeGreaterThan(ana.reach);
+  // The same captains, in the same order, on both screens, and four faces in the row along the top.
+  expect(ana.captains).toHaveLength(4);
+  expect(his.captains).toEqual(ana.captains);
+  for (const each of [page, ben.page]) {
+    await expect(each.locator('#bay-captains .captain-face')).toHaveCount(4);
+    await expect(each.locator('#bay-left')).toBeVisible();
+    await expect(each.locator('#bay-left')).toHaveText('4');
+    await expect(each.locator('#hearts')).toBeVisible();
+    await expect(each.locator('#duel-time')).toBeHidden();
+    await expect(each.locator('#story-line')).not.toHaveText('');
+  }
+  // Each has the other's ship beside their own, on their side: a blue one of its own, not a pirate captain's,
+  // with the friend's character at the helm, and their name over it.
+  for (const [here, there, captain] of [[ana, his, 'kit'], [his, ana, 'giraffe']]) {
+    expect(here.friend.ally).toBe(true);
+    expect([here.friend.seen, here.friend.captain]).toEqual([true, captain]);
+    expect(here.friend.hull).toBe('#2f6fed');
+    expect(here.friend.hull).not.toBe(here.hull);
+    expect(Math.hypot(here.friend.x - there.me.x, here.friend.z - there.me.z)).toBeLessThan(30);
+  }
+  await expect(page.locator('.mark[data-friend="yes"] .mark-name')).toHaveText('Ben');
+  await expect(ben.page.locator('.mark[data-friend="yes"] .mark-name')).toHaveText('Ana');
+  // The same pirate ships on both screens, each taking twice the hits, where Ana's game has them.
+  await expectSoon(async () => (await teamView(ben.page)).pirates.length, 10_000).toBeGreaterThan(0);
+  await expectSoon(async () => {
+    const [here, there] = await Promise.all([teamView(page), teamView(ben.page)]);
+    if (here.pirates.length !== there.pirates.length) return 9999;
+    return Math.max(...here.pirates.map((pirate, index) => (there.pirates[index].index === pirate.index && there.pirates[index].maxHits === pirate.maxHits ? Math.hypot(there.pirates[index].x - pirate.x, there.pirates[index].z - pirate.z) : 9999)));
+  }, 10_000).toBeLessThan(40);
+  expect(ana.pirates.every(({ maxHits }) => maxHits === 60)).toBe(true);
+  await shot(page, 'bay-together-start');
+  await ben.page.screenshot({ path: 'test-results/screens/bay-together-start-ben.png' });
+
+  // One pirate ship stays beside Ben's ship. He opens his hand, and his cannons fire by themselves: each hit shows
+  // on his screen, and counts on Ana's, where the pirate ship really is. His balls are seen flying at it on hers.
+  const first = await holdPirateBeside(page, 'friend');
+  await page.evaluate(() => {
+    const { battle } = window.__game;
+    const shown = battle.friendFired.bind(battle);
+    window.__friendFired = 0;
+    battle.friendFired = (count) => {
+      window.__friendFired += count;
+      shown(count);
+    };
+  });
+  await expectSoon(async () => (await teamView(ben.page)).pirates.find(({ index }) => index === first)?.maxHits).toBe(6);
+  await show(ben.page, ...OPEN);
+  await expectSoon(async () => (await teamView(ben.page)).hits, 30_000).toBeGreaterThanOrEqual(1);
+  await expectSoon(async () => {
+    const pirate = (await teamView(page)).pirates.find(({ index }) => index === first);
+    return pirate ? pirate.maxHits - pirate.hitsLeft : 99;
+  }, 5000).toBeGreaterThanOrEqual(1);
+  await expectSoon(() => page.evaluate(() => window.__friendFired), 10_000).toBeGreaterThan(0);
+  await ben.page.screenshot({ path: 'test-results/screens/bay-together-ben-fires.png' });
+  await shot(page, 'bay-together-ben-fires-ana');
+  // He beats it: it goes down on both screens, and it's his on both.
+  await expectSoon(async () => (await teamView(page)).beaten, 30_000).toBe(1);
+  await expectSoon(async () => (await teamView(ben.page)).beaten, 5000).toBe(1);
+  expect([(await teamView(page)).by, (await teamView(ben.page)).by]).toEqual([{ mine: 0, theirs: 1 }, { mine: 1, theirs: 0 }]);
+  expect((await teamView(page)).hits).toBe(0);
+  for (const each of [page, ben.page]) await expect(each.locator('#bay-left')).toHaveText('3');
+  await show(ben.page, ...FIST);
+
+  // Ana beats one too, which shows on Ben's screen as hers.
+  const second = await holdPirateBeside(page, 'mine');
+  await show(page, ...OPEN);
+  await expectSoon(async () => (await teamView(page)).beaten, 40_000).toBe(2);
+  await expectSoon(async () => (await teamView(ben.page)).by, 5000).toEqual({ mine: 1, theirs: 1 });
+  expect((await teamView(ben.page)).pirates.some(({ index }) => index === second)).toBe(false);
+  await show(page, ...FIST);
+  await page.evaluate(() => clearInterval(window.__holding));
+
+  // A pirate's cannonball aimed true at Ben's ship shows on both screens, and costs him a heart he can't run out
+  // of, on his screen only.
+  await show(ben.page, ...OPEN);
+  await page.waitForTimeout(600);
+  const before = [(await teamView(page)).hearts, (await teamView(ben.page)).hearts];
+  const fired = await page.evaluate(() => {
+    const { battle } = window.__game;
+    battle.level = { ...battle.level, hitChance: 1 };
+    const pirate = battle.afloat.find((each) => !each.friend);
+    const { friend } = battle;
+    Object.assign(pirate, { x: friend.x + 95, z: friend.z, burstSide: -1, fireIn: 100, burstLeft: 0 });
+    // Whichever ship this pirate would go for, this ball is for the friend's.
+    const prey = battle.preyOf.bind(battle);
+    battle.preyOf = () => friend;
+    battle.fireBall(pirate);
+    battle.preyOf = prey;
+    battle.level = { ...battle.level, hitChance: 0 };
+    return battle.balls.at(-1).id;
+  });
+  await expectSoon(async () => (await teamView(ben.page)).balls.find(({ id }) => id === fired)?.mine, 5000).toBe(true);
+  expect((await teamView(page)).balls.find(({ id }) => id === fired)?.mine).toBe(false);
+  await expectSoon(async () => (await teamView(ben.page)).hearts, 10_000).toBe(before[1] - 1);
+  expect((await teamView(page)).hearts).toBe(before[0]);
+
+  // Through it all, nothing flashes on either screen.
+  for (const each of [page, ben.page]) {
+    const reading = await brightnessOverFrames(each, 150);
+    console.log('biggest brightness step through a battle together', biggestStep(reading));
+    expect(biggestStep(reading)).toBeLessThan(6);
+  }
+
+  // Ben closes his hand, and after a few seconds he's resting: every pirate goes for Ana's ship, and they keep
+  // going for her. When she rests too, they sail in circles and wait, on both screens.
+  await show(ben.page, ...FIST);
+  await show(page, ...OPEN);
+  await expectSoon(async () => (await teamView(ben.page)).resting, 15_000).toBe(true);
+  await expectSoon(async () => (await teamView(page)).friend.resting, 5000).toBe(true);
+  expect([(await teamView(page)).paused, (await teamView(ben.page)).paused]).toEqual([false, false]);
+  await show(page, ...FIST);
+  await expectSoon(async () => (await teamView(page)).paused, 15_000).toBe(true);
+  await expectSoon(async () => (await teamView(ben.page)).paused, 5000).toBe(true);
+
+  // The pirates that are left are beaten, one after another, in Ana's game: both win, together.
+  await show(page, ...OPEN);
+  await show(ben.page, ...OPEN);
+  await page.evaluate(() => {
+    window.__beating = setInterval(() => {
+      const { battle } = window.__game;
+      const pirate = battle.afloat.find((each) => !each.friend);
+      if (pirate && battle.state === 'sailing') battle.beat(pirate);
+    }, 700);
+  });
+  await waitForScreen(page, 'finish');
+  await waitForScreen(ben.page, 'finish');
+  await page.evaluate(() => clearInterval(window.__beating));
+  for (const each of [page, ben.page]) await expect(each.locator('.friends-results li.is-racing')).toHaveCount(0);
+  const [hers, ours] = [await teamView(page), await teamView(ben.page)];
+  expect([hers.state, ours.state, hers.left, ours.left]).toEqual(['won', 'won', 0, 0]);
+  expect([hers.beaten, ours.beaten]).toEqual([4, 4]);
+  expect(hers.by.mine + hers.by.theirs).toBe(4);
+  expect(ours.by).toEqual({ mine: hers.by.theirs, theirs: hers.by.mine });
+  const ships = (count) => `${count} ${count === 1 ? 'ship' : 'ships'} beaten`;
+  for (const [each, mine, theirs, friend] of [[page, hers.by.mine, hers.by.theirs, 'Ben'], [ben.page, ours.by.mine, ours.by.theirs, 'Ana']]) {
+    await expect(each.locator('#screen-finish h2')).toHaveText('You saved the treasure together!');
+    await expect(each.locator('#finish-hero')).toHaveText('4');
+    await expect(each.locator('.finish-hero')).toContainText('beaten together');
+    await expect(each.locator('.friends-results li')).toHaveCount(2);
+    await expect(each.locator('.friends-results li.is-you')).toContainText(`You ${ships(mine)}`);
+    await expect(each.locator('.friends-results li:not(.is-you)')).toContainText(`${friend} ${ships(theirs)}`);
+    // Nobody is first or second: they're on the same side.
+    await expect(each.locator('.friends-results .friends-place').first()).toBeHidden();
+  }
+  await page.waitForTimeout(500);
+  await shot(page, 'bay-together-finish');
+  await ben.page.screenshot({ path: 'test-results/screens/bay-together-finish-ben.png' });
+
+  // Nobody's own level moves on, nobody's settings change, and the only connection was to the race server.
+  expect(hers.ownLevel).toBe(3);
+  expect(ours.ownLevel).toBe(1);
+  expect(await ben.page.evaluate(() => [window.__game.session.settings.bayShips, window.__game.session.settings.bayPace, window.__game.session.settings.bayFriends])).toEqual([9, 'fast', 'against']);
+  expect(await page.evaluate(() => window.__game.session.settings.bayLevel)).toBe('tough');
+  expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/cannon-bay/${code}?make=1`]);
+  expect(ben.errors).toEqual([]);
+  await ben.context.close();
+});
+
+test('together, a friend who goes leaves whoever made the battle to finish it, with half the hits still to make', async ({ page, browser }) => {
+  test.setTimeout(300_000);
+  await openGame(page, { bayShips: 4 }, GAME);
+  const code = await makeGame(page, 'Ana');
+  const ben = await secondPlayer(browser);
+  await openGame(ben.page, {}, GAME, `#bay=${code}`);
+  await bothPlaying(page, ben.page);
+  await expectSoon(async () => (await teamView(ben.page)).pirates.length, 10_000).toBeGreaterThan(0);
+  const before = await teamView(page);
+  expect(before.friend.ally).toBe(true);
+  expect(before.pirates.every(({ maxHits }) => maxHits === 60)).toBe(true);
+  await ben.context.close();
+  await expectSoon(async () => (await teamView(page)).friend, 20_000).toBe(null);
+  const alone = await teamView(page);
+  expect([alone.state, alone.total, alone.runs]).toEqual(['sailing', 4, true]);
+  expect(alone.pirates.every(({ maxHits }) => maxHits <= 30)).toBe(true);
+  await expect(page.locator('.mark[data-friend="yes"]')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__game.session.screen)).toBe('playing');
+});
+
+test('together, if whoever made the battle goes, their friend\'s game takes the pirates over as they are, and they carry on', async ({ page, browser }) => {
+  test.setTimeout(300_000);
+  // Ben makes it this time, in the other browser, and the child here is the friend.
+  const ben = await secondPlayer(browser);
+  await openGame(ben.page, { bayShips: 4 }, GAME);
+  const code = await makeGame(ben.page, 'Ben');
+  await openGame(page, {}, GAME, `#bay=${code}`);
+  await bothPlaying(ben.page, page);
+  await expectSoon(async () => (await teamView(page)).pirates.length, 10_000).toBeGreaterThan(0);
+  const before = await teamView(page);
+  expect([before.runs, before.total, before.waiting]).toEqual([false, 4, 0]);
+  await ben.context.close();
+  await expectSoon(async () => (await teamView(page)).runs, 20_000).toBe(true);
+  const mine = await teamView(page);
+  expect([mine.state, mine.friend, mine.total]).toEqual(['sailing', null, 4]);
+  // The pirate ships that were there are still there, now this game's to run, and the rest are still to come.
+  expect(mine.pirates.map(({ index }) => index)).toEqual(expect.arrayContaining(before.pirates.map(({ index }) => index)));
+  expect(mine.pirates.length + mine.waiting + mine.beaten).toBe(4);
+  // And they go on sailing about, after this ship now.
+  await expectSoon(async () => {
+    const now = await teamView(page);
+    return Math.max(...now.pirates.map((pirate) => {
+      const was = mine.pirates.find(({ index }) => index === pirate.index);
+      return was ? Math.hypot(pirate.x - was.x, pirate.z - was.z) : 0;
+    }));
+  }, 20_000).toBeGreaterThan(40);
+  expect(await page.evaluate(() => window.__game.session.screen)).toBe('playing');
+});
+
 test('a game is for two: a third friend is told it already has two players', async ({ page, browser }) => {
   await openGame(page, {}, GAME);
   const code = await makeGame(page, 'Ana');
@@ -293,7 +592,7 @@ test('a game is for two: a third friend is told it already has two players', asy
 
 test('resting is never punished: with both hands resting nobody fires, nothing is lost, and equal points share the win', async ({ page, browser }) => {
   test.setTimeout(300_000);
-  await openGame(page, { bayShips: 6 }, GAME);
+  await openGame(page, { bayShips: 6, bayFriends: 'against' }, GAME);
   const code = await makeGame(page, 'Ana');
   const ben = await secondPlayer(browser);
   await openGame(ben.page, {}, GAME, `#bay=${code}`);
@@ -321,7 +620,7 @@ test('resting is never punished: with both hands resting nobody fires, nothing i
 
 test('a friend who goes in the middle ends the battle for the other, who can play on their own again', async ({ page, browser }) => {
   test.setTimeout(300_000);
-  await openGame(page, {}, GAME);
+  await openGame(page, { bayFriends: 'against' }, GAME);
   const code = await makeGame(page, 'Ana');
   const ben = await secondPlayer(browser);
   await openGame(ben.page, {}, GAME, `#bay=${code}`);
