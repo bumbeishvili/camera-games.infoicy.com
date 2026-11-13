@@ -258,7 +258,8 @@ export class GameSession {
     this.hud.prompt.clear();
     const { snapshot } = this.monitor;
     for (const side of ['left', 'right']) this.hud.panelHands[side].update(snapshot[side], snapshot.otherHandSeen);
-    this.game.settingChanged?.({ given: 'open' });
+    // A game that gives more than its open move to its hands hears of this as of any other row.
+    if (this.mapping) this.game.settingChanged?.({ given: 'open' });
     saveSettings(settings);
   }
 
