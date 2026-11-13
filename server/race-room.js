@@ -86,6 +86,13 @@
 //                                      claim it was caught with, or -1, m which of that place's spiders are home on
 //                                      their screen, a bit each, and n how many they've brought home. Everyone makes
 //                                      the same spiders from the seed, and claims each one their glove closes on
+//   jigsaw { ms, x, y, v, o, p, h, n, d }  their glove in Giraffe's Puzzles: where it is on the table, 0 to 1 across
+//                                      and down it, whether it can be seen and is open, and p, its 21 points, as in
+//                                      hand. h is the piece in their hand, as the claim it was picked up with (the
+//                                      piece's number times 1000, plus which grab of it this is), or -1, n how many
+//                                      pieces they've put in place, and d each piece they were the last to hold, as
+//                                      [claim, x, y, angle, placed]. Everyone lays the same puzzle out from the seed,
+//                                      and claims each piece their open hand comes to. It's passed on to the others
 //   tank   { ms, x, z, h, a, s, n, r, o }   where their tank is in Tank Patrol, across and along the valley, which
 //                                      way it faces and its turret points, how fast it's going, how many shots it
 //                                      has fired, so the friend's game can show them coming, whether their child
@@ -431,6 +438,31 @@ export function cleanCatcher(message) {
   };
 }
 
+const MOST_PUZZLE_PIECES = 40; // Giraffe's Puzzles: more than a game of it ever has.
+
+/**
+ * Only what a player in Giraffe's Puzzles should tell: where their glove is on the table, from 0 to 1 across and
+ * down it, whether it can be seen and is open, with its 21 points while it can be seen, or none, h, the claim of
+ * the piece in their hand, or -1, n, how many pieces they've put in place, and d, each piece they were the last to
+ * hold, as [claim, x, y, angle, placed]: where it lies on the table, how far it's turned, and 1 once it's in place.
+ */
+export function cleanJigsaw(message) {
+  const points = Array.isArray(message.p) && message.p.length === 42 ? message.p.map((value) => number(value, -4, 4, 2)) : [];
+  const seen = message.v && points.length ? 1 : 0;
+  const pieces = Array.isArray(message.d) ? message.d.slice(0, MOST_PUZZLE_PIECES).filter((each) => Array.isArray(each) && each.length === 5) : [];
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    x: number(message.x, -0.5, 1.5, 3),
+    y: number(message.y, -0.5, 1.5, 3),
+    v: seen,
+    o: seen && message.o ? 1 : 0,
+    p: seen ? points : [],
+    h: typeof message.h === 'number' && Number.isFinite(message.h) ? number(message.h, -1, 1_000_000, 0) : -1,
+    n: number(message.n, 0, 1000, 0),
+    d: pieces.map(([k, x, y, angle, placed]) => [number(k, 0, 1_000_000, 0), number(x, 0, 2, 3), number(y, 0, 1, 3), number(angle, -180, 180, 0), placed ? 1 : 0]),
+  };
+}
+
 /** Only what a tank in Tank Patrol should hold, rounded: where it is in the valley, which way it and its turret point, and the rest. */
 export function cleanTank(message) {
   return {
@@ -694,6 +726,10 @@ export class RaceRoom {
         // which each game works out for itself, so here it only has to come from someone playing.
         if (!meta.racing) return;
         for (const other of others) other.send({ t: 'stand', from: meta.id, ...cleanStand(message) });
+        break;
+      case 'jigsaw':
+        // Giraffe's Puzzles: each one's glove, and the pieces they've had in it, go to everyone else.
+        for (const other of others) other.send({ t: 'jigsaw', from: meta.id, ...cleanJigsaw(message) });
         break;
       case 'shot': {
         // Only the host's game runs the ball, so only it hears a shot, and only from someone playing.
