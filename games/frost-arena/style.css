@@ -1,9 +1,15 @@
-/* Frost Arena. */
+/* Frost Arena. What's drawn over the yard is laid out as it is on a phone shooter: the score along the top, a
+   stick at the bottom on one side and the ring that looks round on the other, each with its buttons, and what
+   the player has left between them. */
 :root {
-  --meter-size: clamp(72px, 8.5vw, 108px);
-  --camera-small: clamp(130px, 15vw, 230px);
+  --camera-small: clamp(150px, 17vw, 260px);
   --blue: #2f6fed;
   --red: #e0533a;
+  --glass: rgb(12 24 38 / 0.42);
+  --glass-line: rgb(255 255 255 / 0.55);
+  --lit: #ffd23f;
+  --ring: clamp(96px, 9.2vw, 132px);
+  --knob: calc(var(--ring) * 0.45);
 }
 
 /* The mirror goes up by the gear while playing, so the middle of the yard can be seen. */
@@ -13,6 +19,13 @@ body[data-screen='countdown'] .camera-frame {
   right: 68px;
   transform: none;
 }
+
+/* Both hands are played with, and both are drawn on the mirror as the tracker sees them. Its frame is green with
+   both in the picture, and amber with one or neither, whatever either is doing. */
+body[data-screen='playing'] .camera-frame,
+body[data-screen='countdown'] .camera-frame { border-color: #ffb703; }
+body[data-screen='playing'][data-seen='2'] .camera-frame,
+body[data-screen='countdown'][data-seen='2'] .camera-frame { border-color: var(--good, #2fbf71); }
 
 /* A prompt goes between the numbers and the mirror, at the top. */
 body[data-screen='playing'] .prompt,
@@ -26,18 +39,10 @@ body[data-screen='playing']:has(.story.is-visible) .prompt {
   font-size: clamp(16px, 2vw, 28px);
 }
 
-/* The rifle hand's meter is at the bottom on its own side, and the helper hand's sign on the other. */
-.hands-bar {
-  left: 0;
-  right: 0;
-  transform: none;
-  justify-content: space-between;
-  padding: 0 12px;
-  pointer-events: none;
-}
-
-body[data-hands='right'] .hands-bar { justify-content: flex-end; }
-body[data-hands='left'] .hands-bar { justify-content: flex-start; }
+/* The meters for how open each hand is are for the other games: here the stick and the ring say what the hands
+   are doing. They're still there for the hand check before a match. */
+body[data-screen='playing'] .hands-bar,
+body[data-screen='countdown'] .hands-bar { display: none; }
 
 /* ---------- the numbers along the top ---------- */
 .chip-team .chip-label::before {
@@ -75,75 +80,154 @@ body[data-hands='left'] .hands-bar { justify-content: flex-start; }
 .bar {
   flex: 1;
   height: 0.5em;
-  background: #d9e3ec;
+  background: rgb(255 255 255 / 0.25);
   border: 2px solid var(--ink);
   border-radius: 999px;
   overflow: hidden;
 }
 
+.chip .bar { background: #d9e3ec; }
 .bar-fill { display: block; height: 100%; width: 100%; border-radius: 999px; transition: width 0.2s linear; }
 .bar-fill.is-health { background: #3ddc84; }
-.bar-fill.is-rounds { background: #ffc21a; }
 .bar-fill.is-power { background: #4aa3ff; transition: width 0.25s linear; }
 
-.rounds-number { min-width: 1.3em; text-align: right; }
-.chip-rounds[data-state='low'] .bar-fill { background: #ff9a3c; }
-.chip-rounds[data-state='empty'] .rounds-number,
-.chip-rounds[data-state='changing'] .rounds-number { color: #c2410c; }
-
-/* Being hit: the health bar gives a little shake. */
-#chip-health-box.is-hurt .bar { animation: bar-shake 0.4s ease-out; }
-
-@keyframes bar-shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-4px); }
-  60% { transform: translateX(3px); }
-}
-
 /* ---------- the sights ---------- */
-.sight {
+.sight,
+.from {
   display: none;
   position: fixed;
   z-index: 2;
-  left: 0;
-  top: 0;
+  left: 50%;
+  top: 50%;
   width: 0;
   height: 0;
   pointer-events: none;
 }
 
 body[data-screen='playing'] .sight,
-body[data-screen='countdown'] .sight { display: block; }
+body[data-screen='countdown'] .sight,
+body[data-screen='playing'] .from { display: block; }
 body[data-sight='none'] .sight { display: none; }
 
-.sight-ring {
+/* Four ticks, as far from the middle as a shot can go off it just now. */
+.sight { --gap: 10px; }
+
+.tick {
   position: absolute;
-  left: -30px;
-  top: -30px;
-  width: 60px;
-  height: 60px;
-  border: 4px solid rgb(255 255 255 / 0.9);
-  border-radius: 50%;
-  box-shadow: 0 0 0 2px rgb(18 48 77 / 0.55), inset 0 0 0 2px rgb(18 48 77 / 0.55);
-  transition: border-color 0.15s linear, width 0.15s ease, height 0.15s ease, left 0.15s ease, top 0.15s ease;
+  background: #fff;
+  box-shadow: 0 0 0 1.5px rgb(12 24 38 / 0.75);
+  border-radius: 1px;
+  transition: transform 0.06s linear;
 }
+
+.tick.is-up,
+.tick.is-down { left: -1.5px; width: 3px; height: 11px; }
+.tick.is-left,
+.tick.is-right { top: -1.5px; width: 11px; height: 3px; }
+.tick.is-up { top: -11px; transform: translateY(calc(var(--gap) * -1)); }
+.tick.is-down { top: 0; transform: translateY(var(--gap)); }
+.tick.is-left { left: -11px; transform: translateX(calc(var(--gap) * -1)); }
+.tick.is-right { left: 0; transform: translateX(var(--gap)); }
 
 .sight-dot {
   position: absolute;
-  left: -4px;
-  top: -4px;
-  width: 8px;
-  height: 8px;
+  left: -2px;
+  top: -2px;
+  width: 4px;
+  height: 4px;
   background: #fff;
-  border: 2px solid rgb(18 48 77 / 0.7);
+  box-shadow: 0 0 0 1.5px rgb(12 24 38 / 0.75);
   border-radius: 50%;
 }
 
-body[data-sight='on'] .sight-ring { border-color: #ffd23f; }
-body[data-sight='firing'] .sight-ring { border-color: #3ddc84; left: -24px; top: -24px; width: 48px; height: 48px; }
-body[data-sight='firing'] .sight-dot { background: #3ddc84; }
-body[data-sight='empty'] .sight-ring { border-color: #ff9a3c; border-style: dashed; }
-body[data-sight='changing'] .sight-ring { border-color: #b9c3cc; border-style: dashed; }
+/* On someone who can be hit, they're red. While the magazine is changed, they're dimmed. */
+body[data-sight='on'] .tick,
+body[data-sight='on'] .sight-dot { background: #ff5a47; }
+body[data-sight='changing'] .tick { opacity: 0.35; }
+
+/* A hit: a cross at the middle of them, which stays up while they keep landing and fades once they stop, so it
+   never blinks. Gold for a tag. */
+.sight-hit {
+  position: absolute;
+  left: -13px;
+  top: -13px;
+  width: 26px;
+  height: 26px;
+  opacity: 0;
+  transition: opacity 0.18s linear;
+  background:
+    linear-gradient(45deg, transparent 46%, #fff 46%, #fff 54%, transparent 54%),
+    linear-gradient(-45deg, transparent 46%, #fff 46%, #fff 54%, transparent 54%);
+  -webkit-mask: radial-gradient(circle, transparent 5px, #000 5.5px);
+  mask: radial-gradient(circle, transparent 5px, #000 5.5px);
+  filter: drop-shadow(0 0 1px rgb(12 24 38 / 0.9));
+}
+
+body[data-hit='on'] .sight-hit,
+body[data-hit='tag'] .sight-hit { opacity: 1; transition: none; }
+
+body[data-hit='tag'] .sight-hit {
+  left: -17px;
+  top: -17px;
+  width: 34px;
+  height: 34px;
+  background:
+    linear-gradient(45deg, transparent 45%, var(--lit) 45%, var(--lit) 55%, transparent 55%),
+    linear-gradient(-45deg, transparent 45%, var(--lit) 45%, var(--lit) 55%, transparent 55%);
+}
+
+/* Where a hit on the player came from: a red arc on a ring round the sights, turned to that side, fading away. */
+.from i {
+  position: absolute;
+  left: calc(min(34vh, 300px) * -1);
+  top: calc(min(34vh, 300px) * -1);
+  width: calc(min(34vh, 300px) * 2);
+  height: calc(min(34vh, 300px) * 2);
+  border: 9px solid transparent;
+  border-top-color: rgb(224 60 46 / 0.85);
+  border-radius: 50%;
+  box-sizing: border-box;
+  /* Only the top of the ring shows: a short arc. */
+  -webkit-mask: conic-gradient(from -24deg, #000 48deg, transparent 48deg);
+  mask: conic-gradient(from -24deg, #000 48deg, transparent 48deg);
+  opacity: 0;
+}
+
+.from i[data-on='false'] { display: none; }
+
+/* ---------- who tagged whom ---------- */
+.feed {
+  display: none;
+  position: fixed;
+  z-index: 2;
+  right: 14px;
+  top: calc(var(--camera-small) * 0.6 + 44px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-align: right;
+  pointer-events: none;
+}
+
+body[data-screen='playing'] .feed { display: block; }
+
+.feed li {
+  display: inline-block;
+  clear: both;
+  float: right;
+  margin-top: 6px;
+  padding: 4px 12px 5px;
+  background: var(--glass);
+  border-radius: 12px;
+  color: #fff;
+  font-size: clamp(13px, 1.25vw, 17px);
+  font-weight: 700;
+}
+
+.feed li[data-mine='true'] { box-shadow: inset 0 0 0 2px var(--lit); }
+.feed-mark { margin: 0 0.45em; opacity: 0.8; }
+.feed-name.is-blue { color: #9cc0ff; }
+.feed-name.is-red { color: #ffab9c; }
 
 /* ---------- where everyone is ---------- */
 .arena-marks { display: none; }
@@ -162,10 +246,10 @@ body[data-screen='playing'] .arena-marks { display: block; position: relative; z
 
 .arena-mark-face {
   position: absolute;
-  left: -22px;
-  top: -52px;
-  width: 44px;
-  height: 44px;
+  left: -18px;
+  top: -44px;
+  width: 36px;
+  height: 36px;
   background: var(--surface);
   border: 3px solid var(--red);
   border-radius: 50%;
@@ -177,17 +261,17 @@ body[data-screen='playing'] .arena-marks { display: block; position: relative; z
 
 .arena-mark-bar {
   position: absolute;
-  left: -24px;
+  left: -22px;
   top: -5px;
-  width: 48px;
-  height: 8px;
-  background: #d9e3ec;
-  border: 2px solid var(--ink);
+  width: 44px;
+  height: 7px;
+  background: rgb(12 24 38 / 0.55);
+  border: 1.5px solid rgb(255 255 255 / 0.8);
   border-radius: 999px;
   overflow: hidden;
 }
 
-.arena-mark-fill { display: block; height: 100%; width: 100%; background: var(--red); border-radius: 999px; transition: width 0.15s linear; }
+.arena-mark-fill { display: block; height: 100%; width: 100%; background: var(--red); border-radius: 999px; transition: width 0.12s linear; }
 .arena-mark[data-team='blue'] .arena-mark-fill { background: var(--blue); }
 .arena-mark-arrow { display: none; }
 
@@ -195,8 +279,8 @@ body[data-screen='playing'] .arena-marks { display: block; position: relative; z
 .arena-mark-badge {
   position: absolute;
   left: 8px;
-  top: -62px;
-  font-size: 20px;
+  top: -54px;
+  font-size: 18px;
   line-height: 1;
   filter: drop-shadow(0 1px 1px rgb(18 48 77 / 0.5));
 }
@@ -205,123 +289,277 @@ body[data-screen='playing'] .arena-marks { display: block; position: relative; z
 .arena-mark[data-where='left'] .arena-mark-badge,
 .arena-mark[data-where='right'] .arena-mark-badge { left: 12px; top: -40px; }
 
-/* Someone out of view: their face at the edge of the screen on the side they're on, with an arrow that way. */
+/* Someone out of view who's been seen lately: their face at the edge of the screen on the side they're on, with an arrow that way. */
 .arena-mark[data-where='left'] .arena-mark-face,
-.arena-mark[data-where='right'] .arena-mark-face { left: -26px; top: -26px; width: 52px; height: 52px; }
+.arena-mark[data-where='right'] .arena-mark-face { left: -24px; top: -24px; width: 48px; height: 48px; }
 .arena-mark[data-where='left'] .arena-mark-bar,
-.arena-mark[data-where='right'] .arena-mark-bar { top: 30px; }
+.arena-mark[data-where='right'] .arena-mark-bar { top: 28px; }
 
 .arena-mark[data-where='left'] .arena-mark-arrow,
 .arena-mark[data-where='right'] .arena-mark-arrow {
   display: block;
   position: absolute;
-  top: -16px;
+  top: -14px;
   border-style: solid;
   border-color: transparent;
   filter: drop-shadow(0 0 1px rgb(18 48 77 / 0.8));
 }
 
-.arena-mark[data-where='right'] .arena-mark-arrow { left: 30px; border-width: 16px 0 16px 22px; border-left-color: var(--red); }
-.arena-mark[data-where='left'] .arena-mark-arrow { left: -52px; border-width: 16px 22px 16px 0; border-right-color: var(--red); }
+.arena-mark[data-where='right'] .arena-mark-arrow { left: 28px; border-width: 14px 0 14px 20px; border-left-color: var(--red); }
+.arena-mark[data-where='left'] .arena-mark-arrow { left: -48px; border-width: 14px 20px 14px 0; border-right-color: var(--red); }
 
-/* ---------- the helper hand's sign: what the other hand is doing ---------- */
-.helper {
+/* ---------- the controls, drawn as they are on a phone ---------- */
+.pads {
   display: none;
   position: fixed;
   z-index: 3;
-  left: 16px;
-  bottom: 16px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 0 clamp(14px, 2.4vw, 40px) clamp(14px, 2.6vh, 30px);
+  pointer-events: none;
+  color: #fff;
+}
+
+body[data-screen='playing'] .pads,
+body[data-screen='countdown'] .pads { display: flex; }
+/* Playing with the left hand, the ring that looks round is on the left, and the stick on the right. */
+body[data-hands='left'] .pads { flex-direction: row-reverse; }
+
+.pad-side {
+  display: flex;
+  align-items: flex-end;
+  gap: clamp(10px, 1.2vw, 18px);
+}
+
+/* Each ring is at the outside edge, with its buttons towards the middle. */
+.pad-side.is-move { flex-direction: row; }
+.pad-side.is-aim { flex-direction: row-reverse; }
+body[data-hands='left'] .pad-side.is-move { flex-direction: row-reverse; }
+body[data-hands='left'] .pad-side.is-aim { flex-direction: row; }
+
+/* A stick, or the ring that looks round: a ring, and a knob that goes where the hand is on it. */
+.ring {
+  position: relative;
+  width: var(--ring);
+  height: var(--ring);
+  flex: none;
+  background: var(--glass);
+  border: 2px solid var(--glass-line);
+  border-radius: 50%;
+  transition: opacity 0.2s linear, border-color 0.15s linear;
+}
+
+.knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--knob);
+  height: var(--knob);
+  background: rgb(255 255 255 / 0.88);
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgb(12 24 38 / 0.5);
+  transform: translate(-50%, -50%);
+}
+
+.ring-word {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  font-size: clamp(11px, 1vw, 14px);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+  text-shadow: 0 1px 3px rgb(12 24 38 / 0.9);
+}
+
+/* The words sit above the ring, so the ring itself is at the very bottom, where a thumb would be. */
+.pads .ring { margin-top: 22px; }
+.pads .ring-word { top: auto; bottom: calc(100% + 4px); }
+
+/* A hand that hasn't come to rest yet has a ring with no knob. With no hand at all, the ring is faint, and says what to do. */
+.ring[data-state='off'] { opacity: 0.45; border-style: dashed; }
+.ring[data-state='off'] .knob,
+.ring[data-state='seen'] .knob { display: none; }
+.ring[data-state='seen'] { border-style: dashed; }
+.ring[data-state='on'] { border-color: #fff; }
+
+/* Past the ring, the view keeps turning: an arrow on that side of it, bigger the faster. */
+.ring-arrow {
+  display: none;
+  position: absolute;
+  top: 50%;
+  border-style: solid;
+  border-color: transparent;
+  border-width: 12px;
+  transform: translateY(-50%) scale(calc(0.7 + var(--edge, 0) * 0.8));
+  filter: drop-shadow(0 0 2px rgb(12 24 38 / 0.9));
+}
+
+.ring-arrow.is-right { left: calc(100% + 6px); border-left-color: var(--lit); border-right-width: 0; transform-origin: left center; }
+.ring-arrow.is-left { right: calc(100% + 6px); border-right-color: var(--lit); border-left-width: 0; transform-origin: right center; }
+.ring[data-edge='right'] .ring-arrow.is-right,
+.ring[data-edge='left'] .ring-arrow.is-left { display: block; }
+.ring[data-edge='right'],
+.ring[data-edge='left'] { border-color: var(--lit); }
+
+/* The buttons: each lit while its hand is doing it. */
+.button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px 8px 10px;
-  background: var(--surface);
-  border: 4px solid #b9c3cc;
-  border-radius: 22px;
-  box-shadow: var(--shadow);
-  font-size: clamp(13px, 1.3vw, 18px);
-  line-height: 1.15;
+  justify-content: center;
+  gap: 1px;
+  width: clamp(50px, 4.6vw, 64px);
+  height: clamp(50px, 4.6vw, 64px);
+  flex: none;
+  background: var(--glass);
+  border: 2px solid var(--glass-line);
+  border-radius: 50%;
+  font-size: clamp(9px, 0.78vw, 11px);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: background-color 0.08s linear, border-color 0.08s linear, color 0.08s linear;
 }
 
-body[data-screen='playing'] .helper,
-body[data-screen='countdown'] .helper { display: flex; }
-body[data-hands='left'] .helper { left: auto; right: 16px; }
-body[data-helper='open'] .helper { border-color: #3ddc84; }
-body[data-helper='fist'] .helper { border-color: #ffc21a; }
-
-.helper-hand { width: clamp(34px, 3.4vw, 48px); height: auto; }
-.helper-hand rect { fill: #b9c3cc; stroke: var(--ink); stroke-width: 3; }
-.helper-hand path { fill: none; stroke: #b9c3cc; stroke-width: 7; stroke-linecap: round; }
-.helper-hand .helper-fist path { stroke: var(--ink); stroke-width: 2.5; }
-.helper-hand .helper-fist { display: none; }
-body[data-helper='open'] .helper .helper-hand rect { fill: #3ddc84; }
-body[data-helper='open'] .helper .helper-hand .helper-open path { stroke: #3ddc84; }
-body[data-helper='fist'] .helper .helper-open { display: none; }
-body[data-helper='fist'] .helper .helper-fist { display: block; }
-body[data-helper='fist'] .helper .helper-fist rect { fill: #ffc21a; }
-
-.helper-words { display: flex; flex-direction: column; }
-.helper-side::after { content: 'Left hand'; }
-body[data-hands='left'] .helper-side::after { content: 'Right hand'; }
-.helper-does::after { content: 'No hand'; }
-body[data-helper='open'] .helper-does::after { content: 'Walk'; }
-body[data-helper='fist'] .helper-does::after { content: 'Reload'; }
-
-/* ---------- a little film of what each hand does ---------- */
-.film {
-  left: 16px;
-  bottom: calc(16px + clamp(64px, 6.4vw, 84px) + 12px);
-  width: auto;
-  min-width: 0;
-  padding: 10px 14px;
-  background: var(--surface);
+.button.is-fire {
+  width: clamp(70px, 6.6vw, 92px);
+  height: clamp(70px, 6.6vw, 92px);
+  background: rgb(160 26 20 / 0.5);
+  border-color: rgb(255 150 140 / 0.8);
+  font-size: clamp(11px, 0.95vw, 13px);
 }
 
-body[data-hands='left'] .film { left: auto; right: 16px; }
+.button[data-on='true'] { background: rgb(255 255 255 / 0.85); border-color: #fff; color: var(--ink); }
+.button.is-fire[data-on='true'] { background: #e4332a; border-color: #fff; color: #fff; }
+.button.is-sprint[data-on='true'] { background: var(--lit); border-color: #fff; color: var(--ink); }
+.button.is-sprint { align-self: center; }
 
-.film-row {
+/* Changing a magazine, a ring round the reload button fills as it goes in. */
+.button.is-reload::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: conic-gradient(var(--lit) calc(var(--through, 0) * 360deg), transparent 0);
+  -webkit-mask: radial-gradient(circle, transparent calc(50% - 4px), #000 calc(50% - 3.5px));
+  mask: radial-gradient(circle, transparent calc(50% - 4px), #000 calc(50% - 3.5px));
+}
+
+/* What each is given to: a little picture of it, over its name. Something with nothing given to it isn't shown. */
+.button[hidden] { display: none; }
+.button-mark { font-size: clamp(15px, 1.5vw, 21px); font-style: normal; line-height: 1.1; }
+.button-mark:empty { display: none; }
+.button.is-fire .button-mark { font-size: clamp(19px, 2vw, 28px); }
+
+/* What the player has left, and what's in the rifle, between the two. */
+.vitals {
   display: flex;
   align-items: center;
+  gap: clamp(12px, 1.6vw, 26px);
+  padding: 8px clamp(14px, 1.6vw, 24px) 9px;
+  background: var(--glass);
+  border-radius: 18px;
+  font-weight: 800;
+  text-shadow: 0 1px 3px rgb(12 24 38 / 0.8);
+}
+
+.vital { display: flex; align-items: center; gap: 8px; }
+.vital-mark { color: #3ddc84; font-size: clamp(15px, 1.5vw, 22px); line-height: 1; }
+.vital-number { min-width: 1.7em; font-size: clamp(22px, 2.5vw, 38px); line-height: 1; text-align: right; font-variant-numeric: tabular-nums; }
+.vital.is-health .bar { width: clamp(70px, 9vw, 150px); height: 9px; border-color: rgb(255 255 255 / 0.8); }
+.vitals[data-low='true'] .vital-mark { color: #ff6b57; }
+.vitals[data-low='true'] .bar-fill.is-health { background: #ff6b57; }
+.ammo-name { font-size: clamp(11px, 1vw, 14px); letter-spacing: 0.08em; opacity: 0.85; text-transform: uppercase; }
+.ammo-of { font-size: clamp(13px, 1.3vw, 19px); opacity: 0.75; }
+.vital.is-ammo[data-state='low'] .vital-number { color: #ffb347; }
+.vital.is-ammo[data-state='empty'] .vital-number,
+.vital.is-ammo[data-state='changing'] .vital-number { color: #ff8b7a; }
+
+/* Being hit: what's left gives a little shake. */
+.vitals.is-hurt { animation: vitals-shake 0.35s ease-out; }
+
+@keyframes vitals-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  60% { transform: translateX(4px); }
+}
+
+/* ---------- what each hand does, until it's been done ---------- */
+.how {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--ring) + clamp(60px, 9vh, 96px));
+  justify-content: space-between;
+  padding: 0 clamp(14px, 2.4vw, 40px);
+  pointer-events: none;
+}
+
+body[data-screen='playing'][data-how='on'] .how,
+body[data-screen='countdown'] .how { display: flex; }
+body[data-hands='left'] .how { flex-direction: row-reverse; }
+
+.how-side {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 16px 11px;
+  background: var(--glass);
+  border-radius: 16px;
+  color: #fff;
+  font-size: clamp(13px, 1.2vw, 17px);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.how-lines { display: flex; flex-direction: column; gap: 3px; }
+.how-lines span { white-space: nowrap; }
+.how-lines span::before { content: '·'; margin-right: 0.5em; color: var(--lit); font-weight: 900; }
+.how-hand { color: var(--lit); font-size: 0.85em; letter-spacing: 0.08em; text-transform: uppercase; }
+.how-side.is-move .how-hand::after { content: 'Left hand'; }
+.how-side.is-aim .how-hand::after { content: 'Right hand'; }
+body[data-hands='left'] .how-side.is-move .how-hand::after { content: 'Right hand'; }
+body[data-hands='left'] .how-side.is-aim .how-hand::after { content: 'Left hand'; }
+
+/* ---------- under the gear icon: what each thing is given to ---------- */
+.binds .bind {
+  display: grid;
+  grid-template-columns: 5.5em 1fr;
+  align-items: center;
   gap: 10px;
-  padding: 4px 0;
-  font-size: clamp(13px, 1.25vw, 18px);
-  white-space: nowrap;
-  animation: film-turn 9s ease-in-out infinite;
 }
 
-.film-walk { animation-delay: 3s; }
-.film-reload { animation-delay: 6s; }
-
-/* Each in turn, for three seconds, fading up and down slowly. */
-@keyframes film-turn {
-  0%, 30% { opacity: 1; }
-  38%, 94% { opacity: 0.4; }
-  100% { opacity: 1; }
+.binds select {
+  min-width: 0;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 2px solid var(--ink-soft);
+  border-radius: 12px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.92em;
 }
 
-.film .helper-hand { width: 30px; }
-.film .helper-hand rect { fill: #3ddc84; }
-.film .helper-hand .helper-open path { stroke: #3ddc84; }
-.film-reload .helper-open { display: none; }
-.film-reload .helper-fist { display: block; }
-.film-reload .helper-fist rect { fill: #ffc21a; }
-.film-walk .helper-hand,
-.film-reload .helper-hand { transform: scaleX(-1); }
-body[data-hands='left'] .film-fire .helper-hand { transform: scaleX(-1); }
-body[data-hands='left'] .film-walk .helper-hand,
-body[data-hands='left'] .film-reload .helper-hand { transform: none; }
-
-.film-sign { position: relative; width: 26px; height: 26px; flex: none; }
-.film-sign-fire { border: 4px solid #3ddc84; border-radius: 50%; box-shadow: 0 0 0 2px var(--ink); }
-.film-sign-fire::after { content: ''; position: absolute; left: 5px; top: 5px; width: 8px; height: 8px; background: var(--ink); border-radius: 50%; }
-.film-sign-walk::before,
-.film-sign-walk::after { content: ''; position: absolute; width: 9px; height: 15px; background: var(--ink); border-radius: 5px 5px 4px 4px; }
-.film-sign-walk::before { left: 2px; top: 9px; }
-.film-sign-walk::after { left: 15px; top: 1px; }
-.film-sign-reload::after { content: ''; position: absolute; left: 7px; top: 1px; width: 11px; height: 22px; background: #ffc21a; border: 2px solid var(--ink); border-radius: 3px; transform: skewX(-8deg); }
+/* ---------- the finish card ---------- */
+/* How long the hand was open, and how often, is what the other games are about. Here it's how the match went. */
+#finish-open,
+.summary tr:has(#sum-left-open),
+.summary tr:has(#sum-left-openings),
+.summary tr:has(#sum-left-hold),
+.summary tr:has(#sum-left-peak) { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .film-row { animation-duration: 18s; }
   .chip-team.is-up .chip-value,
   .chip-stars.is-up .chip-value,
-  #chip-health-box.is-hurt .bar { animation: none; }
+  .vitals.is-hurt { animation: none; }
+  .tick { transition: none; }
 }

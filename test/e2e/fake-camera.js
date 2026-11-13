@@ -23,6 +23,21 @@
     back: 'right',
   };
 
+  // Where the tracker finds the middle of the palm in each photo, from the middle of the photo, and how long it
+  // finds the palm, in this picture's pixels with the photo PHOTO_HEIGHT tall, for a hand on the right of the
+  // mirror. The photos are of different hands, held differently, so the palm is somewhere else in each, and a
+  // different size. With sameHand, each is drawn with the middle of its palm where the hand is said to be, and
+  // its palm as long as the open hand's: as one hand would look that opens, closes and makes shapes where it is.
+  const PALM = {
+    open: { x: -35.8, y: 57, size: 171 },
+    fist: { x: 11.5, y: -41.5, size: 134.5 },
+    victory: { x: 18.3, y: 25, size: 147.5 },
+    pointing: { x: 43.6, y: 22.2, size: 118.5 },
+    relaxed: { x: -15.1, y: -48.5, size: 273 },
+    'thumbs-up': { x: 19.2, y: 45.4, size: 113 },
+    palm: { x: 33.2, y: 11.6, size: 163.5 },
+  };
+
   const photos = {};
   const loadPhoto = (name) => {
     if (photos[name]) return photos[name];
@@ -44,6 +59,7 @@
     blur: 0, // In pixels, for a moving hand or a poor camera.
     squeeze: 1, // Each hand's photo narrower across, as a hand turned part of the way to side-on looks.
     shorten: 1, // And shorter, as a hand tipped towards the camera looks, its wrist dropped.
+    sameHand: false, // Every photo drawn as the same hand in the same place: see PALM above.
   };
   const scene = { left: 'open', right: 'open', ...DEFAULTS };
 
@@ -107,9 +123,13 @@
     // to be flipped here too, to arrive at the camera the right way round.
     const flip = PHOTO_HAND[name] === side;
     if (!image.complete || !image.naturalWidth) return;
-    const height = PHOTO_HEIGHT * scale;
+    const palm = scene.sameHand ? PALM[name] : null;
+    const fit = palm ? PALM.open.size / palm.size : 1;
+    const height = PHOTO_HEIGHT * scale * fit;
     const width = (height * image.naturalWidth) / image.naturalHeight;
     ctx.save();
+    // The palm's middle, rather than the photo's, goes where the hand is. On the left it's the other way across.
+    if (palm) ctx.translate(-(side === 'right' ? palm.x : -palm.x) * scale * fit, -palm.y * scale * fit);
     ctx.translate(centreX, centreY);
     ctx.rotate((scene.rotate * Math.PI) / 180);
     if (flip) ctx.scale(-1, 1);

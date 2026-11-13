@@ -1,4 +1,4 @@
-// The picture of Frost Arena: the yard as the child sees it, from where they stand, down the sights of their
+// The picture of Frost Arena: the yard as the player sees it, from where they stand, down the sights of their
 // rifle. The rules are in arena.js, and this only shows what they say.
 //
 // It's a little more real than the other games: a snowy yard with wooden crates, steel containers and concrete
@@ -6,14 +6,15 @@
 // nothing flashes or strobes, as seizures are more common in children with hemiplegia: there's no muzzle flash,
 // a shot is a thin line that fades and a little soft smoke, a hit is a puff of snow, and the picture itself never
 // changes brightness. Nobody gets hurt: someone tagged out sits down in a few stars and is back at their end.
+// The rifle's kick is in the view, as it is in where the shots go: it climbs as it fires and comes back down.
 import * as THREE from '../../vendor/three/three.module.js';
 import { Fighter3D, makePose } from '../../core/body/characters.js';
 import { byId as characterWithId } from '../../core/body/roster.js';
 import { Sparks } from '../../core/body/sparks.js';
-import { BLOCKS, RIFLES, YARD, forwardOf, reachAlong } from './arena.js';
+import { BLOCKS, EYES, RIFLES, YARD, forwardOf, reachAlong } from './arena.js';
 
-const EYES = 1.55; // How high the child's eyes are.
 const FOV = 62;
+const SPRINT_FOV = 1.05; // Sprinting, the view opens out a little.
 const SIZE = 0.95; // The characters, beside the crates.
 const SLOW_FRAME_SECONDS = 1 / 34;
 const SLOW_CHECK_FRAMES = 90;
@@ -23,6 +24,8 @@ const FLAKES = 500; // Snowflakes in the air, from the level where it snows.
 const CLEAR_DAY = { near: 38, far: 120 };
 const SNOWING = { near: 14, far: 46 };
 const CRATE_COLOURS = { double: '#ffc21a', boots: '#4aa3ff' };
+// What comes off whatever a shot meets: snow off the snow, splinters off wood, and dust off steel and concrete.
+const CHIPS = { snow: '#ffffff', crate: '#c9a473', crates: '#c9a473', fence: '#c9a473', container: '#cfd6dc', wall: '#c4c7cb' };
 export const TEAM_COLOURS = ['#2f6fed', '#e0533a'];
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const damp = (value, target, rate, dt) => value + (target - value) * (1 - Math.exp(-rate * dt));
@@ -503,7 +506,8 @@ export class Yard {
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     // A little wider on a tall window, so there's as much to see either side.
-    this.camera.fov = FOV * clamp(1.5 / (width / height) ** 0.5, 0.85, 1.25);
+    this.fov = FOV * clamp(1.5 / (width / height) ** 0.5, 0.85, 1.25);
+    this.camera.fov = this.fov;
     this.camera.updateProjectionMatrix();
   }
 
@@ -541,25 +545,32 @@ export class Yard {
     this.placeCamera(1 / 60, true);
   }
 
-  /** The child sees from where they stand, the way they're looking. */
+  /** The player sees from where they stand, the way they're looking, with the rifle's kick in it. */
   placeCamera(dt, snap = false) {
     const { camera, match } = this;
     const { child } = match;
-    const walking = clamp(child.speed / 4, 0, 1) * (this.reducedMotion ? 0 : 1);
+    const walking = clamp(child.speed / 4.4, 0, 1.4) * (this.reducedMotion ? 0 : 1);
     this.sway += dt * (3 + child.speed * 1.6);
-    const bob = Math.sin(this.sway * 2) * 0.035 * walking;
+    const bob = Math.sin(this.sway * 2) * 0.03 * walking;
     const sat = child.state === 'out' ? 0.75 : 0;
     this.eye = snap ? EYES - sat : damp(this.eye ?? EYES, EYES - sat, 5, dt);
     camera.position.set(child.x, this.eye + bob, child.z);
-    this.kick = damp(this.kick, 0, 14, dt);
-    camera.rotation.set(this.kick * 0.012, -child.heading, 0);
+    this.kick = damp(this.kick, 0, 16, dt);
+    camera.rotation.set(child.punch.pitch, -(child.heading + child.punch.yaw), 0);
+    // Sprinting, the view opens out a little, and the rifle comes down across the body: it can't be aimed.
+    this.sprint = damp(this.sprint ?? 0, child.sprinting ? 1 : 0, 8, dt);
+    const fov = this.fov * (1 + (SPRINT_FOV - 1) * this.sprint * (this.reducedMotion ? 0 : 1));
+    if (Math.abs(camera.fov - fov) > 0.01) {
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
+    }
     // The rifle: down to the right, swaying a little with each step, kicking back with each shot, and tipped
     // down and across while its magazine is changed.
     const changing = child.reloadLeft > 0 ? 1 : 0;
     this.reloadShare = damp(this.reloadShare, changing, 9, dt);
     const { rifle } = this;
-    rifle.root.position.set(0.2 + Math.sin(this.sway) * 0.006 * walking, -0.2 - this.reloadShare * 0.08 + bob * 0.3, -0.52 + this.kick * 0.035);
-    rifle.root.rotation.set(0.02 - this.kick * 0.03 - this.reloadShare * 0.5, 0.11 + this.reloadShare * 0.5, -this.reloadShare * 0.45);
+    rifle.root.position.set(0.2 + Math.sin(this.sway) * 0.006 * walking - this.sprint * 0.05, -0.2 - this.reloadShare * 0.08 + bob * 0.3 - this.sprint * 0.06, -0.52 + this.kick * 0.04);
+    rifle.root.rotation.set(0.02 - this.kick * 0.035 - this.reloadShare * 0.5 - this.sprint * 0.22, 0.11 + this.reloadShare * 0.5 + this.sprint * 0.5, -this.reloadShare * 0.45 - this.sprint * 0.2);
     // The magazine drops out for the first part of the change, and a new one comes up for the rest.
     const total = RIFLES[child.rifle].reload;
     const through = changing ? 1 - child.reloadLeft / total : 1;
@@ -587,19 +598,24 @@ export class Yard {
     return out.set(trooper.x, trooper.state === 'out' ? 0.6 : 1.1, trooper.z);
   }
 
-  onShot({ by, at, hit }) {
+  onShot({ by, at, hit, to, what }) {
     const { match, point, other } = this;
     const mine = by === match.child;
     if (mine) {
-      this.kick = Math.min(1.6, this.kick + RIFLES[by.rifle].kick * (this.reducedMotion ? 0.3 : 1));
+      this.kick = Math.min(1.6, this.kick + (this.reducedMotion ? 0.3 : 1));
       this.rifle.muzzle.getWorldPosition(point);
     } else {
       const player = this.players.get(by);
       if (!player) return;
       player.muzzleAt(point);
     }
-    // A shot that lands goes to them. One that doesn't goes just past, as far as whatever's behind.
-    if (hit) {
+    if (to) {
+      // The player's own shot: to wherever the rules say it ended, with a little of whatever it met coming off.
+      other.set(to.x, to.y, to.z);
+      const chip = CHIPS[what];
+      if (chip) this.sparks.emit({ shape: 'puff', colour: chip, at: other, velocity: [(Math.random() - 0.5) * 0.6, 0.9, (Math.random() - 0.5) * 0.6], life: 0.45, size: what === 'snow' ? 0.3 : 0.22, grow: 0.8, opacity: 0.75 });
+    } else if (hit) {
+      // One that lands goes to them. One that doesn't goes just past, as far as whatever's behind.
       this.chestOf(at, other);
     } else {
       const heading = Math.atan2(at.x - by.x, -(at.z - by.z)) + (Math.random() < 0.5 ? -1 : 1) * (0.04 + Math.random() * 0.05);
@@ -726,7 +742,12 @@ export class Yard {
     this.snow.position.set(child.x, 0, child.z);
   }
 
-  /** Where something in the yard is on the screen, in pixels, and whether it's behind the child. */
+  /** How many pixels from the middle of the screen something this far off the middle of the view is, in radians. */
+  pixelsFor(angle) {
+    return (Math.tan(angle) / Math.tan(((this.camera.fov * Math.PI) / 180) / 2)) * (this.height / 2);
+  }
+
+  /** Where something in the yard is on the screen, in pixels, and whether it's behind the player. */
   project(x, y, z) {
     const at = this.point.set(x, y, z).project(this.camera);
     return { x: ((at.x + 1) / 2) * this.width, y: ((1 - at.y) / 2) * this.height, behind: at.z > 1 };

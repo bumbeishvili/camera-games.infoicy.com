@@ -5,8 +5,6 @@
   {"id": "giraffe-back", "text": "Back at our end! Off we go again!", "ka": "ისევ ჩვენს მხარეს ვართ! წავედით თავიდან!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
   {"id": "finish", "text": "We won the match!", "ka": "მატჩი მოვიგეთ!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
   {"id": "so-close", "text": "So close!", "ka": "კინაღამ გამოგივიდა!"},
-  {"id": "open-to-fire", "text": "Open your hand to fire!", "ka": "გაშალე ხელი, რომ ესროლო!"},
-  {"id": "open-to-walk", "text": "Open your other hand to walk!", "ka": "გაშალე მეორე ხელი, რომ იარო!"},
-  {"id": "fist-to-reload", "text": "Make a fist with your other hand to reload!", "ka": "მეორე ხელი მუშტად შეკარი, რომ გადატენო!"},
-  {"id": "find-them", "text": "Turn to find them! Follow the arrows!", "ka": "მობრუნდი და იპოვე ისინი! ისრებს მიჰყევი!"}
+  {"id": "paused", "text": "Paused. Show your hands to play!", "ka": "პაუზა. თამაშისთვის ხელები აჩვენე!"},
+  {"id": "show-other", "text": "Show your other hand to walk!", "ka": "მეორე ხელიც აჩვენე, რომ იარო!"}
 ]

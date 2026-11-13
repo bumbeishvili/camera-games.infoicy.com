@@ -639,42 +639,66 @@ const FILMS = {
     }),
   },
   'frost-arena': {
-    settings: { arenaPace: 'medium', levels: { 'frost-arena': 3 } },
-    css: '.camera-frame { --camera-small: 24vw !important; } .helper { display: flex !important; }',
+    settings: { arenaHard: 'gentle', levels: { 'frost-arena': 3 } },
+    css: '.camera-frame { --camera-small: 24vw !important; }',
     async ready(page) {
-      await page.evaluate(() => window.__camera.show({ left: 'open', right: 'open', scale: 0.7 }));
+      await page.evaluate(() => window.__camera.show({ left: 'open', right: 'open', scale: 0.7, sameHand: true }));
       await page.locator('#start').click();
       await screenIs(page, 'playing');
       await wait(page, 500);
     },
     async play(page) {
-      // Both hands, each at its own job: the rifle hand turns to whoever can be seen, or the way to go, and is open
-      // on someone in the sights. The other is open to walk, and a fist when the magazine wants changing.
-      await page.evaluate(() => new Promise((done) => {
-        const started = performance.now();
-        let across = 0;
-        let goal = { x: -6.5, z: 0 };
-        const timer = setInterval(() => {
-          const { match } = window.__game;
-          const { child } = match;
-          const seen = match.inPlay(1).filter((other) => match.sees(child, other)).sort((a, b) => Math.hypot(a.x - child.x, a.z - child.z) - Math.hypot(b.x - child.x, b.z - child.z))[0];
-          if (Math.hypot(child.x - goal.x, child.z - goal.z) < 2.5) goal = { x: goal.x < 0 ? 6.5 : -6.5, z: -goal.z - 3 };
-          const to = seen ?? goal;
-          const wanted = Math.atan2(to.x - child.x, -(to.z - child.z));
-          const off = Math.atan2(Math.sin(wanted - child.heading), Math.cos(wanted - child.heading));
-          across += (Math.max(-1, Math.min(1, off * 1.6)) * 150 - across) * 0.12;
-          const changing = child.rounds <= 12 && !seen && child.reloadLeft === 0;
-          window.__camera.show({ left: changing || child.rounds === 0 ? 'fist' : seen ? null : 'open', right: seen ? 'open' : 'fist', scale: 0.7, rightOffsetX: across });
-          if (performance.now() - started > 16_000) {
-            clearInterval(timer);
-            done();
-          }
-        }, 50);
-      }));
+      // Two hands, as two thumbs on a phone. The right one looks round: towards whoever can be seen, or the way to
+      // go, past its ring for a big turn and back to the edge of it as the view comes round, and it closes on
+      // someone in the sights. The left one is the stick: forwards along the way with nobody about, from side to
+      // side while firing, and closed for a moment when the magazine wants changing.
+      await page.evaluate(async () => {
+        const { wayTo, stepTowards } = await import('/games/frost-arena/arena.js');
+        await new Promise((done) => {
+          const started = performance.now();
+          let tick = 0;
+          let across = 0;
+          let stickX = 0;
+          let stickY = 0;
+          let onFor = 0;
+          let closedFor = 0;
+          let way = null;
+          let goal = { x: -6.5, z: 0 };
+          const timer = setInterval(() => {
+            tick += 1;
+            const { match, controls } = window.__game;
+            const { child } = match;
+            const palm = (controls.aim.palm || 0.165) * 720;
+            const seen = match.foesOf(child).filter((other) => other.safeLeft <= 0 && match.sees(child, other)).sort((a, b) => Math.hypot(a.x - child.x, a.z - child.z) - Math.hypot(b.x - child.x, b.z - child.z))[0];
+            if (Math.hypot(child.x - goal.x, child.z - goal.z) < 2.5) goal = { x: goal.x < 0 ? 6.5 : -6.5, z: -goal.z - 3 };
+            if (!way || tick % 15 === 0) way = wayTo(goal.x, goal.z);
+            const to = seen ?? stepTowards(way, child.x, child.z);
+            const wanted = Math.atan2(to.x - child.x, -(to.z - child.z));
+            const off = Math.atan2(Math.sin(wanted - child.heading), Math.cos(wanted - child.heading));
+            // What the game has seen of the hand is a moment behind where the hand is: the turn still on its way is allowed for.
+            const inner = Math.max(-1, Math.min(1, across));
+            const coming = (inner - Math.max(-1, Math.min(1, controls.out.pad.x))) * controls.direct;
+            const want = inner + (off - coming) / controls.direct;
+            const target = Math.abs(want) > 1 ? Math.sign(want) * (1 + Math.min(0.5, (Math.abs(want) - 1) * 0.8)) : want;
+            across += Math.max(-0.09, Math.min(0.09, (target - across) * 0.35));
+            const on = seen && Math.abs(off) < Math.min(0.09, Math.atan2(0.3, Math.hypot(seen.x - child.x, seen.z - child.z)));
+            onFor = on ? onFor + 1 : 0;
+            stickX += ((seen ? Math.sign(Math.sin(tick * 0.06)) * 0.8 : 0) - stickX) * 0.2;
+            stickY += ((seen ? 0 : Math.abs(off) < 0.9 ? -1.05 : -0.3) - stickY) * 0.2;
+            if (!seen && child.rounds < 12 && child.reloadLeft === 0 && closedFor === 0) closedFor = 8;
+            if (closedFor > 0) closedFor -= 1;
+            window.__camera.show({ left: closedFor > 2 ? 'fist' : 'open', right: onFor > 2 ? 'fist' : 'open', scale: 0.7, sameHand: true, rightOffsetX: across * 0.7 * palm, leftOffsetX: stickX * 0.62 * palm, leftOffsetY: stickY * 0.62 * palm });
+            if (performance.now() - started > 18_000) {
+              clearInterval(timer);
+              done();
+            }
+          }, 33);
+        });
+      });
     },
     report: (page) => page.evaluate(() => {
-      const { tags, shots, byHand, walked } = window.__game.match.stats;
-      return { tags, shots, byHand, walked: Math.round(walked) };
+      const { tags, shots, hits, reloads, walked } = window.__game.match.stats;
+      return { tags, shots, hits, reloads, walked: Math.round(walked) };
     }),
   },
   'balloon-pop': {

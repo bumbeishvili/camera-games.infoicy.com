@@ -129,8 +129,12 @@ const BONES = {
 const PALM_LINE = [5, 9, 13, 17];
 const STRAIGHT_FINGER = 0.55;
 
-/** Draws what the tracker sees on the mirror view, each finger coloured by its own state. */
-function drawSkeleton(canvas, snapshot) {
+/**
+ * Draws what the tracker sees on the mirror view, each finger coloured by its own state. With other, the hand
+ * that isn't in play is drawn too, for a game played with both. links, if a game gives them, are pairs of a
+ * hand's points to join with a bright line, as { play, other }: a thumb and the finger it's pinched against.
+ */
+function drawSkeleton(canvas, snapshot, { other = false, links = null } = {}) {
   const { clientWidth: width, clientHeight: height } = canvas;
   if (!width || !height) return;
   const ratio = window.devicePixelRatio || 1;
@@ -145,8 +149,10 @@ function drawSkeleton(canvas, snapshot) {
   ctx.lineJoin = 'round';
   const scale = Math.max(1.4, width / 220);
 
-  for (const hand of [snapshot.left, snapshot.right]) {
-    if (!hand.image) continue;
+  const hands = [[snapshot.left, 'play'], [snapshot.right, 'play']];
+  if (other) hands.push([snapshot.other, 'other']);
+  for (const [hand, which] of hands) {
+    if (!hand?.image) continue;
     const at = (index) => [hand.image[index].x * width, hand.image[index].y * height];
     const stroke = (indices, colour, lineWidth) => {
       ctx.beginPath();
@@ -167,6 +173,10 @@ function drawSkeleton(canvas, snapshot) {
       ctx.beginPath();
       ctx.arc(x, y, scale * 2, 0, Math.PI * 2);
       ctx.fill();
+    }
+    for (const pair of links?.[which] ?? []) {
+      stroke(pair, 'rgba(18,48,77,0.7)', scale * 4.4);
+      stroke(pair, '#ffd23f', scale * 2.8);
     }
   }
 }
@@ -383,8 +393,8 @@ class PanelHand {
 
 export class Hud {
   /**
-   * choices names the game's own settings in the panel, as radio groups, and how to read
-   * each one's value: for example { laps: Number }. moves and shapes are the game's moves and the hand
+   * choices names the game's own settings in the panel, as radio groups, or as a drop-down for one with a long
+   * list to choose from, and how to read each one's value: for example { laps: Number }. moves and shapes are the game's moves and the hand
    * shapes for them (see core/shapes.js), and onShape(choice) hears a grown-up choose another for the open move.
    */
   constructor({ speak, translate, settings, choices = {}, tagline, moves = { open: 'Play', closed: null }, shapes, onShape = () => {}, onStrictness, onSettings, onRecheck }) {
@@ -392,6 +402,10 @@ export class Hud {
     this.moves = moves;
     this.frame = byId('camera-frame');
     this.skeleton = byId('skeleton');
+    // For a game played with both hands: the hand that isn't in play is drawn on the mirror too, and links() says
+    // which of each hand's points to join, as { play, other }. See drawSkeleton.
+    this.bothHands = false;
+    this.links = null;
     this.meters = {
       left: new HandMeter(byId('meter-left'), 'left'),
       right: new HandMeter(byId('meter-right'), 'right'),
@@ -424,6 +438,8 @@ export class Hud {
       // A saved value from an older version may no longer be one of the choices.
       const input = document.querySelector(`input[name="${name}"][value="${settings[name]}"]`);
       if (input) input.checked = true;
+      const list = document.querySelector(`select[name="${name}"]`);
+      if (list && [...list.options].some((option) => option.value === String(settings[name]))) list.value = String(settings[name]);
     }
     byId('setting-sound').checked = settings.sound;
     byId('setting-voice').checked = settings.voice;
@@ -436,7 +452,7 @@ export class Hud {
       input.addEventListener('change', () => onSettings({ language: input.value }));
     }
     for (const [name, read] of Object.entries(choices)) {
-      for (const input of document.querySelectorAll(`input[name="${name}"]`)) {
+      for (const input of document.querySelectorAll(`input[name="${name}"], select[name="${name}"]`)) {
         input.addEventListener('change', () => onSettings({ [name]: read(input.value) }));
       }
     }
@@ -480,7 +496,7 @@ export class Hud {
 
   /** Called on every new tracker result. */
   updateHands(snapshot) {
-    drawSkeleton(this.skeleton, snapshot);
+    drawSkeleton(this.skeleton, snapshot, { other: this.bothHands, links: this.links?.() ?? null });
     const showTarget = snapshot[snapshot.side].checked;
     this.meters.left.update(snapshot.left, { showTarget });
     this.meters.right.update(snapshot.right, { showTarget });

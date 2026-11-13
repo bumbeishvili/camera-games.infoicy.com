@@ -23,6 +23,9 @@
 //   holdStart(go)             true to wait on the 'waiting' screen after the hand check rather than count down
 //                             at once, as High Five Racers does for friends: the game calls go() when it's time
 //   chimeOnOpen               chime whenever the hand in play opens
+//   bothHands                 it's played with both hands, so both are drawn on the mirror, and not only the one in play
+//   handLinks()               which of each hand's points to join on the mirror, as { play, other }, each a list of
+//                             pairs: a thumb and the finger it's pinched against, for a game that goes by such things
 //   debug                     extra things for the automated tests to read
 //
 // A prompt from a game can say it asks for the open move, as asks: 'open'. When a grown-up has chosen a hand shape
@@ -161,6 +164,9 @@ export class GameSession {
     this.portraits = this.makePortraits?.() ?? null;
     this.game = await this.createGame(this);
     this.game.setHands?.(settings.hands);
+    // A game played with both hands has both drawn on the mirror, with whatever it says its fingers are doing.
+    this.hud.bothHands = Boolean(this.game.bothHands);
+    if (this.game.handLinks) this.hud.links = () => this.game.handLinks();
     // Now the game is here, the title card can say what this level brings.
     this.levelUi.refresh();
 

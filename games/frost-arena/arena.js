@@ -1,17 +1,20 @@
 // The rules of Frost Arena. No screen, camera or sound in this file, so it all runs in the unit tests.
 //
-// A small snowy yard with crates and containers to go round, a team at each end, and a match of tag with
-// rifles: the child's team in blue, with Giraffe on it, against the computer's in red. It's played with both
-// hands, each with its own job. The hand in play holds the rifle: moving it from side to side turns to look,
-// and opening it fires, by itself, at whoever is in the sights. The other hand is the helper: open, it walks
-// forward the way the child is looking, and making a fist stops and puts a new magazine in. There are
-// magazines without end, but each holds thirty rounds, and changing one takes a moment.
+// A small snowy yard with crates and containers to fight round, a team at each end, and a match of tag with
+// rifles: the player's team in blue, with Giraffe on it, against the computer's in red. It's seen through the
+// player's own eyes, and played the way a shooter is played with two thumbs on a phone, with two hands in the air
+// instead: one hand on a stick, to walk, sidestep, back away and sprint, and the other looking round, with its
+// trigger. What the hands are asking for is worked out in controls.js. Here it's what a match makes of it.
 //
-// Nobody gets hurt. A player who's been hit enough is tagged out: they sit down, and are back at their own
-// end a few seconds later. The child's team wins with the number of tags a grown-up chose, and the other team,
-// on Medium and Tough, by tagging the child that many times. Only an open hand
-// does anything: a hand that's missing, closed or can't be read never fires and never walks, and with both
-// hands down for a few seconds it's a rest, when the other team stops and waits, and nothing can happen.
+// Shots go where the sights are, and nowhere else: each one is a line from the player's eye, a little way off
+// the middle of the sights by how steady the rifle is. It's steadiest standing still with the first shot, and
+// opens up with every shot after it, with walking, and most of all with sprinting, and the rifle kicks the view
+// up as it fires. There are magazines without end, but each holds thirty rounds, and changing one takes a moment.
+//
+// Nobody gets hurt. A player who's been hit enough is tagged out: they sit down, and are back at their own end a
+// few seconds later. The player's team wins with the number of tags chosen, and the other team, on Medium and
+// Tough, by tagging the player that many times. With neither hand in the picture it's paused: everyone the
+// computer plays stops and waits, and nothing can happen.
 import { ramp, stepsAt } from '../../core/levels.js';
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
@@ -32,13 +35,14 @@ export const BODY = 0.45; // How wide a player is, from the middle, to things in
 
 // What's in the way, as { x, z, w, d, h, kind }: where its middle is, how wide and deep it is, and how tall.
 // One half of the yard is listed, and the other is the same turned half way round, so neither end has it
-// easier. The long container in the middle is its own other half.
+// easier. The long container in the middle is its own other half. Everything is taller than a player, so nobody
+// behind something can be seen over it, or hit over it: what hides someone covers them.
 const HALF_YARD = [
   { x: -10, z: 1.5, w: 2.6, d: 7, h: 2.6, kind: 'container' },
-  { x: -5, z: -6, w: 2.4, d: 2.4, h: 1.7, kind: 'crate' },
+  { x: -5, z: -6, w: 2.4, d: 2.4, h: 2, kind: 'crate' },
   { x: -17, z: -6, w: 5, d: 1.2, h: 2.1, kind: 'wall' },
   { x: -15.5, z: 7, w: 3, d: 3, h: 2.4, kind: 'crates' },
-  { x: -3.5, z: 10.4, w: 4, d: 1.2, h: 1.5, kind: 'wall' },
+  { x: -3.5, z: 10.4, w: 4, d: 1.2, h: 2, kind: 'wall' },
 ];
 export const BLOCKS = [
   { x: 0, z: 0, w: 8, d: 2.6, h: 2.6, kind: 'container' },
@@ -46,10 +50,11 @@ export const BLOCKS = [
   ...HALF_YARD.map((block) => ({ ...block, x: -block.x, z: -block.z })),
 ];
 
-// Where each team comes in, and comes back to: three places along its own end, facing the other.
+// Where each team comes in, and comes back to: places along its own end, facing the other. Three are enough for
+// a match by oneself, and the rest are for friends: see team.js.
 export const BASES = [
-  { z: 13, heading: 0, spots: [0, -6, 6] },
-  { z: -13, heading: Math.PI, spots: [0, 6, -6] },
+  { z: 13, heading: 0, spots: [0, -6, 6, -12, 12] },
+  { z: -13, heading: Math.PI, spots: [0, 6, -6, 12, -12] },
 ];
 // Places worth going to, for a player the computer plays: the middle, the alleys and each end.
 const HAUNTS = [
@@ -105,6 +110,95 @@ export function reachAlong(from, heading, most = 60) {
     if (BLOCKS.some((block) => inside(block, x, z, 0))) return away;
   }
   return Math.max(0, near);
+}
+
+/**
+ * Where someone who has walked to a place really ends up: kept inside the fence, and pushed back out of anything
+ * they've walked into, by the shortest way, so that walking into something at a slant slides along it. Clear of
+ * something means what it means in freeAt: the same for the player as for those the computer plays.
+ */
+export function keptClear(x, z, body = BODY) {
+  const fenced = (at) => ({ x: clamp(at.x, -YARD.halfX + body, YARD.halfX - body), z: clamp(at.z, -YARD.halfZ + body, YARD.halfZ - body) });
+  let at = fenced({ x, z });
+  // Twice round, for a corner between two things.
+  for (let pass = 0; pass < 2; pass += 1) {
+    for (const block of BLOCKS) {
+      const dx = at.x - block.x;
+      const dz = at.z - block.z;
+      // How far into it they are, across and along: none, if they're clear of it.
+      const inX = block.w / 2 + body - Math.abs(dx);
+      const inZ = block.d / 2 + body - Math.abs(dz);
+      if (inX <= 0 || inZ <= 0) continue;
+      // Out through the nearer side.
+      if (inX < inZ) at = { x: block.x + Math.sign(dx || 1) * (block.w / 2 + body), z: at.z };
+      else at = { x: at.x, z: block.z + Math.sign(dz || 1) * (block.d / 2 + body) };
+    }
+    at = fenced(at);
+  }
+  return at;
+}
+
+/** Which way a shot goes, as a step of length one: yaw is the heading, and pitch how far up. */
+export const aimOf = (yaw, pitch = 0) => ({ x: Math.sin(yaw) * Math.cos(pitch), y: Math.sin(pitch), z: -Math.cos(yaw) * Math.cos(pitch) });
+
+/**
+ * How far a shot from a place, going a way, gets before it meets something that isn't a player: a block, the
+ * snow, the fence, or as far as a shot goes at all. Returns how far, and what it met.
+ */
+export function shotReach(from, way, most = RANGE) {
+  let far = most;
+  let what = 'sky';
+  // The snow.
+  if (way.y < -1e-9 && -from.y / way.y < far) {
+    far = -from.y / way.y;
+    what = 'snow';
+  }
+  // The fence, if the shot is still below the top of it when it gets there. Over it, it carries on.
+  for (const [start, step, edge] of [[from.x, way.x, YARD.halfX], [from.z, way.z, YARD.halfZ]]) {
+    if (Math.abs(step) < 1e-9) continue;
+    const reach = ((step > 0 ? edge : -edge) - start) / step;
+    if (reach > 0 && reach < far && from.y + way.y * reach <= FENCE) {
+      far = reach;
+      what = 'fence';
+    }
+  }
+  // Anything in the way: where the shot goes into its width, its depth and its height, and comes out.
+  for (const block of BLOCKS) {
+    let enter = 0;
+    let leave = far;
+    let missed = false;
+    for (const [start, step, low, high] of [[from.x, way.x, block.x - block.w / 2, block.x + block.w / 2], [from.y, way.y, 0, block.h], [from.z, way.z, block.z - block.d / 2, block.z + block.d / 2]]) {
+      if (Math.abs(step) < 1e-9) {
+        if (start <= low || start >= high) missed = true;
+        continue;
+      }
+      const a = (low - start) / step;
+      const b = (high - start) / step;
+      enter = Math.max(enter, Math.min(a, b));
+      leave = Math.min(leave, Math.max(a, b));
+    }
+    if (!missed && enter < leave && enter < far) {
+      far = enter;
+      what = block.kind;
+    }
+  }
+  return { far, what };
+}
+
+/** How far along a shot it meets a player, as tall and as wide as players are, or null if it goes by. */
+export function shotMeets(from, way, trooper) {
+  const dx = from.x - trooper.x;
+  const dz = from.z - trooper.z;
+  const a = way.x * way.x + way.z * way.z;
+  if (a < 1e-9) return null;
+  const b = dx * way.x + dz * way.z;
+  const c = dx * dx + dz * dz - WIDE * WIDE;
+  const inside = b * b - a * c;
+  if (inside < 0) return null;
+  const far = (-b - Math.sqrt(inside)) / a;
+  if (far <= 0) return null;
+  const high = from.y + way.y * far;
+  return high >= 0 && high <= TALL ? far : null;
 }
 
 // The yard as squares a pace across, for finding the way round things.
@@ -182,70 +276,72 @@ export function stepTowards(way, x, z) {
   return best === here ? way.goal : centreOf(best);
 }
 
-/* ---------- the rifles, and what a grown-up can choose ---------- */
+/* ---------- the rifles, and what can be chosen ---------- */
 
-// Two rifles. every is the time between shots, hit how much each takes off, kick how far it jumps, and reload
-// how long a new magazine takes. The Kalashnikov is slower and hits harder, and the M4 is quicker and lighter.
-// Either way it takes about two and a half seconds on someone to tag them out, and a magazine is good for two
-// or three of them, so changing it comes round often.
+// Two rifles. every is the time between shots, hit how much each takes off, and reload how long a new magazine
+// takes. spread is how far off the middle of the sights a shot can go, in radians, from a rifle held still:
+// bloom is how much that opens with each shot, up to bloomMost, and it closes again in about settle seconds.
+// kick is how hard each shot throws the view up, and kickSide how far it can throw it to either side. The
+// Kalashnikov hits harder, and kicks and opens up more. The M4 is quicker, lighter and steadier.
 export const RIFLES = {
-  ak: { name: 'Kalashnikov', nameKa: 'კალაშნიკოვი', every: 0.22, hit: 9, kick: 1, reload: 2.2 },
-  m4: { name: 'M4', nameKa: 'M4', every: 0.15, hit: 6.5, kick: 0.7, reload: 1.8 },
+  ak: { name: 'Kalashnikov', nameKa: 'კალაშნიკოვი', every: 0.1, hit: 26, reload: 2.3, spread: 0.012, bloom: 0.0042, bloomMost: 0.045, settle: 0.14, kick: 0.17, kickSide: 0.09 },
+  m4: { name: 'M4', nameKa: 'M4', every: 0.08, hit: 21, reload: 2.1, spread: 0.01, bloom: 0.003, bloomMost: 0.036, settle: 0.16, kick: 0.095, kickSide: 0.055 },
 };
 export const MAGAZINE = 30;
 
-// How fast everyone goes, in paces a second, and how quickly the child turns, in radians a second at full lock.
-export const PACES = {
-  slow: { walk: 3.2, turn: 1.5 },
-  medium: { walk: 4.2, turn: 1.9 },
-  fast: { walk: 5.2, turn: 2.3 },
-};
+// How fast the player goes, in paces a second: with the stick right out, and sprinting. ease is how quickly
+// they get up to speed, and stop. Walking opens the rifle's spread by up to walking times, and sprinting by more.
+export const PLAYER = { run: 4.4, sprint: 6.4, ease: 14, walking: 1.6, sprinting: 2.6 };
 
-// How hard the other team is. aim is how many of their shots at the child land, hit how much each takes off,
-// react how long they take to start firing once they see someone, and canLose whether the child can be tagged
-// out and the match lost. On Gentle the child's health stops just above nothing, and red can't win.
+// How hard the other team is. aim is how many of their shots at the player land, on someone standing still up
+// close, hit how much each takes off, react how long they take to start firing once they see someone, and
+// canLose whether the player can be tagged out and the match lost. On Easy the player's health stops just above
+// nothing, and red can't win.
 export const LEVELS = {
-  gentle: { aim: 0.12, hit: 8, react: 1.4, burst: [3, 5], rest: [1.6, 2.6], canLose: false },
-  medium: { aim: 0.2, hit: 10, react: 1, burst: [3, 6], rest: [1.2, 2], canLose: true },
-  tough: { aim: 0.3, hit: 12, react: 0.7, burst: [4, 7], rest: [0.9, 1.6], canLose: true },
+  gentle: { aim: 0.35, hit: 10, react: 1, burst: [3, 5], rest: [1, 1.6], canLose: false },
+  medium: { aim: 0.6, hit: 15, react: 0.7, burst: [4, 7], rest: [0.5, 0.9], canLose: true },
+  tough: { aim: 0.75, hit: 18, react: 0.45, burst: [5, 8], rest: [0.35, 0.7], canLose: true },
 };
 
-// How much the rifle helps: how far off the middle of the sights someone can be and still be fired at, and how
-// strongly the view is drawn onto someone near the middle. Even the least is generous, as it isn't about aiming.
-export const AIM_HELP = {
-  none: { cone: degrees(7), pull: 0.5 },
-  little: { cone: degrees(11), pull: 1 },
-  lots: { cone: degrees(17), pull: 1.6 },
-};
+// The help with aiming, for those who want it: with the sights on someone, or nearly, the view turns less for
+// the hand, so it's easier to stay on them. It never moves the sights for anyone. within is how many times
+// someone's own width from the middle of them it starts, and slow how much less the view turns right on them.
+export const AIM_ASSIST = { within: 2.4, slow: 0.55 };
 
-export const TAGS_TO_WIN = [5, 8, 12];
+export const TAGS_TO_WIN = [5, 10, 15];
 export const HEALTH = 100;
-export const REST_AFTER = 4; // Seconds with neither hand open before it counts as a rest.
-const SIGHT = 34; // How far anyone can see, and fire, on a clear day.
-const OUT_SECONDS = 3; // How long a player who's been tagged out sits before they're back at their own end.
+export const AWAY_AFTER = 1.2; // Seconds with neither hand in the picture before it's paused.
+const SIGHT = 34; // How far anyone can see, on a clear day.
+const RANGE = 60; // How far a shot goes.
+export const EYES = 1.55; // How high the player's eyes are, and so where their shots start from.
+export const TALL = 1.9; // How tall a player is, to a shot.
+export const WIDE = 0.42; // And how wide, from the middle.
+const FENCE = 2.3; // How high the fence round the yard is.
+export const OUT_SECONDS = 3; // How long a player who's been tagged out sits before they're back at their own end.
 const SAFE_SECONDS = 2; // Just back, nobody can be hit for a moment.
 const HEAL_AFTER = 3.5; // Health comes back once nothing has hit for this long...
 const HEAL_RATE = 30; // ...this much a second.
-const EMPTY_WAIT = 4; // With the magazine empty and no fist made, a new one goes in by itself after this long.
-const WON_AFTER = 1.6;
-const STEP_UP = 9; // How quickly anyone gets up to speed, and stops.
-const PULL_CONE = 2.2; // The view is drawn onto someone up to this many times the firing cone from the middle.
-const MATE_HIT = 0.35; // The child's team-mates take off a third of what the child does, so it's the child who wins it.
-// For a player the computer plays: how fast it turns, how well lined up it has to be to fire, how near somewhere
-// counts as there, how often it works out the way again, how long not getting anywhere means it's stuck, and how
-// near someone has to be for it to stop and fire. From further off it carries on its way, so nobody just stands
-// at their own end firing down the yard.
-const BOT = { turn: 3.2, aimWithin: degrees(9), reach: 1.2, thinkEvery: 0.5, stuckAfter: 1.2, fightWithin: 15 };
-// Something in the way: these turns to either side are tried, the least first.
+export const WON_AFTER = 1.6;
+const STEP_UP = 9; // How quickly anyone the computer plays gets up to speed, and stops.
+// The view's kick: a spring that throws it up with each shot and brings it back. See punch in update.
+const PUNCH = { stiff: 120, damp: 16 };
+// For a player the computer plays: how fast it walks and turns, how well lined up it has to be to fire, how long
+// between its shots, how near somewhere counts as there, how often it works out the way again, how long not
+// getting anywhere means it's stuck, how near someone has to be for it to stop and fire, and how long it goes
+// after someone who has hit it from further off than that. From further off it carries on its way, so nobody
+// just stands at their own end firing down the yard. hits is how much its shots take off another of the
+// computer's players, and lands how many of those shots land: the same for both teams, so Giraffe is worth as
+// much as any one of the other team, and it's what the player does that decides it.
+export const BOT = { walk: 3.3, turn: 3.2, aimWithin: degrees(9), every: 0.2, reach: 1.2, thinkEvery: 0.5, stuckAfter: 1.2, fightWithin: 15, angryFor: 4, hits: 9, lands: 0.55 };
+// Their shots at the player land less often on one who's moving, less still sprinting, and less from far off.
+const DODGING = { walking: 0.65, sprinting: 0.45, near: 8, far: 22, atFar: 0.5 };
+// Something in the way of one of them: these turns to either side are tried, the least first.
 const SLIDES = [0.35, 0.7, 1.05, 1.4, 1.75];
-const ALONG_TURN = 1.6; // How quickly the child comes round to look along something they're walking along.
-const STEERING = 0.25; // The rifle hand this far to one side is turning, and anything less is holding still.
-const STEADY = 0.14; // Less than this far to one side doesn't turn the view at all.
 
 /**
- * What each level changes, from level 1, the plain match, up to level 10. The numbers are shares of what a
- * grown-up chose, so a level never changes those choices: the speed, how hard, how many tags, the rifle, the
- * help with aiming, or Gentle being impossible to lose. Resting stops everything here, as it stops the rest.
+ * What each level changes, from level 1, the plain match, up to level 10. The numbers are shares of what was
+ * chosen, so a level never changes those choices: how hard, how many tags, the rifle, the help with aiming, or
+ * Easy being impossible to lose.
  */
 export function levelPlan(level = 1) {
   return {
@@ -253,9 +349,9 @@ export function levelPlan(level = 1) {
     react: ramp(level, 1, 0.6), // And they start firing sooner.
     health: ramp(level, 1, 1.3), // Each of them takes more hits.
     reds: stepsAt(level, { 1: 2, 4: 3 }), // Two on the other team, and three from level 4.
-    blues: stepsAt(level, { 1: 1, 4: 2 }), // Giraffe on the child's, and one more friend from level 4.
+    blues: stepsAt(level, { 1: 1, 4: 2 }), // Giraffe on the player's, and one more friend from level 4.
     // Something new to see and play with at every level from 2, on top of all that. See NEWS below.
-    stars: level >= 2, // Each tag of the child's is a gold star, counted along the top.
+    stars: level >= 2, // Each tag of the player's is a gold star, counted along the top.
     shield: level >= 3, // One of the other team carries a shield, which the first shots bounce off.
     three: level >= 4, // Three a side.
     runner: level >= 5, // One of the other team is a runner: quick, and never still.
@@ -302,94 +398,105 @@ const CHAMPION_HEALTH = 1.25;
 const BOOTS_SPEED = 1.4;
 const SNOW_SIGHT = 22; // How far anyone can see when it's snowing.
 
-// Who plays for each team, from the roster of characters: Giraffe is always on the child's.
+// Who plays for each team, from the roster of characters: Giraffe is always on the player's.
 export const BLUES = ['giraffe', 'mochi', 'kit'];
 export const REDS = ['bramble', 'frost', 'cinder', 'nova', 'tur', 'truffle', 'widget'];
-
-/**
- * What the helper hand is doing, from the hand monitor's snapshot: 'open', a 'fist', or 'none' for anything that
- * can't be properly read. A hand that's missing, cut off, too far away or touching the other one does nothing.
- */
-export function readHelper(snapshot) {
-  const hand = snapshot.other;
-  if (!hand || snapshot.overlap) return 'none';
-  if (hand.status === 'open') return 'open';
-  if (hand.status === 'closed' && hand.reason === 'closed') return 'fist';
-  return 'none';
-}
 
 let nextId = 1;
 
 export class Match {
   /**
-   * tags is how many win it. pace, level and help are from PACES, LEVELS and AIM_HELP. rifle is the child's, from
-   * RIFLES. reload is 'hand' for a fist of the helper hand, or 'auto' for a new magazine going in by itself as
-   * soon as one is empty, for a child who can't make a fist with that hand.
+   * tags is how many win it. level is from LEVELS. rifle is the player's, from RIFLES. assist says whether the
+   * view turns less for the hand while the sights are on someone: see AIM_ASSIST.
    */
-  constructor({ tags = 5, pace = 'slow', level = 'gentle', levelNumber = 1, help = 'little', rifle = 'ak', reload = 'hand', random = Math.random, onEvent = () => {} } = {}) {
+  constructor({ tags = 10, level = 'medium', levelNumber = 1, rifle = 'ak', assist = true, random = Math.random, onEvent = () => {}, ...more } = {}) {
     this.random = random;
     this.onEvent = onEvent;
     this.goal = tags;
     this.levelNumber = levelNumber;
     this.plan = levelPlan(levelNumber);
-    this.configure({ pace, level, help, reload });
+    this.configure({ level, assist });
     this.state = 'ready'; // ready, playing, won or lost.
     this.time = 0;
     this.score = [0, 0];
     this.endIn = null;
-    this.resting = false;
-    this.idleFor = 0;
+    this.resting = false; // Paused, with neither hand in the picture.
+    this.awayFor = 0;
 
     this.troopers = [];
-    this.child = this.join(0, 'child', rifle, false);
-    for (let i = 0; i < this.plan.blues; i += 1) this.join(0, BLUES[i % BLUES.length], i % 2 ? 'ak' : 'm4', true);
-    const first = Math.floor(random() * REDS.length);
-    for (let i = 0; i < this.plan.reds; i += 1) this.join(1, REDS[(first + i) % REDS.length], i % 2 ? 'm4' : 'ak', true);
-    this.castReds();
+    this.enlist({ rifle, ...more });
 
-    // What the levels bring: stars for the child's tags, and crates with something in them for a while.
+    // What the levels bring: stars for the player's tags, and crates with something in them for a while.
     this.crate = null;
     this.crateIn = CRATE.first;
     this.cratesOut = 0;
     this.power = { doubleLeft: 0, bootsLeft: 0 };
 
-    this.locked = null; // Who the child's rifle is on.
-    this.emptyFor = 0;
-    this.helperWasClosed = false;
-    this.stats = { tags: 0, shots: 0, hits: 0, reloads: 0, byHand: 0, walked: 0, seconds: 0, firingSeconds: 0, walkingSeconds: 0, out: 0, stars: 0, crates: 0, trophy: 0 };
+    this.aimed = null; // Who the middle of the sights is on, if anyone.
+    this.stats = { tags: 0, shots: 0, hits: 0, reloads: 0, byHand: 0, walked: 0, seconds: 0, firingSeconds: 0, walkingSeconds: 0, sprintSeconds: 0, out: 0, stars: 0, crates: 0, trophy: 0 };
   }
 
-  /** Speed, how hard, help with aiming and how a magazine is changed can change at any time, from the panel. */
-  configure({ pace, level, help, reload }) {
-    if (pace !== undefined) this.pace = PACES[pace] ?? PACES.slow;
+  /**
+   * Who's in it: the player, Giraffe and the rest of their team, and the other team, all played by the computer.
+   * With friends it's whoever is playing: see squad.js.
+   */
+  enlist({ rifle }) {
+    const { plan, random } = this;
+    this.child = this.join(0, 'child', rifle, false);
+    for (let i = 0; i < plan.blues; i += 1) this.join(0, BLUES[i % BLUES.length], i % 2 ? 'ak' : 'm4', true);
+    const first = Math.floor(random() * REDS.length);
+    for (let i = 0; i < plan.reds; i += 1) this.join(1, REDS[(first + i) % REDS.length], i % 2 ? 'm4' : 'ak', true);
+    this.castReds();
+  }
+
+  /** How hard it is, and the help with aiming, can change at any time, from the panel. */
+  configure({ level, assist }) {
     if (level !== undefined) this.level = LEVELS[level] ?? LEVELS.gentle;
-    if (help !== undefined) this.help = AIM_HELP[help] ?? AIM_HELP.little;
-    if (reload !== undefined) this.autoReload = reload === 'auto';
+    if (assist !== undefined) this.assist = Boolean(assist);
   }
 
   emit(type, details = {}) {
     this.onEvent({ type, ...details });
   }
 
-  /** Someone joins a team, at the next place along its end. */
-  join(team, who, rifle, bot) {
-    const base = BASES[team];
+  /**
+   * Someone joins a team, at the next place along its end, which is their home: where they come back to. With
+   * friends, each has a number, the same in every friend's game, a name, and a home that may be somewhere else:
+   * see squad.js.
+   */
+  join(team, who, rifle, bot, { home = null, number = null, name = '' } = {}) {
     const slot = this.troopers.filter((each) => each.team === team).length;
+    const base = BASES[team] ?? BASES[0];
+    const place = home ?? { x: base.spots[slot % base.spots.length], z: base.z, heading: base.heading };
     const trooper = {
       id: nextId,
+      number: number ?? this.troopers.length,
+      name,
       team,
       who,
       bot,
       slot,
+      home: place,
       rifle: RIFLES[rifle] ? rifle : 'ak',
-      x: base.spots[slot % base.spots.length],
-      z: base.z,
-      heading: base.heading,
+      x: place.x,
+      z: place.z,
+      heading: place.heading,
       speed: 0,
       turning: 0,
+      // For the player: how fast they're going each way, how far the rifle has opened up with firing, how far
+      // each shot can go off the middle of the sights just now, and the view's kick.
+      vx: 0,
+      vz: 0,
+      sprinting: false,
+      bloom: 0,
+      spread: 0,
+      punch: { pitch: 0, yaw: 0 },
+      punchSpeed: { pitch: 0, yaw: 0 },
       health: HEALTH,
       most: HEALTH,
-      state: 'in', // in, or out for a few seconds after being tagged.
+      state: 'in', // in, or out for a few seconds after being tagged. With friends, one who has left is gone.
+      resting: false, // A child whose hands have both been still for a while: nothing fires at them.
+      tags: 0, // How many of the other side they've tagged out.
       outLeft: 0,
       safeLeft: 0,
       sinceHit: Infinity,
@@ -407,6 +514,8 @@ export class Match {
       burstLeft: 0,
       restLeft: 0,
       stuckFor: 0,
+      angryAt: null, // Someone who has hit it from further off than it would otherwise fight...
+      angryLeft: 0, // ...and how much longer it goes after them.
       part: null, // On the higher levels, one of the other team can be the captain, a shield carrier or a runner.
       shield: 0, // How many more shots a shield carrier's shield takes.
       champion: false,
@@ -451,6 +560,24 @@ export class Match {
     return this.troopers.filter((each) => each.team === team && each.state === 'in');
   }
 
+  /**
+   * Who someone is up against: everyone still in who isn't on their team, apart from one this child has just
+   * tagged out, before their own game has said so, and one whose hands are out of the picture.
+   */
+  foesOf(trooper) {
+    return this.troopers.filter((each) => each.team !== trooper.team && each.state === 'in' && each.health > 0 && !each.resting);
+  }
+
+  /** Whether this game decides what happens to someone: it always does, playing by oneself. See squad.js. */
+  decides() {
+    return true;
+  }
+
+  /** Whether everyone the computer plays is waiting: while it's paused. */
+  get paused() {
+    return this.resting;
+  }
+
   /** How far anyone can see: not as far when it's snowing. */
   get sight() {
     return this.plan.snow ? SNOW_SIGHT : SIGHT;
@@ -461,58 +588,38 @@ export class Match {
     return target.state === 'in' && gapBetween(from, target) <= this.sight && clearLine(from, target);
   }
 
-  /* ---------- the child ---------- */
+  /* ---------- the player ---------- */
 
   /**
-   * Who the rifle is on: of the other team's players the child can see, the one nearest the middle of the
-   * sights, if that's near enough. It sticks with the one it has unless another is clearly nearer the middle.
+   * Walks the player the way the stick says, to the way they're looking: forwards and back, and to either side.
+   * They get up to speed and stop quickly rather than at once, and something in the way never stops them dead:
+   * they slide along it. Returns how far they went.
    */
-  chooseTarget() {
-    const { child, help } = this;
-    let best = null;
-    let bestOff = help.cone;
-    for (const other of this.inPlay(1)) {
-      // Not one who's only just back, and can't be hit yet: there'd be no point.
-      if (other.safeLeft > 0 || !this.sees(child, other)) continue;
-      const off = Math.abs(turnBetween(headingTo(other.x - child.x, other.z - child.z), child.heading));
-      const counted = other === this.locked ? off * 0.7 : off;
-      if (counted <= bestOff) {
-        best = other;
-        bestOff = counted;
-      }
-    }
-    return best;
+  stride(dt, moveX, moveY, sprint) {
+    const { child } = this;
+    const push = Math.min(1, Math.hypot(moveX, moveY));
+    const [across, forwards] = push > 0 ? [moveX / Math.hypot(moveX, moveY), moveY / Math.hypot(moveX, moveY)] : [0, 0];
+    child.sprinting = Boolean(sprint) && forwards > 0 && push > 0;
+    const most = (child.sprinting ? PLAYER.sprint : PLAYER.run) * (this.power.bootsLeft > 0 ? BOOTS_SPEED : 1) * push;
+    const ahead = forwardOf(child.heading);
+    // To the right of the way they face.
+    const right = { x: -ahead.z, z: ahead.x };
+    const wanted = { x: (right.x * across + ahead.x * forwards) * most, z: (right.z * across + ahead.z * forwards) * most };
+    const share = 1 - Math.exp(-PLAYER.ease * dt);
+    child.vx += (wanted.x - child.vx) * share;
+    child.vz += (wanted.z - child.vz) * share;
+    if (Math.hypot(child.vx, child.vz) < 0.02 && push === 0) [child.vx, child.vz] = [0, 0];
+    const to = keptClear(child.x + child.vx * dt, child.z + child.vz * dt);
+    const moved = Math.hypot(to.x - child.x, to.z - child.z);
+    // What's in the way takes the speed that was going into it, so there's no sticking to a wall on the way off it.
+    if (dt > 0) [child.vx, child.vz] = [(to.x - child.x) / dt, (to.z - child.z) / dt];
+    [child.x, child.z] = [to.x, to.z];
+    child.speed = dt > 0 ? moved / dt : 0;
+    return moved;
   }
 
-  /** The way the child looks turns with the rifle hand, and is drawn a little onto someone near the middle. */
-  look(dt, steer) {
-    const { child, help, pace } = this;
-    const before = child.heading;
-    // A hand held nearly in the middle is holding still: closing it moves where it's seen to be a little, and
-    // that mustn't set the view drifting.
-    const turn = Number.isFinite(steer) && Math.abs(steer) >= STEADY ? clamp(steer, -1, 1) : 0;
-    child.heading += Math.sign(turn) * ((Math.abs(turn) - STEADY) / (1 - STEADY)) * pace.turn * dt;
-    let nearest = null;
-    let least = help.cone * PULL_CONE;
-    for (const other of this.inPlay(1)) {
-      if (!this.sees(child, other)) continue;
-      const off = turnBetween(headingTo(other.x - child.x, other.z - child.z), child.heading);
-      if (Math.abs(off) < Math.abs(least)) {
-        least = off;
-        nearest = other;
-      }
-    }
-    // A child turning hard gets their way: the pull is for holding on, not for taking over.
-    if (nearest) child.heading += least * Math.min(1, help.pull * 2.4 * dt) * (1 - 0.8 * Math.abs(clamp(steer || 0, -1, 1)));
-    child.turning = dt > 0 ? turnBetween(child.heading, before) / dt : 0;
-  }
-
-  /**
-   * Walks someone the way they face. Something in the way never stops them: they go along it, as fast as they
-   * were walking, and so round the end of it. side is which way to go round it, 1 for the right and -1 for the
-   * left, if there's a say in it: otherwise it's the side they were going round already.
-   */
-  walk(trooper, wanted, dt, side = 0) {
+  /** Walks someone the computer plays the way they face. Something in the way never stops them: they go along it. */
+  walk(trooper, wanted, dt) {
     trooper.speed += clamp(wanted - trooper.speed, -STEP_UP * dt, STEP_UP * dt);
     if (trooper.speed <= 0.01) return 0;
     const step = trooper.speed * dt;
@@ -526,54 +633,135 @@ export class Match {
       trooper.z = z;
       return true;
     };
-    trooper.aside = 0;
     if (go(trooper.heading)) {
       trooper.round = 0;
       return step;
     }
     // The side it went round last time first, so it doesn't dither between the two.
-    const first = side || trooper.round || 1;
+    const first = trooper.round || 1;
     for (const turn of SLIDES) {
       if (go(trooper.heading + first * turn)) {
         trooper.round = first;
-        trooper.aside = first * turn;
         break;
       }
       if (go(trooper.heading - first * turn)) {
         trooper.round = -first;
-        trooper.aside = -first * turn;
         break;
       }
     }
     return Math.hypot(trooper.x - fromX, trooper.z - fromZ);
   }
 
-  /** The child's rifle: it fires by itself at whoever is in the sights, with the rifle hand open. */
-  shoot(dt, open) {
+  /** Which way the player's eye is looking: the way they face, level, with the kick of the rifle in it. */
+  get view() {
+    const { child } = this;
+    return { yaw: child.heading + child.punch.yaw, pitch: child.punch.pitch };
+  }
+
+  /**
+   * What a shot from the player's eye meets, going this way: one of the others, if they're nearer than whatever
+   * else is in the way, or whatever that is. Their own side isn't in the way of it.
+   */
+  cast(yaw, pitch) {
+    const { child } = this;
+    const from = { x: child.x, y: EYES, z: child.z };
+    const way = aimOf(yaw, pitch);
+    let { far, what } = shotReach(from, way);
+    let trooper = null;
+    for (const other of this.troopers) {
+      if (other === child || other.team === child.team || other.state !== 'in') continue;
+      const meets = shotMeets(from, way, other);
+      if (meets !== null && meets < far) {
+        far = meets;
+        trooper = other;
+        what = 'player';
+      }
+    }
+    return { trooper, what, far, to: { x: from.x + way.x * far, y: from.y + way.y * far, z: from.z + way.z * far } };
+  }
+
+  /** How far off the middle of the sights a shot can go just now: more with firing, walking and sprinting. */
+  spreadNow() {
     const { child } = this;
     const rifle = RIFLES[child.rifle];
-    child.fireIn = Math.max(0, child.fireIn - dt);
-    this.locked = child.state === 'in' ? this.chooseTarget() : null;
-    const ready = child.state === 'in' && child.reloadLeft === 0 && child.rounds > 0;
-    child.firing = open && ready && Boolean(this.locked);
+    const going = clamp(child.speed / PLAYER.run, 0, 1);
+    const moving = child.sprinting ? PLAYER.sprinting : 1 + (PLAYER.walking - 1) * going;
+    return (rifle.spread + child.bloom) * moving;
+  }
+
+  /**
+   * The player's rifle. With the trigger held it fires as fast as it can, each shot from the eye to wherever the
+   * sights are, a little way off the middle of them. An empty one changes its own magazine.
+   */
+  shoot(dt, held) {
+    const { child } = this;
+    const rifle = RIFLES[child.rifle];
+    child.fireIn -= dt;
+    const ready = child.state === 'in' && child.reloadLeft === 0;
+    child.firing = held && ready && child.rounds > 0;
+    if (!child.firing) child.fireIn = Math.max(0, child.fireIn);
+    // The rifle steadies again when it isn't firing, and a little between one shot and the next.
+    child.bloom *= Math.exp(-dt / (child.firing ? rifle.settle * 4 : rifle.settle));
+    child.spread = this.spreadNow();
     if (!child.firing) return;
     this.stats.firingSeconds += dt;
-    if (child.fireIn > 0) return;
-    child.fireIn = rifle.every;
+    if (child.fireIn > 1e-9) return;
+    // The next one is due this long after this one was, not after the frame it was fired in, so the rifle keeps
+    // its own time whatever the frames are doing.
+    child.fireIn = Math.max(child.fireIn, -dt) + rifle.every;
     child.rounds -= 1;
     this.stats.shots += 1;
-    this.stats.hits += 1;
-    this.emit('shot', { by: child, at: this.locked, hit: true });
+    // Somewhere within the spread, evenly over it.
+    const off = Math.sqrt(this.random()) * child.spread;
+    const round = this.random() * Math.PI * 2;
+    const { yaw, pitch } = this.view;
+    const shot = this.cast(yaw + Math.cos(round) * off, pitch + Math.sin(round) * off);
+    if (shot.trooper) this.stats.hits += 1;
+    this.emit('shot', { by: child, at: shot.trooper, to: shot.to, what: shot.what, hit: Boolean(shot.trooper) });
     // With double shots from a crate, each one counts twice.
-    this.hit(this.locked, rifle.hit * (this.power.doubleLeft > 0 ? 2 : 1), child);
+    if (shot.trooper) this.hit(shot.trooper, rifle.hit * (this.power.doubleLeft > 0 ? 2 : 1), child);
+    // Each shot opens the rifle up a little more, and kicks the view up and a little to one side.
+    child.bloom = Math.min(rifle.bloomMost, child.bloom + rifle.bloom);
+    child.punchSpeed.pitch += rifle.kick;
+    child.punchSpeed.yaw += (this.random() - 0.5) * 2 * rifle.kickSide;
     if (child.rounds === 0) {
-      this.emptyFor = 0;
       this.emit('empty', { trooper: child });
-      if (this.autoReload) this.reload(child, false);
+      this.reload(child, false);
     }
   }
 
-  /** A new magazine: it takes a moment, and the rifle can't fire until it's in. */
+  /** The view's kick: thrown up by each shot, and brought back as by a spring. */
+  punch(dt) {
+    const { punch, punchSpeed } = this.child;
+    for (const key of ['pitch', 'yaw']) {
+      punchSpeed[key] += (-punch[key] * PUNCH.stiff - punchSpeed[key] * PUNCH.damp) * dt;
+      punch[key] += punchSpeed[key] * dt;
+      if (Math.abs(punch[key]) < 1e-5 && Math.abs(punchSpeed[key]) < 1e-4) [punch[key], punchSpeed[key]] = [0, 0];
+    }
+  }
+
+  /**
+   * How much less the view turns for the hand just now, with the help with aiming: less the nearer the middle
+   * of the sights is to someone they can see, and not at all less with nobody near them, or with the help off.
+   */
+  aimSlow() {
+    if (!this.assist) return 1;
+    const { child } = this;
+    let nearest = Infinity;
+    for (const other of this.foesOf(child)) {
+      if (!this.sees(child, other)) continue;
+      const away = gapBetween(child, other);
+      const off = Math.abs(turnBetween(headingTo(other.x - child.x, other.z - child.z), child.heading));
+      nearest = Math.min(nearest, off / Math.atan2(WIDE, away));
+    }
+    const out = clamp((nearest - 1) / (AIM_ASSIST.within - 1), 0, 1);
+    return AIM_ASSIST.slow + (1 - AIM_ASSIST.slow) * out;
+  }
+
+  /**
+   * A new magazine: it takes a moment, and the rifle can't fire until it's in. byHand says the player asked for
+   * it, rather than the rifle having run out.
+   */
   reload(trooper, byHand) {
     if (trooper.reloadLeft > 0 || trooper.rounds >= MAGAZINE || trooper.state !== 'in') return false;
     trooper.reloadLeft = RIFLES[trooper.rifle].reload;
@@ -599,7 +787,8 @@ export class Match {
   /* ---------- hits, and being tagged out ---------- */
 
   hit(trooper, amount, by) {
-    if (trooper.state !== 'in' || trooper.safeLeft > 0 || this.state !== 'playing') return;
+    // Once it's decided nothing more lands, so the tags on the finish card are the tags that won it.
+    if (trooper.state !== 'in' || trooper.safeLeft > 0 || this.state !== 'playing' || this.endIn !== null) return;
     trooper.sinceHit = 0;
     trooper.hitLeft = 0.3;
     // A shield takes the first few shots, with a bonk, and then it's down until its carrier is back.
@@ -609,7 +798,9 @@ export class Match {
       return;
     }
     trooper.health -= amount;
-    // On Gentle the child is never tagged out: their health stops just above nothing.
+    // One of the computer's players who's been hit goes after whoever did it for a while, from however far off.
+    if (trooper.bot && by && by.team !== trooper.team) Object.assign(trooper, { angryAt: by, angryLeft: BOT.angryFor });
+    // On Easy the player is never tagged out: their health stops just above nothing.
     if (trooper === this.child && !this.level.canLose) trooper.health = Math.max(1, trooper.health);
     this.emit('hit', { trooper, by, health: trooper.health });
     if (trooper.health > 0) return;
@@ -619,26 +810,26 @@ export class Match {
     trooper.firing = false;
     trooper.burstLeft = 0;
     trooper.speed = 0;
-    // Every tag the child's team makes is a point, and the other team's captain is worth two. The other team's
-    // only count when it's the child they tag, so whether the match is lost is up to the child, and not to how
-    // their friends get on.
+    // Every tag is a point for the team that made it, and the other team's captain is worth two: a match is the
+    // first team to the tags. On Easy, which can't be lost, the other team's tags count for nothing.
     const worth = trooper.part === 'captain' ? CAPTAIN.tags : 1;
-    if (by.team === 0 || trooper === this.child) this.score[by.team] += worth;
+    if (by.team === 0 || this.level.canLose) this.score[by.team] += worth;
+    by.tags += 1;
     if (by === this.child) {
       this.stats.tags += 1;
-      // From level 2, each of the child's tags is a gold star, and the captain is two.
+      // From level 2, each of the player's tags is a gold star, and the captain is two.
       if (this.plan.stars) {
         this.stats.stars += worth;
         this.emit('star', { trooper, stars: this.stats.stars, worth });
       }
     }
     if (trooper === this.child) this.stats.out += 1;
-    if (this.locked === trooper) this.locked = null;
+    if (this.aimed === trooper) this.aimed = null;
     this.emit('tagged', { trooper, by, score: [...this.score] });
     this.checkEnd();
   }
 
-  /** The first team to the tags wins. On Gentle only the child's team can. */
+  /** The first team to the tags wins. On Easy only the player's team can. */
   checkEnd() {
     if (this.endIn !== null) return;
     if (this.score[0] >= this.goal) this.ending = 'won';
@@ -654,27 +845,35 @@ export class Match {
       trooper.safeLeft = Math.max(0, trooper.safeLeft - dt);
       if (trooper.state === 'out') {
         trooper.outLeft -= dt;
-        if (trooper.outLeft > 0) continue;
-        const base = BASES[trooper.team];
-        Object.assign(trooper, { state: 'in', x: base.spots[trooper.slot % base.spots.length], z: base.z, heading: base.heading, health: trooper.most, rounds: MAGAZINE, reloadLeft: 0, safeLeft: SAFE_SECONDS, sinceHit: Infinity, way: null, haunt: null, seen: null, burstLeft: 0, speed: 0, shield: trooper.part === 'shield' ? SHIELD_HITS : 0 });
-        this.emit('back', { trooper });
+        // With friends, each game brings back only those it decides for: see squad.js.
+        if (trooper.outLeft > 0 || !this.decides(trooper)) continue;
+        this.bringBack(trooper);
         continue;
       }
+      if (trooper.state !== 'in' || !this.decides(trooper)) continue;
       trooper.sinceHit += dt;
       if (trooper.health < trooper.most && trooper.sinceHit >= HEAL_AFTER) trooper.health = Math.min(trooper.most, trooper.health + HEAL_RATE * dt);
     }
+  }
+
+  /** Someone who was tagged out is back at their home, as good as new, and safe for a moment. */
+  bringBack(trooper) {
+    const { home } = trooper;
+    Object.assign(trooper, { state: 'in', x: home.x, z: home.z, heading: home.heading, health: trooper.most, rounds: MAGAZINE, reloadLeft: 0, safeLeft: SAFE_SECONDS, sinceHit: Infinity, way: null, haunt: null, seen: null, burstLeft: 0, speed: 0, vx: 0, vz: 0, bloom: 0, angryAt: null, angryLeft: 0, shield: trooper.part === 'shield' ? SHIELD_HITS : 0 });
+    this.emit('back', { trooper });
   }
 
   /* ---------- the players the computer plays ---------- */
 
   think(bot, dt) {
     if (bot.state !== 'in') return;
-    const rifle = RIFLES[bot.rifle];
     bot.fireIn = Math.max(0, bot.fireIn - dt);
     bot.restLeft = Math.max(0, bot.restLeft - dt);
+    bot.angryLeft = Math.max(0, bot.angryLeft - dt);
+    if (bot.angryLeft === 0) bot.angryAt = null;
     // Whoever it can see of the other team that's near enough to fire at, nearest first, sticking with the one it
-    // has while it can still see them.
-    const others = this.inPlay(1 - bot.team).filter((other) => gapBetween(bot, other) <= BOT.fightWithin && this.sees(bot, other));
+    // has while it can still see them. Someone who has just hit it counts from however far off.
+    const others = this.foesOf(bot).filter((other) => (gapBetween(bot, other) <= BOT.fightWithin || other === bot.angryAt) && this.sees(bot, other));
     const seen = others.includes(bot.seen) ? bot.seen : others.sort((a, b) => gapBetween(bot, a) - gapBetween(bot, b))[0] ?? null;
     bot.seenFor = seen && seen === bot.seen ? bot.seenFor + dt : 0;
     bot.seen = seen;
@@ -695,15 +894,14 @@ export class Match {
       if (bot.burstLeft === 0) bot.burstLeft = Math.round(between(this.random, this.level.burst));
       bot.firing = true;
       if (bot.fireIn > 0) return;
-      bot.fireIn = rifle.every * 1.6;
+      bot.fireIn = BOT.every;
       bot.rounds -= 1;
       bot.burstLeft -= 1;
       if (bot.burstLeft === 0) bot.restLeft = between(this.random, this.level.rest);
-      // The other team's shots at the child land only now and then. Everyone else's mostly do.
-      const chance = seen === this.child ? this.level.aim * this.plan.aim : 0.55;
-      const landed = this.random() < chance;
+      // The other team's shots at the player land only some of the time. Everyone else's mostly do.
+      const landed = this.random() < this.chanceOn(seen, bot);
       this.emit('shot', { by: bot, at: seen, hit: landed });
-      if (landed) this.hit(seen, bot.team === 0 ? rifle.hit * MATE_HIT : seen === this.child ? this.level.hit : rifle.hit * 0.6, bot);
+      if (landed) this.hit(seen, this.botHit(bot, seen), bot);
       return;
     }
     // Nobody in sight: it goes somewhere worth going, by the way round, and then somewhere else.
@@ -721,9 +919,28 @@ export class Match {
     const next = stepTowards(bot.way, bot.x, bot.z);
     const off = turnBetween(headingTo(next.x - bot.x, next.z - bot.z), bot.heading);
     bot.heading += clamp(off, -BOT.turn * dt, BOT.turn * dt);
-    const pace = this.pace.walk * 0.8 * (bot.part === 'runner' ? RUNNER.speed : 1);
+    const pace = BOT.walk * (bot.part === 'runner' ? RUNNER.speed : 1);
     const moved = this.walk(bot, Math.abs(off) < 1 ? pace : 0, dt);
     bot.stuckFor = moved < pace * dt * 0.3 ? bot.stuckFor + dt : 0;
+  }
+
+  /**
+   * How likely a shot from a player the computer plays is to land on someone. On another of the computer's, more
+   * often than not. On the player, as often as how hard it is says, for one standing still up close: less on one
+   * who's walking, less still sprinting, and less from far off, so moving and keeping a distance are worth it.
+   */
+  chanceOn(target, from = null) {
+    if (target.bot) return BOT.lands;
+    const going = clamp(target.speed / PLAYER.run, 0, 1);
+    const moving = target.sprinting ? DODGING.sprinting : 1 - (1 - DODGING.walking) * going;
+    const away = from ? gapBetween(from, target) : DODGING.near;
+    const far = 1 - (1 - DODGING.atFar) * clamp((away - DODGING.near) / (DODGING.far - DODGING.near), 0, 1);
+    return this.level.aim * this.plan.aim * moving * far;
+  }
+
+  /** How much a shot from a player the computer plays takes off someone: the player, as much as how hard it is says. */
+  botHit(bot, target) {
+    return target.bot ? BOT.hits : this.level.hit;
   }
 
   /** A runner's side-step: a few paces one way, and then the other, still facing whoever it's firing at. */
@@ -734,7 +951,7 @@ export class Match {
       bot.dodgeWay = bot.dodgeWay === 1 ? -1 : 1;
     }
     const side = forwardOf(bot.heading + (Math.PI / 2) * bot.dodgeWay);
-    const step = this.pace.walk * 0.8 * RUNNER.speed * 0.6 * dt;
+    const step = BOT.walk * RUNNER.speed * 0.6 * dt;
     const x = bot.x + side.x * step;
     const z = bot.z + side.z * step;
     if (freeAt(x, z)) Object.assign(bot, { x, z, speed: step / dt });
@@ -750,7 +967,7 @@ export class Match {
 
   /**
    * A crate turns up in the open every so often, one at a time, the newest kind first. Walking over it picks
-   * it up. Missing it costs nothing: it goes after a while, and another comes. All of it waits while the child rests.
+   * it up. Missing it costs nothing: it goes after a while, and another comes. All of it waits while it's paused.
    */
   crates(dt) {
     const kinds = this.crateKinds;
@@ -764,7 +981,7 @@ export class Match {
     if (!this.crate) {
       this.crateIn -= dt;
       if (this.crateIn > 0) return;
-      // The newest kind first, and then turn about, at the place furthest from the child, so it's a walk.
+      // The newest kind first, and then turn about, at the place furthest from the player, so it's a walk.
       const kind = kinds[(kinds.length - 1 + this.cratesOut) % kinds.length];
       const spot = CRATE_SPOTS.slice().sort((a, b) => gapBetween(b, child) - gapBetween(a, child))[this.cratesOut % 2];
       this.crate = { kind, x: spot.x, z: spot.z, left: CRATE.seconds };
@@ -790,15 +1007,19 @@ export class Match {
   /* ---------- every frame ---------- */
 
   /**
-   * One frame. steer is how far the rifle hand is to one side, from -1 to 1. fire says the rifle hand counts as
-   * open. walk says the helper hand is open, and fist that it's closed. Anything that can't be read is neither.
+   * One frame, with what the hands are asking for, from controls.js. moveX and moveY are the stick, to the right
+   * and forwards, each from -1 to 1, and sprint says it's pushed right out. turn is how far the view turns this
+   * frame, in radians, to the right. fire is the trigger, held, and reload is true in the frame the magazine is
+   * to be changed. hands is how many hands are in the picture.
    */
-  update(dt, { steer = 0, fire = false, walk = false, fist = false } = {}) {
+  update(dt, { moveX = 0, moveY = 0, sprint = false, turn = 0, fire = false, reload = false, hands = 2 } = {}) {
     this.time += dt;
     const { child } = this;
+    const number = (value) => (Number.isFinite(value) ? value : 0);
     if (this.state !== 'playing') {
       child.firing = false;
-      this.walk(child, 0, dt);
+      this.stride(dt, 0, 0, false);
+      this.punch(dt);
       this.finishReloads(dt);
       for (const trooper of this.troopers) {
         trooper.hitLeft = Math.max(0, trooper.hitLeft - dt);
@@ -810,37 +1031,46 @@ export class Match {
       return;
     }
     this.stats.seconds += dt;
-    this.watchRest(dt, fire === true || walk === true || Math.abs(steer) > STEERING);
+    this.watchHands(dt, hands > 0);
 
-    if (child.state === 'in') {
-      this.look(dt, steer);
-      // A child who's turning says which way round something in the way they go.
-      const turning = Number.isFinite(steer) && Math.abs(steer) >= STEERING ? Math.sign(steer) : 0;
-      const moved = this.walk(child, walk === true ? this.pace.walk * (this.power.bootsLeft > 0 ? BOOTS_SPEED : 1) : 0, dt, turning);
+    if (child.state === 'in' && !this.resting) {
+      // The view turns as far as the hand has moved it.
+      child.heading += clamp(number(turn), -1, 1);
+      const moved = this.stride(dt, clamp(number(moveX), -1, 1), clamp(number(moveY), -1, 1), sprint === true);
       this.stats.walked += moved;
-      if (moved > 0) this.stats.walkingSeconds += dt;
-      // Going along something that was in the way, with the rifle hand in the middle, the child comes round to
-      // look where they're going, rather than walking sideways with their nose to a wall. A child who's turning
-      // gets their way.
-      if (child.aside && !turning) child.heading += clamp(child.aside, -ALONG_TURN * dt, ALONG_TURN * dt);
+      if (moved > 0.001) this.stats.walkingSeconds += dt;
+      if (child.sprinting) this.stats.sprintSeconds += dt;
+      if (reload === true) this.reload(child, true);
     } else {
-      child.speed = 0;
+      this.stride(dt, 0, 0, false);
     }
-    // Making a fist with the helper hand puts a new magazine in: once for each time it closes.
-    const closed = fist === true;
-    if (closed && !this.helperWasClosed && !this.autoReload) this.reload(child, true);
-    this.helperWasClosed = closed;
-    // An empty rifle waits a little while for that fist, and then does it by itself, so nobody is ever stuck.
-    if (child.rounds === 0 && child.reloadLeft === 0 && child.state === 'in') {
-      this.emptyFor += dt;
-      if (this.emptyFor >= EMPTY_WAIT) this.reload(child, false);
-    }
-    this.shoot(dt, fire === true);
+    this.shoot(dt, fire === true && !this.resting);
+    this.punch(dt);
     this.finishReloads(dt);
+    // Who the middle of the sights is on, for the sights to say so.
+    this.aimed = child.state === 'in' ? this.cast(child.heading, 0).trooper : null;
     if (!this.resting && this.endIn === null) this.crates(dt);
 
-    // While the child rests, and once it's decided, everyone the computer plays stops where they are and waits.
-    const waiting = this.resting || this.endIn !== null;
+    this.runBots(dt);
+    // Paused, nobody comes back and nobody gets their health back: it all waits.
+    if (!this.paused) this.recover(dt);
+
+    if (this.endIn !== null) {
+      this.endIn -= dt;
+      if (this.endIn <= 0) {
+        this.state = this.ending;
+        this.aimed = null;
+        child.firing = false;
+        // Beating the champions, at level 10, wins the trophy.
+        if (this.ending === 'won' && this.plan.trophy) this.stats.trophy = 1;
+        this.emit(this.ending, { score: [...this.score], trophy: this.stats.trophy === 1 });
+      }
+    }
+  }
+
+  /** While it's paused, and once it's decided, everyone the computer plays stops where they are and waits. */
+  runBots(dt) {
+    const waiting = this.paused || this.endIn !== null;
     for (const trooper of this.troopers) {
       if (!trooper.bot) continue;
       if (!waiting) {
@@ -851,27 +1081,18 @@ export class Match {
       trooper.burstLeft = 0;
       this.walk(trooper, 0, dt);
     }
-    this.recover(dt);
-
-    if (this.endIn !== null) {
-      this.endIn -= dt;
-      if (this.endIn <= 0) {
-        this.state = this.ending;
-        this.locked = null;
-        child.firing = false;
-        // Beating the champions, at level 10, wins the trophy.
-        if (this.ending === 'won' && this.plan.trophy) this.stats.trophy = 1;
-        this.emit(this.ending, { score: [...this.score], trophy: this.stats.trophy === 1 });
-      }
-    }
   }
 
-  /** With neither hand doing anything for a few seconds, it's a rest: everyone the computer plays stops and waits. */
-  watchRest(dt, busy) {
-    this.idleFor = busy ? 0 : this.idleFor + dt;
-    const resting = this.idleFor >= REST_AFTER;
+  /**
+   * With neither hand in the picture for a moment there's nothing to play with, as with a controller put down:
+   * it's paused, everyone the computer plays stops and waits, and it carries on as soon as a hand is back.
+   */
+  watchHands(dt, seen) {
+    this.awayFor = seen ? 0 : this.awayFor + dt;
+    const resting = this.awayFor >= AWAY_AFTER;
     if (resting === this.resting) return;
     this.resting = resting;
+    this.child.resting = resting;
     this.emit('resting', { on: resting });
   }
 }
