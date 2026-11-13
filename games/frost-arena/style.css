@@ -39,7 +39,7 @@ body[data-screen='playing']:has(.story.is-visible) .prompt {
   font-size: clamp(16px, 2vw, 28px);
 }
 
-/* The meters for how open each hand is are for the other games: here the stick and the ring say what the hands
+/* The meters for how open each hand is are for the other games: here the two pads say what the hands
    are doing. They're still there for the hand check before a match. */
 body[data-screen='playing'] .hands-bar,
 body[data-screen='countdown'] .hands-bar { display: none; }
@@ -347,7 +347,7 @@ body[data-screen='playing'] .arena-marks { display: block; position: relative; z
 
 body[data-screen='playing'] .pads,
 body[data-screen='countdown'] .pads { display: flex; }
-/* Playing with the left hand, the ring that looks round is on the left, and the stick on the right. */
+/* Playing with the left hand, the pad that looks round is on the left, and the one that walks on the right. */
 body[data-hands='left'] .pads { flex-direction: row-reverse; }
 
 .pad-side {
@@ -403,31 +403,12 @@ body[data-hands='left'] .pad-side.is-aim { flex-direction: row; }
 .pads .ring { margin-top: 22px; }
 .pads .ring-word { top: auto; bottom: calc(100% + 4px); }
 
-/* A hand that hasn't come to rest yet has a ring with no knob. With no hand at all, the ring is faint, and says what to do. */
+/* A hand that's closed is a thumb lifted off the glass: its pad is there, dashed, with no knob. With no hand at all it's fainter still. */
 .ring[data-state='off'] { opacity: 0.45; border-style: dashed; }
 .ring[data-state='off'] .knob,
 .ring[data-state='seen'] .knob { display: none; }
-.ring[data-state='seen'] { border-style: dashed; }
+.ring[data-state='seen'] { border-style: dashed; opacity: 0.75; }
 .ring[data-state='on'] { border-color: #fff; }
-
-/* Past the ring, the view keeps turning: an arrow on that side of it, bigger the faster. */
-.ring-arrow {
-  display: none;
-  position: absolute;
-  top: 50%;
-  border-style: solid;
-  border-color: transparent;
-  border-width: 12px;
-  transform: translateY(-50%) scale(calc(0.7 + var(--edge, 0) * 0.8));
-  filter: drop-shadow(0 0 2px rgb(12 24 38 / 0.9));
-}
-
-.ring-arrow.is-right { left: calc(100% + 6px); border-left-color: var(--lit); border-right-width: 0; transform-origin: left center; }
-.ring-arrow.is-left { right: calc(100% + 6px); border-right-color: var(--lit); border-left-width: 0; transform-origin: right center; }
-.ring[data-edge='right'] .ring-arrow.is-right,
-.ring[data-edge='left'] .ring-arrow.is-left { display: block; }
-.ring[data-edge='right'],
-.ring[data-edge='left'] { border-color: var(--lit); }
 
 /* The buttons: each lit while its hand is doing it. */
 .button {

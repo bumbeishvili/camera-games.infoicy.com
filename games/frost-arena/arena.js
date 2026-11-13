@@ -291,7 +291,7 @@ export const MAGAZINE = 30;
 
 // How fast the player goes, in paces a second: with the stick right out, and sprinting. ease is how quickly
 // they get up to speed, and stop. Walking opens the rifle's spread by up to walking times, and sprinting by more.
-export const PLAYER = { run: 4.4, sprint: 6.4, ease: 14, walking: 1.6, sprinting: 2.6 };
+export const PLAYER = { run: 5.2, sprint: 7.6, ease: 24, walking: 1.6, sprinting: 2.6 };
 
 // How hard the other team is. aim is how many of their shots at the player land, on someone standing still up
 // close, hit how much each takes off, react how long they take to start firing once they see someone, and

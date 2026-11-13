@@ -648,20 +648,27 @@ const FILMS = {
       await wait(page, 500);
     },
     async play(page) {
-      // Two hands, as two thumbs on a phone. The right one looks round: towards whoever can be seen, or the way to
-      // go, past its ring for a big turn and back to the edge of it as the view comes round, and it closes on
-      // someone in the sights. The left one is the stick: forwards along the way with nobody about, from side to
-      // side while firing, and closed for a moment when the magazine wants changing.
+      // Two hands, as two thumbs on the glass of a phone. The right one, open, is dragged to look round: towards
+      // whoever can be seen, or the way to go. When it has been dragged as far as is comfortable it closes, comes
+      // back, and opens to drag again, and its thumb goes up on someone in the sights, and stays up while they're
+      // nearly in them. The left one, open, is dragged to walk: forwards along the way with nobody about, slowly
+      // from side to side while firing, and its thumb goes up for a moment when the magazine wants changing.
       await page.evaluate(async () => {
         const { wayTo, stepTowards } = await import('/games/frost-arena/arena.js');
         await new Promise((done) => {
           const started = performance.now();
+          const REACH = 0.4; // How far the walking hand is dragged for full speed, in palm lengths.
+          const FAR = 0.45; // How far across the other is dragged before it's brought back, in palm lengths.
           let tick = 0;
-          let across = 0;
+          let across = 0; // Where the hand that looks round is, in palm lengths from where it began.
+          let down = 0; // And where it last went down.
+          let phase = 'drag'; // drag, close, back or open.
+          let phaseFor = 0;
           let stickX = 0;
           let stickY = 0;
           let onFor = 0;
-          let closedFor = 0;
+          let thumbFor = 0;
+          let thumbUp = 0;
           let way = null;
           let goal = { x: -6.5, z: 0 };
           const timer = setInterval(() => {
@@ -675,19 +682,36 @@ const FILMS = {
             const to = seen ?? stepTowards(way, child.x, child.z);
             const wanted = Math.atan2(to.x - child.x, -(to.z - child.z));
             const off = Math.atan2(Math.sin(wanted - child.heading), Math.cos(wanted - child.heading));
-            // What the game has seen of the hand is a moment behind where the hand is: the turn still on its way is allowed for.
-            const inner = Math.max(-1, Math.min(1, across));
-            const coming = (inner - Math.max(-1, Math.min(1, controls.out.pad.x))) * controls.direct;
-            const want = inner + (off - coming) / controls.direct;
-            const target = Math.abs(want) > 1 ? Math.sign(want) * (1 + Math.min(0.5, (Math.abs(want) - 1) * 0.8)) : want;
-            across += Math.max(-0.09, Math.min(0.09, (target - across) * 0.35));
-            const on = seen && Math.abs(off) < Math.min(0.09, Math.atan2(0.3, Math.hypot(seen.x - child.x, seen.z - child.z)));
-            onFor = on ? onFor + 1 : 0;
-            stickX += ((seen ? Math.sign(Math.sin(tick * 0.06)) * 0.8 : 0) - stickX) * 0.2;
+            const within = seen ? Math.min(0.09, Math.atan2(0.3, Math.hypot(seen.x - child.x, seen.z - child.z))) : 0;
+            onFor = seen && Math.abs(off) < within ? onFor + 1 : 0;
+            // The thumb goes up once the sights have been on someone for a moment, and stays up while they're nearly on them.
+            if (onFor > 2) thumbUp = 12;
+            else if (!seen || Math.abs(off) > within * 3) thumbUp = 0;
+            else if (thumbUp > 0) thumbUp -= 1;
+            phaseFor += 1;
+            if (phase === 'drag') {
+              // What the game has seen of the hand is a moment behind where the hand is: the turn still on its
+              // way is allowed for.
+              const coming = (across - down - controls.aim.offset.x) * controls.gain;
+              const step = Math.max(-0.07, Math.min(0.07, ((off - coming) / controls.gain) * 0.35));
+              // As far as is comfortable, with a good way still to turn: it lets go, to come back and drag again.
+              if (Math.abs(across + step) > FAR && Math.abs(off) > 0.25 && Math.sign(step) === Math.sign(across)) [phase, phaseFor] = ['close', 0];
+              else across += step;
+            } else if (phase === 'close' && phaseFor > 3) {
+              [phase, phaseFor] = ['back', 0];
+            } else if (phase === 'back') {
+              const home = -Math.sign(off) * FAR * 0.7;
+              across += Math.max(-0.12, Math.min(0.12, home - across));
+              if (Math.abs(home - across) < 0.01) [phase, phaseFor] = ['open', 0];
+            } else if (phase === 'open' && phaseFor > 2) {
+              [phase, phaseFor, down] = ['drag', 0, across];
+            }
+            const lifted = phase === 'close' || phase === 'back';
+            stickX += ((seen ? Math.sign(Math.sin(tick * 0.06)) * 0.45 : 0) - stickX) * 0.2;
             stickY += ((seen ? 0 : Math.abs(off) < 0.9 ? -1.05 : -0.3) - stickY) * 0.2;
-            if (!seen && child.rounds < 12 && child.reloadLeft === 0 && closedFor === 0) closedFor = 8;
-            if (closedFor > 0) closedFor -= 1;
-            window.__camera.show({ left: closedFor > 2 ? 'fist' : 'open', right: onFor > 2 ? 'fist' : 'open', scale: 0.7, sameHand: true, rightOffsetX: across * 0.7 * palm, leftOffsetX: stickX * 0.62 * palm, leftOffsetY: stickY * 0.62 * palm });
+            if (!seen && child.rounds < 12 && child.reloadLeft === 0 && thumbFor === 0) thumbFor = 8;
+            if (thumbFor > 0) thumbFor -= 1;
+            window.__camera.show({ left: thumbFor > 2 ? 'thumbs-up' : 'open', right: lifted ? 'fist' : thumbUp > 0 ? 'thumbs-up' : 'open', scale: 0.7, sameHand: true, rightOffsetX: across * palm, leftOffsetX: stickX * REACH * palm, leftOffsetY: stickY * REACH * palm });
             if (performance.now() - started > 18_000) {
               clearInterval(timer);
               done();

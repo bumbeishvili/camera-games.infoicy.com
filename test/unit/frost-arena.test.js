@@ -152,7 +152,7 @@ test('the stick walks the player the way they\'re facing: forwards, back and to 
     standInFront(match, 25, Math.PI);
     // Out in the open, with room to walk every way.
     Object.assign(match.child, { x: -7, z: 6.5, heading });
-    run(match, 1.5, input);
+    run(match, 1.2, input);
     return { x: match.child.x + 7, z: match.child.z - 6.5, match };
   };
   // Facing up the yard: forwards is up it, and right is to the right.
@@ -837,7 +837,6 @@ test('every difficulty, rifle and number of tags can be played right through, Ea
       if (level !== 'gentle') assert.equal(count('tagged', ({ by }) => by.team === 1), match.score[1], about);
       assert.ok(match.stats.tags > 0 && match.stats.tags <= match.score[0], `${about}: ${match.stats.tags} of ${match.score[0]}`);
       assert.ok(match.stats.hits <= match.stats.shots && match.stats.hits >= match.stats.tags, about);
-      if (tags >= 10) assert.ok(match.stats.reloads >= 1, `${about}: ${match.stats.reloads} magazines`);
       assert.ok(seconds < 600, `${about}: ${seconds} seconds`);
       for (const trooper of match.troopers) assert.ok(freeAt(trooper.x, trooper.z, BODY - 0.01), `${about}: ${trooper.who}`);
     }

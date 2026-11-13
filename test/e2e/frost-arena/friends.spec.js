@@ -5,9 +5,7 @@
 // decided by the game that fired it, which tells the other. Here they're two separate browsers, talking through
 // the race server on this computer (tools/race-server.mjs).
 import { expect, openGame, shot, test, waitForScreen } from '../helpers.js';
-import { GAME, RING, hands, soon } from './helpers.js';
-
-const FIST = { photo: 'fist' };
+import { GAME, THUMB, hands, soon } from './helpers.js';
 
 /** Another player, in a browser of their own, with the same checks for errors. */
 async function secondPlayer(browser) {
@@ -134,7 +132,7 @@ test('two friends play together from their own computers: the same red team on b
 
   // Ben walks off up the yard, and Ana's screen shows him going.
   const from = his.child;
-  await hands(ben.page, { move: { y: -0.55 } });
+  await hands(ben.page, { move: { y: -0.3 } });
   await soon(async () => gap((await matchOf(ben.page)).child, from)).toBeGreaterThan(4);
   await soon(async () => {
     [ana, his] = [await matchOf(page), await matchOf(ben.page)];
@@ -163,8 +161,8 @@ test('two friends play together from their own computers: the same red team on b
     return Math.max(...ana.others.filter(({ bot }) => bot).map((bot) => gap(bot, byNumber(his, bot.number))));
   }).toBeLessThan(0.3);
   expect(gap(byNumber(his, 20), { x: -21, z: 5 })).toBeLessThan(0.3);
-  // He closes his hand: his shots land on his own screen at once, Ana's game counts them, and it's a tag for the team.
-  await hands(ben.page, { aim: FIST });
+  // His thumb goes up: his shots land on his own screen at once, Ana's game counts them, and it's a tag for the team.
+  await hands(ben.page, { aim: THUMB });
   await soon(async () => (await matchOf(ben.page)).hits).toBeGreaterThanOrEqual(1);
   await soon(async () => byNumber(await matchOf(page), 20).state, 30_000).toBe('out');
   await hands(ben.page);
@@ -255,9 +253,9 @@ test('two friends play against each other: each at their own start with nobody p
   await page.waitForTimeout(1200);
   await shot(page, 'arena-friends-against');
 
-  // Ana closes her hand. Her shots land on her screen at once, and it's Ben's game that counts them, and says
+  // Ana's thumb goes up. Her shots land on her screen at once, and it's Ben's game that counts them, and says
   // when he's out: a tag for her, on both screens.
-  await hands(page, { aim: FIST });
+  await hands(page, { aim: THUMB });
   await soon(async () => (await matchOf(page)).hits).toBeGreaterThanOrEqual(1);
   await soon(async () => (await matchOf(ben.page)).child.health).toBeLessThan(100);
   await soon(async () => (await matchOf(ben.page)).child.state, 30_000).toBe('out');
@@ -316,6 +314,6 @@ test('a friend who closes the page in the middle is gone from the yard, and the 
   expect(after.shown[1].visible).toBe(false);
   // And she can still play: the view follows her hand.
   const before = after.child.heading;
-  await hands(page, { aim: { x: RING * 0.4 } });
-  await soon(async () => (await matchOf(page)).child.heading - before).toBeGreaterThan(0.1);
+  await hands(page, { aim: { x: 0.3 } });
+  await soon(async () => (await matchOf(page)).child.heading - before).toBeGreaterThan(0.2);
 });

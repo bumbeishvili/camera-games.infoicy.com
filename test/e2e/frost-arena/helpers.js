@@ -1,16 +1,20 @@
 // Playing Frost Arena in the tests, with real photos of two hands going through the real tracker. The hand in
-// play is the right one unless a test says otherwise: it looks round, and closing it fires. The other is on the
-// stick, and closing it changes the magazine. A test says where each hand is, in palm lengths from where it came
-// to rest, and which photo it looks like.
+// play is the right one unless a test says otherwise: open, it's dragged to look round, and its thumb up fires.
+// The other is dragged to walk, and its thumb up changes the magazine. A closed hand is lifted, and does
+// nothing. A test says where each hand is, in palm lengths from where it's first seen, and which photo it looks
+// like.
 import { expect, openGame, show, waitForScreen } from '../helpers.js';
 
 export const GAME = 'frost-arena';
 export const SCALE = 0.7;
 // How long a palm is in the fake camera's picture at that scale, in its own pixels, as the tracker measures it.
 export const PALM = 120;
-// The ring that looks round, and how far the stick goes, in palm lengths: see PAD and STICK in controls.js.
-export const RING = 0.7;
-export const REACH = 0.62;
+// How far the walking hand is dragged for full speed, in palm lengths, and how far the view turns for the other
+// dragged a palm length across, in degrees, at the usual sensitivity: see STICK and SENSITIVITY in controls.js.
+export const REACH = 0.4;
+export const PER_PALM = (1.2 * 180) / Math.PI;
+export const THUMB = { photo: 'thumbs-up' };
+export const FIST = { photo: 'fist' };
 
 const place = (hand) => (hand === null ? null : { photo: 'open', x: 0, y: 0, ...hand });
 
@@ -39,7 +43,7 @@ export const controlsAre = (page) => page.evaluate(() => {
   return { ...out, stick: { ...out.stick }, pad: { ...out.pad } };
 });
 
-/** Gets through the hand check and on into the match, with both hands open and at rest on the stick and the ring. */
+/** Gets through the hand check and on into the match, with both hands open, and so down, where they are. */
 export async function startMatch(page, settings = {}, side = 'right') {
   await openGame(page, settings, GAME);
   await hands(page, { side });
