@@ -2,8 +2,8 @@
 // and the grown-ups' panel. Hand state is never shown by colour alone: each state also
 // has its own shape and word.
 import { FINGER_NAMES, OPEN_RULES } from './hands.js';
-import { fingersUp, isShaped } from './shapes.js';
-import { ShapesPicker, shapeIcon } from './shapes-ui.js';
+import { CHOICES, choiceOf, fingersUp, isShaped } from './shapes.js';
+import { MappingPicker, shapeIcon } from './mapping-ui.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const byId = (id) => document.getElementById(id);
@@ -396,8 +396,11 @@ export class Hud {
    * choices names the game's own settings in the panel, as radio groups, or as a drop-down for one with a long
    * list to choose from, and how to read each one's value: for example { laps: Number }. moves and shapes are the game's moves and the hand
    * shapes for them (see core/shapes.js), and onShape(choice) hears a grown-up choose another for the open move.
+   *
+   * mapping is for a game that gives more than its open move to its hands (see GameSession): its rows go under
+   * the open move's in the same picker, given holds what's chosen for each, and onGiven(id, value) hears a change.
    */
-  constructor({ speak, translate, settings, choices = {}, tagline, moves = { open: 'Play', closed: null }, shapes, onShape = () => {}, onStrictness, onSettings, onRecheck }) {
+  constructor({ speak, translate, settings, choices = {}, tagline, moves = { open: 'Play', closed: null }, shapes, onShape = () => {}, mapping = null, given = {}, onGiven = () => {}, onStrictness, onSettings, onRecheck }) {
     this.tagline = tagline;
     this.moves = moves;
     this.frame = byId('camera-frame');
@@ -431,7 +434,16 @@ export class Hud {
     this.panelHands.left.setStrictness(settings.strictness.left);
     this.panelHands.right.setStrictness(settings.strictness.right);
     this.panelUpdatedAt = 0;
-    this.shapesPicker = new ShapesPicker(byId('panel-shapes'), { moves, onShape });
+    // What does what: the open move's hand shape, and anything else the game gives to its hands. One picker
+    // for every game: see core/mapping-ui.js.
+    this.given = { ...given };
+    this.picker = new MappingPicker(byId('panel-shapes'), {
+      legend: mapping?.legend ?? 'Hand shapes',
+      lead: mapping?.lead ?? 'Which hand shape makes the move in this game. Pointing or a few fingers can be easier than a whole open hand, and good practice too.',
+      rest: moves.closed ? `${moves.closed}: any other hand, as when it rests.` : 'Any other hand rests.',
+      rows: [{ id: 'open', name: moves.open, options: mapping?.open?.options ?? CHOICES, hand: mapping?.open?.hand }, ...(mapping?.rows ?? [])],
+      onChange: (id, value) => (id === 'open' ? onShape(value) : onGiven(id, value)),
+    });
     if (shapes) this.setShapes(shapes);
 
     for (const name of ['hands', 'language', ...Object.keys(choices)]) {
@@ -468,11 +480,17 @@ export class Hud {
    */
   setShapes(shapes) {
     this.shapes = shapes;
-    this.shapesPicker.set(shapes);
+    this.picker.set({ ...this.given, open: choiceOf(shapes.open) });
     const shaped = isShaped(shapes);
     this.shapeNote.hidden = !shaped;
     this.shapeNote.innerHTML = shaped ? `<span class="shape-note-move">${shapeIcon(shapes.open)} ${this.moves.open}: ${shapes.open.name}</span>` : '';
     this.showShapeHint(null);
+  }
+
+  /** What's chosen for everything else a game gives to its hands, as { id: value }: shown in the panel. */
+  setGiven(given) {
+    this.given = { ...given };
+    if (this.shapes) this.picker.set({ ...this.given, open: choiceOf(this.shapes.open) });
   }
 
   showShapeHint(move) {

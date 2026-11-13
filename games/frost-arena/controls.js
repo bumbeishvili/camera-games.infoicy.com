@@ -39,7 +39,7 @@
 // No screen or camera in this file: it's given what the hand tracker saw, and says what the hands are asking
 // for, and what to draw of them. So it all runs in the unit tests.
 import { measureHand } from '../../core/hands.js';
-import { SHAPES, SHAPE_LOST, SHAPE_MADE, shapeScore } from '../../core/shapes.js';
+import { SHAPES, SHAPE_LOST, SHAPE_MADE, shapeScore, signOf } from '../../core/shapes.js';
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const PALM_POINTS = [0, 5, 9, 13, 17]; // The wrist and the four knuckles, which move least as the fingers do.
@@ -140,19 +140,17 @@ export function fingersOut(fingers) {
   return 0.5 * (four.reduce((sum, value) => sum + value, 0) / four.length) + 0.5 * Math.min(...four);
 }
 
-// What a hand that's down can be told to be doing. name is for the panel, words for the card that says what
-// each hand does, and mark the little picture of it. link is the two points of the hand it joins, for drawing it
-// on the camera's picture. A fist isn't one of them: that's a hand lifted, which does nothing.
-export const GESTURES = {
-  thumb: { name: 'Thumb up, over a closed hand', words: 'thumb up', mark: '👍' },
-  'pinch-index': { name: 'Pinch: thumb and first finger', words: 'pinch thumb and first finger', mark: '🤏', link: [THUMB_TIP, FINGER_TIPS.index] },
-  'pinch-middle': { name: 'Pinch: thumb and middle finger', words: 'pinch thumb and middle finger', mark: '🤏', link: [THUMB_TIP, FINGER_TIPS.middle] },
-  'pinch-ring': { name: 'Pinch: thumb and ring finger', words: 'pinch thumb and ring finger', mark: '🤏', link: [THUMB_TIP, FINGER_TIPS.ring] },
-  'pinch-pinky': { name: 'Pinch: thumb and little finger', words: 'pinch thumb and little finger', mark: '🤏', link: [THUMB_TIP, FINGER_TIPS.pinky] },
-  trigger: { name: 'First finger curled, like a trigger', words: 'curl your first finger', mark: '☝️' },
-  point: { name: 'Pointing: first finger out, the rest closed', words: 'point with one finger', mark: '☝️' },
-  two: { name: 'Two fingers out, the rest closed', words: 'show two fingers', mark: '✌️' },
-};
+// What a hand that's down can be told to be doing, by the names every game uses for hand shapes: see SHAPES and
+// SIGNS in core/shapes.js, which also have what each is called, how a card says it, and its little picture. link
+// is the two points of the hand a pinch joins, for drawing it on the camera's picture. A fist isn't one of them:
+// that's a hand lifted, which does nothing.
+const linked = (id) => (id.startsWith('pinch-') ? { link: [THUMB_TIP, FINGER_TIPS[id.slice(6)]] } : {});
+export const GESTURES = Object.fromEntries(
+  ['thumb', 'point', 'two', 'three', 'pinch-index', 'pinch-middle', 'pinch-ring', 'pinch-pinky', 'trigger'].map((id) => [id, { ...signOf(id), ...linked(id) }]),
+);
+// What a hand can be dragging with: open, unless a grown-up says pointing or a few fingers. Whatever it is, that
+// hand is down while it's making it, and lifted when it isn't.
+export const DRAGS = ['open', 'point', 'two', 'three'];
 // Which of a hand's fingers have to be left straight for a pinch of the thumb against each.
 const LEFT_STRAIGHT = { index: ['middle', 'ring', 'pinky'], middle: ['index', 'pinky'], ring: ['index', 'middle'], pinky: ['index', 'middle'] };
 
@@ -162,11 +160,14 @@ const LEFT_STRAIGHT = { index: ['middle', 'ring', 'pinky'], middle: ['index', 'p
 export const ACTIONS = ['fire', 'reload', 'sprint'];
 export const BINDINGS = { fire: 'aim:thumb', reload: 'move:thumb', sprint: 'stick' };
 
-/** What a binding says: { hand, gesture }, or 'stick' or 'off', or null for one that isn't any of those. */
+/**
+ * What a binding says: { hand, gesture }, or 'stick' or 'off', or null for one that isn't any of those. It can
+ * come as 'aim:thumb', or as the grown-ups' panel keeps it, { hand: 'aim', is: 'thumb' }: see core/mapping.js.
+ */
 export function readBinding(value) {
   if (value === 'stick' || value === 'off') return value;
-  const [hand, gesture] = String(value ?? '').split(':');
-  return (hand === 'aim' || hand === 'move') && Object.hasOwn(GESTURES, gesture) ? { hand, gesture } : null;
+  const [hand, gesture] = value && typeof value === 'object' ? [value.hand, value.is] : String(value ?? '').split(':');
+  return (hand === 'aim' || hand === 'move') && typeof gesture === 'string' && Object.hasOwn(GESTURES, gesture) ? { hand, gesture } : null;
 }
 
 /**
@@ -197,7 +198,7 @@ export function gesturesOf(hand, was = {}) {
   const others = Math.min(fingers.middle, fingers.ring, fingers.pinky);
   on.trigger = !closed && others >= TRIGGER.straight && fingers.index < (was.trigger ? TRIGGER.uncurled : TRIGGER.curled);
   // The shapes the other games know: some fingers straight, and the rest curled.
-  for (const shape of ['point', 'two']) on[shape] = !closed && shapeScore(fingers, SHAPES[shape]) >= (was[shape] ? SHAPE_LOST : SHAPE_MADE);
+  for (const shape of ['point', 'two', 'three']) on[shape] = !closed && shapeScore(fingers, SHAPES[shape]) >= (was[shape] ? SHAPE_LOST : SHAPE_MADE);
   return on;
 }
 
@@ -324,7 +325,9 @@ export class TrackedHand {
   constructor(filter = FILTER) {
     this.filterX = new OneEuro(filter);
     this.filterY = new OneEuro(filter);
-    // What this hand has been given to do, as well as dragging: while it's doing any of it, it's down.
+    // What this hand drags with, one of DRAGS, and what it has been given to do as well: while it's making
+    // the one, or doing any of the rest, it's down.
+    this.drag = 'open';
     this.keeps = new Set();
     this.forget();
   }
@@ -472,8 +475,9 @@ export class TrackedHand {
       // It has begun once it's been seen for as many looks as it takes to count.
       if (this.looks[gesture] === ACTS_AFTER_LOOKS) this.made.add(gesture);
     }
-    // Open, or doing something it's been given to do: it's dragging. Anything else isn't.
-    this.held = Boolean(this.making.open) || [...this.keeps].some((gesture) => this.making[gesture]);
+    // Open, or whatever else it drags with, or doing something it's been given to do: it's dragging. Anything
+    // else isn't.
+    this.held = Boolean(this.making[this.drag]) || [...this.keeps].some((gesture) => this.making[gesture]);
     if (this.held && this.away > SLIP_LOOKS) this.retaken = true;
     this.away = this.held ? 0 : this.away + 1;
 
@@ -592,14 +596,25 @@ export class TrackedHand {
 export class Controls {
   /**
    * sensitivity is 'low', 'medium' or 'high': how far the view turns for the hand dragged across. bindings is
-   * what each of ACTIONS is given to, as in BINDINGS.
+   * what each of ACTIONS is given to, as in BINDINGS, and drags what each hand drags with, as setDrags takes it.
    */
-  constructor({ sensitivity = 'medium', bindings = {} } = {}) {
+  constructor({ sensitivity = 'medium', bindings = {}, drags = {} } = {}) {
     this.move = new TrackedHand();
     this.aim = new TrackedHand();
     this.setSensitivity(sensitivity);
+    this.setDrags(drags);
     this.setBindings(bindings);
     this.reset();
+  }
+
+  /**
+   * What each hand drags with: { aim, move }, each one of DRAGS, and an open hand for anything else. What the
+   * hands have been given to do is looked at again, as nothing can be given to what a hand drags with.
+   */
+  setDrags({ aim = 'open', move = 'open' } = {}) {
+    this.aim.drag = DRAGS.includes(aim) ? aim : 'open';
+    this.move.drag = DRAGS.includes(move) ? move : 'open';
+    if (this.asked) this.setBindings(this.asked);
   }
 
   setSensitivity(sensitivity) {
@@ -611,10 +626,13 @@ export class Controls {
    * doing is what it is out of the box, and firing can't be switched off.
    */
   setBindings(bindings = {}) {
+    this.asked = bindings;
     this.bindings = {};
     for (const action of ACTIONS) {
       const read = readBinding(bindings[action]);
-      const allowed = read === 'stick' ? action === 'sprint' : read === 'off' ? action !== 'fire' : Boolean(read);
+      // Not what that hand drags with: it would be done all the while the hand was down.
+      const free = typeof read === 'string' || !read || this[read.hand].drag !== read.gesture;
+      const allowed = free && (read === 'stick' ? action === 'sprint' : read === 'off' ? action !== 'fire' : Boolean(read));
       this.bindings[action] = allowed ? read : readBinding(BINDINGS[action]);
     }
     // A hand doing something it's been given to do is down, whatever its fingers are at.

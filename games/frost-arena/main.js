@@ -5,9 +5,10 @@
 // play walks, sidesteps, backs away and sprints, and the hand in play looks round. A thumb held up fires on the
 // hand in play, and changes the magazine on the other, with the drag still going. Both are drawn on the screen as
 // they are on a phone, a pad and its knob at the bottom on each side, with the buttons beside them, so it's always
-// plain what each hand is doing, and both are drawn on the camera's picture as the tracker sees them. What fires,
-// changes the magazine and sprints can each be given to something else a hand can do with its fingers, on either
-// hand, under the gear icon.
+// plain what each hand is doing, and both are drawn on the camera's picture as the tracker sees them. What each
+// hand drags with, and what fires, changes the magazine and sprints, can each be given to something else a hand
+// can do with its fingers, under the gear icon, in the picker every game has for its hand shapes
+// (core/mapping-ui.js).
 //
 // With friends, each on their own computer, up to four are in the same yard: together on the blue team against
 // the computer's red team (team.js), or everyone for themselves (rivals.js), as whoever made the match chooses.
@@ -22,7 +23,7 @@ import { GameSession } from '../../core/session.js';
 import { STORY_BOX, StoryBox } from '../../core/story.js';
 import { ArenaSound } from './arena-sound.js';
 import { HEALTH, LEVELS, MAGAZINE, Match, POWERS, RIFLES, TAGS_TO_WIN, newsAt } from './arena.js';
-import { ACTIONS, BINDINGS, Controls, GESTURES, SENSITIVITY } from './controls.js';
+import { ACTIONS, BINDINGS, Controls, DRAGS, GESTURES, SENSITIVITY, readBinding } from './controls.js';
 import { Rivals } from './rivals.js';
 import { PLAYER_LOOKS, TROOPER_TRACK } from './squad.js';
 import { TeamMatch } from './team.js';
@@ -91,9 +92,28 @@ const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 
 // What each thing that can be given to a gesture is called, on its button and in the panel.
 const ACTION_NAMES = { fire: 'Fire', reload: 'Reload', sprint: 'Sprint' };
-// The setting each is kept in. They have names of their own, so nothing kept from when a closed hand fired is
-// taken for a choice made in this one.
-const ACTION_SETTINGS = { fire: 'arenaTrigger', reload: 'arenaMagazine', sprint: 'arenaRun' };
+// The two hands, for the panel: which is which goes by what they do, as the hand in play can be either.
+const HANDS = [{ id: 'aim', name: 'The hand that looks round' }, { id: 'move', name: 'The hand that walks' }];
+// A binding as the panel keeps it: see core/mapping.js.
+const given = (binding) => {
+  const read = readBinding(binding);
+  return typeof read === 'string' ? read : { hand: read.hand, is: read.gesture };
+};
+// What the hands are given to do, for the panel's picker: what each drags with, and what fires, changes the
+// magazine and sprints. The hand in play's drag is the game's open move, so it's the first row there.
+const MAPPING = {
+  legend: 'What each hand does, and how',
+  lead: 'Each hand drags while it makes its shape, and is let go by any other. Firing, the magazine and sprinting can each be given to something else a hand can do, on either hand.',
+  open: { options: DRAGS, hand: 'aim' },
+  rows: [
+    { id: 'walk', name: 'Walk', hand: 'move', options: DRAGS, fallback: 'open' },
+    { id: 'fire', name: ACTION_NAMES.fire, hands: HANDS, options: Object.keys(GESTURES), fallback: given(BINDINGS.fire) },
+    { id: 'reload', name: ACTION_NAMES.reload, hands: HANDS, options: [{ id: 'off', name: 'Nothing: an empty one changes itself', icon: 'none' }, ...Object.keys(GESTURES)], fallback: given(BINDINGS.reload) },
+    { id: 'sprint', name: ACTION_NAMES.sprint, hands: HANDS, options: [{ id: 'stick', name: 'Walking hand right out forwards', icon: 'push' }, { id: 'off', name: 'Nothing: no sprinting', icon: 'none' }, ...Object.keys(GESTURES)], fallback: given(BINDINGS.sprint) },
+  ],
+};
+// How a card says what a hand drags with, at the start of a line.
+const DRAG_WORDS = { open: 'open it', point: 'point', two: 'show two fingers', three: 'show three fingers' };
 
 class ArenaGame {
   chimeOnOpen = false; // Hands open and close all the time here, so a chime would be noise.
@@ -103,7 +123,7 @@ class ArenaGame {
     this.session = session;
     this.story = new StoryBox(session);
     this.yard = new Yard(byId('game'));
-    this.controls = new Controls({ sensitivity: session.settings.arenaSens, bindings: this.bindings() });
+    this.controls = new Controls({ sensitivity: session.settings.arenaSens, bindings: this.bindings(), drags: this.drags() });
     this.match = null;
     this.preview = false;
     this.storyFor = 0;
@@ -169,10 +189,14 @@ class ArenaGame {
     return { tags: arenaWin, level: arenaHard, rifle: arenaRifle, assist: arenaAssist !== 'off' };
   }
 
-  /** What each thing a player can do is given to, as it was chosen: see BINDINGS in controls.js. */
+  /** What each thing a player can do is given to, as it was chosen in the panel: see BINDINGS in controls.js. */
   bindings() {
-    const { settings } = this.session;
-    return Object.fromEntries(ACTIONS.map((action) => [action, settings[ACTION_SETTINGS[action]]]));
+    return Object.fromEntries(ACTIONS.map((action) => [action, this.session.given[action]]));
+  }
+
+  /** What each hand drags with: the hand in play with the game's open move's shape, and the other with its own. */
+  drags() {
+    return { aim: this.session.shapes.open.id, move: this.session.given.walk };
   }
 
   /**
@@ -190,7 +214,12 @@ class ArenaGame {
    */
   showBindings() {
     const { bindings } = this.controls;
-    const lines = { move: ['open it, and drag: walk that way', 'close it: stop'], aim: ['open it, and drag: look round', 'close it: let go, to drag again'] };
+    const drags = { move: this.controls.move.drag, aim: this.controls.aim.drag };
+    const other = (drag) => (drag === 'open' ? 'close it' : 'any other hand');
+    const lines = {
+      move: [`${DRAG_WORDS[drags.move]}, and drag: walk that way`, `${other(drags.move)}: stop`],
+      aim: [`${DRAG_WORDS[drags.aim]}, and drag: look round`, `${other(drags.aim)}: let go, to drag again`],
+    };
     if (bindings.sprint === 'stick') lines.move.push('right out forwards: sprint');
     for (const action of ACTIONS) {
       const binding = bindings[action];
@@ -239,6 +268,7 @@ class ArenaGame {
     if (('arenaWin' in change || 'arenaHard' in change || 'arenaFriends' in change) && this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
     if ('arenaFriends' in change) this.friends.showTeams();
     this.controls.setSensitivity(this.session.settings.arenaSens);
+    this.controls.setDrags(this.drags());
     this.controls.setBindings(this.bindings());
     this.showBindings();
     if (this.preview) return;
@@ -876,14 +906,11 @@ class ArenaGame {
 
 const choice = (name, value, label) => `<label><input type="radio" name="${name}" value="${value}"> ${label}</label>`;
 const FROM_MARKS = '<i></i>'.repeat(4);
-// Everything a hand can be told to be doing, for either hand, to give something to.
-const gestureOptions = (hand, label) => `<optgroup label="${label}">${Object.entries(GESTURES).map(([id, { name }]) => `<option value="${hand}:${id}">${name}</option>`).join('')}</optgroup>`;
-const GESTURE_OPTIONS = `${gestureOptions('aim', 'The hand that looks round')}${gestureOptions('move', 'The hand that walks')}`;
-const binding = (action, first) => `<label class="bind"><span>${ACTION_NAMES[action]}</span><select name="${ACTION_SETTINGS[action]}">${first}${GESTURE_OPTIONS}</select></label>`;
-
 new GameSession({
-  // What the open and closed hand do here, for the hand shapes in the panel: see core/shapes.js.
+  // What the hand in play does here with its open move's shape, and without it, for the panel, and everything
+  // else the hands are given to do: see core/shapes.js and core/mapping.js.
   moves: { open: 'Look round', closed: 'Let go' },
+  mapping: MAPPING,
   shell: {
     title: 'Frost Arena',
     startLabel: 'Join the team',
@@ -949,12 +976,6 @@ new GameSession({
         ${choice('arenaAssist', 'on', 'On: the view turns less while the sights are on someone')}
         ${choice('arenaAssist', 'off', 'Off')}
       </fieldset>
-      <fieldset class="choice binds">
-        <legend>Which hand does what, and how (each can be given to anything a hand can do with its fingers)</legend>
-        ${binding('fire', '')}
-        ${binding('reload', '<option value="off">Nothing: only an empty magazine is changed</option>')}
-        ${binding('sprint', '<option value="stick">The walking hand dragged right out forwards</option><option value="off">Nothing: no sprinting</option>')}
-      </fieldset>
       <fieldset class="choice">
         <legend>How hard</legend>
         ${choice('arenaHard', 'gentle', 'Easy: you can’t be tagged out, and the match can’t be lost')}
@@ -971,8 +992,8 @@ new GameSession({
         ${choice('arenaFriends', 'against', 'Against each other: everyone for themselves, with no red team')}
       </fieldset>`,
   },
-  defaults: { arenaRifle: 'ak', arenaSens: 'medium', arenaAssist: 'on', arenaHard: 'medium', arenaWin: 10, arenaTrigger: BINDINGS.fire, arenaMagazine: BINDINGS.reload, arenaRun: BINDINGS.sprint, arenaFriends: 'together' },
-  choices: { arenaRifle: String, arenaSens: String, arenaAssist: String, arenaHard: String, arenaWin: Number, arenaTrigger: String, arenaMagazine: String, arenaRun: String, arenaFriends: String },
+  defaults: { arenaRifle: 'ak', arenaSens: 'medium', arenaAssist: 'on', arenaHard: 'medium', arenaWin: 10, arenaFriends: 'together' },
+  choices: { arenaRifle: String, arenaSens: String, arenaAssist: String, arenaHard: String, arenaWin: Number, arenaFriends: String },
   tagline: (side) => `A team match, played like a shooter on a phone. Open your ${side} hand and drag it to look round, thumb up to fire. Your other hand walks.`,
   finishLine: FINISH,
   lines: new URL('./audio/voice/lines.json', import.meta.url),

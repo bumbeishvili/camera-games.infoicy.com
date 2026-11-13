@@ -532,26 +532,6 @@ body[data-hands='left'] .how { flex-direction: row-reverse; }
 .how-side.is-aim .how-hand::after { content: 'Right hand'; }
 body[data-hands='left'] .how-side.is-move .how-hand::after { content: 'Right hand'; }
 body[data-hands='left'] .how-side.is-aim .how-hand::after { content: 'Left hand'; }
-
-/* ---------- under the gear icon: what each thing is given to ---------- */
-.binds .bind {
-  display: grid;
-  grid-template-columns: 5.5em 1fr;
-  align-items: center;
-  gap: 10px;
-}
-
-.binds select {
-  min-width: 0;
-  padding: 8px 10px;
-  background: var(--surface);
-  border: 2px solid var(--ink-soft);
-  border-radius: 12px;
-  color: var(--ink);
-  font: inherit;
-  font-size: 0.92em;
-}
-
 /* ---------- the finish card ---------- */
 /* How long the hand was open, and how often, is what the other games are about. Here it's how the match went. */
 #finish-open,

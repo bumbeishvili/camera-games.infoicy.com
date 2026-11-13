@@ -416,17 +416,26 @@ test('both hands are drawn on the camera\'s picture as the tracker sees them, wh
   expect((await joined())[0]).toBeLessThan(12);
 });
 
-test('what fires, reloads and sprints can each be given to something else a hand can do, on either hand, under the gear icon', async ({ page }) => {
+test('what each hand does is chosen with the same picture chips as every game\'s hand shapes: what fires, reloads and sprints, on either hand, and what each hand drags with', async ({ page }) => {
   // Kept from before: two fingers on the walking hand changes the magazine, and there's no sprinting.
-  await startMatch(page, { arenaHard: 'gentle', arenaMagazine: 'move:two', arenaRun: 'off' });
+  await startMatch(page, { arenaHard: 'gentle', arenaAssist: 'off', shapes: { 'frost-arena': { reload: { hand: 'move', is: 'two' }, sprint: 'off' } } });
   await someoneInFront(page, 9, { health: 10_000 });
-  await expect(page.locator('select[name="arenaMagazine"]')).toHaveValue('move:two');
+  const chip = (row, value) => page.locator(`input[name="shape-${row}"][value="${value}"]`);
+  const handOf = (row, hand) => page.locator(`input[name="shape-${row}-hand"][value="${hand}"]`);
+  await expect(chip('reload', 'two')).toBeChecked();
+  await expect(handOf('reload', 'move')).toBeChecked();
+  await expect(chip('sprint', 'off')).toBeChecked();
   await expect(page.locator('.how-side.is-move')).toContainText('show two fingers: reload');
   await expect(page.locator('.how-side.is-move')).not.toContainText('sprint');
   await expect(page.locator('#button-sprint')).toBeHidden();
   await expect(page.locator('#button-reload .button-mark')).toHaveText('✌️');
-  // A closed hand isn't something anything can be given to: it's a hand lifted.
-  expect(await page.locator('select[name="arenaTrigger"] option').allTextContents()).not.toContain('Fist');
+  // One picker for all of it, in the panel's place for hand shapes: a row each, with a picture on every chip, and
+  // no drop-downs. A closed hand isn't something anything can be given to: it's a hand lifted.
+  await expect(page.locator('#panel-shapes .shape-move')).toHaveCount(5);
+  expect(await page.locator('#panel-shapes .shape-move-name').allTextContents()).toEqual(['Look round', 'Walk', 'Fire', 'Reload', 'Sprint']);
+  expect(await page.locator('#panel-shapes .shape-option').count()).toBe(await page.locator('#panel-shapes .shape-option svg.shape-icon').count());
+  await expect(page.locator('#panel select')).toHaveCount(0);
+  await expect(page.locator('input[name="shape-fire"][value="fist"], input[name="shape-fire"][value="closed"], input[name="shape-fire"][value="off"]')).toHaveCount(0);
   await page.evaluate(() => {
     window.__game.match.child.rounds = 12;
   });
@@ -434,10 +443,11 @@ test('what fires, reloads and sprints can each be given to something else a hand
   await hands(page, { move: THUMB });
   await page.waitForTimeout(800);
   expect((await matchIs(page)).changing).toBe(false);
-  // Two fingers does it.
+  // Two fingers does it, and that hand is still down while it's making them.
   await hands(page, { move: { photo: 'victory' } });
   await soon(async () => (await matchIs(page)).changing).toBe(true);
   await expect(page.locator('#button-reload')).toHaveAttribute('data-on', 'true');
+  await expect(page.locator('#stick')).toHaveAttribute('data-state', 'on');
   expect((await matchIs(page)).stats.byHand).toBe(1);
   // And dragged right out is a walk, not a sprint.
   await hands(page);
@@ -447,12 +457,21 @@ test('what fires, reloads and sprints can each be given to something else a hand
   expect((await matchIs(page)).sprinting).toBe(false);
   await hands(page);
 
-  // Changed in the middle of a match: the trigger is given to two fingers of the walking hand, and the magazine
-  // to its thumb. The fire button goes over to that side, the card says so, and it's that hand that fires.
+  // Changed in the middle of a match. The magazine goes to the walking hand's thumb. Then firing goes over to
+  // that hand: its thumb is taken there now, so it's given the first thing that's free, pointing, and from there
+  // to two fingers. The fire button goes over to that side, the card says so, and it's that hand that fires.
   await page.locator('#open-panel').click();
-  await page.locator('select[name="arenaMagazine"]').selectOption('move:thumb');
-  await page.locator('select[name="arenaTrigger"]').selectOption('move:two');
-  await page.locator('select[name="arenaRun"]').selectOption('stick');
+  await chip('reload', 'thumb').check({ force: true });
+  await handOf('fire', 'move').check({ force: true });
+  await expect(chip('fire', 'point')).toBeChecked();
+  await expect(chip('fire', 'thumb')).toBeDisabled();
+  await chip('fire', 'two').check({ force: true });
+  await chip('sprint', 'stick').check({ force: true });
+  // What one thing has on a hand, nothing else on that hand can be given: the chip is there, and can't be chosen.
+  await expect(chip('reload', 'two')).toBeDisabled();
+  await expect(page.locator('label.shape-option:has(input[name="shape-reload"][value="two"])')).toHaveAttribute('title', 'Already given to Fire on this hand');
+  await expect(chip('walk', 'two')).toBeDisabled();
+  await expect(chip('open', 'two')).toBeEnabled();
   await page.locator('#close-panel').click();
   await expect(page.locator('#side-move #button-fire')).toBeVisible();
   await expect(page.locator('#side-aim #button-fire')).toHaveCount(0);
@@ -468,17 +487,48 @@ test('what fires, reloads and sprints can each be given to something else a hand
   await hands(page, { move: { photo: 'victory' } });
   await soon(async () => (await matchIs(page)).stats.hits).toBeGreaterThan(2);
   await expect(page.locator('#button-fire')).toHaveAttribute('data-on', 'true');
-  // It's kept for next time.
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('camera-games-settings')).arenaTrigger)).toBe('move:two');
-  // And something kept from when a closed hand fired isn't taken for a choice made now.
+  await hands(page);
+  // It's kept for next time, with the game's hand shapes.
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('camera-games-settings')).shapes['frost-arena'])).toEqual({ reload: { hand: 'move', is: 'thumb' }, sprint: 'stick', fire: { hand: 'move', is: 'two' } });
+
+  // What a hand drags with is a row like any other. Looking round by pointing: an open hand is let go of, and
+  // a pointing one is down, and drags the view. Nothing else on that hand can be given to pointing then.
+  await page.locator('#open-panel').click();
+  await chip('open', 'point').check({ force: true });
+  await handOf('reload', 'aim').check({ force: true });
+  await expect(chip('reload', 'point')).toBeDisabled();
+  await handOf('reload', 'move').check({ force: true });
+  await page.locator('#close-panel').click();
+  await expect(page.locator('.how-side.is-aim')).toContainText('point, and drag: look round');
+  await expect(page.locator('.how-side.is-aim')).toContainText('any other hand: let go, to drag again');
+  await expect(page.locator('#pad')).toHaveAttribute('data-state', 'seen');
+  const from = degrees((await matchIs(page)).heading);
+  await hands(page, { aim: { x: 0.3 } });
+  await page.waitForTimeout(600);
+  expect(Math.abs(degrees((await matchIs(page)).heading) - from)).toBeLessThan(0.8);
+  // Brought back open, and then pointing where it is: it goes down there, and nothing has turned.
+  await hands(page);
+  await page.waitForTimeout(400);
+  await hands(page, { aim: { photo: 'pointing' } });
+  await expect(page.locator('#pad')).toHaveAttribute('data-state', 'on');
+  await page.waitForTimeout(500);
+  const down = degrees((await matchIs(page)).heading);
+  expect(Math.abs(down - from)).toBeLessThan(1.5);
+  await hands(page, { aim: { photo: 'pointing', x: 0.25 } });
+  await soon(async () => degrees((await matchIs(page)).heading)).toBeGreaterThan(down + 12);
+
+  // And something kept from when these were drop-downs, or from when a closed hand fired, isn't taken for a
+  // choice made now.
   await page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('camera-games-settings'));
-    localStorage.setItem('camera-games-settings', JSON.stringify({ arenaHard: 'gentle', voice: false, sound: false, arenaFire: 'aim:close', arenaReload: 'move:fist', arenaSprint: 'off', levels: saved.levels }));
+    localStorage.setItem('camera-games-settings', JSON.stringify({ arenaHard: 'gentle', voice: false, sound: false, arenaFire: 'aim:close', arenaTrigger: 'move:two', arenaMagazine: 'move:fist', arenaRun: 'off', shapes: { 'frost-arena': { fire: 'aim:two', reload: { hand: 'move', is: 'fist' } } }, levels: saved.levels }));
   });
   await page.reload();
   await expect(page.locator('#start')).toBeVisible();
   expect(await page.evaluate(() => window.__game.controls.bindings)).toEqual({ fire: { hand: 'aim', gesture: 'thumb' }, reload: { hand: 'move', gesture: 'thumb' }, sprint: 'stick' });
-  await expect(page.locator('select[name="arenaTrigger"]')).toHaveValue('aim:thumb');
+  expect(await page.evaluate(() => [window.__game.controls.aim.drag, window.__game.controls.move.drag])).toEqual(['open', 'open']);
+  await expect(chip('fire', 'thumb')).toBeChecked();
+  await expect(chip('open', 'open')).toBeChecked();
 });
 
 test('what\'s chosen is kept: the M4, fifteen tags, the sensitivity, no help with aiming, and the left hand to look round', async ({ page }) => {

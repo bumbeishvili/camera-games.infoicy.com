@@ -1024,6 +1024,37 @@ body:not([data-screen='countdown'], [data-screen='playing']) .count { display: n
 .shape-fingers[hidden] { display: none; }
 .shape-fingers > span { color: var(--ink-soft); font-weight: 600; }
 
+/* A pinch: the thumb coming across the palm shows against it, and where the two tips meet is marked. */
+.shape-icon path.shape-icon-over { stroke: var(--surface, #fff); stroke-width: 7; }
+.shape-option:has(input:checked) .shape-icon path.shape-icon-over { stroke: var(--surface, #fff); }
+.shape-icon circle.shape-icon-dot { fill: #f59f00; }
+/* Something that isn't a hand shape: nothing at all, or a hand pushed right out. */
+.shape-icon.is-other circle { fill: none; stroke: var(--ink); stroke-width: 9; }
+.shape-icon.is-other path { stroke-width: 9; stroke-linejoin: round; }
+.shape-option:has(input:checked) .shape-icon.is-other circle { stroke: var(--accent); }
+
+/* Which hand does it, for a game played with both hands. */
+.shape-hands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.choice .shape-hand {
+  border-radius: 999px;
+  background: var(--surface-soft);
+  box-shadow: inset 0 0 0 2px var(--line);
+  padding: 3px 12px 3px 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.choice .shape-hand:has(input:checked) { background: #e6f0fc; box-shadow: inset 0 0 0 3px var(--accent); }
+.choice .shape-hand:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* With something chosen that isn't a hand shape, which hand doesn't come into it. */
+.shape-hands[data-idle] { opacity: 0.45; }
+
 /* The passive move, which is always the closed hand. */
 .shapes-rest {
   margin-top: 10px;

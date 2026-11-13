@@ -35,7 +35,8 @@ import { HandCheck, HandMonitor, OPEN_RULES, PlayStats, promptFor } from './hand
 import { Hud } from './hud.js';
 import { Levels, mountLevels } from './levels.js';
 import { loadSettings, saveSettings } from './settings.js';
-import { SHAPE_RESTING, shapesFor } from './shapes.js';
+import { SHAPE_RESTING, choiceOf, shapesFor } from './shapes.js';
+import { givenFor } from './mapping.js';
 import { mountShell } from './shell.js';
 import { Sound } from './sound.js';
 
@@ -72,10 +73,18 @@ export class GameSession {
    * game's own voice lines are, and portraits makes pictures of the characters for it. moves names what
    * the open and closed hand do, as { open: 'Drive', closed: 'Slow down' }, with closed null where a
    * closed hand does nothing of its own: they're for choosing the open move's hand shape in the panel.
+   *
+   * mapping is for a game that gives more than its open move to its hands, as Frost Arena gives firing and
+   * reloading: { legend, lead, open: { options, hand }, rows }. Each of rows is { id, name, options, fallback },
+   * with hand or hands for a game played with both, as core/mapping-ui.js describes. They go in the same picker
+   * as the open move, are kept with the game's hand shapes, and are read as session.given, { id: value }. A
+   * saved value that the row doesn't offer any more is its fallback. The game hears a change as
+   * settingChanged({ given: id }).
    */
-  constructor({ shell, defaults = {}, choices = {}, tagline, finishLine, createSound, createGame, lines = null, portraits = null, moves = { open: 'Play', closed: null } }) {
+  constructor({ shell, defaults = {}, choices = {}, tagline, finishLine, createSound, createGame, lines = null, portraits = null, moves = { open: 'Play', closed: null }, mapping = null }) {
     this.shell = shell;
     this.moves = moves;
+    this.mapping = mapping;
     this.defaults = defaults;
     this.choices = choices;
     this.taglineFor = tagline;
@@ -123,9 +132,11 @@ export class GameSession {
 
     this.sound = this.createSound({ sound: settings.sound, voice: settings.voice, language: settings.language, lines });
     this.monitor = new HandMonitor(settings.strictness, settings.hands);
-    // The hand shapes for this game's moves, saved for each game as its levels are.
-    this.shapes = shapesFor(settings.shapes?.[this.levels.game]);
+    // The hand shapes for this game's moves, saved for each game as its levels are, and what else the game
+    // gives to its hands, kept with them.
+    this.shapes = shapesFor(settings.shapes?.[this.levels.game], this.mapping?.open?.options);
     this.monitor.setShapes(this.shapes);
+    this.given = givenFor(this.mapping, settings.shapes?.[this.levels.game], choiceOf(this.shapes.open));
     this.camera = new TrackingCamera(document.getElementById('camera'));
 
     this.hud = new Hud({
@@ -138,6 +149,9 @@ export class GameSession {
       moves: this.moves,
       shapes: this.shapes,
       onShape: (choice) => this.changeShape(choice),
+      mapping: this.mapping,
+      given: this.given,
+      onGiven: (id, value) => this.changeGiven(id, value),
       onStrictness: (side, value) => {
         settings.strictness[side] = value;
         this.monitor.setStrictness(side, value);
@@ -234,13 +248,25 @@ export class GameSession {
   changeShape(choice) {
     const { settings } = this;
     const { game } = this.levels;
-    settings.shapes = { ...settings.shapes, [game]: { open: choice } };
-    this.shapes = shapesFor(settings.shapes[game]);
+    settings.shapes = { ...settings.shapes, [game]: { ...settings.shapes?.[game], open: choice } };
+    this.shapes = shapesFor(settings.shapes[game], this.mapping?.open?.options);
     this.monitor.setShapes(this.shapes);
     this.hud.setShapes(this.shapes);
     this.hud.prompt.clear();
     const { snapshot } = this.monitor;
     for (const side of ['left', 'right']) this.hud.panelHands[side].update(snapshot[side], snapshot.otherHandSeen);
+    this.game.settingChanged?.({ given: 'open' });
+    saveSettings(settings);
+  }
+
+  /** A grown-up has given something else the game does to another hand shape, or hand: see mapping above. */
+  changeGiven(id, value) {
+    const { settings } = this;
+    const { game } = this.levels;
+    settings.shapes = { ...settings.shapes, [game]: { ...settings.shapes?.[game], [id]: value } };
+    this.given = givenFor(this.mapping, settings.shapes[game], choiceOf(this.shapes.open));
+    this.hud.setGiven(this.given);
+    this.game.settingChanged?.({ given: id });
     saveSettings(settings);
   }
 

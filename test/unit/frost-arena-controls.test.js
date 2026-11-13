@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { HandMonitor } from '../../core/hands.js';
-import { ACTIONS, BINDINGS, Controls, FILTER, FINGER_TIPS, GESTURES, OPEN as OPEN_RULE, OneEuro, PAD, SENSITIVITY, STICK, TRIGGER, fingersOut, gesturesOf, readBinding, readHand } from '../../games/frost-arena/controls.js';
+import { ACTIONS, BINDINGS, Controls, DRAGS, FILTER, FINGER_TIPS, GESTURES, OPEN as OPEN_RULE, OneEuro, PAD, SENSITIVITY, STICK, TRIGGER, fingersOut, gesturesOf, readBinding, readHand } from '../../games/frost-arena/controls.js';
 import { FIST, FRAME_ASPECT, OPEN, handAt, photos } from './photo-hands.js';
 
 const CAMERA_MS = 1000 / 30;
@@ -35,9 +35,9 @@ function between(from, to, share) {
  * by have it that much of the way, from 0 to 1, from that photo to another. The hand in play looks round and
  * fires, and the other walks and reloads.
  */
-function player({ side = 'right', palm = PALM, sensitivity = 'medium', shake = 0, seed = 3, bindings = {} } = {}) {
+function player({ side = 'right', palm = PALM, sensitivity = 'medium', shake = 0, seed = 3, bindings = {}, drags = {} } = {}) {
   const monitor = new HandMonitor({}, side);
-  const controls = new Controls({ sensitivity, bindings });
+  const controls = new Controls({ sensitivity, bindings, drags });
   const random = seeded(seed);
   const other = side === 'right' ? 'left' : 'right';
   const rig = { monitor, controls, now: 1000, sinceCamera: Infinity, yaw: 0, outs: [], out: controls.out, hands: { aim: null, move: null }, slow: 1 };
@@ -301,6 +301,42 @@ test('a thumb that takes its time going up leaves the hand down where it was: th
   // And dragged on with the thumb up, the view goes with it from there.
   rig.run(0.5, { aim: hand(0.4, 0, THUMB), move: hand(0, -0.3, THUMB) });
   assert.ok(Math.abs(degrees(rig.yaw - aimed) - 0.2 * PER_PALM) < 1.5, `${degrees(rig.yaw - aimed)}`);
+});
+
+test('what each hand drags with can be pointing or a few fingers instead: then that shape is down, and an open hand isn\'t', () => {
+  assert.deepEqual(DRAGS, ['open', 'point', 'two', 'three']);
+  const rig = player({ drags: { aim: 'point', move: 'two' } });
+  // Open hands, moved about: nothing, as they aren't what these hands drag with.
+  const open = rig.run(1, (t) => ({ aim: hand(t * 0.3, 0), move: hand(0, -t * 0.3) }));
+  assert.ok(open.every(still));
+  assert.ok(open.every((out) => !out.pad.on && !out.stick.on));
+  // Pointing goes down where it is, and drags the view. Two fingers go down, and drag the walk.
+  const down = rig.run(0.5, { aim: hand(0.3, 0, 'pointing_up'), move: hand(0, -0.3, 'victory') });
+  assert.ok(down.every(still));
+  assert.deepEqual([rig.out.pad.on, rig.out.stick.on], [true, true]);
+  const aimed = rig.yaw;
+  rig.run(0.5, { aim: hand(0.5, 0, 'pointing_up'), move: hand(0, -0.6, 'victory') });
+  assert.ok(Math.abs(degrees(rig.yaw - aimed) - 0.2 * PER_PALM) < 1.2, `${degrees(rig.yaw - aimed)}`);
+  assert.ok(rig.out.moveY > 0.5 && Math.abs(rig.out.moveX) < 0.05, `${rig.out.moveX}, ${rig.out.moveY}`);
+  // A thumb up still fires, with the hand still down, and opening the hand lets go.
+  rig.run(0.5, { aim: hand(0.5, 0, THUMB), move: hand(0, -0.6, 'victory') });
+  assert.deepEqual([rig.out.fire, rig.out.pad.on], [true, true]);
+  rig.run(0.5, { aim: hand(0.5, 0), move: hand(0, -0.6) });
+  assert.deepEqual([rig.out.fire, rig.out.pad.on, rig.out.stick.on, rig.out.moveY], [false, false, false, 0]);
+
+  // Nothing can be given to what its hand drags with, or it would be done all the while the hand was down: it's
+  // as it is out of the box, and the other hand's are as they were asked for, however they were kept.
+  const clash = new Controls({ drags: { aim: 'point' }, bindings: { fire: 'aim:point', reload: { hand: 'move', is: 'two' } } });
+  assert.deepEqual([clash.aim.drag, clash.move.drag], ['point', 'open']);
+  assert.deepEqual(clash.bindings, { fire: { hand: 'aim', gesture: 'thumb' }, reload: { hand: 'move', gesture: 'two' }, sprint: 'stick' });
+  assert.deepEqual([[...clash.aim.keeps], [...clash.move.keeps]], [['thumb'], ['two']]);
+  // Changing what a hand drags with looks at what it's been given again.
+  clash.setDrags({ aim: 'open' });
+  assert.deepEqual(clash.bindings.fire, { hand: 'aim', gesture: 'point' });
+  assert.deepEqual([...clash.aim.keeps], ['point']);
+  // And anything a hand can't drag with is an open hand.
+  clash.setDrags({ aim: 'thumb', move: 'wave' });
+  assert.deepEqual([clash.aim.drag, clash.move.drag], ['open', 'open']);
 });
 
 /* ---------- walking ---------- */
@@ -1014,8 +1050,10 @@ test('each takes a little more to stop than it took to start, so none of them fl
   // And while it's closed, the thumb against a finger isn't a pinch as well.
   assert.deepEqual(making(with_({ fingers: fingers(between), pinches: { ...tucked, index: 0.2 } }), { fist: true }), ['fist']);
   assert.deepEqual(making(with_({ fingers: fingers(TRIGGER.fingerAbove + 0.05), pinches: tucked }), { fist: true }), []);
-  // With the first finger well out it's no longer a fist: it's pointing.
+  // With the first finger well out it's no longer a fist: it's pointing. And with three out, it's three fingers.
   assert.deepEqual(making(with_({ fingers: { ...fingers(0.2), index: 0.9 }, pinches: apart }), { fist: true }), ['point']);
+  assert.deepEqual(making(with_({ fingers: { thumb: 0, index: 1, middle: 1, ring: 0.9, pinky: 0.1 }, pinches: apart })), ['three']);
+  assert.deepEqual(making(with_({ fingers: { thumb: 0, index: 1, middle: 1, ring: 0.1, pinky: 0.1 }, pinches: apart })), ['two']);
   // A thumb up: up with the tip of it well clear of every finger, and kept until it's nearly back against one.
   // Half way out it's neither yet: not a thumb up, and not a fist.
   const half = { ...apart, index: (TRIGGER.thumbIn + TRIGGER.thumbOut) / 2 };
@@ -1036,6 +1074,10 @@ test('what fires, reloads and sprints is whatever each is given to: anything a h
   assert.deepEqual(ACTIONS, ['fire', 'reload', 'sprint']);
   assert.deepEqual(BINDINGS, { fire: 'aim:thumb', reload: 'move:thumb', sprint: 'stick' });
   assert.deepEqual(readBinding('move:pinch-ring'), { hand: 'move', gesture: 'pinch-ring' });
+  // As the grown-ups' panel keeps it: a hand, and what it's doing.
+  assert.deepEqual(readBinding({ hand: 'aim', is: 'three' }), { hand: 'aim', gesture: 'three' });
+  assert.deepEqual([readBinding({ hand: 'aim', is: 'fist' }), readBinding({ hand: 'foot', is: 'two' }), readBinding({ hand: 'aim', is: { fingers: ['index'] } }), readBinding({})], [null, null, null, null]);
+  assert.deepEqual(Object.keys(GESTURES), ['thumb', 'point', 'two', 'three', 'pinch-index', 'pinch-middle', 'pinch-ring', 'pinch-pinky', 'trigger']);
   // A closed hand is a hand lifted: nothing can be given to it.
   assert.deepEqual([readBinding('stick'), readBinding('off'), readBinding('foot:thumb'), readBinding('aim:wave'), readBinding('aim:fist'), readBinding('move:close'), readBinding(null)], ['stick', 'off', null, null, null, null, null]);
   assert.ok(!('fist' in GESTURES));
