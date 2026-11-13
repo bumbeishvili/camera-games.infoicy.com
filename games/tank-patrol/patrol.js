@@ -381,6 +381,28 @@ export class Patrol {
     return this.shells.some(({ to, blast }) => gapBetween(this.tank, to) <= blast);
   }
 
+  /* ---------- whose tank the robots go by: on a patrol, the child's. With a friend there are two: see team.js ---------- */
+
+  /** The child's tank a robot tank goes by: where it keeps its distance from, and what its turret follows. */
+  tankFor() {
+    return this.tank;
+  }
+
+  /** The tanks the robot tanks keep out of the way of. */
+  get childTanks() {
+    return [this.tank];
+  }
+
+  /** The tank the next shell is for, or null for none just now, as while the hand has gone. */
+  lobTarget() {
+    return this.goneFor > 0 ? null : this.tank;
+  }
+
+  /** Whether the robot tanks wait: while the child rests. */
+  get paused() {
+    return this.resting;
+  }
+
   /* ---------- robot tanks rolling in ---------- */
 
   get mostOut() {
@@ -492,9 +514,13 @@ export class Patrol {
     return enemy;
   }
 
-  /** Somewhere for a tank to go next: out of the gun's reach, on the side of the child it's on already. */
+  /**
+   * Somewhere for a tank to go next: out of the gun's reach, on the side of the child it's on already. With a
+   * friend's tank on the child's side as well, out of that gun's reach too.
+   */
   chooseGoal(enemy) {
-    const { tank, random, nav } = this;
+    const { random, nav } = this;
+    const tank = this.tankFor(enemy);
     if (enemy.leader?.state === 'rolling' && enemy.leader.goal) {
       this.followLeader(enemy);
       return;
@@ -507,7 +533,7 @@ export class Patrol {
       const place = clampToPlay(tank.x + Math.sin(angle) * away, tank.z + Math.cos(angle) * away);
       spot = nav.nearestFree(clamp(place.x, PLAY.left + 3, PLAY.right - 3), clamp(place.z, PLAY.far + 2, PLAY.near - 2));
       const roomy = this.enemies.every((other) => other === enemy || !other.goal || gapBetween(other.goal, spot) > APART);
-      if (roomy && gapBetween(spot, tank) > GUN.range * 0.8) break;
+      if (roomy && this.childTanks.every((each) => gapBetween(spot, each) > GUN.range * 0.8)) break;
     }
     enemy.goal = spot;
     enemy.flow = nav.flowTo(spot.x, spot.z, enemy.flow);
@@ -521,7 +547,8 @@ export class Patrol {
   /** The second of a pair goes where the first is going, beside it, on the side away from the child's tank. */
   followLeader(enemy) {
     const { leader } = enemy;
-    const { nav, tank } = this;
+    const { nav } = this;
+    const tank = this.tankFor(enemy);
     const dx = leader.goal.x - tank.x;
     const dz = leader.goal.z - tank.z;
     const far = Math.hypot(dx, dz) || 1;
@@ -587,7 +614,7 @@ export class Patrol {
   }
 
   moveEnemies(dt, moving) {
-    const { tank, nav } = this;
+    const { nav } = this;
     const top = this.enemySpeed;
     for (const enemy of this.enemies) {
       enemy.hitLeft = Math.max(0, enemy.hitLeft - dt);
@@ -595,6 +622,7 @@ export class Patrol {
         this.settleEnemy(enemy, dt);
         continue;
       }
+      const tank = this.tankFor(enemy);
       enemy.stun = Math.max(0, enemy.stun - dt);
       // A bubble waits while the child rests, like the power-ups, so resting never uses it up.
       if (enemy.bubbled && !(this.resting && this.state === 'playing')) enemy.bubbled = Math.max(0, enemy.bubbled - dt);
@@ -605,7 +633,8 @@ export class Patrol {
         this.coast(enemy, ROBOT, dt);
       } else {
         enemy.thinkIn = Math.max(0, enemy.thinkIn - dt);
-        const crowded = gapBetween(enemy, tank) < TOO_NEAR && enemy.goal && gapBetween(enemy.goal, tank) < TOO_NEAR;
+        // A child's tank is right on top of it, and of where it's going: somewhere else, then.
+        const crowded = enemy.goal && this.childTanks.some((each) => gapBetween(enemy, each) < TOO_NEAR && gapBetween(enemy.goal, each) < TOO_NEAR);
         // The second of a pair sets off again when the first does.
         const leaderMoved = enemy.leader?.state === 'rolling' && enemy.leader.goal && enemy.followed !== enemy.leader.goal;
         if (!enemy.goal || (crowded && enemy.thinkIn === 0) || leaderMoved) {
@@ -653,7 +682,7 @@ export class Patrol {
 
   /** Robot tanks keep out of each other's way and out of the child's, who is never held up by them. */
   keepApart(dt) {
-    const { tank, nav } = this;
+    const { nav } = this;
     const rolling = this.rolling.filter((enemy) => !this.hidden(enemy));
     const push = (enemy, from, gap, wanted) => {
       if (gap >= wanted || gap < 0.01) return;
@@ -667,7 +696,7 @@ export class Patrol {
       }
     };
     for (let a = 0; a < rolling.length; a += 1) {
-      push(rolling[a], tank, gapBetween(rolling[a], tank), 8);
+      for (const tank of this.childTanks) push(rolling[a], tank, gapBetween(rolling[a], tank), 8);
       for (let b = a + 1; b < rolling.length; b += 1) {
         const gap = gapBetween(rolling[a], rolling[b]);
         push(rolling[a], rolling[b], gap, APART);
@@ -679,10 +708,11 @@ export class Patrol {
   /* ---------- shells coming over ---------- */
 
   lobbing(dt) {
-    const { level, random, tank } = this;
+    const { level, random } = this;
     this.lobIn -= dt * (this.slowing ? SLOW_SHELLS : 1);
     // Nothing new while the hand has gone, as there'd be no way of getting out from under it.
-    if (this.lobIn > 0 || this.goneFor > 0 || this.shells.length >= this.inAir) return;
+    const tank = this.lobTarget();
+    if (this.lobIn > 0 || !tank || this.shells.length >= this.inAir) return;
     // Not from one that's in a bubble or under the ground.
     const able = this.rolling.filter(({ stun, bubbled, dig }) => stun === 0 && !(bubbled > 0) && !dig);
     if (!able.length) return;
@@ -693,18 +723,19 @@ export class Patrol {
     const toX = tank.x + Math.sin(tank.heading) * lead;
     const toZ = tank.z - Math.cos(tank.heading) * lead;
     const first = !this.firstLobbed;
-    this.lob(enemy, this.nav.nearestFree(toX, toZ), seconds, first);
+    this.lob(enemy, this.nav.nearestFree(toX, toZ), seconds, first, false, tank);
     // On the higher levels a heavy lobs two, the second landing off to one side of the first.
     const lobsTwo = LOBS_TWO.slice(0, this.plan.doubleShell).includes(enemy.kind) || (enemy.kind === 'boss' && this.plan.doubleShell > 0 && enemy.partsOff === 0);
     if (lobsTwo && this.shells.length < this.inAir) {
       const side = random() < 0.5 ? -1 : 1;
       const across = { x: Math.cos(tank.heading) * side, z: Math.sin(tank.heading) * side };
       const spot = clampToPlay(toX + across.x * SECOND_SHELL_APART, toZ + across.z * SECOND_SHELL_APART);
-      this.lob(enemy, this.nav.nearestFree(spot.x, spot.z), seconds, false, true);
+      this.lob(enemy, this.nav.nearestFree(spot.x, spot.z), seconds, false, true, tank);
     }
   }
 
-  lob(enemy, landing, seconds, first, second = false) {
+  /** target is the tank it's for: the child's, or with a friend on the same side, one of the two. */
+  lob(enemy, landing, seconds, first, second = false, target = this.tank) {
     const shell = {
       id: nextId,
       share: 0,
@@ -712,6 +743,8 @@ export class Patrol {
       blast: this.level.blast,
       from: { x: enemy.x, y: enemy.y + 4, z: enemy.z },
       to: { x: landing.x, y: groundY(landing.x, landing.z), z: landing.z },
+      target,
+      by: enemy.id,
     };
     nextId += 1;
     this.shells.push(shell);
@@ -727,17 +760,26 @@ export class Patrol {
     if (!landed.length) return;
     this.shells = this.shells.filter(({ share }) => share < 1);
     for (const shell of landed) {
-      const hit = gapBetween(this.tank, shell.to) <= shell.blast;
+      const hit = this.struckBy(shell);
       this.emit('land', { shell, hit });
       if (hit) this.hurt();
       else this.stats.dodged += 1;
     }
   }
 
-  /** Anything on its way when a rest begins goes up in a puff. Nothing bad happens while resting. */
-  fizzleShells() {
-    for (const shell of this.shells) this.emit('fizzle', { shell });
-    this.shells = [];
+  /** Whether a shell coming down lands on the child's tank. */
+  struckBy(shell) {
+    return gapBetween(this.tank, shell.to) <= shell.blast;
+  }
+
+  /**
+   * Anything on its way when a rest begins goes up in a puff. Nothing bad happens while resting. of is the tank
+   * whose shells go, or none for all of them, as at the end.
+   */
+  fizzleShells(of = null) {
+    const going = of ? this.shells.filter(({ target }) => target === of) : this.shells;
+    for (const shell of going) this.emit('fizzle', { shell });
+    this.shells = this.shells.filter((shell) => !going.includes(shell));
   }
 
   hurt() {
@@ -782,7 +824,7 @@ export class Patrol {
     const resting = this.goneFor >= GONE_REST_SECONDS || this.stillFor >= STILL_REST_SECONDS;
     if (resting === this.resting) return;
     this.resting = resting;
-    if (resting) this.fizzleShells();
+    if (resting) this.fizzleShells(this.tank);
     else this.lobIn = Math.max(this.lobIn, AFTER_REST_SECONDS);
     this.emit('resting', { on: resting });
   }
@@ -1036,10 +1078,11 @@ export class Patrol {
     enemy.hitLeft = HIT_SECONDS;
     // One running for it doesn't stop to be fired at, until it's got where it's going.
     enemy.stun = enemy.running ? 0 : STUN_SECONDS;
-    this.stats.hits += 1;
-    this.emit('hit', { enemy, kind: shot.kind });
+    // A friend's hit, which their game tells this one about, is theirs and not this child's: see team.js.
+    if (!shot.friend) this.stats.hits += 1;
+    this.emit('hit', { enemy, kind: shot.kind, friend: Boolean(shot.friend) });
     if (enemy.hp <= 0) {
-      this.stop(enemy);
+      this.stop(enemy, shot);
       return;
     }
     if (enemy.kind === 'boss') this.knockParts(enemy);
@@ -1068,7 +1111,8 @@ export class Patrol {
   }
 
   runOff(enemy) {
-    const { tank, nav } = this;
+    const { nav } = this;
+    const tank = this.tankFor(enemy);
     enemy.ranOff = true;
     enemy.stun = 0;
     enemy.leader = null;
@@ -1087,8 +1131,8 @@ export class Patrol {
     this.emit('run-off', { enemy });
   }
 
-  /** It doesn't blow up. It rattles to a halt, and its crew climbs out and waves. */
-  stop(enemy) {
+  /** It doesn't blow up. It rattles to a halt, and its crew climbs out and waves. shot is the one that did it. */
+  stop(enemy, shot = {}) {
     if (enemy.kind === 'splitter') {
       this.split(enemy);
       return;
@@ -1109,14 +1153,18 @@ export class Patrol {
     }
     this.dropPrizes(enemy, enemy.kind);
     if (!part && (this.stats.stopped - 1) % CRATE_EVERY === 0) this.dropCrate(enemy);
-    this.emit('stopped', { enemy, stopped: this.stats.stopped, left: this.left, part });
-    if (this.left === 0 && this.endIn === null) {
-      this.ending = 'won';
-      this.endIn = WON_AFTER;
-      this.fizzleShells();
-      // The robots give up, and let any friend still in a cage go.
-      for (const cage of this.cages) if (cage.state === 'closed') this.openCage(cage, false);
-    }
+    this.emit('stopped', { enemy, stopped: this.stats.stopped, left: this.left, part, friend: Boolean(shot.friend) });
+    if (this.left === 0) this.allStopped();
+  }
+
+  /** Every robot tank is stopped: the valley's safe, once the last crew has had time to climb out and wave. */
+  allStopped() {
+    if (this.endIn !== null) return;
+    this.ending = 'won';
+    this.endIn = WON_AFTER;
+    this.fizzleShells();
+    // The robots give up, and let any friend still in a cage go.
+    for (const cage of this.cages) if (cage.state === 'closed') this.openCage(cage, false);
   }
 
   /** A splitting tank comes apart into two little ones, which are stopped one after the other. */
@@ -1454,7 +1502,7 @@ export class Patrol {
     this.heal(dt);
 
     const ended = this.endIn !== null;
-    if (!this.resting && !ended) {
+    if (!this.paused && !ended) {
       if (this.spawnIn > 0) {
         this.spawnIn -= dt;
         if (this.spawnIn <= 0) this.fill();
@@ -1463,7 +1511,7 @@ export class Patrol {
       }
       this.lobbing(dt);
     }
-    this.moveEnemies(dt, !this.resting && !ended);
+    this.moveEnemies(dt, !this.paused && !ended);
     this.moveShells(dt);
 
     if (this.endIn !== null) {

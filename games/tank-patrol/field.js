@@ -350,14 +350,18 @@ export class Field {
     this.friendTank.place(friend, 1 / 60, { snap: true });
   }
 
-  /** The friend's gun has fired, as many times as this, at the child's tank: each shot comes over. */
-  friendFired(count) {
+  /**
+   * The friend's gun has fired, as many times as this: each shot comes over. In a battle it's at the child's tank.
+   * On a patrol together it's at to, the robot tank their gun is firing at, or a place out along their turret.
+   */
+  friendFired(count, to = null) {
     const { patrol, friendTank } = this;
     if (!patrol?.friend || !friendTank?.visible) return;
+    const at = to ?? patrol.tank;
     for (let i = 0; i < count && this.friendShots.length < FRIEND_SHOTS_AT_ONCE; i += 1) {
       const from = friendTank.muzzle(this.point).clone();
-      const seconds = Math.max(0.12, Math.hypot(patrol.tank.x - from.x, patrol.tank.z - from.z) / GUN.shotSpeed);
-      this.friendShots.push({ from, share: -i * 0.15, seconds });
+      const seconds = Math.max(0.12, Math.hypot(at.x - from.x, at.z - from.z) / GUN.shotSpeed);
+      this.friendShots.push({ from, to: at, share: -i * 0.15, seconds });
     }
     friendTank.fired();
   }
@@ -622,6 +626,8 @@ export class Field {
     this.bits(at, { count: 14, shapes: ['bolt', 'star', 'bolt', 'spark'], colours: ['#dfe6ee', '#ffd23f', '#c6d0db', '#ffffff'], size: 1.5, speed: 8.5, life: 1.05 });
     this.puffs(at, { count: 7, colours: ['#a59e95', '#8a837b', '#b9b3a9'], size: 2, speed: 2.6, life: 1.3, grow: 1.8 });
     this.child.cheer(1.4);
+    // On a patrol together, whoever's shot it was, both Giraffes cheer.
+    if (this.friendTank?.visible) this.friendTank.cheer(1.4);
   }
 
   onCrew(enemy) {
@@ -764,7 +770,7 @@ export class Field {
   updateRobots(dt) {
     const { patrol } = this;
     for (const [enemy, view] of this.robots) {
-      view.update(dt, { resting: patrol.resting, childAt: patrol.tank });
+      view.update(dt, { resting: patrol.paused, childAt: patrol.tankFor(enemy) });
       if (enemy.dig?.phase === 'under') {
         // A trail of earth behind a digger going along underground.
         enemy.dirtIn = (enemy.dirtIn ?? 0) - dt;
@@ -819,24 +825,25 @@ export class Field {
       hand: friend.open ? 'open' : 'closed',
       lookAt: patrol.tank,
       speedShare: friend.speed / patrol.pace.drive,
+      celebrating: this.celebrating,
       safe: patrol.friendSafe,
     });
     this.whileMoving(friend, dt, 2.1, 7.8);
-    const { tank } = patrol;
-    const toY = tank.y + 2.8;
+    // Each shot goes to what it was fired at, wherever that's got to: the child's tank, or a robot tank.
     this.friendShots = this.friendShots.filter((shot) => {
       shot.share += dt / shot.seconds;
       if (shot.share < 1) return true;
-      // Landing on the child's tank: a little puff. Whether it was a hit, the friend's game says.
-      this.puffs(this.point.set(tank.x, toY, tank.z), { count: 2, colours: ['#ffe3d9', '#ffffff'], size: 0.7, speed: 1.4, life: 0.45 });
+      // Landing: a little puff. Whether it was a hit, the friend's game says.
+      const { to } = shot;
+      this.puffs(this.point.set(to.x, to.y + 2.8, to.z), { count: 2, colours: ['#ffe3d9', '#ffffff'], size: 0.7, speed: 1.4, life: 0.45 });
       return false;
     });
     this.friendBalls.forEach((ball, index) => {
       const shot = this.friendShots[index];
       ball.visible = Boolean(shot && shot.share >= 0);
       if (!ball.visible) return;
-      const { from, share } = shot;
-      ball.position.set(mix(from.x, tank.x, share), mix(from.y, toY, share) + Math.sin(share * Math.PI) * 1.6, mix(from.z, tank.z, share));
+      const { from, to, share } = shot;
+      ball.position.set(mix(from.x, to.x, share), mix(from.y, to.y + 2.8, share) + Math.sin(share * Math.PI) * 1.6, mix(from.z, to.z, share));
     });
     for (const point of this.points) point.age += dt;
     this.points = this.points.filter(({ age }) => age < POINT_SECONDS);
@@ -931,6 +938,8 @@ export class Field {
       return;
     }
     const { tank, crosshair, resting } = patrol;
+    // The robot tanks wait while the child rests, and with a friend on the same side, only while both do.
+    const waiting = patrol.paused;
     const look = patrol.look;
     const bars = [];
     const sleeping = [];
@@ -940,7 +949,7 @@ export class Field {
       const at = this.project(enemy.x, enemy.y + top, enemy.z);
       const size = this.sizeAt(enemy.x, enemy.y + top, enemy.z, enemy.size);
       bars.push({ x: at.x, y: at.y - 8, width: Math.max(38, size * 1.5), share: enemy.hp / enemy.maxHp, blocks: enemy.maxHp });
-      if (resting && enemy.kind !== 'cage') sleeping.push({ x: at.x, y: at.y - 10 });
+      if (waiting && enemy.kind !== 'cage') sleeping.push({ x: at.x, y: at.y - 10 });
     }
     // The name of something new, over it, fading in and out slowly.
     const labels = [];
@@ -952,7 +961,7 @@ export class Field {
       // In the language the voice speaks, which a grown-up can change in the middle of a round.
       labels.push({ x: at.x, y: at.y, words: this.wordsFor(label.item), alpha });
     }
-    // In a battle, the friend's name is over their tank all the time, and +1 goes up beside it for each hit.
+    // With a friend, their name is over their tank all the time, and in a battle +1 goes up beside it for each hit.
     const { friend } = patrol;
     if (friend && this.friendTank?.visible) {
       const top = this.project(friend.x, friend.y + NAME_ABOVE, friend.z);
@@ -962,7 +971,7 @@ export class Field {
         const side = this.project(friend.x + 6, friend.y + 4 + rise, friend.z);
         labels.push({ x: side.x, y: side.y, words: '+1', alpha: clamp(Math.min(age / 0.3, (POINT_SECONDS - age) / 0.5), 0, 1) });
       }
-      // A tank whose child is resting is asleep, though it can still be hit.
+      // A tank whose child is resting is asleep, though in a battle it can still be hit.
       if (friend.resting) sleeping.push(this.project(friend.x + 2, friend.y + 7.6, friend.z));
     }
     if (friend && resting) sleeping.push(this.project(tank.x + 2, tank.y + 7.6, tank.z));

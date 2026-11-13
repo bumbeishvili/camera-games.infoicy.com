@@ -337,7 +337,7 @@ export class FriendsRoom {
     } else if (message.t === 'go') {
       this.readyToGo = false;
       this.events.onGo?.(message);
-    } else if (['car', 'plane', 'score', 'hand', 'world', 'claimed', 'hit', 'pose', 'racket', 'ball', 'shot', 'runner', 'wiped', 'stand', 'ship', 'catcher', 'tank', 'walker', 'can'].includes(message.t)) {
+    } else if (['car', 'plane', 'score', 'hand', 'world', 'claimed', 'hit', 'pose', 'racket', 'ball', 'shot', 'runner', 'wiped', 'stand', 'ship', 'catcher', 'tank', 'walker', 'can', 'foes', 'tag'].includes(message.t)) {
       this.events.onMove?.(message.from, message);
     } else if (message.t === 'done') {
       this.events.onDone?.(message.from, message);
@@ -389,6 +389,14 @@ export class FriendsRoom {
   /** Mighty Moves: their fighter's move, every one, as each lands on the friend's fighter: see cleanHit. */
   sendHit(hit, ms) {
     this.say({ t: 'hit', ms: Math.round(ms), ...hit });
+  }
+
+  /**
+   * Playing together against the computer's: this player's shot has hit its number k, n times in all so far, as
+   * their own game decides. Only the host's game hears it, as it runs them: see cleanTag.
+   */
+  sendTag(k, n) {
+    this.say({ t: 'tag', k, n });
   }
 
   /** How many popped, or got right, so far, this long after "GO!". Only sent when it changes. */

@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { AIM_HELP, CAGE_SPOTS, GUN, KINDS, LEVELS, NEWS, PACES, POWERS, Patrol, STANDOFF, headingTo, levelPlan, newsAt, readHand, shellPoint, tanksFor } from '../../games/tank-patrol/patrol.js';
 import { BATTLE_SECONDS, CLEAR, Duel, SAFE_SECONDS, STARTS, battleSeconds, wrap } from '../../games/tank-patrol/duel.js';
-import { cleanTank } from '../../server/race-room.js';
+import { MOST_FOES, MOST_SHELLS, TEAM_CLEAR, TEAM_STARTS, TeamPatrol, teamTanks } from '../../games/tank-patrol/team.js';
+import { MOST_BYTES, cleanFoes, cleanTag, cleanTank } from '../../server/race-room.js';
 import { BRIDGES, PLAY, SPAWNS, START, TANK_RADIUS, groundY, heightAt, riverNear, seeded, solidNear, valleyNav } from '../../games/tank-patrol/valley-map.js';
 import { PatrolSound } from '../../games/tank-patrol/patrol-sound.js';
 
@@ -1616,4 +1617,557 @@ test('a battle\'s rooms are known to both servers, and a friend\'s tank is passe
     assert.match(readFileSync(new URL(file, import.meta.url), 'utf8'), /const GAMES = \[[^\]]*'tank-patrol'/, file);
   }
   assert.match(readFileSync(new URL('../../core/friends.js', import.meta.url), 'utf8'), /'tank'[^\]]*\]\.includes\(message\.t\)/);
+});
+
+/* ---------- a patrol together with a friend ---------- */
+
+/** A child's tank, as their game sends it and the server passes it on. */
+const tankSent = (patrol) => cleanTank({ x: patrol.tank.x, z: patrol.tank.z, h: wrap(patrol.tank.heading), a: wrap(patrol.tank.turret), s: patrol.tank.speed, n: patrol.stats.shots, r: patrol.resting ? 1 : 0, o: patrol.hand === 'open' ? 1 : 0 });
+/** What the host's game tells of its robot tanks and shells, as the server passes it on. */
+const wireSent = (patrol) => cleanFoes(JSON.parse(JSON.stringify(patrol.wire())));
+
+/**
+ * Two games of a patrol together: whoever made it, whose game runs the robot tanks, and their friend. Each has
+ * what happens in it written down. A hit the friend's game makes is told to the host's, unless a test loses it.
+ */
+function teamUp(settings = {}) {
+  const both = { tags: [], losing: false, hostGone: false, sinceWire: 0 };
+  const make = (slot, seed) => {
+    const log = [];
+    const patrol = new TeamPatrol({
+      slot,
+      runs: slot === 0,
+      random: seeded(seed),
+      ...settings,
+      onEvent: (event) => {
+        log.push(event);
+        if (event.type === 'tag' && !both.losing) both.tags.push(cleanTag({ k: event.id, n: event.hits }));
+      },
+    });
+    patrol.begin();
+    return { patrol, log, count: (type, when = () => true) => log.filter((event) => event.type === type && when(event)).length };
+  };
+  both.host = make(0, 7);
+  both.guest = make(1, 11);
+  return both;
+}
+
+const noHand = () => ({ hand: 'none', pointer: null });
+/** A hand that's there and moving about, without driving far or firing: a child who isn't resting. */
+const busyHand = (patrol) => (t) => closedAt(patrol.tank.x + Math.sin(t * 5) * 3.5, patrol.tank.z + Math.cos(t * 5) * 3.5);
+
+/** Both games for a while, each hearing of the other as they do through the server, the robot tanks ten times a second. */
+function runTeam(both, seconds, hostHand = noHand, guestHand = noHand) {
+  const [host, guest] = [both.host.patrol, both.guest.patrol];
+  for (let t = 0; t < seconds; t += STEP) {
+    if (!both.hostGone) {
+      if (host.together) host.placeFriend(tankSent(guest), STEP);
+      host.update(STEP, hostHand(t));
+    }
+    if (guest.together) guest.placeFriend(tankSent(host), STEP);
+    guest.update(STEP, guestHand(t));
+    for (const tag of both.tags.splice(0)) host.friendTagged(tag.k, tag.n);
+    both.sinceWire += STEP;
+    if (both.sinceWire >= 0.1 && host.together && guest.together && !both.hostGone) {
+      both.sinceWire = 0;
+      guest.follow(wireSent(host));
+    }
+  }
+}
+
+/** A child's hand, as patrolLikeAChild plays it, for a game that something else is running. */
+function childHand(patrol, { switchSeconds = 0.45 } = {}) {
+  let hand = 'closed';
+  let waitFor = 0;
+  return () => {
+    const { tank } = patrol;
+    const target = patrol.targets.slice().sort((a, b) => Math.hypot(a.x - tank.x, a.z - tank.z) - Math.hypot(b.x - tank.x, b.z - tank.z))[0];
+    const shell = patrol.shells.find(({ to, blast, share }) => share > 0.25 && Math.hypot(tank.x - to.x, tank.z - to.z) <= blast + 1);
+    let wanted = 'closed';
+    let pointer = target ? { x: target.x, z: target.z } : { x: tank.x, z: tank.z };
+    if (shell) {
+      const dx = tank.x - shell.to.x;
+      const dz = tank.z - shell.to.z;
+      const gap = Math.hypot(dx, dz) || 1;
+      pointer = { x: tank.x + (dx / gap) * 12, z: tank.z + (dz / gap) * 12 };
+    } else if (target && patrol.inRange(target)) {
+      wanted = 'open';
+    }
+    if (wanted !== hand) {
+      waitFor += STEP;
+      if (waitFor >= switchSeconds) {
+        hand = wanted;
+        waitFor = 0;
+      }
+    } else {
+      waitFor = 0;
+    }
+    return { hand, pointer };
+  };
+}
+
+/** One robot tank in the host's game, at a place, staying there, with no shells coming. */
+function oneRobotAt(both, x, z) {
+  const host = both.host.patrol;
+  const enemy = oneTankAt(host, 30);
+  hold(host, enemy, x, z);
+  host.lobIn = 999;
+  return enemy;
+}
+
+test('a patrol together has twice the host\'s robot tanks, the two tanks side by side on free ground, and only the host\'s game runs the robot tanks', () => {
+  const nav = valleyNav();
+  for (const { x, z } of TEAM_STARTS) assert.ok(nav.isFree(x, z), `${x}, ${z}`);
+  assert.ok(Math.hypot(TEAM_STARTS[0].x - TEAM_STARTS[1].x, TEAM_STARTS[0].z - TEAM_STARTS[1].z) > CLEAR * 1.5, 'with room between them');
+  assert.deepEqual([6, 10, 15].map(teamTanks), [12, 20, 30]);
+  assert.equal(teamTanks(undefined), 12);
+  const both = teamUp({ tanks: 6 });
+  const [host, guest] = [both.host.patrol, both.guest.patrol];
+  // Each game puts its own tank in its own place, and the friend's in the other, both facing up the valley.
+  assert.deepEqual([host.tank.x, host.tank.z, host.friend.x, host.friend.z], [guest.friend.x, guest.friend.z, guest.tank.x, guest.tank.z]);
+  assert.deepEqual([host.tank.heading, guest.tank.heading], [0, 0]);
+  // The plain patrol on Gentle, whatever anyone's own level or difficulty: nothing a level brings, and it can't be lost.
+  for (const patrol of [host, guest]) {
+    assert.deepEqual([patrol.total, patrol.left, patrol.levelNumber, patrol.level.canLose, patrol.hearts], [12, 12, 1, false, 5]);
+    assert.equal(Object.keys(patrol.plan).some((key) => patrol.plan[key] === true), false);
+    assert.equal(patrol.cages.length, 0);
+  }
+  assert.deepEqual([host.runs, guest.runs], [true, false]);
+  assert.ok(host.enemies.length > 0);
+  assert.equal(host.enemies.length + host.queue.length, 12);
+  assert.deepEqual([guest.enemies.length, guest.queue.length], [0, 0], 'none of its own');
+  // A big one comes last, as on a patrol alone.
+  assert.equal(host.queue.at(-1), 'heavy');
+  // With two tanks to stop them, one more robot tank is about at a time.
+  const alone = started({ tanks: 12 });
+  assert.equal(host.mostOut, alone.mostOut + 1);
+});
+
+test('the friend\'s game shows the host\'s robot tanks: the same ones, where they are, moving smoothly between what it\'s told', () => {
+  const both = teamUp({ pace: 'fast' });
+  const [host, guest] = [both.host.patrol, both.guest.patrol];
+  runTeam(both, 0.3);
+  assert.equal(both.guest.count('spawn'), host.rolling.length, 'each comes in once');
+  let biggestStep = 0;
+  let furthestOut = 0;
+  for (let i = 0; i < 20 * 60; i += 1) {
+    const before = new Map(guest.enemies.map((enemy) => [enemy, { x: enemy.x, z: enemy.z }]));
+    runTeam(both, STEP, busyHand(host), busyHand(guest));
+    for (const [enemy, was] of before) biggestStep = Math.max(biggestStep, Math.hypot(enemy.x - was.x, enemy.z - was.z));
+    for (const enemy of guest.rolling) {
+      const theirs = host.enemies.find(({ id }) => id === enemy.id);
+      if (theirs) furthestOut = Math.max(furthestOut, Math.hypot(enemy.x - theirs.x, enemy.z - theirs.z));
+    }
+  }
+  assert.deepEqual(guest.rolling.map(({ id, kind, hp, maxHp }) => [id, kind, hp, maxHp]), host.rolling.map(({ id, kind, hp, maxHp }) => [id, kind, hp, maxHp]));
+  // They've been driving about all this time, and are never far from where the host's game has them.
+  assert.ok(host.rolling.some(({ z }) => z > -24), 'they have rolled in');
+  assert.ok(furthestOut < 1.5, `${furthestOut} units out`);
+  // And never jump: no more in a frame than a fast robot tank could drive in a few.
+  assert.ok(biggestStep < 0.6, `${biggestStep} in one frame`);
+  for (const enemy of guest.rolling) assert.equal(enemy.y, groundY(enemy.x, enemy.z));
+  // Nothing in the friend's game ran them: no goals of their own, and no shells lobbed by it.
+  assert.ok(guest.enemies.every(({ goal }) => goal === null));
+});
+
+test('a hit of the friend\'s shows on their own screen at once and counts in the host\'s game, and the robot tank they stop is stopped on both, and theirs', () => {
+  const both = teamUp();
+  const [host, guest] = [both.host.patrol, both.guest.patrol];
+  // One robot tank, within reach of the friend's gun and out of reach of the host's.
+  const enemy = oneRobotAt(both, guest.tank.x, guest.tank.z - 16);
+  runTeam(both, 0.5);
+  assert.equal(guest.enemies.length, 1);
+  const [seen] = guest.enemies;
+  assert.deepEqual([guest.inRange(seen), host.inRange(enemy)], [true, false]);
+  const hits = enemy.hp;
+  // The friend opens their hand on it. As the first ball lands, it shows on their screen, and the host's game hears.
+  for (let i = 0; i < 300 && !both.guest.count('tag'); i += 1) runTeam(both, STEP, busyHand(host), () => openAt(seen.x, seen.z));
+  assert.equal(both.guest.count('tag'), 1);
+  assert.equal(seen.hp, hits - 1, 'on their own screen at once');
+  assert.equal(enemy.hp, hits - 1, 'and counted by the game that runs it');
+  assert.deepEqual([guest.stats.hits, host.stats.hits], [1, 0], 'it\'s the friend\'s hit, not the host\'s');
+  assert.equal(both.host.count('hit', ({ friend }) => friend), 1, 'which shows on the host\'s screen as theirs');
+  // They keep firing, and stop it. It rattles to a halt on both screens, and it's theirs on both.
+  runTeam(both, 5, busyHand(host), () => openAt(seen.x, seen.z));
+  assert.deepEqual([enemy.state === 'rolling', seen.state === 'rolling'], [false, false]);
+  assert.deepEqual([host.stats.stopped, guest.stats.stopped], [1, 1]);
+  assert.deepEqual([host.stoppedBy, guest.stoppedBy], [{ mine: 0, theirs: 1 }, { mine: 1, theirs: 0 }]);
+  assert.deepEqual([both.host.count('stopped'), both.guest.count('stopped')], [1, 1]);
+  assert.equal(guest.stats.hits, hits, 'no more hits than it took');
+  // It was the only one: the patrol is won on both screens, a moment later, together.
+  runTeam(both, 4, busyHand(host), busyHand(guest));
+  assert.deepEqual([host.state, guest.state], ['won', 'won']);
+  assert.deepEqual([both.host.count('won'), both.guest.count('won')], [1, 1]);
+});
+
+test('the host\'s hits show on the friend\'s screen as they\'re made, without counting as the friend\'s', () => {
+  const both = teamUp();
+  const [host, guest] = [both.host.patrol, both.guest.patrol];
+  const enemy = oneRobotAt(both, host.tank.x, host.tank.z - 16);
+  enemy.hp = enemy.maxHp = 6;
+  runTeam(both, 0.5);
+  const [seen] = guest.enemies;
+  assert.equal(seen.maxHp, 6);
+  runTeam(both, 2, () => openAt(enemy.x, enemy.z), busyHand(guest));
+  assert.ok(host.stats.hits >= 2);
+  assert.equal(seen.hp, enemy.hp);
+  assert.equal(both.guest.count('hit', ({ friend }) => friend), host.stats.hits);
+  assert.equal(both.guest.count('tag'), 0);
+  assert.deepEqual([guest.stats.hits, guest.stats.shots], [0, 0]);
+  runTeam(both, 6, () => openAt(enemy.x, enemy.z), busyHand(guest));
+  assert.deepEqual([host.stoppedBy, guest.stoppedBy], [{ mine: 1, theirs: 0 }, { mine: 0, theirs: 1 }]);
+  // The friend's shots, on the host's screen, go for the robot tank their turret points at, and otherwise out along it.
+  const far = host.friendAim();
+  assert.ok(Math.abs(Math.hypot(far.x - host.friend.x, far.z - host.friend.z) - GUN.range * 0.7) < 0.01);
+});
+
+test('a hit that never reaches the host\'s game is made up for: the robot tank\'s hits come back, and the next one tells of both', () => {
+  const both = teamUp();
+  const [host, guest] = [both.host.patrol, both.guest.patrol];
+  const enemy = oneRobotAt(both, guest.tank.x, guest.tank.z - 16);
+  enemy.hp = enemy.maxHp = 6;
+  runTeam(both, 0.5);
+  const [seen] = guest.enemies;
+  both.losing = true;
+  for (let i = 0; i < 300 && !both.guest.count('tag'); i += 1) runTeam(both, STEP, busyHand(host), () => openAt(seen.x, seen.z));
+  assert.deepEqual([seen.hp, enemy.hp], [5, 6]);
+  // For a moment the friend's screen keeps their hit, while the host's game might still be about to count it.
+  runTeam(both, 0.5, busyHand(host), busyHand(guest));
+  assert.equal(seen.hp, 5);
+  runTeam(both, 1.5, busyHand(host), busyHand(guest));
+  assert.equal(seen.hp, 6, 'it never got there');
+  both.losing = false;
+  const tagsBefore = both.guest.count('tag');
+  for (let i = 0; i < 300 && both.guest.count('tag') === tagsBefore; i += 1) runTeam(both, STEP, busyHand(host), () => openAt(seen.x, seen.z));
+  assert.equal(enemy.hp, 4, 'both hits, now');
+  runTeam(both, 0.3, busyHand(host), busyHand(guest));
+  assert.equal(seen.hp, 4);
+});
+
+test('a robot tank the friend has just stopped isn\'t fired at again while the host\'s game catches up', () => {
+  const both = teamUp();
+  const [host, guest] = [both.host.patrol, both.guest.patrol];
+  const enemy = oneRobotAt(both, guest.tank.x, guest.tank.z - 16);
+  enemy.hp = enemy.maxHp = 1;
+  runTeam(both, 0.5);
+  const [seen] = guest.enemies;
+  both.losing = true;
+  for (let i = 0; i < 300 && !both.guest.count('tag'); i += 1) runTeam(both, STEP, busyHand(host), () => openAt(seen.x, seen.z));
+  assert.equal(seen.hp, 0);
+  assert.deepEqual([guest.targets.length, guest.locked], [0, null]);
+  const { shots } = guest.stats;
+  runTeam(both, 0.8, busyHand(host), () => openAt(seen.x, seen.z));
+  assert.equal(guest.stats.shots, shots);
+  assert.equal(seen.state, 'rolling', 'only the host\'s game says it\'s stopped');
+});
+
+test('shells come for each tank in turn, as often for each as on a patrol alone, and each game shows them all', () => {
+  const both = teamUp();
+  const [host, guest] = [both.host.patrol, both.guest.patrol];
+  oneRobotAt(both, 0, -20);
+  host.lobIn = 0;
+  runTeam(both, 60, busyHand(host), busyHand(guest));
+  const lobs = both.host.log.filter(({ type }) => type === 'lob');
+  assert.ok(lobs.length >= 12, `${lobs.length} shells in a minute`);
+  const whose = lobs.map(({ shell }) => (shell.target === host.tank ? 'host' : 'friend'));
+  assert.deepEqual(whose, whose.map((_, index) => (index % 2 ? 'friend' : 'host')), 'turn and turn about, whoever made the patrol first');
+  // Two can be on their way at once, one for each, but never two for the same tank.
+  assert.equal(host.inAir, started().inAir + 1);
+  // The friend's game shows each of them, coming for the same tank.
+  const shown = both.guest.log.filter(({ type }) => type === 'lob');
+  assert.ok(shown.length >= lobs.length - 1);
+  shown.forEach(({ shell }, index) => {
+    assert.equal(shell.target === guest.tank, whose[index] === 'friend', `shell ${index}`);
+    assert.equal(shell.id, lobs[index].shell.id);
+    assert.deepEqual([shell.to.x, shell.to.z, shell.seconds], [Math.round(lobs[index].shell.to.x * 100) / 100, Math.round(lobs[index].shell.to.z * 100) / 100, Math.round(lobs[index].shell.seconds * 100) / 100]);
+  });
+  // Each lands once in each game.
+  assert.ok(Math.abs(both.host.count('land') - both.guest.count('land')) <= 1);
+  assert.equal(both.guest.count('fizzle'), 0);
+});
+
+test('a shell only hurts the tank it comes down on, on that child\'s own screen, and never one whose child is resting', () => {
+  const both = teamUp();
+  const [host, guest] = [both.host.patrol, both.guest.patrol];
+  oneRobotAt(both, 0, -20);
+  // The friend's turn for a shell. They stay where they are, with their hand there, and it lands on them.
+  Object.assign(host, { lobTurn: 1, lobIn: 0 });
+  runTeam(both, 0.3, busyHand(host), () => openAt(30, 0));
+  // Never two on their way to the same tank, as on Gentle there's only ever one to get out from under: another turn
+  // of theirs, with this one still coming, is passed on to the other child.
+  Object.assign(host, { lobTurn: 1, lobIn: 0 });
+  runTeam(both, STEP, busyHand(host), () => openAt(30, 0));
+  assert.equal(host.shells.length, 1, 'no second one for the same tank');
+  assert.equal(host.lobTurn, 0, 'the turn has passed on');
+  host.lobIn = 999;
+  assert.equal(host.shells[0].target, host.friend);
+  assert.equal(guest.shells.length, 1);
+  assert.equal(guest.shells[0].target, guest.tank);
+  assert.equal(guest.underShell, true, 'the ring is under their tank');
+  assert.equal(host.underShell, false);
+  runTeam(both, 5, busyHand(host), (t) => openAt(30, Math.sin(t * 4) * 4));
+  assert.deepEqual([host.hearts, guest.hearts], [5, 4]);
+  assert.deepEqual([both.host.count('hurt'), both.guest.count('hurt')], [0, 1]);
+  assert.deepEqual([both.host.count('land'), both.guest.count('land')], [1, 1], 'it lands on both screens');
+  // The next is for the friend again. This time they put their hand down, and before it lands they're resting:
+  // it fizzles on both screens, and nothing happens to them.
+  Object.assign(host, { lobTurn: 1, lobIn: 0 });
+  runTeam(both, 0.3, busyHand(host), () => openAt(30, 0));
+  host.lobIn = 999;
+  assert.equal(guest.shells.length, 1);
+  runTeam(both, 3.4, busyHand(host), noHand);
+  assert.equal(guest.resting, true);
+  assert.deepEqual([host.shells.length, guest.shells.length], [0, 0]);
+  assert.deepEqual([both.host.count('fizzle'), both.guest.count('fizzle')], [1, 1]);
+  runTeam(both, 2, busyHand(host), noHand);
+  assert.deepEqual([both.host.count('hurt'), both.guest.count('hurt')], [0, 1]);
+  assert.ok(guest.hearts >= 4, 'and the one that was lost comes back with time, as ever');
+  assert.deepEqual([both.host.count('land'), both.guest.count('land')], [1, 1], 'and it never lands');
+  // One for the friend that comes down on this child's tank counts if they had a hand to drive away with, and never while resting.
+  const overMe = { to: { x: host.tank.x, z: host.tank.z }, blast: 5, target: host.friend };
+  assert.equal(host.struckBy(overMe), true);
+  assert.equal(host.struckBy({ ...overMe, to: { x: host.tank.x + 9, z: host.tank.z } }), false);
+  host.goneFor = 0.5;
+  assert.equal(host.struckBy(overMe), false);
+  assert.equal(host.struckBy({ ...overMe, target: host.tank }), true, 'its own still does, as on a patrol alone');
+  host.resting = true;
+  assert.equal(host.struckBy({ ...overMe, target: host.tank }), false);
+});
+
+test('while one child rests, the other goes on with no more shells than before, and the robot tanks only wait when both are resting', () => {
+  const both = teamUp();
+  const [host, guest] = [both.host.patrol, both.guest.patrol];
+  const enemy = oneRobotAt(both, 0, -20);
+  runTeam(both, 3.5, busyHand(host), noHand);
+  assert.deepEqual([host.resting, guest.resting, host.friend.resting], [false, true, true]);
+  assert.deepEqual([host.paused, guest.paused], [false, false], 'the robot tanks keep going for the one who\'s playing');
+  // The robot tank goes by the tank of the child who's playing.
+  assert.equal(host.tankFor(enemy), host.tank);
+  host.lobIn = 0;
+  const from = both.host.log.length;
+  runTeam(both, 60, busyHand(host), noHand);
+  const lobs = both.host.log.slice(from).filter(({ type }) => type === 'lob');
+  assert.ok(lobs.length >= 5, `${lobs.length} shells`);
+  assert.ok(lobs.every(({ shell }) => shell.target === host.tank), 'never for the one who\'s resting');
+  // No more often than on a patrol alone on Gentle, where there are at least 6 seconds between them.
+  const times = both.host.log.slice(from).map((event, index) => (event.type === 'lob' ? index : -1)).filter((index) => index >= 0);
+  assert.ok(lobs.length <= 60 / 6 + 1, `${lobs.length} in a minute`);
+  assert.ok(times.length === lobs.length);
+  // The host rests too: now the robot tanks wait, on both screens, and nothing more comes over.
+  enemy.goal = null;
+  enemy.holdFor = 0;
+  runTeam(both, 3.5);
+  assert.deepEqual([host.resting, host.paused, guest.paused], [true, true, true]);
+  const placed = { x: enemy.x, z: enemy.z };
+  const lobbed = both.host.count('lob');
+  host.lobIn = 0;
+  runTeam(both, 20);
+  assert.equal(both.host.count('lob'), lobbed);
+  assert.ok(Math.hypot(enemy.x - placed.x, enemy.z - placed.z) < 0.3, 'it waits where it is');
+  assert.deepEqual([host.shells.length, guest.shells.length], [0, 0]);
+  // The friend picks their hand up again: off the robot tanks go, and there's a moment before a shell for either.
+  runTeam(both, 0.5, noHand, busyHand(guest));
+  assert.deepEqual([guest.resting, host.paused, guest.paused], [false, false, false]);
+  assert.ok(host.lobIn > 1.5);
+  assert.equal(host.tankFor(enemy), host.friend);
+});
+
+test('the robot tanks keep off both tanks, and each goes by the nearer one, without changing its mind at every step', () => {
+  const both = teamUp({ pace: 'fast' });
+  const [host, guest] = [both.host.patrol, both.guest.patrol];
+  runTeam(both, 40, busyHand(host), busyHand(guest));
+  let nearest = Infinity;
+  let changes = 0;
+  const after = new Map();
+  for (let i = 0; i < 40 * 60; i += 1) {
+    runTeam(both, STEP, busyHand(host), busyHand(guest));
+    for (const enemy of host.rolling) {
+      for (const tank of [host.tank, host.friend]) nearest = Math.min(nearest, Math.hypot(enemy.x - tank.x, enemy.z - tank.z));
+      if (after.has(enemy) && after.get(enemy) !== enemy.after) changes += 1;
+      after.set(enemy, enemy.after);
+    }
+  }
+  assert.ok(nearest > 6, `${nearest} units from a child's tank`);
+  assert.ok(changes <= host.rolling.length * 3, `${changes} changes of mind`);
+  assert.deepEqual(host.childTanks, [host.tank, host.friend]);
+  // The two children's tanks keep out of each other's way too, as in a battle: the friend's drives right up
+  // against this one, from the side the village is on.
+  const fresh = teamUp().host.patrol;
+  fresh.placeFriend({ x: fresh.tank.x + 2, z: fresh.tank.z + 0.5, h: 0, a: 0, s: 0, r: 0, o: 0, n: 0 }, STEP);
+  fresh.update(STEP, noHand());
+  assert.ok(Math.hypot(fresh.tank.x - fresh.friend.x, fresh.tank.z - fresh.friend.z) >= TEAM_CLEAR - 0.01);
+  assert.ok(valleyNav().isFree(fresh.tank.x, fresh.tank.z));
+  // Far enough apart that one tank is never over the other, whichever way each faces: more than the longest way across one.
+  assert.ok(TEAM_CLEAR > Math.hypot(7.8, 5.4));
+  assert.ok(Math.hypot(TEAM_STARTS[0].x - TEAM_STARTS[1].x, TEAM_STARTS[0].z - TEAM_STARTS[1].z) > TEAM_CLEAR);
+});
+
+test('a robot tank sticks with the child\'s tank it goes by until the other is clearly nearer, and doesn\'t choose somewhere within reach of the other\'s gun', () => {
+  const both = teamUp();
+  const host = both.host.patrol;
+  const { tank, friend } = host;
+  const robotAt = (x, z, after) => ({ x, z, after });
+  const between = (tank.x + friend.x) / 2;
+  // Half way between the two, a little nearer one: it's that one's.
+  assert.equal(host.tankFor(robotAt(between - 0.5, tank.z - 20)), tank);
+  assert.equal(host.tankFor(robotAt(between + 0.5, tank.z - 20)), friend);
+  // Having gone by one, a little nearer the other isn't enough to change, and a lot nearer is.
+  assert.equal(host.tankFor(robotAt(between + 2, tank.z - 20, 'mine')), tank);
+  assert.equal(host.tankFor(robotAt(between - 2, tank.z - 20, 'friend')), friend);
+  assert.equal(host.tankFor(robotAt(friend.x, tank.z - 12, 'mine')), friend);
+  assert.equal(host.tankFor(robotAt(tank.x, tank.z - 12, 'friend')), tank);
+
+  // The friend's tank is off to one side, up the valley, where robot tanks keeping their distance from the host's
+  // would often go. One that goes by the host's tank still keeps out of reach of the friend's gun.
+  host.placeFriend({ x: tank.x + 28, z: tank.z - 14, h: 0, a: 0, s: 0, r: 0, o: 0, n: 0 }, STEP);
+  const [enemy] = host.rolling;
+  host.enemies = [enemy];
+  let within = 0;
+  for (let i = 0; i < 300; i += 1) {
+    Object.assign(enemy, { x: tank.x, z: tank.z - 30, after: 'mine', leader: null, goal: null });
+    host.chooseGoal(enemy);
+    assert.equal(host.tankFor(enemy), tank);
+    assert.ok(Math.hypot(enemy.goal.x - tank.x, enemy.goal.z - tank.z) > GUN.range * 0.8, 'out of the host\'s reach, as ever');
+    if (Math.hypot(enemy.goal.x - friend.x, enemy.goal.z - friend.z) <= GUN.range * 0.8) within += 1;
+  }
+  assert.ok(within <= 3, `${within} of 300 places were within reach of the friend's gun`);
+});
+
+test('a patrol together can be played right through at every speed: both games agree on every count, both win together, and nobody can lose', () => {
+  for (const [pace, tanks] of [['slow', 6], ['medium', 10], ['fast', 15]]) {
+    const both = teamUp({ pace, tanks });
+    const [host, guest] = [both.host.patrol, both.guest.patrol];
+    const hands = [childHand(host), childHand(guest)];
+    let seconds = 0;
+    let wonApart = 0;
+    while ((host.state === 'playing' || guest.state === 'playing') && seconds < 1500) {
+      runTeam(both, 0.5, ...hands);
+      seconds += 0.5;
+      if (host.state !== guest.state) wonApart += 0.5;
+    }
+    const total = teamTanks(tanks);
+    assert.deepEqual([host.state, guest.state], ['won', 'won'], `${pace}, after ${seconds} seconds`);
+    assert.ok(wonApart <= 1, `${pace}: they finish together, not ${wonApart} seconds apart`);
+    assert.deepEqual([host.stats.stopped, guest.stats.stopped, host.left, guest.left], [total, total, 0, 0], pace);
+    assert.equal(host.stoppedBy.mine + host.stoppedBy.theirs, total, pace);
+    assert.deepEqual(guest.stoppedBy, { mine: host.stoppedBy.theirs, theirs: host.stoppedBy.mine }, pace);
+    assert.ok(host.stoppedBy.mine > 0 && host.stoppedBy.theirs > 0, `${pace}: both had some to stop, ${JSON.stringify(host.stoppedBy)}`);
+    assert.deepEqual([both.host.count('stopped'), both.guest.count('stopped')], [total, total], pace);
+    // Every hit the host's game counted for the friend was one the friend's game made.
+    const counted = both.host.count('hit', ({ friend }) => friend);
+    assert.ok(counted > 0 && counted <= guest.stats.hits, `${pace}: ${counted} counted of ${guest.stats.hits} made`);
+    assert.ok(guest.stats.hits - counted <= total, `${pace}: ${guest.stats.hits - counted} hits landed on a tank already stopped`);
+    // Shells came for both, nobody lost, and the friend's game never ran anything of its own.
+    assert.ok(both.host.count('lob') > 2 && both.guest.count('lob') > 2, pace);
+    assert.ok(host.hearts >= 1 && guest.hearts >= 1, pace);
+    assert.deepEqual([both.host.count('lost'), both.guest.count('lost'), guest.runs], [0, 0, false], pace);
+    assert.ok(seconds < 600, `${pace}: ${seconds} seconds`);
+  }
+});
+
+test('a friend who goes leaves the one who made the patrol to finish it, with half of what was left', () => {
+  const both = teamUp({ tanks: 6 });
+  const [host, guest] = [both.host.patrol, both.guest.patrol];
+  const hands = [childHand(host), childHand(guest)];
+  while (host.stats.stopped < 3) runTeam(both, 0.5, ...hands);
+  Object.assign(host, { lobTurn: 1, lobIn: 0 });
+  runTeam(both, 0.2, ...hands);
+  const [stopped, out] = [host.stats.stopped, host.rolling.length];
+  const left = Math.max(out, Math.ceil((12 - stopped) / 2));
+  host.friendGone();
+  assert.deepEqual([host.together, host.friend.state], [false, 'gone']);
+  assert.deepEqual([host.total, host.left, host.queue.length], [stopped + left, left, left - out]);
+  if (host.queue.length) assert.equal(host.queue.at(-1), 'heavy', 'the big one still comes last');
+  assert.ok(host.shells.every(({ target }) => target === host.tank), 'a shell on its way to their tank goes with it');
+  assert.deepEqual(host.childTanks, [host.tank]);
+  host.friendGone();
+  assert.equal(host.total, stopped + left, 'only once');
+  // Nothing more comes from the friend's game, and the host finishes it by themselves.
+  both.tags.length = 0;
+  const hand = childHand(host);
+  for (let t = 0; t < 600 && host.state === 'playing'; t += STEP) host.update(STEP, hand());
+  assert.equal(host.state, 'won');
+  assert.deepEqual([host.stats.stopped, host.left], [stopped + left, 0]);
+  assert.equal(host.stoppedBy.mine + host.stoppedBy.theirs, stopped + left);
+});
+
+test('if whoever made the patrol goes, the friend\'s game takes the robot tanks over as they are, and the patrol can still be won', () => {
+  const both = teamUp({ tanks: 6 });
+  const [host, guest] = [both.host.patrol, both.guest.patrol];
+  const hands = [childHand(host), childHand(guest)];
+  while (host.stats.stopped < 3) runTeam(both, 0.5, ...hands);
+  runTeam(both, 0.3, ...hands);
+  const was = guest.rolling.map(({ id, kind, x, z, hp }) => ({ id, kind, x, z, hp }));
+  const [stopped, mine] = [guest.stats.stopped, guest.stoppedBy.mine];
+  const out = was.filter(({ hp }) => hp > 0).length;
+  const left = Math.max(out, Math.ceil((12 - stopped - (was.length - out)) / 2));
+  both.hostGone = true;
+  guest.friendGone();
+  assert.deepEqual([guest.runs, guest.together], [true, false]);
+  // The same robot tanks, where they were, with the hits they had left.
+  assert.deepEqual(guest.rolling.map(({ id, kind, x, z, hp }) => ({ id, kind, x, z, hp })), was.filter(({ hp }) => hp > 0));
+  assert.deepEqual([guest.left, guest.queue.length], [left, left - out]);
+  if (guest.queue.length) assert.equal(guest.queue.at(-1), 'heavy');
+  // Now they're this game's to run: they set off somewhere, more come, and shells come for this tank alone.
+  const hand = childHand(guest);
+  const from = both.guest.log.length;
+  for (let t = 0; t < 600 && guest.state === 'playing'; t += STEP) guest.update(STEP, hand());
+  assert.equal(guest.state, 'won');
+  assert.equal(guest.left, 0);
+  assert.equal(guest.stoppedBy.mine, mine + (guest.stats.stopped - stopped), 'what they stop from here is theirs');
+  const since = both.guest.log.slice(from);
+  assert.ok(since.filter(({ type }) => type === 'lob').every(({ shell }) => shell.target === guest.tank));
+  assert.equal(since.filter(({ type }) => type === 'tag').length, 0, 'and there\'s nobody to tell of a hit');
+  // Anything more from the old host's game is ignored.
+  const total = guest.total;
+  guest.follow(wireSent(host));
+  assert.equal(guest.total, total);
+});
+
+test('a friend who goes before it has begun leaves a patrol for one, on either side', () => {
+  for (const slot of [0, 1]) {
+    const patrol = new TeamPatrol({ slot, runs: slot === 0, tanks: 6, random: seeded(5) });
+    patrol.friendGone();
+    assert.deepEqual([patrol.runs, patrol.total, patrol.rolling.length + patrol.queue.length], [true, 6, 6], `slot ${slot}`);
+    patrol.begin();
+    const hand = childHand(patrol);
+    for (let t = 0; t < 600 && patrol.state === 'playing'; t += STEP) patrol.update(STEP, hand());
+    assert.deepEqual([patrol.state, patrol.stats.stopped], ['won', 6], `slot ${slot}`);
+  }
+});
+
+test('what the host\'s game tells of its robot tanks and shells is what the server passes on, and never too much for one message', () => {
+  const both = teamUp({ pace: 'fast', tanks: 15 });
+  const [host, guest] = [both.host.patrol, both.guest.patrol];
+  host.lobIn = 0;
+  runTeam(both, 12, busyHand(host), busyHand(guest));
+  const wire = host.wire();
+  assert.ok(wire.e.length >= 4 && wire.s.length >= 1);
+  assert.deepEqual(cleanFoes({ ms: 1234, ...wire }), { ms: 1234, ...wire });
+  assert.deepEqual(wire.n, [0, 30, 0, 0, 0, 0]);
+  // With more robot tanks and shells than there could ever be, in the far corner, it still fits.
+  const [enemy] = host.rolling;
+  host.enemies = Array.from({ length: 40 }, (_, index) => ({ ...enemy, id: 999_000 + index, x: -45.55, z: -27.77, heading: -3.141, turret: -3.141, hp: 14, maxHp: 14, speed: 12.5 }));
+  host.shells = Array.from({ length: 9 }, (_, index) => ({ id: 999_100 + index, share: 0.123, seconds: 3.04, blast: 5, from: { x: -45.55, y: 4, z: -27.77 }, to: { x: -45.55, y: 0, z: -27.77 }, target: host.friend, by: 999_000 }));
+  const most = host.wire();
+  assert.deepEqual([most.e.length, most.s.length], [MOST_FOES, MOST_SHELLS]);
+  const sent = JSON.stringify({ t: 'foes', ms: 3_599_999, ...most });
+  assert.ok(sent.length < MOST_BYTES, `${sent.length} characters`);
+  assert.deepEqual(cleanFoes(most).e, most.e);
+  // Nonsense from the other game does no harm: rows that aren't rows are passed over.
+  const quiet = new TeamPatrol({ slot: 1, runs: false, random: seeded(3) });
+  quiet.begin();
+  quiet.follow({ e: [null, [1, 2], 'three'], s: [[1], {}], n: ['x'] });
+  quiet.follow({});
+  quiet.follow({ e: 'all', s: 7, n: null });
+  assert.deepEqual([quiet.enemies.length, quiet.shells.length, quiet.state], [0, 0, 'playing']);
+});
+
+test('a patrol together\'s messages are passed on to the game, and its hits go from the game to the room', () => {
+  const friends = readFileSync(new URL('../../core/friends.js', import.meta.url), 'utf8');
+  assert.match(friends, /'foes', 'tag'\]\.includes\(message\.t\)/);
+  assert.match(friends, /sendTag\(k, n\) \{\s*this\.say\(\{ t: 'tag', k, n \}\);/);
+  const main = readFileSync(new URL('../../games/tank-patrol/main.js', import.meta.url), 'utf8');
+  assert.match(main, /tag: \(\) => this\.friends\.sendTag\(event\.id, event\.hits\)/);
+  assert.match(main, /this\.patrol\.friendTagged\(message\.k, message\.n\)/);
 });

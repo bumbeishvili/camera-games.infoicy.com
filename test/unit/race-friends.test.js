@@ -2,7 +2,7 @@
 // is moved smoothly from what their game sends.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanBall, cleanCar, cleanHand, cleanName, cleanRacket, cleanShip, cleanShot, cleanTank, COMES_BACK_WITHIN_MS, idFor, makeCode, MAX_RACERS, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
+import { cleanBall, cleanCar, cleanFoes, cleanHand, cleanName, cleanRacket, cleanShip, cleanShot, cleanTag, cleanTank, COMES_BACK_WITHIN_MS, idFor, makeCode, MAX_RACERS, MOST_BYTES, MOST_FOES, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
 import { BODY_KEYS } from '../../games/mighty-moves/clips.js';
 import { Track } from '../../core/friends.js';
 import { CarTrack, codeInLink } from '../../games/high-five-racers/friends.js';
@@ -612,6 +612,51 @@ test('a tank message holds only what it should, rounded and kept to the valley, 
   assert.deepEqual(cleanTank({ ms: -1, x: 'far', z: 999, h: 9, a: -9, s: 99, n: -3, r: 'yes', o: 0, picture: 'not this' }), { ms: 0, x: 0, z: 40, h: 4, a: -4, s: 30, n: 0, r: 1, o: 0 });
   const biggest = JSON.stringify({ t: 'tank', from: 'abcdefghijkl', ...cleanTank({ ms: 3_599_999, x: -59.99, z: -49.99, h: -3.142, a: -3.142, s: 29.9, n: 99_999, r: 1, o: 1 }) });
   assert.ok(biggest.length < 200, `${biggest.length} characters`);
+});
+
+test('playing together against the computer\'s, only the host\'s game tells of them, and a hit on one goes only to the host\'s game', () => {
+  const { join } = makeRoom(mostIn('tank-patrol'));
+  const ana = join('aaaaaaaa');
+  ana.say({ t: 'hi', name: 'Ana', driver: 'giraffe', level: 4, length: 6, mode: 'fast', team: 1 });
+  const ben = join('bbbbbbbb');
+  ben.say({ t: 'hi', name: 'Ben', driver: 'giraffe', level: 1, length: 15, mode: 'slow', team: 0 });
+  // A hit before it has started counts for nothing.
+  ben.say({ t: 'tag', k: 7, n: 1 });
+  assert.equal(ana.last('tag'), undefined);
+  ana.say({ t: 'ready' });
+  ben.say({ t: 'ready' });
+  assert.equal(ben.last('go').team, 1, 'the host\'s choice');
+  // Ana's game runs the robot tanks, and tells Ben's where they and their shells are, as rows of numbers.
+  const foes = { e: [[7, 0, -12.345, -20.5, 3.1416, -1.5, 4, 4, 3.25], [8, 2, 30, -18, 0, 0, 9, 9, 0]], s: [[12, 30, -18, 12, 20, 0.2504, 3.8, 1, 8]], n: [3, 12, 2, 1, 0, 0] };
+  ana.say({ t: 'foes', ms: 1500.4, ...foes, picture: 'not this' });
+  assert.deepEqual(ben.last('foes'), { t: 'foes', from: 'aaaaaaaa', ms: 1500, e: [[7, 0, -12.345, -20.5, 3.142, -1.5, 4, 4, 3.25], [8, 2, 30, -18, 0, 0, 9, 9, 0]], s: [[12, 30, -18, 12, 20, 0.25, 3.8, 1, 8]], n: [3, 12, 2, 1, 0, 0] });
+  assert.equal(ana.last('foes'), undefined, 'nobody hears their own');
+  // Ben's game doesn't run them, so nothing it says of them is passed on.
+  ben.say({ t: 'foes', ms: 1600, ...foes });
+  assert.equal(ana.last('foes'), undefined);
+  // Ben's shot has hit robot tank 7 twice so far, as his game decides: only Ana's game, which runs it, hears.
+  ben.say({ t: 'tag', k: 7.2, n: 2, also: 'not this' });
+  assert.deepEqual(ana.last('tag'), { t: 'tag', from: 'bbbbbbbb', k: 7, n: 2 });
+  assert.equal(ben.last('tag'), undefined);
+  // The host's own hits are its own game's business, and go nowhere.
+  ana.say({ t: 'tag', k: 7, n: 1 });
+  assert.equal(ben.last('tag'), undefined);
+});
+
+test('what\'s told of the computer\'s side is only numbers, in rows, no more of them than there could be, and a hit only which one and how many', () => {
+  assert.deepEqual(cleanFoes({}), { ms: 0, e: [], s: [], n: [] });
+  assert.deepEqual(cleanFoes({ ms: 5, e: 'all of them', s: [1, 'two', null], n: { a: 1 } }), { ms: 5, e: [], s: [], n: [] });
+  // Anything that isn't a number is none, and each is kept within bounds and rounded: only numbers come out.
+  const [row] = cleanFoes({ e: [[1, 'x', null, 1e9, -1e9, 0.12345, {}, ['y'], NaN, '<b>']] }).e;
+  assert.deepEqual(row, [1, 0, 0, 1_000_000, -1_000_000, 0.123, 0, 0, 0, 0]);
+  assert.ok(row.every((value) => typeof value === 'number' && Number.isFinite(value)));
+  const many = cleanFoes({ e: Array.from({ length: 60 }, (_, index) => Array.from({ length: 30 }, () => index)), n: Array.from({ length: 40 }, () => 1) });
+  assert.equal(many.e.length, MOST_FOES);
+  assert.ok(many.e.every((row) => row.length === 12));
+  assert.equal(many.n.length, 12);
+  assert.deepEqual(cleanTag({ k: -4, n: 'lots', picture: 'not this' }), { k: 0, n: 0 });
+  assert.deepEqual(cleanTag({ k: 2_000_000, n: 5000 }), { k: 1_000_000, n: 1000 });
+  assert.ok(MOST_BYTES >= 1800);
 });
 
 test('a finish always gets through, even straight after more messages than a second allows', () => {

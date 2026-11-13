@@ -85,6 +85,12 @@
 //                                      way it faces and its turret points, how fast it's going, how many shots it
 //                                      has fired, so the friend's game can show them coming, whether their child
 //                                      is resting, shown with little z's over it, and whether their hand is open
+//   foes   { ms, e, s, n }                 playing together against the computer's, from the host's game, which runs
+//                                      them for everyone: in Tank Patrol, e is each robot tank still rolling, s each
+//                                      shell coming over, and n how it's going. Each of e and s is a row of numbers,
+//                                      and n is numbers: see wire in games/tank-patrol/team.js. Only numbers pass
+//   tag    { k, n }                        this player's shot has hit the computer's k, n times in all so far, as
+//                                      their own game decides. Only the host's game hears it, as it runs them
 //   can    { ms, u, y, v, tip, f, p }      where their watering can is in Giraffe's Garden: u how far along the row of
 //                                      plants, from the first to the last, so it's over the same plant on every
 //                                      screen however far apart each one's are, y how far down the screen, whether
@@ -98,9 +104,9 @@
 //                                      the host's, so everyone can see how the game is going to be played
 //   go     { level, length, laps, mode, team, racers, seed }   the countdown starts now, on the host's course
 //                                      (laps is length). seed is the same for everyone, for a game laid out by chance
-//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker, stand, ship, catcher, tank, can { from, ... } and done { from, ms, n, w }
-//                                      passed on from the others: ball only from the host, shot only to the host,
-//                                      and stand only from someone playing
+//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker, stand, ship, catcher, tank, can, foes, tag { from, ... } and done { from, ms, n, w }
+//                                      passed on from the others: ball and foes only from the host, shot and tag
+//                                      only to the host, and stand only from someone playing
 //   claimed { k, by }                      balloon k, or round k, went to player by, sent to everyone, them too
 //   wiped  { w, c, by }                    patches c of window w went to player by, as theirs wiped them first,
 //                                      sent to everyone, them too. Those in a wipe that had gone to someone else
@@ -125,6 +131,10 @@ const MOST_BALLOONS = 24;
 export const WINDOW_PATCHES = 126;
 const MOST_WINDOWS = 10;
 const MOST_FRUIT = 16; // At the Smoothie Stand there are never more than 12 up at once, and a few on their way.
+// Playing together against the computer's: how many of them, and of what they've fired, the host's game can tell
+// of at once, and how many numbers each can have.
+export const MOST_FOES = 24;
+const MOST_FOE_NUMBERS = 12;
 const MOST_A_SECOND = 40; // Messages a player can send in a second; more are dropped, apart from ALWAYS_HEARD.
 const ALWAYS_HEARD = new Set(['ready', 'go', 'done', 'leave']);
 // A player who goes and comes back as soon as this carries on as before, as when a laptop wakes up again.
@@ -433,6 +443,22 @@ export function cleanCan(message) {
   };
 }
 
+/**
+ * Only what the host's game should tell of the computer's side, playing together against it: rows of numbers, and
+ * nothing else. e is each of them, s each thing they've fired, and n how it's going. What each number means is the
+ * game's own business, so each game has to make sense of them for itself, and take none of them on trust.
+ */
+export function cleanFoes(message) {
+  const numbers = (row) => row.slice(0, MOST_FOE_NUMBERS).map((value) => number(value, -1_000_000, 1_000_000, 3));
+  const rows = (list) => (Array.isArray(list) ? list.slice(0, MOST_FOES).filter((row) => Array.isArray(row)).map(numbers) : []);
+  return { ms: number(message.ms, 0, 3_600_000, 0), e: rows(message.e), s: rows(message.s), n: Array.isArray(message.n) ? numbers(message.n) : [] };
+}
+
+/** Only what a hit on one of the computer's should hold: which one, and how many times this player has hit it. */
+export function cleanTag(message) {
+  return { k: number(message.k, 0, 1_000_000, 0), n: number(message.n, 0, 1000, 0) };
+}
+
 /** Only what a car message should hold, rounded, so nothing else can be passed on. */
 export function cleanCar(message) {
   return {
@@ -613,6 +639,18 @@ export class RaceRoom {
         const host = hostOf(players);
         if (!meta.racing || host === player || !host) return;
         host.send({ t: 'shot', from: meta.id, ...cleanShot(message) });
+        break;
+      }
+      case 'foes':
+        // Only the host's game runs the computer's side, for everyone playing together against it.
+        if (hostOf(players) !== player) return;
+        for (const other of others) other.send({ t: 'foes', from: meta.id, ...cleanFoes(message) });
+        break;
+      case 'tag': {
+        // And so only the host's game hears of a hit on one of them, and only from someone playing.
+        const host = hostOf(players);
+        if (!meta.racing || host === player || !host) return;
+        host.send({ t: 'tag', from: meta.id, ...cleanTag(message) });
         break;
       }
       case 'car':

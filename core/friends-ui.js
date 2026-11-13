@@ -343,6 +343,11 @@ export class FriendsPanel {
     if (this.current && this.room.inRoom) this.room.claim(k);
   }
 
+  /** Playing together against the computer's: the child's shot has hit its number k, n times in all so far. */
+  sendTag(k, n) {
+    if (this.current && this.room.inRoom) this.room.sendTag(k, n);
+  }
+
   /** Mighty Moves: the child's fighter made a move at their friend's, this long after "GO!". */
   sendHit(hit, ms) {
     if (this.current && this.room.inRoom) this.room.sendHit(hit, ms);
