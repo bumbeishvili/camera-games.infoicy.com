@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { HandMonitor } from '../../core/hands.js';
-import { ACTIONS, BINDINGS, Controls, FILTER, FINGER_TIPS, GESTURES, OneEuro, PAD, SENSITIVITY, STICK, TRIGGER, gesturesOf, readBinding, readHand } from '../../games/frost-arena/controls.js';
+import { ACTIONS, BINDINGS, Controls, FILTER, FINGER_TIPS, GESTURES, OPEN as OPEN_RULE, OneEuro, PAD, SENSITIVITY, STICK, TRIGGER, fingersOut, gesturesOf, readBinding, readHand } from '../../games/frost-arena/controls.js';
 import { FIST, FRAME_ASPECT, OPEN, handAt, photos } from './photo-hands.js';
 
 const CAMERA_MS = 1000 / 30;
@@ -161,6 +161,146 @@ test('a hand that opens goes down where it opens, and is dragged from there: ope
   const first = open.run(0.4, { aim: hand(0.3, 0), move: hand(0.2, 0.2) });
   assert.ok(first.every(still));
   assert.deepEqual([open.out.stick.on, open.out.pad.on], [true, true]);
+});
+
+/* ---------- only an open hand drags ---------- */
+
+// A hand closed loosely, as hands often are: two of its fingers not quite curled, so it isn't a fist to look at,
+// and it isn't open either.
+const loosely = (x = 0, y = 0) => ({ photo: OPEN, toward: FIST, by: 0.5, x, y });
+
+/** What the controls make of a hand part of the way from one photo's to another's. */
+function partWay(from, to, share) {
+  const [a, b] = [from, to].map((photo) => handAt(photo, 0.5, 0.5, { palm: PALM, label: 'Right' }));
+  const made = between(a, b, share);
+  return readHand({ status: 'open', reason: null, image: made.image.map(({ x, y, z }) => ({ x: 1 - x, y, z })), world: made.world, openness: 1 }, FRAME_ASPECT);
+}
+
+test('an open hand is told by its four fingers from one that\'s closed, loosely closed, pointing or anything else', () => {
+  // Real open hands: flat, relaxed, a woman's, seen from the back, and tipped back so the fingers point at the camera.
+  for (const photo of [OPEN, 'relaxed', 'woman_hands', 'right_hands', 'palm', 'back', 'back-short-50']) assert.equal(gesturesOf(looked(photo)).open, true, photo);
+  for (const photo of [FIST, THUMB, 'pointing_up', 'victory']) assert.equal(gesturesOf(looked(photo)).open, false, photo);
+  // Closed loosely, it's not open, and it's nothing else either: not a fist to look at, as two of its fingers
+  // aren't curled enough, and not a thumb up.
+  const loose = partWay(OPEN, FIST, 0.5);
+  assert.deepEqual([gesturesOf(loose).open, gesturesOf(loose).fist, gesturesOf(loose).thumb, gesturesOf(loose, { open: true }).open], [false, false, false, false]);
+  assert.ok(Math.max(loose.fingers.ring, loose.fingers.pinky) > TRIGGER.fingersBelow && fingersOut(loose.fingers) < OPEN_RULE.lift, `${JSON.stringify(loose.fingers)}`);
+  // How far out the four fingers are: all of them, and the one that's least out as much again.
+  const fingers = (index, middle = index, ring = index, pinky = index) => ({ thumb: 1, index, middle, ring, pinky });
+  assert.deepEqual([fingersOut(fingers(1)), fingersOut(fingers(0)), fingersOut(fingers(0, 1, 1, 1))], [1, 0, 0.375]);
+  const open = looked(OPEN);
+  // One finger curled is enough for it not to be open, whatever the thumb is doing.
+  assert.equal(gesturesOf({ ...open, fingers: fingers(0, 1, 1, 1) }).open, false);
+  assert.equal(gesturesOf({ ...open, fingers: { ...fingers(1), thumb: 0 } }).open, true);
+  // It takes a little more to stop being open than it took to be, so it doesn't flicker.
+  const between_ = (OPEN_RULE.down + OPEN_RULE.lift) / 2;
+  assert.ok(OPEN_RULE.down > OPEN_RULE.lift);
+  assert.equal(gesturesOf({ ...open, fingers: fingers(between_) }).open, false);
+  assert.equal(gesturesOf({ ...open, fingers: fingers(between_) }, { open: true }).open, true);
+  assert.equal(gesturesOf({ ...open, fingers: fingers(OPEN_RULE.lift - 0.02) }, { open: true }).open, false);
+  assert.equal(gesturesOf({ ...open, fingers: fingers(OPEN_RULE.down + 0.02) }).open, true);
+});
+
+test('only an open hand drags: one that closes loosely stops the view at that very look, and it stays as it was last wherever the hand goes', () => {
+  const rig = player();
+  rig.run(1, BOTH);
+  // Dragged steadily across, a palm length a second. Then it closes, loosely, and goes on across as fast.
+  rig.run(0.3, (t) => ({ aim: hand(t, 0), move: OPEN_HAND }));
+  const closing = rig.run(0.4, (t) => ({ aim: loosely(0.3 + t), move: OPEN_HAND }));
+  // From the tracker's first look at it closed, a thirtieth of a second on at most, nothing turns.
+  const after = closing.filter((out) => out.at - closing[0].at > CAMERA_MS + SCREEN_MS);
+  assert.ok(after.every((out) => out.turn === 0), `turned ${degrees(Math.max(...after.map((out) => Math.abs(out.turn))))} degrees in a frame`);
+  assert.ok(degrees(rig.yaw) < (0.3 + 1 / 30) * PER_PALM + 1.5, `${degrees(rig.yaw)} degrees, with the hand ${(0.7 * PER_PALM).toFixed(1)} across`);
+  // And it's lifted within a fifth of a second, though it never looked like a fist.
+  const lifted = closing.find((out) => !out.pad.on);
+  assert.ok(lifted && lifted.at - closing[0].at < 200, `still down after ${lifted ? Math.round(lifted.at - closing[0].at) : 400} ms`);
+  assert.equal(rig.out.pad.seen, true);
+  // Brought back like that, and held there, and then opened: the view is as it was last, all the while.
+  const turned = rig.yaw;
+  const back = [...rig.run(0.5, (t) => ({ aim: loosely(0.7 - Math.min(0.7, t * 2)), move: OPEN_HAND })), ...rig.run(0.5, { aim: loosely(), move: OPEN_HAND }), ...rig.run(0.5, BOTH)];
+  assert.ok(back.every((out) => out.turn === 0), `${degrees(rig.yaw - turned)}`);
+  assert.equal(rig.out.pad.on, true);
+  // Dragged from there, it turns on from where the view was.
+  rig.run(0.5, { aim: hand(0.2, 0), move: OPEN_HAND });
+  assert.ok(Math.abs(degrees(rig.yaw - turned) - 0.2 * PER_PALM) < 1, `${degrees(rig.yaw - turned)}`);
+
+  // Closed like that and brought straight back, quicker than it takes to be sure the hand is closed, and opened:
+  // the view never comes back with it.
+  const quick = player();
+  quick.run(1, BOTH);
+  quick.run(0.4, { aim: hand(0.3, 0), move: OPEN_HAND });
+  const there = quick.yaw;
+  const clutch = [...quick.run(0.13, (t) => ({ aim: loosely(0.3 - Math.min(0.3, t * 3)), move: OPEN_HAND })), ...quick.run(0.5, BOTH)];
+  const most = Math.max(...clutch.map((out) => Math.abs(degrees(out.yaw - there))));
+  assert.ok(most < 0.6, `the view came ${most.toFixed(2)} degrees back with a hand that was brought back ${(0.3 * PER_PALM).toFixed(1)}`);
+  assert.equal(quick.out.pad.on, true);
+});
+
+test('the walking hand closed loosely stops the walk too, within a fifth of a second, and it stays stopped wherever the hand goes', () => {
+  const rig = player();
+  rig.run(1, BOTH);
+  rig.run(0.5, { aim: OPEN_HAND, move: hand(0, -0.3) });
+  const walking = rig.out.moveY;
+  assert.ok(walking > 0.6);
+  // It closes, loosely, and goes on up, and out to one side.
+  const closing = rig.run(0.5, (t) => ({ aim: OPEN_HAND, move: loosely(Math.min(0.3, t), -0.3 - Math.min(0.3, t)) }));
+  // Until it's lifted the walk is as it was, never more, and never off to the side the hand went.
+  assert.ok(closing.every((out) => out.moveY <= walking + 0.02 && Math.abs(out.moveX) < 0.05), `${Math.max(...closing.map((out) => out.moveY))}, ${Math.max(...closing.map((out) => Math.abs(out.moveX)))}`);
+  const stopped = closing.find((out) => out.moveY === 0);
+  assert.ok(stopped && stopped.at - closing[0].at < 200, `walked on for ${stopped ? Math.round(stopped.at - closing[0].at) : 500} ms`);
+  assert.deepEqual(rig.out.stick, { on: false, seen: true, x: 0, y: 0 });
+  // Moved about like that, nobody goes anywhere.
+  assert.ok([...rig.run(0.5, { aim: OPEN_HAND, move: loosely(-0.4, 0.3) }), ...rig.run(0.5, { aim: OPEN_HAND, move: loosely(0.2, -0.5) })].every(still));
+});
+
+test('a hand that\'s pointing, or showing two fingers, isn\'t open: with nothing given to that, it doesn\'t drag at all', () => {
+  for (const photo of ['pointing_up', 'victory']) {
+    const rig = player();
+    const outs = rig.run(1.2, (t) => ({ aim: hand(t * 0.5, 0, photo), move: hand(0, -t * 0.4, photo) }));
+    assert.ok(outs.every(still), photo);
+    assert.ok(outs.every((out) => !out.pad.on && !out.stick.on && out.pad.seen && out.stick.seen), photo);
+  }
+  // An open hand that goes to that while it's dragging stops as soon, and is lifted.
+  const rig = player();
+  rig.run(1, BOTH);
+  rig.run(0.3, (t) => ({ aim: hand(t, 0), move: OPEN_HAND }));
+  const pointing = rig.run(0.5, (t) => ({ aim: hand(0.3 + t, 0, 'pointing_up'), move: OPEN_HAND }));
+  assert.ok(pointing.filter((out) => out.at - pointing[0].at > CAMERA_MS + SCREEN_MS).every((out) => out.turn === 0));
+  assert.equal(rig.out.pad.on, false);
+  // With two fingers given to the walking hand, for the magazine, that hand showing them is down, and walks on.
+  // The other hand showing them still isn't: it's what each hand has been given that keeps it down.
+  const given = player({ bindings: { reload: 'move:two' } });
+  given.run(1, BOTH);
+  given.run(0.5, { aim: OPEN_HAND, move: hand(0, -0.3) });
+  const walking = given.out.moveY;
+  const two = given.run(0.8, (t) => ({ aim: hand(Math.min(0.3, t), 0, 'victory'), move: hand(0, -0.3, 'victory') }));
+  assert.equal(two.filter((out) => out.reload).length, 1);
+  assert.ok(two.every((out) => Math.abs(out.moveY - walking) < 0.1), `${Math.min(...two.map((out) => out.moveY))}`);
+  assert.deepEqual([given.out.stick.on, given.out.pad.on], [true, false]);
+  assert.ok(Math.abs(degrees(given.yaw)) < 0.6, `${degrees(given.yaw)}`);
+});
+
+test('a thumb that takes its time going up leaves the hand down where it was: the view waits, and the walk carries on', () => {
+  // Over nine looks of the tracker's, a third of a second: for some of them the hand is neither open nor
+  // anything else yet.
+  const slowly = (x, y, t) => {
+    const by = clamp((Math.floor(t * 30) + 1) / 9, 0, 1);
+    return { photo: OPEN, x, y, toward: THUMB, by };
+  };
+  const rig = player();
+  rig.run(1, BOTH);
+  rig.run(0.5, { aim: hand(0.2, 0), move: hand(0, -0.3) });
+  const [aimed, walking] = [rig.yaw, rig.out.moveY];
+  const going = rig.run(0.8, (t) => ({ aim: slowly(0.2, 0, t), move: slowly(0, -0.3, t) }));
+  assert.deepEqual([rig.out.fire, rig.out.buttons.reload], [true, true]);
+  assert.equal(going.filter((out) => out.reload).length, 1);
+  // Neither was lifted on the way, so the walk is from where that hand first went down, as it was.
+  assert.ok(going.every((out) => out.pad.on && out.stick.on));
+  assert.ok(going.every((out) => Math.abs(out.moveY - walking) < 0.12 && Math.abs(out.moveX) < 0.08), `${Math.min(...going.map((out) => out.moveY))} to ${Math.max(...going.map((out) => out.moveY))}, across ${Math.max(...going.map((out) => Math.abs(out.moveX)))}`);
+  assert.ok(Math.max(...going.map((out) => Math.abs(degrees(out.yaw - aimed)))) < 1, `${Math.max(...going.map((out) => Math.abs(degrees(out.yaw - aimed))))}`);
+  // And dragged on with the thumb up, the view goes with it from there.
+  rig.run(0.5, { aim: hand(0.4, 0, THUMB), move: hand(0, -0.3, THUMB) });
+  assert.ok(Math.abs(degrees(rig.yaw - aimed) - 0.2 * PER_PALM) < 1.5, `${degrees(rig.yaw - aimed)}`);
 });
 
 /* ---------- walking ---------- */
@@ -790,14 +930,15 @@ test('a hand sweeping fast, blurred so that how open it is is anyone\'s guess, s
 });
 
 test('a hand the tracker can\'t make its mind up about is never held back: the view goes with it', () => {
-  // Half open in one look and open in the next, or two fingers and then five, on and on, a look or two at a time,
-  // while the hand is dragged a third of a palm length across: slowly, and quickly.
+  // Half open in one look and open in the next, or two fingers for a look and then five, on and on, while the
+  // hand is dragged a third of a palm length across: slowly, and quickly. A single look of something else is
+  // the tracker's slip, and the hand has gone on dragging all the while.
   const meant = 0.35 * PER_PALM;
   const guesses = {
     'half open every other look': (t) => (Math.floor(t * 30) % 2 ? 'relaxed' : OPEN),
     'half open two looks in four': (t) => (Math.floor(t * 15) % 2 ? 'relaxed' : OPEN),
     'two fingers every other look': (t) => (Math.floor(t * 30) % 2 ? 'victory' : OPEN),
-    'two fingers two looks in three': (t) => (Math.floor(t * 30) % 3 ? 'victory' : OPEN),
+    'two fingers one look in three': (t) => (Math.floor(t * 30) % 3 === 1 ? 'victory' : OPEN),
   };
   for (const [name, guess] of Object.entries(guesses)) {
     for (const seconds of [2, 0.9, 0.4]) {
@@ -829,7 +970,8 @@ function looked(photo, pinching = null) {
   const mirrored = image.map(({ x, y, z }) => ({ x: 1 - x, y, z }));
   return readHand({ status: 'open', reason: null, image: mirrored, world: made.world, openness: 1 }, FRAME_ASPECT);
 }
-const making = (hand, was) => Object.entries(gesturesOf(hand, was)).filter(([, on]) => on).map(([name]) => name).sort();
+// What it's making, apart from being open, which has a test of its own.
+const making = (hand, was) => Object.entries(gesturesOf(hand, was)).filter(([name, on]) => on && name !== 'open').map(([name]) => name).sort();
 
 test('a fist, a thumb up, pointing, two fingers and an open hand are each told for what they are, from real hands', () => {
   assert.deepEqual(making(looked(FIST)), ['fist']);
@@ -875,8 +1017,10 @@ test('each takes a little more to stop than it took to start, so none of them fl
   // With the first finger well out it's no longer a fist: it's pointing.
   assert.deepEqual(making(with_({ fingers: { ...fingers(0.2), index: 0.9 }, pinches: apart }), { fist: true }), ['point']);
   // A thumb up: up with the tip of it well clear of every finger, and kept until it's nearly back against one.
+  // Half way out it's neither yet: not a thumb up, and not a fist.
   const half = { ...apart, index: (TRIGGER.thumbIn + TRIGGER.thumbOut) / 2 };
-  assert.deepEqual(making(with_({ fingers: fingers(0.1), pinches: half })), ['fist']);
+  assert.deepEqual(making(with_({ fingers: fingers(0.1), pinches: half })), []);
+  assert.deepEqual(making(with_({ fingers: fingers(0.1), pinches: half }), { fist: true }), []);
   assert.deepEqual(making(with_({ fingers: fingers(0.1), pinches: half }), { thumb: true }), ['thumb']);
   assert.deepEqual(making(with_({ fingers: fingers(0.1), pinches: { ...apart, index: TRIGGER.thumbIn - 0.05 } }), { thumb: true }), ['fist']);
   assert.deepEqual(making(with_({ fingers: fingers(0.1), pinches: { ...apart, index: TRIGGER.thumbOut + 0.05 } })), ['thumb']);

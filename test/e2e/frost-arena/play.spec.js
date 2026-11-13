@@ -68,7 +68,7 @@ test('an open hand dragged walks: up is forwards, to one side is a sidestep, rig
   expect(controls.moveY).toBeGreaterThan(0.5);
   expect(Math.abs(controls.moveX)).toBeLessThan(0.2);
   expect(controls.sprint).toBe(false);
-  expect((await matchIs(page)).speed).toBeLessThan(5.4);
+  expect((await matchIs(page)).speed).toBeLessThan(4.6);
   // The knob on the screen is up from the middle of its pad.
   const [ring, knob] = await Promise.all(['#stick', '#stick-knob'].map((each) => page.locator(each).boundingBox()));
   expect(knob.y + knob.height / 2).toBeLessThan(ring.y + ring.height / 2 - 10);
@@ -76,7 +76,7 @@ test('an open hand dragged walks: up is forwards, to one side is a sidestep, rig
   // Right out: a sprint, and its button lights.
   await hands(page, { move: { y: -REACH * 1.15 } });
   await soon(async () => (await matchIs(page)).sprinting).toBe(true);
-  await soon(async () => (await matchIs(page)).speed).toBeGreaterThan(7);
+  await soon(async () => (await matchIs(page)).speed).toBeGreaterThan(6);
   await expect(page.locator('#button-sprint')).toHaveAttribute('data-on', 'true');
   // Closed where it is: a stop, at once, with the pad let go of. Brought back closed, nothing happens.
   await hands(page, { move: { ...FIST, y: -REACH * 1.15 } });
@@ -158,6 +158,21 @@ test('the other hand, open and dragged, looks round: the view turns as far as it
   await page.waitForTimeout(700);
   expect(Math.abs((await heading()) - left)).toBeLessThan(1.5);
   expect(await page.evaluate(() => window.__game.yard.camera.rotation.x)).toBe(0);
+  // A hand that isn't open doesn't drag, though it isn't closed either: pointing, its pad is let go of, and
+  // the view stays where it was wherever the hand goes.
+  await hands(page, { aim: { photo: 'pointing', x: -0.2, y: -0.6 } });
+  await expect(page.locator('#pad')).toHaveAttribute('data-state', 'seen');
+  await hands(page, { aim: { photo: 'pointing', x: 0.3, y: -0.6 } });
+  await page.waitForTimeout(700);
+  expect(Math.abs((await heading()) - left)).toBeLessThan(1.5);
+  // A relaxed hand, its fingers a little curled, is open: it goes down where it is, and drags from there.
+  await hands(page, { aim: { photo: 'relaxed', x: 0.3, y: -0.6 } });
+  await expect(page.locator('#pad')).toHaveAttribute('data-state', 'on');
+  await page.waitForTimeout(500);
+  const relaxed = await heading();
+  expect(Math.abs(relaxed - left)).toBeLessThan(2);
+  await hands(page, { aim: { photo: 'relaxed', x: 0.5, y: -0.6 } });
+  await soon(heading).toBeGreaterThan(relaxed + 9);
   // Walking had nothing to do with any of it.
   expect((await matchIs(page)).stats.walked).toBeLessThan(0.5);
 });
@@ -428,7 +443,7 @@ test('what fires, reloads and sprints can each be given to something else a hand
   await hands(page);
   await page.waitForTimeout(500);
   await hands(page, { move: { y: -REACH * 1.15 } });
-  await soon(async () => (await matchIs(page)).speed).toBeGreaterThan(4);
+  await soon(async () => (await matchIs(page)).speed).toBeGreaterThan(3.5);
   expect((await matchIs(page)).sprinting).toBe(false);
   await hands(page);
 

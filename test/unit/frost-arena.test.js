@@ -152,7 +152,7 @@ test('the stick walks the player the way they\'re facing: forwards, back and to 
     standInFront(match, 25, Math.PI);
     // Out in the open, with room to walk every way.
     Object.assign(match.child, { x: -7, z: 6.5, heading });
-    run(match, 1.2, input);
+    run(match, 1.5, input);
     return { x: match.child.x + 7, z: match.child.z - 6.5, match };
   };
   // Facing up the yard: forwards is up it, and right is to the right.

@@ -2,7 +2,9 @@
 //
 // A closed hand is a thumb lifted off the glass: it does nothing. A hand that opens is a thumb put down, where it
 // opens, and from there it's dragged, with everything counted from that point. Closing it lifts it again, and
-// the next time it opens is a fresh tap, wherever that is.
+// the next time it opens is a fresh tap, wherever that is. Only a hand that's clearly open drags: one that's
+// half closed, or loosely closed, or anything else that isn't open, stops where it is at once, as a closed one
+// does, and stays as it was last.
 //
 // The hand that isn't in play walks: dragged away from where it went down, that way, as fast as it is far out,
 // up for forwards, down for back, and to either side for a sidestep. Right out forwards is a sprint. Closed,
@@ -70,6 +72,15 @@ const HELD_FOR_MS = 400; // One that's cut off by the edge of the picture, or to
 // going up looks for a moment like a hand closing. So a hand has to have been seen doing something in this many
 // looks running before it counts: one look is never enough to fire, or to let go.
 const ACTS_AFTER_LOOKS = 2;
+// A hand that's neither open nor doing anything it's been given to do stops dragging at that very look. Seen
+// closed in two looks running it's lifted. Anything else, a hand half closed or on its way from one thing to
+// another, is lifted after this many looks, about a sixth of a second: long enough for a thumb to go up, so
+// that the hand is still down where it was when it has.
+const LIFTED_AFTER_LOOKS = 5;
+// One that's open or doing something again after a single look, as when the tracker gets one look of a fast
+// hand wrong, has gone on dragging all the while. After any longer than that it takes hold again where it is
+// now: however it got there doesn't count, as it doesn't for a hand that was closed.
+const SLIP_LOOKS = 1;
 
 // Fingers on the move: between one look of the tracker's and the next, the tip of some finger has come this much
 // nearer the wrist or gone this much further from it, in palm lengths. The middle of a hand shifts in the
@@ -111,11 +122,23 @@ const LOOK_MOST_MS = 120;
 
 // Telling what a hand's fingers are doing. A hand is closed with every finger curled below fingersBelow, and has
 // to straighten one above fingerAbove to stop being. Closed, its thumb is up if the tip of it is further than
-// thumbOut from the tip of every finger, in palm widths, and stops being nearer than thumbIn: otherwise it's a
-// fist. A pinch is the tips of the thumb and a finger this near each other, with the fingers that aren't pinching
+// thumbOut from the tip of every finger, in palm widths, and stops being nearer than thumbIn: nearer than that
+// it's a fist. A pinch is the tips of the thumb and a finger this near each other, with the fingers that aren't pinching
 // left this straight, which is what tells it from a hand on its way to a fist. A finger is curled, as for a
 // trigger, below curled, and straight again above uncurled.
 export const TRIGGER = { fingersBelow: 0.4, fingerAbove: 0.55, thumbOut: 0.8, thumbIn: 0.6, pinchedBelow: 0.3, apartAbove: 0.5, straight: 0.45, curled: 0.3, uncurled: 0.5 };
+// An open hand: how far out its four fingers are, from 0 to 1, with the one that's least out counting as much
+// as all four together, so a single curled finger tells. It's open from down, and stays open until it's below
+// lift, so it doesn't flicker. A relaxed open hand is 0.8, one tipped back so that its fingers point at the
+// camera 0.55, a hand half closed less than a half, and a closed one, or one that's pointing or has its thumb
+// up, next to nothing. The thumb doesn't come into it: that's for other things.
+export const OPEN = { down: 0.5, lift: 0.4 };
+
+/** How far out a hand's four fingers are, from 0 to 1: see OPEN. */
+export function fingersOut(fingers) {
+  const four = FOUR.map((finger) => fingers[finger] ?? 0);
+  return 0.5 * (four.reduce((sum, value) => sum + value, 0) / four.length) + 0.5 * Math.min(...four);
+}
 
 // What a hand that's down can be told to be doing. name is for the panel, words for the card that says what
 // each hand does, and mark the little picture of it. link is the two points of the hand it joins, for drawing it
@@ -147,19 +170,22 @@ export function readBinding(value) {
 }
 
 /**
- * What a hand's fingers are doing, from one look of the tracker: whether it's a fist, and for each of GESTURES,
- * whether it's making it. hand is what readHand made of the look, and was what the hand was making at the last
- * one, as each takes a little more to stop than it took to start, so none of them flickers.
+ * What a hand's fingers are doing, from one look of the tracker: whether it's open, whether it's a fist, and
+ * for each of GESTURES, whether it's making it. hand is what readHand made of the look, and was what the hand
+ * was making at the last one, as each takes a little more to stop than it took to start, so none of them
+ * flickers.
  */
 export function gesturesOf(hand, was = {}) {
   const { fingers, pinches } = hand;
   const most = Math.max(...FOUR.map((finger) => fingers[finger]));
   const nearest = Math.min(...FOUR.map((finger) => pinches[finger]));
   const on = {};
-  // Every finger curled: a fist, or with the thumb well clear of them all, a thumb up.
+  on.open = fingersOut(fingers) >= (was.open ? OPEN.lift : OPEN.down);
+  // Every finger curled: a fist with the thumb in against them, or with the thumb well clear of them all, a
+  // thumb up. With the thumb half way out it's neither yet: a thumb on its way up, or down.
   const closed = was.fist || was.thumb ? most <= TRIGGER.fingerAbove : most < TRIGGER.fingersBelow;
   on.thumb = closed && nearest > (was.thumb ? TRIGGER.thumbIn : TRIGGER.thumbOut);
-  on.fist = closed && !on.thumb;
+  on.fist = closed && nearest <= TRIGGER.thumbIn;
   for (const finger of FOUR) {
     const key = `pinch-${finger}`;
     const near = pinches[finger];
@@ -298,12 +324,18 @@ export class TrackedHand {
   constructor(filter = FILTER) {
     this.filterX = new OneEuro(filter);
     this.filterY = new OneEuro(filter);
+    // What this hand has been given to do, as well as dragging: while it's doing any of it, it's down.
+    this.keeps = new Set();
     this.forget();
   }
 
   forget() {
     this.seenAt = null; // When it was last seen at all.
     this.origin = null; // Where it went down, in frame heights, while it's down.
+    this.grip = { x: 0, y: 0 }; // How far it has been dragged from there, in palm lengths, as far as counts: see offset.
+    this.held = false; // Whether it's open, or doing something it's been given to do, at the tracker's last look.
+    this.away = 0; // And for how many looks running it hasn't been.
+    this.retaken = false; // Whether it has just taken hold again, this frame, after more than a slip.
     this.palm = 0; // How long its palm is, in frame heights.
     this.points = null;
     this.target = null; // Where the filter has it, in frame heights, and how fast it's going.
@@ -329,7 +361,7 @@ export class TrackedHand {
     this.filterY.reset();
   }
 
-  /** Whether it's down, as a thumb on the glass: open, or doing something, and not closed. */
+  /** Whether it's down, as a thumb on the glass: open, or doing something it's been given to do. */
   get down() {
     return this.origin !== null;
   }
@@ -346,13 +378,22 @@ export class TrackedHand {
 
   /** It's taken off the glass while still in the picture: it goes down again once it can be trusted, and is open. */
   lift() {
-    Object.assign(this, { origin: null, target: null, shown: null, raw: null, place: null, left: { x: 0, y: 0 }, reach: null, rested: null, fingersMovedAt: -Infinity, clean: null, carried: null, doubted: null, steadied: false, velocity: { x: 0, y: 0 }, making: {}, looks: {} });
+    Object.assign(this, { origin: null, grip: { x: 0, y: 0 }, held: false, away: 0, retaken: false, target: null, shown: null, raw: null, place: null, left: { x: 0, y: 0 }, reach: null, rested: null, fingersMovedAt: -Infinity, clean: null, carried: null, doubted: null, steadied: false, velocity: { x: 0, y: 0 }, making: {}, looks: {} });
     this.filterX.reset();
     this.filterY.reset();
   }
 
-  /** How far it is from where it went down, in palm lengths: across, and down the picture. */
+  /**
+   * How far it has been dragged from where it went down, in palm lengths: across, and down the picture. Only as
+   * far as it was while it was open, or doing something: a hand that's neither stays where it was last, until
+   * it's one or the other again, or is lifted.
+   */
   get offset() {
+    return this.origin ? this.grip : { x: 0, y: 0 };
+  }
+
+  /** How far it is from where it went down just now, whatever it's doing. */
+  get reached() {
     if (!this.origin || !this.shown || !(this.palm > 0)) return { x: 0, y: 0 };
     return { x: (this.shown.x - this.origin.x) / this.palm, y: (this.shown.y - this.origin.y) / this.palm };
   }
@@ -363,10 +404,11 @@ export class TrackedHand {
    */
   update(hand, now, dt) {
     this.made.clear();
+    this.retaken = false;
     if (!hand) {
       // Not seen. For a moment it's as it was, in case the tracker only dropped a look. Then it's gone. What
       // its fingers were doing is let go sooner than that: a hand nobody can see mustn't go on firing.
-      if (this.seenAt !== null && now - this.seenAt > TRIGGER_KEPT_MS) Object.assign(this, { making: {}, looks: {} });
+      if (this.seenAt !== null && now - this.seenAt > TRIGGER_KEPT_MS) Object.assign(this, { making: {}, looks: {}, held: false });
       if (this.seenAt !== null && now - this.seenAt > LOST_AFTER_MS) this.forget();
       else this.glide(now, dt, false);
       return;
@@ -388,18 +430,32 @@ export class TrackedHand {
 
     if (fresh) this.sample(hand, now);
     this.glide(now, dt, true);
-    // Closed, for a look or two running, it's lifted. Otherwise it's down: where the tracker has it now, if it
+    // Closed, for a look or two running, it's lifted, and so is one that has been neither open nor doing
+    // anything for longer. One that's open, or doing something, is down: where the tracker has it now, if it
     // wasn't before, with nothing still to catch up on and however it got there forgotten, so that going down
     // never moves anything by itself.
-    if ((this.looks.fist ?? 0) >= ACTS_AFTER_LOOKS) this.origin = null;
-    else if (!this.origin && !this.making.fist && this.place) {
+    if ((this.looks.fist ?? 0) >= ACTS_AFTER_LOOKS || this.away >= LIFTED_AFTER_LOOKS) {
+      this.origin = null;
+      this.grip = { x: 0, y: 0 };
+    } else if (!this.origin && this.held && this.place) {
       this.filterX.jump(this.place.x);
       this.filterY.jump(this.place.y);
       this.velocity = { x: 0, y: 0 };
       this.target = { ...this.place };
       this.shown = { ...this.place };
       this.origin = { ...this.place };
+      this.grip = { x: 0, y: 0 };
     }
+    // Taking hold again after more than a slip, it's where the tracker has it now, with nothing to catch up on.
+    if (this.retaken && this.origin && this.place) {
+      this.filterX.jump(this.place.x);
+      this.filterY.jump(this.place.y);
+      this.velocity = { x: 0, y: 0 };
+      this.target = { ...this.place };
+      this.shown = { ...this.place };
+    }
+    // It drags while it's open, or doing something. Otherwise what it has dragged stays as it was.
+    if (this.origin && this.held) this.grip = this.reached;
   }
 
   /** A new look from the tracker. */
@@ -416,6 +472,10 @@ export class TrackedHand {
       // It has begun once it's been seen for as many looks as it takes to count.
       if (this.looks[gesture] === ACTS_AFTER_LOOKS) this.made.add(gesture);
     }
+    // Open, or doing something it's been given to do: it's dragging. Anything else isn't.
+    this.held = Boolean(this.making.open) || [...this.keeps].some((gesture) => this.making[gesture]);
+    if (this.held && this.away > SLIP_LOOKS) this.retaken = true;
+    this.away = this.held ? 0 : this.away + 1;
 
     // How far the middle of the hand has gone since the last look, as the tracker has it, and how fast.
     const since = this.sampledAt === null ? 0 : (now - this.sampledAt) / 1000;
@@ -523,6 +583,7 @@ export class TrackedHand {
     if (!this.down || away <= most) return;
     const extra = (away - most) / away;
     this.origin = { x: this.origin.x + x * extra * this.palm, y: this.origin.y + y * extra * this.palm };
+    this.grip = this.reached;
   }
 }
 
@@ -556,6 +617,10 @@ export class Controls {
       const allowed = read === 'stick' ? action === 'sprint' : read === 'off' ? action !== 'fire' : Boolean(read);
       this.bindings[action] = allowed ? read : readBinding(BINDINGS[action]);
     }
+    // A hand doing something it's been given to do is down, whatever its fingers are at.
+    for (const hand of ['aim', 'move']) {
+      this[hand].keeps = new Set(Object.values(this.bindings).filter((binding) => typeof binding !== 'string' && binding.hand === hand).map(({ gesture }) => gesture));
+    }
   }
 
   /** Whether what an action is given to is being done, held, or has just begun, by the hand it's given to. */
@@ -571,7 +636,6 @@ export class Controls {
     this.move.forget();
     this.aim.forget();
     this.dragged = null; // How far across the hand that looks round was at the last frame, while it's down.
-    this.unsure = 0; // And how far the view has turned since that hand began to look closed, while it isn't sure to be.
     this.out = this.nothing();
   }
 
@@ -655,19 +719,15 @@ export class Controls {
     const { aim } = this;
     out.pad.seen = aim.seenAt !== null;
     if (!aim.down) {
-      // Lifted: the view stays as it was when the hand began to close, and the next drag starts from wherever
-      // the hand goes down. Whatever it turned in the look or two it took to be sure is taken back.
-      if (this.unsure) out.turn = -this.unsure;
-      this.unsure = 0;
+      // Lifted: the view stays as it is, and the next drag starts from wherever the hand goes down.
       this.dragged = null;
       return;
     }
+    // A hand that stopped being open for more than a look, as one whose thumb is on its way up does, takes hold
+    // again where it is: the view stayed as it was meanwhile, and it stays there now.
     const { x, y } = aim.offset;
-    if (this.dragged !== null) out.turn = (x - this.dragged) * this.gain * slow;
+    if (this.dragged !== null && !aim.retaken) out.turn = (x - this.dragged) * this.gain * slow;
     this.dragged = x;
-    // A hand that looks closed may be, or may only look it for a moment, as a thumb going up can: it goes on
-    // dragging, and how far the view has turned since is kept, in case it has to be taken back.
-    this.unsure = aim.making.fist ? this.unsure + out.turn : 0;
     Object.assign(out.pad, { on: true, x: clamp(x / PAD.reach, -1, 1), y: clamp(y / PAD.reach, -1, 1) });
   }
 }
