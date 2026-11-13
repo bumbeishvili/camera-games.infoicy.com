@@ -1,7 +1,8 @@
 // Playing Bounce Back with a friend: two children, each on their own computer with their own camera, on one
 // court. The host's game runs the ball, and each game decides its own hits and sends them, so hitting feels
-// immediate for both. Each child sees themselves on their own side. Here they're two separate browsers, talking
-// through the race server on this computer (tools/race-server.mjs).
+// immediate for both. Each child sees themselves on their own side. Whoever makes the game chooses whether it's
+// played together, keeping one rally going as a team, or against each other. Here they're two separate browsers,
+// talking through the race server on this computer (tools/race-server.mjs).
 import { expect, openGame, show, shot, test, waitForScreen } from '../helpers.js';
 import { expectSoon, GAME, OPEN, steerHand, stopHand } from './helpers.js';
 
@@ -54,6 +55,7 @@ const view = (page) => page.evaluate(() => {
     hard: game.hard,
     level: game.playLevel,
     scores: game.scores(),
+    team: game.team,
     hits: game.stats.hits,
     friendSeen: court.players[other].racket.visible,
     friendName: court.players[other].name,
@@ -64,13 +66,16 @@ const view = (page) => page.evaluate(() => {
   };
 });
 
-test('two friends play one game: the host\'s ball, each on their own side, and either one\'s hit counts for both', async ({ page, browser }) => {
+test('two friends play against each other: the host\'s ball, each on their own side, and either one\'s hit counts for both', async ({ page, browser }) => {
   test.setTimeout(420_000);
   const sockets = [];
   page.on('websocket', (socket) => sockets.push(socket.url()));
-  await openGame(page, { bouncePoints: 5, bounceLevel: 'gentle', levels: { [GAME]: 4 } }, GAME);
+  // Whoever makes the game has chosen against each other, under the gear icon.
+  await openGame(page, { bouncePoints: 5, bounceLevel: 'gentle', bounceFriends: 'against', levels: { [GAME]: 4 } }, GAME);
   const code = await makeGame(page, 'Ana');
   expect(page.url()).toContain(`#bounce=${code}`);
+  await expect(page.locator('input[name="friends-team"][value="against"]')).toBeChecked();
+  await expect(page.locator('input[name="friends-team"][value="against"]')).toBeEnabled();
 
   // The friend has their own points, how hard and character, but plays the host's game.
   const ben = await secondPlayer(browser);
@@ -78,10 +83,16 @@ test('two friends play one game: the host\'s ball, each on their own side, and e
   await ben.page.locator('#friends-name').fill('Ben');
   await ben.page.locator('#friends-name').dispatchEvent('change');
   await expect(page.locator('#friends-here')).toContainText('Ben');
+  // The friend's own choice is together, and it's the host's that counts: he's shown it, and can't change it.
+  expect(await ben.page.evaluate(() => window.__game.session.settings.bounceFriends)).toBe('together');
+  await expect(ben.page.locator('input[name="friends-team"][value="against"]')).toBeChecked();
+  await expect(ben.page.locator('input[name="friends-team"][value="together"]')).toBeDisabled();
+  await expect(ben.page.locator('#friends-teams-whose')).toHaveText('Ana chose.');
   await bothPlaying(page, ben.page);
 
   const [ana, his] = [await view(page), await view(ben.page)];
   expect([ana.mode, his.mode]).toEqual(['host', 'guest']);
+  expect([ana.team, his.team]).toEqual([false, false]);
   expect([ana.goal, his.goal]).toEqual([5, 5]);
   expect([ana.hard, his.hard]).toEqual(['gentle', 'gentle']);
   expect([ana.level, his.level]).toEqual([4, 4]);
@@ -131,6 +142,96 @@ test('two friends play one game: the host\'s ball, each on their own side, and e
   expect(await ben.page.evaluate(() => window.__game.session.settings.bouncePoints)).toBe(11);
   expect(await ben.page.evaluate(() => window.__game.session.settings.bounceLevel)).toBe('tough');
   expect(sockets).toEqual([`ws://localhost:${Number(new URL(test.info().project.use.baseURL).port) + 1}/room/bounce-back/${code}?make=1`]);
+  expect(ben.errors).toEqual([]);
+  await ben.context.close();
+});
+
+test('two friends play together: one rally between them, every hit is the team\'s, a miss costs nothing, and both win', async ({ page, browser }) => {
+  test.setTimeout(420_000);
+  // Together is how it comes, unless a grown-up chooses otherwise.
+  await openGame(page, { bouncePoints: 5, bounceLevel: 'tough' }, GAME);
+  const code = await makeGame(page, 'Ana');
+  await expect(page.locator('input[name="friends-team"][value="together"]')).toBeChecked();
+  await expect(page.locator('#friends-how')).toContainText('keep the ball going between you');
+
+  // The friend has chosen against each other for their own games, and plays the host's, together.
+  const ben = await secondPlayer(browser);
+  await openGame(ben.page, { bounceFriends: 'against', fighter: 'kit' }, GAME, `#bounce=${code}`);
+  await ben.page.locator('#friends-name').fill('Ben');
+  await ben.page.locator('#friends-name').dispatchEvent('change');
+  await expect(page.locator('#friends-here')).toContainText('Ben');
+  await expect(ben.page.locator('input[name="friends-team"][value="together"]')).toBeChecked();
+  await expect(ben.page.locator('input[name="friends-team"][value="against"]')).toBeDisabled();
+  await expect(ben.page.locator('#friends-how')).toContainText('keep the ball going between you');
+  await ben.page.screenshot({ path: 'test-results/screens/bounce-together-box.png' });
+
+  // The host changes their mind, and back: the friend sees each at once.
+  await page.locator('input[name="friends-team"][value="against"]').check();
+  await expect(ben.page.locator('input[name="friends-team"][value="against"]')).toBeChecked();
+  expect(await page.evaluate(() => window.__game.session.settings.bounceFriends)).toBe('against');
+  await expect(page.locator('input[name="bounceFriends"][value="against"]')).toBeChecked();
+  await page.locator('input[name="friends-team"][value="together"]').check();
+  await expect(ben.page.locator('input[name="friends-team"][value="together"]')).toBeChecked();
+  expect(await page.evaluate(() => window.__game.session.settings.bounceFriends)).toBe('together');
+
+  await bothPlaying(page, ben.page);
+  const [ana, his] = [await view(page), await view(ben.page)];
+  expect([ana.mode, his.mode]).toEqual(['host', 'guest']);
+  expect([ana.team, his.team]).toEqual([true, true]);
+  // The host's 5 points to win are 20 hits between them.
+  expect([ana.goal, his.goal]).toEqual([20, 20]);
+  await expect(page.locator('#score-goal')).toHaveText('0 of 20 together');
+  await expect(ben.page.locator('#score-goal')).toHaveText('0 of 20 together');
+
+  // Ben tries and misses what comes over the net: on Tough against each other that's Ana's point every time.
+  // Together, nothing is lost: the ball floats back up and waits for him, and he hits that.
+  await steerHand(page);
+  await steerHand(ben.page, { target: 'dodge' });
+  await expectSoon(() => page.evaluate(() => window.__game.rally.ball.state === 'waiting' && window.__game.rally.ball.side === 'B'), { timeout: 60_000, intervals: [50] }).toBe(true);
+  await expectSoon(async () => (await view(ben.page)).hits, { timeout: 60_000 }).toBeGreaterThanOrEqual(1);
+  const missed = await page.evaluate(() => {
+    const { rally } = window.__game;
+    return { scores: { ...rally.scores }, hits: { ...rally.stats.hits }, winner: rally.winner, screen: window.__game.session.screen };
+  });
+  // Every hit that was made is the team's, there are no points, and nobody has won or lost anything.
+  expect(missed.scores).toEqual(missed.hits);
+  expect(missed.winner).toBe(null);
+  expect(missed.screen).toBe('playing');
+  await expect(page.locator('#score-goal')).toHaveText(/^\d+ of 20 together$/);
+  await expect(ben.page.locator('#score-goal')).toHaveText(/^\d+ of 20 together$/);
+
+  // Both after the ball: the hits add up on both screens, each one's own beside their name.
+  await steerHand(ben.page);
+  await expectSoon(async () => (await view(ben.page)).hits, { timeout: 90_000 }).toBeGreaterThanOrEqual(2);
+  await expectSoon(async () => { const { scores } = await view(page); return scores.A + scores.B; }, { timeout: 60_000 }).toBeGreaterThanOrEqual(5);
+  const [here, there] = await Promise.all([view(page), view(ben.page)]);
+  expect(Math.abs(here.scores.A + here.scores.B - (there.scores.A + there.scores.B))).toBeLessThanOrEqual(1);
+  await shot(page, 'bounce-together-host');
+  await ben.page.screenshot({ path: 'test-results/screens/bounce-together-guest.png' });
+
+  // Nearly there: a few more hits, and it's over for both, and won by both.
+  await page.evaluate(() => {
+    const { scores } = window.__game.rally;
+    scores.A = Math.max(scores.A, 9);
+    scores.B = Math.max(scores.B, 9);
+  });
+  await waitForScreen(page, 'finish');
+  await waitForScreen(ben.page, 'finish');
+  for (const each of [page, ben.page]) await stopHand(each);
+  await expect(page.locator('#screen-finish h2')).toHaveText('You did it together!');
+  await expect(ben.page.locator('#screen-finish h2')).toHaveText('You did it together!');
+  // Nobody is placed, and each one's hits are beside their name, adding up to the team's.
+  for (const each of [page, ben.page]) {
+    await expect(each.locator('.friends-results li')).toHaveCount(2);
+    await expect(each.locator('.friends-results .friends-place').first()).toBeHidden();
+    await expect(each.locator('.friends-results')).toContainText(/\d+ hits/);
+    await expect(each.locator('#finish-score')).toContainText(/^\d+ \+ \d+ = 2\d$/);
+  }
+  await page.waitForTimeout(600);
+  await shot(page, 'bounce-together-finish');
+  // Nobody's own level moves on, and the friend's own choice is still theirs.
+  expect((await view(page)).ownLevel).toBe(1);
+  expect(await ben.page.evaluate(() => window.__game.session.settings.bounceFriends)).toBe('against');
   expect(ben.errors).toEqual([]);
   await ben.context.close();
 });

@@ -399,6 +399,9 @@ export function shotTo(ball, target, crossing, env) {
 export const HARD = ['gentle', 'medium', 'tough'];
 export const PACE_NAMES = ['slow', 'medium', 'fast'];
 export const POINTS = [5, 7, 11];
+// Playing together with a friend, how many hits the two of them make between them, from the host's points to win.
+export const TEAM_HITS = { 5: 20, 7: 30, 11: 40 };
+export const teamHits = (points) => TEAM_HITS[points] ?? TEAM_HITS[5];
 const capital = (word) => word.charAt(0).toUpperCase() + word.slice(1);
 
 /** How hard and how quick, together in one word for a friend's game, as in gentleSlow or toughFast. */

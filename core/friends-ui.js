@@ -41,7 +41,17 @@ function saveName(name) {
   }
 }
 
-const box = (words) => `
+// In a game that can be played together or against each other: the two choices, which whoever made the game makes,
+// and everyone else is shown.
+const teamChoice = (words) => `
+      <fieldset id="friends-teams" class="friends-teams">
+        <legend>${words.teamLegend ?? 'How to play'}</legend>
+        <label><input type="radio" name="friends-team" value="together"> ${words.together}</label>
+        <label><input type="radio" name="friends-team" value="against"> ${words.against}</label>
+        <p id="friends-teams-whose" class="friends-teams-whose" hidden></p>
+      </fieldset>`;
+
+const box = (words, teams) => `
   <button id="friends-toggle" class="friends-toggle" type="button" aria-expanded="false" aria-controls="friends-box">${words.toggle}</button>
   <div id="friends-box" class="friends-box" hidden>
     <h2 class="friends-title">${words.toggle}</h2>
@@ -60,8 +70,8 @@ const box = (words) => `
       </div>
       <ul id="friends-here" class="friends-here"></ul>
       <p id="friends-lonely" class="friends-lonely">Waiting for a friend to join…</p>
-      <label class="friends-field friends-name">Your name <input id="friends-name" maxlength="16" autocomplete="off" spellcheck="false" placeholder="if you like"></label>
-      <p class="friends-how">${words.how}</p>
+      <label class="friends-field friends-name">Your name <input id="friends-name" maxlength="16" autocomplete="off" spellcheck="false" placeholder="if you like"></label>${teams ? teamChoice(words) : ''}
+      <p id="friends-how" class="friends-how">${words.how}</p>
       <div id="friends-start" class="friends-start"></div>
       <button id="friends-leave" class="friends-link" type="button">${words.leave}</button>
     </div>
@@ -93,9 +103,15 @@ export class FriendsPanel {
    *   onRoom()         who's here has changed, as when a friend comes or chooses another character
    * titles is { first, other }, the finish card's title for coming first or not, or null to leave it be.
    * startAfter, waitingBefore and resultsAfter are where the box, the waiting screen and the results go.
+   *
+   * A game that can be played together or against each other gives teams, { get(), set(choice) }, which reads and
+   * keeps the grown-ups' choice, 'together' or 'against', and in words: together and against, what each choice is
+   * called, howTogether, what to do when it's together, and teamTitle, the finish card's title then. Whoever made
+   * the game chooses, everyone is shown, and the game that starts has team: true when it's together. Then nobody
+   * is placed on the finish card: everyone is on the same side.
    */
-  constructor({ game = '', linkKey = 'race', words, hello, screen, portraits, onGone = () => {}, onMove = null, onRoom = () => {}, rank = null, resultText, titles = null, startAfter, waitingBefore, resultsAfter, finishTitle }) {
-    Object.assign(this, { linkKey, words, helloFor: hello, screen, portraits, onGone, onRoom, resultText, titles });
+  constructor({ game = '', linkKey = 'race', words, hello, screen, portraits, onGone = () => {}, onMove = null, onRoom = () => {}, rank = null, resultText, titles = null, teams = null, startAfter, waitingBefore, resultsAfter, finishTitle }) {
+    Object.assign(this, { linkKey, words, helloFor: hello, screen, portraits, onGone, onRoom, resultText, titles, teams });
     this.rank = rank ?? ((a, b) => Number(b.won) - Number(a.won) || (a.won ? a.ms - b.ms : b.dropped - a.dropped || a.ms - b.ms));
     this.current = null; // The race or flight with friends being played, once it has started: see start().
     this.results = new Map(); // id: { ms, won, dropped }, how each friend did.
@@ -109,7 +125,7 @@ export class FriendsPanel {
 
     const friends = document.createElement('div');
     friends.className = 'friends';
-    friends.innerHTML = box(words);
+    friends.innerHTML = box(words, teams);
     startAfter.after(friends);
     this.friendsBox = friends;
     // The game's own start button, which goes into the box while in a race, and back again after.
@@ -148,6 +164,16 @@ export class FriendsPanel {
       event.preventDefault();
       this.typedCode(true);
     });
+    for (const input of friends.querySelectorAll('input[name="friends-team"]')) {
+      input.addEventListener('change', () => {
+        if (!input.checked) return;
+        this.teams.set(input.value);
+        // The friends hear at once, so what they're shown is what it'll be.
+        if (this.room.status !== 'off') this.room.tell(this.hello());
+        this.showTeams();
+      });
+    }
+    this.showTeams();
     byId('friends-copy').addEventListener('click', () => this.copyLink());
     byId('friends-leave').addEventListener('click', () => this.leave());
     byId('friends-now').addEventListener('click', () => this.room.go());
@@ -184,7 +210,35 @@ export class FriendsPanel {
 
   /** What friends are told about this player, and the course it would be on if they host it. */
   hello() {
-    return { name: this.name, ...this.helloFor() };
+    const hello = { name: this.name, ...this.helloFor() };
+    return this.teams ? { ...hello, team: this.teams.get() === 'together' ? 1 : 0 } : hello;
+  }
+
+  /** Whether the game about to be played is together: the host's choice, once in a game, and this child's until then. */
+  get together() {
+    if (!this.teams) return false;
+    return this.room.joined && !this.room.hosting ? this.room.team : this.teams.get() === 'together';
+  }
+
+  /**
+   * The choice of together or against, as it stands. Whoever made the game can change it. Everyone else sees what
+   * they chose, and can't. What to do next is said for whichever it is.
+   */
+  showTeams() {
+    if (!this.teams) return;
+    const { room, words } = this;
+    const theirs = room.joined && !room.hosting;
+    const chosen = this.together ? 'together' : 'against';
+    for (const input of this.friendsBox.querySelectorAll('input[name="friends-team"]')) {
+      input.checked = input.value === chosen;
+      input.disabled = theirs;
+    }
+    const whose = byId('friends-teams-whose');
+    whose.hidden = !theirs;
+    const host = room.members.find((member) => member.host);
+    whose.textContent = theirs ? `${host?.name || 'Whoever made the game'} chose.` : '';
+    byId('friends-how').innerHTML = this.together && words.howTogether ? words.howTogether : words.how;
+    this.friendsBox.dataset.team = chosen;
   }
 
   /** Open, the title card shows only the box: see data-friends-box in base.css. */
@@ -254,7 +308,7 @@ export class FriendsPanel {
    * It starts, for those in it, on the host's course. Each friend is { id, key, spec, slot }, spec being the
    * character they chose with their own name, and slot their place in the order everyone has.
    */
-  start({ level, laps, length, mode, racers, seed = 0 }) {
+  start({ level, laps, length, mode, team = 0, racers, seed = 0 }) {
     if (!this.go || !racers.includes(this.room.you) || this.screen() !== 'waiting') return;
     const others = racers.filter((id) => id !== this.room.you);
     const friends = others.map((id) => {
@@ -266,7 +320,7 @@ export class FriendsPanel {
     const size = length ?? laps;
     // Who hosts as it starts, as Balloon Pop's host runs the balloons everyone plays with.
     const host = this.room.members.find((member) => member.host)?.id ?? racers[0];
-    this.current = { level, length: size, laps: size, mode, seed, friends, mySlot: racers.indexOf(this.room.you), racers, host, hosting: host === this.room.you, tracks: new Map() };
+    this.current = { level, length: size, laps: size, mode, team: Boolean(this.teams && team), seed, friends, mySlot: racers.indexOf(this.room.you), racers, host, hosting: host === this.room.you, tracks: new Map() };
     this.results = new Map();
     this.room.racing = true;
     const { go } = this;
@@ -332,7 +386,10 @@ export class FriendsPanel {
     const finished = [...this.results.entries()].sort(([idA, a], [idB, b]) => this.rank(a, b) || you(idB) - you(idA));
     // Equal results share a place: two on 12 are both 2nd if someone has 15.
     const placeOf = (result) => 1 + finished.filter(([, other]) => this.rank(other, result) < 0).length;
-    const rows = finished.map(([id, result]) => `<li class="${id === this.room.you ? 'is-you' : ''}"><span class="friends-place">${ordinal(placeOf(result))}</span> <span class="friends-who"></span> <span class="friends-time"></span></li>`);
+    // Together, everyone is on the same side, so nobody is placed.
+    const placed = (result) => (current.team ? '' : ordinal(placeOf(result)));
+    this.resultsList.classList.toggle('is-team', current.team);
+    const rows = finished.map(([id, result]) => `<li class="${id === this.room.you ? 'is-you' : ''}"><span class="friends-place">${placed(result)}</span> <span class="friends-who"></span> <span class="friends-time"></span></li>`);
     // Anyone who has gone before finishing is left off.
     const gone = (id) => current.friends.some((friend) => friend.id === id && friend.gone);
     const still = current.racers.filter((id) => !this.results.has(id) && !gone(id));
@@ -346,7 +403,8 @@ export class FriendsPanel {
     });
     const mine = this.results.get(this.room.you);
     const place = mine ? placeOf(mine) : 0;
-    if (this.finishTitle && this.titles) this.finishTitle.textContent = place === 1 ? this.titles.first : this.titles.other;
+    if (this.finishTitle && current.team && this.words.teamTitle) this.finishTitle.textContent = this.words.teamTitle;
+    else if (this.finishTitle && this.titles) this.finishTitle.textContent = place === 1 ? this.titles.first : this.titles.other;
   }
 
   /** Who's here, on the title card and the waiting screen, and anyone who's gone in the middle. */
@@ -366,6 +424,7 @@ export class FriendsPanel {
     this.status(said);
     this.fillList(byId('friends-here'), false);
     this.fillList(byId('friends-waiting'), true);
+    this.showTeams();
 
     // Waiting at the start: the game shows that screen as soon as this has said to wait.
     const waiting = Boolean(this.go);

@@ -10,6 +10,11 @@
 //
 // With a friend on their own computer, the game of whoever made it runs this, and the friend's game sends
 // where their racket is and their hits: see applyHit. The friend's game shows the ball with follow.js.
+//
+// A friend can be played against, as above, or with: together, the two of them keep the ball going between
+// them, and every hit over the net is one for the team. There are no points to win or lose. A ball that gets
+// past someone floats back up and waits for them, and the game is over, and won by both, once the team has
+// made as many hits as it set out to.
 import {
   advanceBall, aimAt, BALLS, BALL_KINDS, ballFor, clamp, codeOf, COURT, courtLevel, crossingSeconds,
   EXTRAS, gravityFor, keepOnSide, landingOn, missAfterRange, otherSide, RACKET, shotTo, sideAt, SIDES,
@@ -28,6 +33,7 @@ const WAIT_READY = 0.5; // And before it can be hit at all.
 const WAIT_DRIFT = 0.12; // How fast a waiting ball comes to an open hand near it, in court units a second,
 const WAIT_DRIFT_HELP = 0.35; // and how much faster with reach help.
 const GRACE = 0.6; // A friend's hit on its way still counts this long after the ball bounced twice.
+const TEAM_PAUSE = 1.2; // Together, the last hit is seen going over for this long before the game is over.
 const COMPUTER_RUN = 1.5; // How fast the computer's racket moves, in court units a second.
 const BIG_RACKET = 1.4;
 const round3 = (value) => Math.round(value * 1000) / 1000;
@@ -38,14 +44,18 @@ const newBall = () => ({ u: 0, h: 0.5, vu: 0, vh: 0, state: 'held', side: 'A', b
 export class Rally {
   /**
    * mode is 'solo', against the computer, or 'host', with a friend on side B. pace, hard and goal are the
-   * grown-up's choices: how quick the ball is, how hard, and how many points win. extras says whether the
+   * grown-up's choices: how quick the ball is, how hard, and how many points win. team is a friend played with
+   * rather than against, and then goal is how many hits the two of them make together, and the scores are the
+   * hits each has made. extras says whether the
    * levels' new things are in play, which they never are with a friend. events are told what happens:
    * onServe(side, kind), onHit(side, info), onBounce(side, info), onNet(), onWait(side), onSwing(side),
    * onPoint(winner, info), onOver(winner), onItem(item), onPrize(kind, at), onPower(kind, at),
    * onPowerEnd(kind), onFlag(lit, info), onCastle(castle, what) and onSave(at).
    */
-  constructor({ level = 1, pace = 'slow', hard = 'gentle', goal = 5, mode = 'solo', extras = mode === 'solo', random = Math.random, events = {} } = {}) {
+  constructor({ level = 1, pace = 'slow', hard = 'gentle', goal = 5, mode = 'solo', team = false, extras = mode === 'solo', random = Math.random, events = {} } = {}) {
     Object.assign(this, { level, pace, hard, goal, mode, random, events, extras });
+    this.team = Boolean(team) && mode === 'host';
+    this.wonAt = Infinity;
     const plan = courtLevel(level);
     // With a friend, it's the plain game at this level's speed, the same for both.
     this.plan = extras ? plan : { ...plan, stars: false, bubble: false, flags: 0, bigRacket: false, castles: 0, rainbow: false, breeze: 0, bird: false, golden: false, specials: [] };
@@ -132,6 +142,11 @@ export class Rally {
     if (this.computerSide) this.moveComputer(dt);
     this.moveBall(dt);
     if (this.extras) this.updateExtras(dt);
+    // Together, once the team has its hits, the last one is seen going over, and then it's over.
+    if (this.team && this.winner && this.time >= this.wonAt + TEAM_PAUSE) {
+      this.phase = 'over';
+      this.events.onOver?.(this.winner);
+    }
   }
 
   readRacket(side, input, dt) {
@@ -290,6 +305,13 @@ export class Rally {
   /** The ball has bounced twice on a side: a point for the other side, unless it waits for a child resting. */
   secondBounce(side) {
     if (this.pending || this.ball.state !== 'flying') return;
+    // Together, there's nothing to lose: it floats back up and waits for whoever it got past, and the hits in
+    // a row start again.
+    if (this.team) {
+      this.rallyHits = 0;
+      this.startWaiting(side);
+      return;
+    }
     const player = this.players[side];
     if (player.kind === 'computer') {
       this.pointTo(otherSide(side));
@@ -348,7 +370,8 @@ export class Rally {
     const receiver = otherSide(side);
     const player = this.players[receiver];
     if (player.kind === 'computer') return landingOn(receiver, this.castles, this.random);
-    return aimAt(receiver, player.racket, spreadFor(this.hard, this.rallyHits, this.mode === 'host'), this.random);
+    // Together, a long rally is the whole idea, so shots don't drift further off the hand as it goes on.
+    return aimAt(receiver, player.racket, spreadFor(this.hard, this.team ? 0 : this.rallyHits, this.mode === 'host'), this.random);
   }
 
   /** A hit from this side. given is a friend's own hit, as their game worked it out: { vu, vh }. */
@@ -372,6 +395,23 @@ export class Rally {
     if (this.computerSide) this.computer.plan = null;
     this.events.onHit?.(side, { kind: ball.kind, rally: this.rallyHits, by: this.players[side].kind, at: { u: ball.u, h: ball.h } });
     if (this.extras && this.players[side].kind === 'child') this.childHit();
+    if (this.team) this.teamHit(side);
+  }
+
+  /** How many hits the two of them have made together. */
+  get teamHits() {
+    return this.scores.A + this.scores.B;
+  }
+
+  /** Together, every hit is one for the team, kept as whose it was, until the team has as many as it set out to. */
+  teamHit(side) {
+    if (this.winner) return;
+    this.scores[side] += 1;
+    this.events.onTeamHit?.(side, { hits: this.teamHits, goal: this.goal });
+    if (this.teamHits >= this.goal) {
+      this.winner = 'both';
+      this.wonAt = this.time;
+    }
   }
 
   /**

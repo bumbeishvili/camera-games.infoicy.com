@@ -15,7 +15,7 @@ import { renderPlayers } from './players.js';
 import { Rally } from './rally.js';
 import {
   aimAt, bounceNewAt, clamp, COURT, courtLevel, crossingSeconds, gravityFor, HARD, HELP, keepOnSide, modeWord,
-  otherSide, PACE_NAMES, POINTS, RACKET, readMode, shotTo, sideAt, signOf, spreadFor, touches,
+  otherSide, PACE_NAMES, POINTS, RACKET, readMode, shotTo, sideAt, signOf, spreadFor, teamHits, touches,
 } from './rules.js';
 
 const byId = (id) => document.getElementById(id);
@@ -36,8 +36,13 @@ const BOUNCE_WORDS = {
   codeLabel: 'A friend’s game code',
   codeName: 'Game code',
   how: 'Tell your friend the code. Then you both press <b>Let’s play!</b>',
+  // Together or against each other, as whoever made the game chooses: see teams in core/friends-ui.js.
+  together: 'Together',
+  against: 'Against each other',
+  howTogether: 'Tell your friend the code. Then you both press <b>Let’s play!</b>, and keep the ball going between you.',
+  teamTitle: 'You did it together!',
   leave: 'Leave this game',
-  privacy: 'Only your name, who you play as, where your racket is and where the ball goes are sent to your friend. The camera picture stays on this computer.',
+  privacy: 'Only your name, who you play as, whether you chose together or against each other, where your racket is and where the ball goes are sent to your friend. The camera picture stays on this computer.',
   alone: 'Play on your own',
   full: 'That game already has 2 players.',
   lost: 'Can’t reach the game. Check the internet, then try again.',
@@ -59,6 +64,7 @@ class BounceGame {
     this.session = session;
     const { settings } = session;
     this.mode = 'solo';
+    this.team = false; // With a friend, playing together rather than against each other: see prepare().
     this.mine = 'A';
     this.rally = null;
     this.follower = null;
@@ -91,8 +97,13 @@ class BounceGame {
       },
       // Whoever won, and then whoever has more points. Equal ones share a place.
       rank: (a, b) => Number(b.won) - Number(a.won) || b.dropped - a.dropped,
-      resultText: ({ dropped }) => `${dropped} ${dropped === 1 ? 'point' : 'points'}`,
+      resultText: ({ dropped }) => (this.team ? `${dropped} ${dropped === 1 ? 'hit' : 'hits'}` : `${dropped} ${dropped === 1 ? 'point' : 'points'}`),
       titles: { first: 'You won!', other: 'Great game!' },
+      // With a friend, together or against each other: the grown-ups' choice, which the friends box can change too.
+      teams: {
+        get: () => (settings.bounceFriends === 'against' ? 'against' : 'together'),
+        set: (choice) => this.chooseTeams(choice),
+      },
       startAfter: byId('start'),
       waitingBefore: byId('screen-finish'),
       resultsAfter: document.querySelector('#screen-finish .finish-hero'),
@@ -207,9 +218,17 @@ class BounceGame {
   settingChanged(change) {
     // A new character, how hard, how quick and how many points all start with the next game.
     if ('fighter' in change && this.session.screen !== 'playing' && this.session.screen !== 'countdown') this.setUpScene(this.session.level);
-    if ('fighter' in change || 'bouncePoints' in change || 'bounceLevel' in change || 'bouncePace' in change) {
+    if ('fighter' in change || 'bouncePoints' in change || 'bounceLevel' in change || 'bouncePace' in change || 'bounceFriends' in change) {
       if (this.friends.room.inRoom) this.friends.room.tell(this.friends.hello());
     }
+    if ('bounceFriends' in change) this.friends.showTeams();
+  }
+
+  /** Together or against each other, chosen in the friends box: kept with the grown-ups' settings, and shown there. */
+  chooseTeams(choice) {
+    this.session.changeSettings({ bounceFriends: choice });
+    const input = document.querySelector(`input[name="bounceFriends"][value="${choice}"]`);
+    if (input) input.checked = true;
   }
 
   /** How long since "GO!", by the clock on the wall, for friends' games. */
@@ -229,7 +248,11 @@ class BounceGame {
     const { hard, pace } = friendly ? readMode(friendly.mode) : { hard: settings.bounceLevel, pace: settings.bouncePace };
     this.hard = HARD.includes(hard) ? hard : 'gentle';
     this.pace = PACE_NAMES.includes(pace) ? pace : 'slow';
-    this.goal = friendly ? (POINTS.includes(friendly.length) ? friendly.length : 5) : (POINTS.includes(settings.bouncePoints) ? settings.bouncePoints : 5);
+    const points = friendly ? (POINTS.includes(friendly.length) ? friendly.length : 5) : (POINTS.includes(settings.bouncePoints) ? settings.bouncePoints : 5);
+    // Together with a friend, there are no points: the two of them make so many hits between them.
+    this.team = Boolean(friendly?.team);
+    this.goal = this.team ? teamHits(points) : points;
+    this.teamShown = 0;
     this.playLevel = playLevel;
     document.body.toggleAttribute('data-friends-race', Boolean(friendly));
     this.stats = this.freshStats();
@@ -247,14 +270,18 @@ class BounceGame {
       this.follower = new BallFollower();
     } else {
       this.follower = null;
-      this.rally = new Rally({ level: playLevel, pace: this.pace, hard: this.hard, goal: this.goal, mode: this.mode === 'host' ? 'host' : 'solo', events: this.events });
+      this.rally = new Rally({ level: playLevel, pace: this.pace, hard: this.hard, goal: this.goal, mode: this.mode === 'host' ? 'host' : 'solo', team: this.team, events: this.events });
     }
     const plan = courtLevel(playLevel);
     const extras = this.mode === 'solo';
     this.court.setLevel(playLevel, { flags: extras ? plan.flags : 0, breeze: extras && plan.breeze > 0 });
     this.court.reset();
     this.setUpScene(playLevel, { friend });
-    byId('score-goal').textContent = `First to ${this.goal}`;
+    byId('score-goal').textContent = this.team ? `0 of ${this.goal} together` : `First to ${this.goal}`;
+    document.body.toggleAttribute('data-friends-team', this.team);
+    // Together, the two numbers are each one's hits, which add up.
+    document.querySelector('#score-board .score-dash').textContent = this.team ? '+' : ':';
+    byId('sum-left-points').closest('tr').hidden = this.team;
     // Prizes only come from level 2, on the child's own.
     document.body.dataset.prizes = extras && plan.stars ? 'on' : 'off';
     byId('chip-prizes').textContent = '0';
@@ -435,7 +462,8 @@ class BounceGame {
     const score = this.follower.score;
     const forMe = side === this.mine && ((ball.state === 'flying' && ball.by !== this.mine) || ball.state === 'waiting' || (ball.state === 'held' && score?.server === this.mine));
     if (forMe && !this.follower.waitingForHit && !score?.over && touches(ball, mine)) {
-      const target = aimAt(otherSide(this.mine), this.friendRacket(now), spreadFor(this.hard, score?.rally ?? 0, true));
+      // Together, a long rally is the whole idea, so shots don't drift off the friend's hand as it goes on.
+      const target = aimAt(otherSide(this.mine), this.friendRacket(now), spreadFor(this.hard, this.team ? 0 : score?.rally ?? 0, true));
       const shot = shotTo(ball, target, crossingSeconds(this.pace, this.playLevel, ball.kind), envFor(ball.kind));
       const hit = { u: shot.from.u, h: shot.from.h, vu: shot.vu, vh: shot.vh, kind: ball.kind, by: this.mine };
       this.follower.hitHere(hit, ball.stroke, now);
@@ -562,6 +590,22 @@ class BounceGame {
     const left = this.leftSide;
     byId('score-left').querySelector('.score-value').textContent = String(scores[left]);
     byId('score-right').querySelector('.score-value').textContent = String(scores[otherSide(left)]);
+    if (this.team) this.showTeamHits(scores.A + scores.B);
+  }
+
+  /** Together: how many hits the two of them have made, of how many, and a cheer for every five. */
+  showTeamHits(total) {
+    const shown = Math.min(total, this.goal);
+    byId('score-goal').textContent = `${shown} of ${this.goal} together`;
+    if (shown <= this.teamShown) return;
+    const fives = Math.floor(shown / 5) > Math.floor(this.teamShown / 5);
+    this.teamShown = shown;
+    if (!fives || this.session.screen !== 'playing') return;
+    const { sound } = this.session;
+    sound.star();
+    for (const side of ['A', 'B']) this.court.mood(side, 'cheer');
+    if (this.praised % 2 === 0) sound.say(PRAISE[Math.floor(this.praised / 2) % PRAISE.length], { ifQuiet: true });
+    this.praised += 1;
   }
 
   showPrizes(landed = false) {
@@ -636,7 +680,8 @@ class BounceGame {
     if (this.mode === 'host') this.sayBall();
     const scores = this.scores();
     const mine = scores[this.mine];
-    const iWon = this.winner() === this.mine || (!this.winner() && mine > scores[otherSide(this.mine)]);
+    // Together, both won, and what's said of each is the hits they made.
+    const iWon = this.team || this.winner() === this.mine || (!this.winner() && mine > scores[otherSide(this.mine)]);
     if (this.friends.current) this.friends.finished(this.sinceGo, { n: mine, w: iWon ? 1 : 0 });
     for (const glove of Object.values(this.gloves)) glove.hide();
   }
@@ -679,7 +724,8 @@ class BounceGame {
       return image;
     };
     const numbers = document.createElement('span');
-    numbers.textContent = `${scores[this.mine]} : ${scores[other]}`;
+    // Together, the hits each made add up to the team's.
+    numbers.textContent = this.team ? `${scores[this.mine]} + ${scores[other]} = ${scores[this.mine] + scores[other]}` : `${scores[this.mine]} : ${scores[other]}`;
     scoreLine.append(face(this.myCharacter().id), numbers, face(this.opponent.id));
     byId('finish-prizes').textContent = Object.entries(this.stats.prizes)
       .filter(([, count]) => count > 0)
@@ -766,18 +812,23 @@ new GameSession({
         ${choice('bounceHelp', 'lots', 'A lot')}
       </fieldset>
       <fieldset class="choice">
-        <legend>Points to win</legend>
+        <legend>Points to win (together with a friend: 20, 30 or 40 hits between you)</legend>
         ${choice('bouncePoints', '5', '5')}
         ${choice('bouncePoints', '7', '7')}
         ${choice('bouncePoints', '11', '11')}
+      </fieldset>
+      <fieldset class="choice">
+        <legend>With a friend</legend>
+        ${choice('bounceFriends', 'together', 'Together: keep the ball going between you, and count your hits as a team')}
+        ${choice('bounceFriends', 'against', 'Against each other: first to the points wins')}
       </fieldset>
       <fieldset class="choice">
         <legend>Who plays</legend>
         ${characterChoices}
       </fieldset>`,
   },
-  defaults: { bounceLevel: 'gentle', bouncePace: 'slow', bounceHelp: 'little', bouncePoints: 5, fighter: ROSTER[0].id },
-  choices: { bounceLevel: String, bouncePace: String, bounceHelp: String, bouncePoints: Number, fighter: String },
+  defaults: { bounceLevel: 'gentle', bouncePace: 'slow', bounceHelp: 'little', bouncePoints: 5, bounceFriends: 'together', fighter: ROSTER[0].id },
+  choices: { bounceLevel: String, bouncePace: String, bounceHelp: String, bouncePoints: Number, bounceFriends: String, fighter: String },
   tagline: (side) => `Hit the big ball back over the net with your open ${side} hand!`,
   finishLine: 'Great job!',
   portraits: () => renderPortraits(ROSTER),

@@ -97,11 +97,38 @@ test('the first in hosts, everyone hears who\'s here, and the host\'s course is 
   friend.say({ t: 'ready' });
   for (const player of [host, friend]) {
     const { seed, ...go } = player.last('go');
-    assert.deepEqual(go, { t: 'go', level: 7, length: 1, laps: 1, mode: '', racers: ['aaaaaaaa', 'bbbbbbbb'] });
+    assert.deepEqual(go, { t: 'go', level: 7, length: 1, laps: 1, mode: '', team: 0, racers: ['aaaaaaaa', 'bbbbbbbb'] });
     assert.ok(Number.isInteger(seed), 'a seed, for a game laid out by chance');
   }
   const after = host.last('room').members;
   assert.ok(after.every(({ ready, racing }) => !ready && racing), 'everyone is racing, and has to be ready again for the next');
+});
+
+test('whether it\'s played together or against each other is the host\'s choice, which everyone is told, before it starts and as it does', () => {
+  const { join, leave } = makeRoom(2);
+  const host = join('aaaaaaaa');
+  host.say({ t: 'hi', name: 'Ana', team: 1 });
+  assert.equal(host.last('room').team, 1);
+  const friend = join('bbbbbbbb');
+  // The friend's own choice is against, and it's the host's that counts.
+  friend.say({ t: 'hi', name: 'Ben', team: 0 });
+  assert.equal(friend.last('room').team, 1);
+  // The host changes their mind, and both hear.
+  host.say({ t: 'hi', name: 'Ana', team: 0 });
+  assert.deepEqual([host.last('room').team, friend.last('room').team], [0, 0]);
+  host.say({ t: 'hi', name: 'Ana', team: 'yes please' });
+  assert.deepEqual([host.last('room').team, friend.last('room').team], [1, 1], 'anything that isn\'t nothing is together, and only 1 is passed on');
+  host.say({ t: 'ready' });
+  friend.say({ t: 'ready' });
+  assert.deepEqual([host.last('go').team, friend.last('go').team], [1, 1]);
+  // The host goes, and the friend, who chose against, hosts: now it's theirs that counts.
+  leave(host);
+  assert.equal(friend.last('room').team, 0);
+  // Someone who never says is against, as every game was before there was a choice.
+  const { join: joinOther } = makeRoom();
+  const quiet = joinOther('cccccccc');
+  quiet.say({ t: 'hi', name: 'Cy' });
+  assert.equal(quiet.last('room').team, 0);
 });
 
 test('only the host can start before everyone is ready, and only once they\'re ready themselves', () => {
@@ -316,7 +343,7 @@ test('in Balloon Pop, scores go to the others, and the host\'s number of balloon
   host.say({ t: 'ready' });
   friend.say({ t: 'ready' });
   const { seed, ...go } = friend.last('go');
-  assert.deepEqual(go, { t: 'go', level: 3, length: 60, laps: 60, mode: 'times', racers: ['aaaaaaaa', 'bbbbbbbb'] });
+  assert.deepEqual(go, { t: 'go', level: 3, length: 60, laps: 60, mode: 'times', team: 0, racers: ['aaaaaaaa', 'bbbbbbbb'] });
   assert.equal(seed, host.last('go').seed, 'the same seed for everyone');
   host.say({ t: 'score', ms: 4000, n: 7, extra: 'not this' });
   assert.deepEqual(friend.last('score'), { t: 'score', from: 'aaaaaaaa', ms: 4000, n: 7 });

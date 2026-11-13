@@ -145,6 +145,8 @@ export class FriendsRoom {
     this.status = 'off';
     this.code = null;
     this.members = [];
+    // Whether the host's game is to be played together, rather than against each other, in the games with both.
+    this.team = false;
     this.you = null;
     this.hello = null;
     this.socket = null;
@@ -325,6 +327,7 @@ export class FriendsRoom {
       this.you = message.you;
       saveId(this.game, this.code, this.you);
       this.members = message.members;
+      this.team = Boolean(message.team);
       this.events.onChange?.();
     } else if (message.t === 'full') {
       this.status = 'full';
@@ -422,6 +425,7 @@ export class FriendsRoom {
     this.readyToGo = false;
     this.finishedWith = null;
     this.members = [];
+    this.team = false;
     this.you = null;
     this.code = null;
     this.events.onChange?.();

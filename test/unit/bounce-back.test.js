@@ -8,7 +8,7 @@ import { Rally } from '../../games/bounce-back/rally.js';
 import {
   advanceBall, AIM, aimAt, APEX, ballFor, BALLS, bounceNewAt, COURT, courtLevel, crossingSeconds, EXTRAS,
   gravityFor, heightAtNet, HELP, keepOnSide, LABELS, missAfterRange, modeWord, NET_CLEARANCE, NEWS, newsIsOn, OFF_THE_NET,
-  PACES, RACKET, readMode, shotTo, solveShot, spreadFor, touches,
+  PACES, RACKET, readMode, shotTo, solveShot, spreadFor, teamHits, touches,
 } from '../../games/bounce-back/rules.js';
 
 const LEVELS = Array.from({ length: 10 }, (_, index) => index + 1);
@@ -54,6 +54,23 @@ function play(rally, child, seconds, { dt = 1 / 60, friend = null } = {}) {
     rally.update(dt, inputs);
   }
   return rally.log.slice(from);
+}
+
+/**
+ * A friend who plays, on side B: their own game hits the ball that's theirs once their racket is on it, as main.js
+ * does for whoever joined, and the host's game is told.
+ */
+function friendWhoPlays(rally, hand = { visible: true, open: true, u: 0.6, h: 0.45, ...HELPED }) {
+  return (ball) => {
+    const theirs = ball.side === 'B' && ((ball.state === 'flying' && ball.by !== 'B') || ball.state === 'waiting');
+    // A ball that's waiting for them, they go and get.
+    const at = theirs && ball.state === 'waiting' ? { ...hand, u: ball.u, h: ball.h } : hand;
+    if (theirs && touches(ball, at)) {
+      const shot = shotTo(ball, aimAt('A', rally.players.A.racket, spreadFor(rally.hard, 0, true)), crossingSeconds(rally.pace, rally.level, ball.kind), rally.envFor(ball.kind));
+      rally.applyHit('B', { k: ball.stroke, u: shot.from.u, h: shot.from.h, vu: shot.vu, vh: shot.vh, elapsed: 0 });
+    }
+    return at;
+  };
 }
 
 /** The ball waits for the child, or the computer waits to serve until their hand is back. */
@@ -416,6 +433,84 @@ test('with a friend, a miss is a point even on Gentle, a hit on its way still co
   assert.ok(spreadFor('gentle', 12, true) > 0);
   assert.equal(spreadFor('gentle', 12, false), 0, 'not against the computer, which misses on purpose');
   assert.ok(spreadFor('gentle', 100, true) <= 0.25);
+});
+
+test('together with a friend, every hit is one for the team, nobody scores a point, and both win once the team has its hits', () => {
+  const rally = game({ mode: 'host', team: true, goal: 6, random: seeded(3) });
+  assert.equal(rally.team, true);
+  const log = play(rally, CHILDREN.still, 120, { friend: friendWhoPlays(rally) });
+  assert.equal(rally.over, true);
+  assert.equal(rally.winner, 'both');
+  assert.equal(rally.teamHits, 6);
+  // They took turns, so half of the hits are each one's.
+  assert.deepEqual(rally.scores, { A: 3, B: 3 });
+  assert.equal(count(log, 'onPoint'), 0);
+  assert.equal(count(log, 'onTeamHit'), 6);
+  assert.equal(count(log, 'onOver', (winner) => winner === 'both'), 1);
+  // What goes to the friend's game: the hits each has made, nobody the winner, and that it's over.
+  const wire = rally.wire();
+  assert.deepEqual([wire.a, wire.b, wire.g, wire.w], [3, 3, 0, 1]);
+  // The last hit is seen going over before it ends, and a hit after it doesn't count.
+  const last = rally.log.findLastIndex(([name]) => name === 'onTeamHit');
+  const over = rally.log.findIndex(([name]) => name === 'onOver');
+  assert.ok(over > last);
+});
+
+test('together, a ball that gets past someone waits for them, costs nothing, and the hits in a row start again', () => {
+  const rally = game({ mode: 'host', team: true, goal: 20, hard: 'tough', random: seeded(3) });
+  // The friend tries, with an open hand, nowhere near it: against each other, on Tough, that's a point lost.
+  const away = () => ({ visible: true, open: true, u: 1.25, h: 1.4, radius: RACKET.radius, pull: 0 });
+  const log = play(rally, CHILDREN.still, 12, { friend: away });
+  assert.ok(count(log, 'onWait', (side) => side === 'B') >= 1);
+  assert.equal(count(log, 'onPoint'), 0);
+  assert.deepEqual(rally.scores, { A: 1, B: 0 }, 'only the hit that was made counts, and nothing is taken away');
+  assert.equal(rally.rallyHits, 0);
+  assert.equal(rally.ball.state, 'waiting');
+  assert.equal(rally.ball.side, 'B');
+  // It waits for as long as it takes.
+  play(rally, CHILDREN.still, 30, { friend: away });
+  assert.deepEqual([rally.ball.state, rally.scores.A, rally.over], ['waiting', 1, false]);
+  // Back with a hand that's there, the friend hits it, and on they go, the child too.
+  play(rally, CHILDREN.still, 40, { friend: friendWhoPlays(rally) });
+  assert.ok(rally.scores.A >= 3 && rally.scores.B >= 3, `${rally.scores.A} and ${rally.scores.B}`);
+  assert.ok(rally.stats.longest >= 4);
+});
+
+test('together, a child who misses loses nothing either: the ball waits for them, on any How hard', () => {
+  for (const hard of ['gentle', 'medium', 'tough']) {
+    const rally = game({ mode: 'host', team: true, goal: 20, hard, random: seeded(4) });
+    // The child serves and then tries and misses what comes back.
+    let served = false;
+    const child = (ball) => {
+      if (ball.by === 'A') served = true;
+      return served ? CHILDREN.away() : CHILDREN.still();
+    };
+    const log = play(rally, child, 20, { friend: friendWhoPlays(rally) });
+    assert.equal(count(log, 'onPoint'), 0, hard);
+    assert.ok(count(log, 'onWait', (side) => side === 'A') >= 1, hard);
+    assert.equal(rally.winner, null, hard);
+    // Nothing was taken away: the team still has every hit that was made.
+    assert.equal(rally.teamHits, rally.stats.hits.A + rally.stats.hits.B, hard);
+    assert.ok(rally.teamHits >= 2, hard);
+  }
+});
+
+test('together, shots keep coming to the hand however long the rally goes on, and against each other they drift off it', () => {
+  const hand = { visible: true, open: true, u: 0.6, h: 0.45, radius: RACKET.radius, pull: 0 };
+  for (const [team, drifts] of [[true, false], [false, true]]) {
+    const rally = game({ mode: 'host', team, goal: 99, random: seeded(5) });
+    play(rally, CHILDREN.still, 0.2, { friend: () => hand });
+    rally.rallyHits = 40;
+    const off = Array.from({ length: 30 }, () => Math.abs(Math.abs(rally.targetFor('A').u) - 0.6));
+    assert.equal(Math.max(...off) > 0.05, drifts, `${team ? 'together' : 'against each other'}: ${Math.max(...off)} off`);
+  }
+});
+
+test('together is only with a friend, and how many hits the team makes comes from the host\'s points to win', () => {
+  assert.equal(new Rally({ mode: 'solo', team: true }).team, false);
+  assert.equal(new Rally({ mode: 'host' }).team, false);
+  assert.deepEqual([5, 7, 11].map(teamHits), [20, 30, 40]);
+  assert.equal(teamHits(3), 20);
 });
 
 test('a friend\'s game shows the ball where it is now, and its own hit at once, until the other game has it', () => {

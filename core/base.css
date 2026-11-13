@@ -1289,6 +1289,38 @@ body:not([data-screen='countdown']) .level-new-now { display: none; }
 
 .friends-status:empty { display: none; }
 
+/* In a game that can be played together or against each other: the choice, which whoever made the game makes. */
+.friends-teams {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.friends-teams legend { width: 100%; padding: 0 0 6px; text-align: center; }
+.friends-teams label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+.friends-teams label:has(input:checked) { border-color: var(--sun-deep); background: var(--sun); }
+.friends-teams label:has(input:disabled) { cursor: default; }
+.friends-teams label:has(input:disabled:not(:checked)) { opacity: 0.55; }
+.friends-teams input { width: 18px; height: 18px; margin: 0; accent-color: var(--ink); }
+.friends-teams-whose { width: 100%; margin: 0; font-size: 15px; font-weight: 500; text-align: center; }
+.friends-teams-whose[hidden] { display: none; }
+
 .friends-link {
   border: 0;
   background: none;
@@ -1421,6 +1453,8 @@ body[data-screen='waiting'] #screen-friends { display: grid; }
 
 .friends-results li.is-you { background: var(--sun); font-weight: 700; }
 .friends-results li.is-racing { color: var(--ink-soft); }
+/* Together, nobody is placed: everyone is on the same side. */
+.friends-results.is-team .friends-place { display: none; }
 .friends-results .friends-place { width: 2.6em; font-weight: 700; text-align: left; }
 .friends-results .friends-who { flex: 1; text-align: left; }
 

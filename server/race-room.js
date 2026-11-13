@@ -7,13 +7,15 @@
 // the name a player typed, and which character drives, flies or fights.
 //
 // A player sends JSON messages, each { t, ... }:
-//   hi     { name, driver, level, length, mode, racing }   first, after connecting, and again if any of it
+//   hi     { name, driver, level, length, mode, team, racing }   first, after connecting, and again if any of it
 //                                      changes. length is the race's laps, a flight's planes to drop, or how
 //                                      many balloons a game of Balloon Pop has, and mode its maths challenge.
 //                                      In Giraffe's Maze, length is how many mazes, and mode their size and seed,
 //                                      and at the Smoothie Stand, how many customers, and how fast the fruit flies.
 //                                      In The Lighthouse Keeper, length is how many ships there are to bring home,
 //                                      and in Giraffe's Garden how many plants there are to grow.
+//                                      team is 1 for playing together rather than against each other, in the
+//                                      games that have both: it's the host's that counts, as with the rest
 //                                      racing says they're in the middle of one, for someone back mid-race
 //   ready  {}                              they're waiting at the start
 //   go     {}                              the host starts with whoever is ready
@@ -92,9 +94,10 @@
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
 // The room sends:
-//   room   { you, members: [{ id, name, driver, ready, racing, host }] }   whenever that changes
-//   go     { level, length, laps, mode, racers, seed }   the countdown starts now, on the host's course (laps is
-//                                      length). seed is the same for everyone, for a game laid out by chance
+//   room   { you, members: [{ id, name, driver, ready, racing, host }], team }   whenever that changes. team is
+//                                      the host's, so everyone can see how the game is going to be played
+//   go     { level, length, laps, mode, team, racers, seed }   the countdown starts now, on the host's course
+//                                      (laps is length). seed is the same for everyone, for a game laid out by chance
 //   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker, stand, ship, catcher, tank, can { from, ... } and done { from, ms, n, w }
 //                                      passed on from the others: ball only from the host, shot only to the host,
 //                                      and stand only from someone playing
@@ -511,7 +514,7 @@ export class RaceRoom {
       player.send({ t: 'full' });
       return false;
     }
-    player.setMeta({ id, joined: now, seen: now, name: '', driver: '', level: 1, length: 2, mode: '', ready: false, racing: false });
+    player.setMeta({ id, joined: now, seen: now, name: '', driver: '', level: 1, length: 2, mode: '', team: 0, ready: false, racing: false });
     this.tellEveryone();
     return true;
   }
@@ -538,7 +541,7 @@ export class RaceRoom {
         const length = number(message.length ?? message.laps, 1, 100, 0) || meta.length;
         // Coming back mid-race, after losing the connection for a moment, they're still racing.
         const racing = meta.racing || (Boolean(message.racing) && !meta.ready);
-        player.setMeta({ ...meta, name: cleanName(message.name), driver: cleanDriver(message.driver), level: number(message.level, 1, 10, 0) || 1, length, mode: cleanMode(message.mode), racing });
+        player.setMeta({ ...meta, name: cleanName(message.name), driver: cleanDriver(message.driver), level: number(message.level, 1, 10, 0) || 1, length, mode: cleanMode(message.mode), team: message.team ? 1 : 0, racing });
         this.tellEveryone();
         break;
       }
@@ -667,10 +670,10 @@ export class RaceRoom {
     for (const racer of racers) racer.setMeta({ ...racer.meta, ready: false, racing: true });
     this.claims.clear();
     this.patches.clear();
-    const { level, length, mode } = host.meta;
+    const { level, length, mode, team } = host.meta;
     // One seed for everyone, so a game laid out by chance is laid out the same on every computer.
     const seed = Math.floor(Math.random() * 2 ** 31);
-    const go = { t: 'go', level, length, laps: length, mode, racers: racers.map((each) => each.meta.id), seed };
+    const go = { t: 'go', level, length, laps: length, mode, team: team ? 1 : 0, racers: racers.map((each) => each.meta.id), seed };
     for (const player of players) player.send(go);
     this.tellEveryone();
   }
@@ -683,7 +686,9 @@ export class RaceRoom {
       .slice()
       .sort(byJoining)
       .map(({ meta }) => ({ id: meta.id, name: meta.name, driver: meta.driver, ready: meta.ready, racing: meta.racing, host: meta.id === host?.meta.id }));
-    for (const player of players) player.send({ t: 'room', you: player.meta.id, members });
+    // How the host has it: together, or against each other.
+    const team = host?.meta.team ? 1 : 0;
+    for (const player of players) player.send({ t: 'room', you: player.meta.id, members, team });
   }
 
   flooding(id) {
