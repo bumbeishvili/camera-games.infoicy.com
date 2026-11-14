@@ -1,8 +1,9 @@
 // Playing with friends, each on their own computer, in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves,
 // Bounce Back, Leap Trail, Giraffe's Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher, the
 // Lighthouse Keeper, Giraffe's Garden, Frost Arena, Arrow Meadow, Giraffe's Puzzles, Flap, Little Chick!, Mighty
-// Lift, Gobble and Grow, Giraffe's Paint Box and Moto Mountain. One player makes a race, a flight, a game, a fight,
-// a run, a battle, a match, a flock or a ride and sends the link or its code, and the others open it.
+// Lift, Gobble and Grow, Giraffe's Paint Box, Moto Mountain and Rooftop Rope. One player makes a race, a flight, a
+// game, a fight, a run, a battle, a match, a flock, a ride or a crossing and sends the link or its code, and the
+// others open it.
 // Their games talk through a small server (server/race-room.js), which only passes on what each game needs, such
 // as where each car or plane is, the name typed and who drives or flies. The camera picture never leaves the
 // computer, and nothing is sent at all unless a grown-up makes or joins one. How it looks is in friends-ui.js.
@@ -351,6 +352,9 @@ export class FriendsRoom {
       this.events.onMove?.(message.from, message);
     } else if (message.t === 'rider') {
       // Moto Mountain: where a friend's bike is on the road.
+      this.events.onMove?.(message.from, message);
+    } else if (message.t === 'balancer') {
+      // Rooftop Rope: where a friend's walker is on the ropes.
       this.events.onMove?.(message.from, message);
     } else if (message.t === 'done') {
       this.events.onDone?.(message.from, message);

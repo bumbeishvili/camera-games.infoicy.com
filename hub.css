@@ -821,3 +821,23 @@ body.hub {
 .art-moto-helmet { fill: #ffd23f; stroke: var(--ink); stroke-width: 3; }
 .art-moto-stripe { fill: none; stroke: #ff5a4f; stroke-width: 6; }
 .art-moto-rim { fill: none; stroke: var(--ink); stroke-width: 3; }
+
+/* Rooftop Rope: a walker, seen from behind, with one foot up, crossing a rope between two rooftops high over a
+   city, with a net under the rope and a star to catch. */
+.game-art-rope { background: linear-gradient(#8fd0ff, #eaf7ff 75%); }
+.art-rope-sun { fill: #ffe27a; }
+.art-rope-far { fill: #b9c7da; }
+.art-rope-net { fill: none; stroke: #fff; stroke-width: 3; stroke-dasharray: 2 6; stroke-linecap: round; }
+.art-rope-house { stroke: var(--ink); stroke-width: 3; }
+.art-rope-house-left { fill: #5f7ea3; }
+.art-rope-house-right { fill: #7d6fae; }
+.art-rope-window { fill: #ffe9a8; }
+.art-rope-post { fill: none; stroke: var(--ink); stroke-width: 4; stroke-linecap: round; }
+.art-rope-line-ink { fill: none; stroke: var(--ink); stroke-width: 7; stroke-linecap: round; }
+.art-rope-line { fill: none; stroke: #d9a35b; stroke-width: 3.5; stroke-linecap: round; }
+.art-rope-limb-ink { fill: none; stroke: var(--ink); stroke-width: 11; stroke-linecap: round; stroke-linejoin: round; }
+.art-rope-arm { fill: none; stroke: #f2c79b; stroke-width: 5; stroke-linecap: round; }
+.art-rope-leg { fill: none; stroke: #3b82f6; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+.art-rope-shirt { fill: #ff5a4f; stroke: var(--ink); stroke-width: 3; }
+.art-rope-head { fill: #f2c79b; stroke: var(--ink); stroke-width: 3; }
+.art-rope-hair { fill: #6b4428; stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; }

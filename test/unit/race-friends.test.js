@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanLifter } from '../../server/race-room.js';
 import { cleanRider } from '../../server/race-room.js';
+import { cleanBalancer } from '../../server/race-room.js';
 import { cleanEater } from '../../server/race-room.js';
 import { cleanBall, cleanBrush, cleanCar, cleanFoes, cleanHand, cleanName, cleanRacket, cleanShip, cleanShot, cleanTag, cleanTank, cleanTrooper, COMES_BACK_WITHIN_MS, idFor, makeCode, MAX_RACERS, MOST_BYTES, MOST_FOES, MOST_STROKE_NUMBERS, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
 import { BODY_KEYS } from '../../games/mighty-moves/clips.js';
@@ -1152,4 +1153,46 @@ test('a bike\'s message holds only what it should, rounded and kept to the road'
   assert.ok(Object.values(cleanRider({ s: NaN, x: Infinity, l: null, h: {}, v: [], ms: 'now' })).every((value) => typeof value === 'number' && Number.isFinite(value)));
   const biggest = JSON.stringify({ t: 'rider', from: 'abcdefghijkl', ...cleanRider({ ms: 3_599_999, s: 3999.9, x: -7.99, l: -1.29, h: 2.99, v: 39.9, n: 199, c: 19, w: 1, d: 1 }) });
   assert.ok(biggest.length < 130, `${biggest.length} characters`);
+});
+
+test('in Rooftop Rope up to four cross the same ropes, and where each walker is goes to the others once the crossing has started', () => {
+  assert.equal(mostIn('rooftop-rope'), MAX_RACERS);
+  const { join } = makeRoom(mostIn('rooftop-rope'));
+  const [ana, ben, cat, dan] = ['aaaaaaaa', 'bbbbbbbb', 'cccccccc', 'dddddddd'].map(join);
+  ana.say({ t: 'hi', name: 'Ana', driver: 'giraffe', level: 6, length: 8, mode: 'long', team: 1 });
+  const walker = { t: 'balancer', ms: 1500.4, a: 2.3456, u: 1.234, w: 0.567, g: -1, f: 0, n: 7, c: 2, d: 0, picture: 'not this' };
+  // Before it starts, nobody is crossing, so nothing is passed on.
+  ana.say(walker);
+  assert.equal(ben.last('balancer'), undefined);
+  for (const player of [ana, ben, cat, dan]) player.say({ t: 'ready' });
+  // The host's level, how many ropes, how long a rope takes and how to play are what everyone gets.
+  assert.deepEqual([ben.last('go').level, ben.last('go').length, ben.last('go').mode, ben.last('go').team], [6, 8, 'long', 1]);
+  ana.say(walker);
+  for (const player of [ben, cat, dan]) {
+    assert.deepEqual(player.last('balancer'), { t: 'balancer', from: 'aaaaaaaa', ms: 1500, a: 2.346, u: 1.23, w: 0.57, g: -1, f: 0, n: 7, c: 2, d: 0 });
+  }
+  assert.equal(ana.last('balancer'), undefined, 'not back to whoever sent it');
+  // A walker at the last rooftop says so, and then its child's time goes to everyone.
+  ana.say({ ...walker, a: 8, c: 8, d: 1 });
+  ana.say({ t: 'done', ms: 81_000, w: 1, n: 7 });
+  assert.equal(ben.last('balancer').d, 1);
+  assert.equal(ben.last('done').from, 'aaaaaaaa');
+  // Once their crossing is over, nothing more about their walker is passed on.
+  ana.say({ ...walker, a: 3 });
+  assert.equal(ben.last('balancer').a, 8);
+});
+
+test('a walker\'s message holds only what it should, rounded and kept to the ropes', () => {
+  assert.deepEqual(Object.keys(cleanBalancer({})), ['ms', 'a', 'u', 'w', 'g', 'f', 'n', 'c', 'd']);
+  assert.deepEqual(cleanBalancer({}), { ms: 0, a: 0, u: 0, w: 0, g: 0, f: 0, n: 0, c: 0, d: 0 });
+  assert.deepEqual(
+    cleanBalancer({ ms: -5, a: 'far', u: 99, w: -7, g: 12, f: 'yes', n: -3, c: 99, d: {}, picture: 'not this', points: [1, 2, 3] }),
+    { ms: 0, a: 0, u: 2.5, w: 0, g: 1, f: 1, n: 0, c: 8, d: 1 },
+  );
+  assert.deepEqual(cleanBalancer({ ms: 4e9, a: 99, u: 0.555, w: 0.126, g: -0.6, f: 0, n: 5000.4, c: 4.4, d: 0 }), { ms: 3_600_000, a: 9, u: 0.56, w: 0.13, g: -1, f: 0, n: 200, c: 4, d: 0 });
+  // Which foot is up is one of three: the left, neither, or the right.
+  assert.deepEqual([-5, -1, 0, 0.4, 1, 7].map((g) => cleanBalancer({ g }).g), [-1, -1, 0, 0, 1, 1]);
+  assert.ok(Object.values(cleanBalancer({ a: NaN, u: Infinity, w: null, g: {}, n: [], ms: 'now' })).every((value) => typeof value === 'number' && Number.isFinite(value)));
+  const biggest = JSON.stringify({ t: 'balancer', from: 'abcdefghijkl', ...cleanBalancer({ ms: 3_599_999, a: 7.999, u: 2.49, w: 0.99, g: -1, f: 1, n: 199, c: 8, d: 1 }) });
+  assert.ok(biggest.length < 120, `${biggest.length} characters`);
 });

@@ -1,0 +1,362 @@
+/* Rooftop Rope's own display. What the body games share is in core/body/style.css. */
+
+body {
+  /* Big enough for a child across the room to see their own feet. */
+  --rope-camera: clamp(180px, 22vw, 320px);
+  --rope-camera-tall: calc(var(--rope-camera) / var(--camera-aspect, 1.333));
+  --rope-meter: clamp(28px, 2.8vw, 40px);
+}
+
+/* ---------- which pieces each screen shows ---------- */
+.rope-top,
+.rope-meter,
+.feet,
+.wobble,
+.warm-bar { display: none; }
+
+body[data-screen='countdown'] .rope-top,
+body[data-screen='playing'] .rope-top,
+body[data-screen='finishing'] .rope-top { display: flex; }
+
+body[data-screen='warmup'] .camera-frame { display: block; }
+
+body[data-screen='warmup'] .rope-meter,
+body[data-screen='countdown'] .rope-meter,
+body[data-screen='playing'] .rope-meter { display: block; }
+
+body[data-screen='warmup'] .feet,
+body[data-screen='countdown'] .feet,
+body[data-screen='playing'] .feet { display: flex; }
+
+body[data-screen='playing'] .wobble { display: block; }
+
+body[data-screen='warmup'] .warm-bar { display: flex; }
+
+body[data-screen='warmup'] .coach.is-visible,
+body[data-screen='playing'] .coach.is-visible { display: flex; }
+
+/* What to do is said along the top, clear of the walker. */
+body[data-screen='warmup'] .prompt,
+body[data-screen='bodycheck'] .prompt { display: flex; }
+
+body[data-screen='playing'] .prompt { top: clamp(84px, 13vh, 110px); }
+body[data-screen='warmup'] .prompt { top: 12px; }
+
+.body-frame { --camera-small: var(--rope-camera); }
+
+/* How high a foot has to go is this game's own setting, so the one the other body games share is put away. */
+.choice:has(input[name='moveSize']) { display: none; }
+
+/* ---------- choosing ---------- */
+.choose-tip {
+  font-size: clamp(16px, 1.7vw, 21px);
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--ink-soft);
+}
+
+/* ---------- the warm-up: the child's own picture beside their walker ---------- */
+body[data-screen='warmup'] {
+  --warm-width: min(38vw, calc((100vh - 230px) * var(--camera-aspect, 1.333)));
+  --warm-tall: calc(var(--warm-width) / var(--camera-aspect, 1.333));
+  --warm-left: clamp(20px, 3vw, 60px);
+}
+
+body[data-screen='warmup'] .body-frame {
+  top: 96px;
+  bottom: auto;
+  left: var(--warm-left);
+  width: var(--warm-width);
+}
+
+/* Above the walker, which is copying the child. */
+body[data-screen='warmup'] .coach {
+  top: 70px;
+  bottom: auto;
+  right: clamp(14px, 3vw, 50px);
+  width: min(20vw, 38vh);
+}
+
+.warm-bar {
+  position: fixed;
+  z-index: 3;
+  right: 14px;
+  bottom: 12px;
+  gap: 12px;
+  align-items: center;
+}
+
+/* Smaller while crossing, so that it never covers the rope. */
+body[data-screen='playing'] .coach { width: min(19vw, 36vh); }
+body[data-screen='playing'] .coach-text { font-size: clamp(17px, 2vw, 28px); }
+
+/* ---------- how high the foot is: the dot is the child's foot, and the green at the top is a whole lift ---------- */
+.rope-meter {
+  position: fixed;
+  z-index: 3;
+  left: calc(12px + var(--rope-camera) + 10px);
+  bottom: 12px;
+  width: var(--rope-meter);
+  height: var(--rope-camera-tall);
+  background: rgba(18, 48, 77, 0.62);
+  border: 3px solid #fff;
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+body[data-screen='warmup'] .rope-meter {
+  left: calc(var(--warm-left) + var(--warm-width) + 12px);
+  top: 96px;
+  bottom: auto;
+  height: var(--warm-tall);
+}
+
+/* A whole lift and anything over it: where the walker goes fastest. */
+.meter-zone-up {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 61%;
+  background: #2fd16f;
+  opacity: 0.9;
+}
+
+/* Where the walker starts to go. */
+.meter-line {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: 28%;
+  height: 3px;
+  transform: translateY(50%);
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 3px;
+}
+
+.meter-dot {
+  position: absolute;
+  left: 50%;
+  bottom: 6%;
+  width: 78%;
+  aspect-ratio: 1;
+  transform: translate(-50%, 50%);
+  background: #fff;
+  border: 3px solid rgba(18, 48, 77, 0.5);
+  border-radius: 50%;
+}
+
+.rope-meter[data-zone='going'] .meter-dot { background: var(--sun); border-color: #fff; }
+.rope-meter[data-zone='up'] .meter-dot { background: #fff; border-color: #2fd16f; }
+
+/* ---------- the two feet: which to lift, and which is up ---------- */
+.feet {
+  position: fixed;
+  z-index: 3;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  gap: clamp(10px, 1.4vw, 20px);
+  align-items: flex-end;
+  padding: 16px 16px 8px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+
+.foot {
+  width: clamp(30px, 3.2vw, 44px);
+  transition: transform 0.18s ease;
+}
+
+.foot svg { display: block; width: 100%; height: auto; }
+
+.foot path,
+.foot circle {
+  fill: #c9d6e2;
+  stroke: #8fa3b5;
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+}
+
+/* The same shape for both feet, turned over for the right one. */
+.foot-right svg { transform: scaleX(-1); }
+
+/* The foot to lift, */
+.feet[data-ask='left'] .foot-left :is(path, circle),
+.feet[data-ask='right'] .foot-right :is(path, circle),
+.feet[data-ask='any'] .foot :is(path, circle) { fill: var(--sun); stroke: #c98a00; }
+
+/* and the one that's up. */
+.feet[data-up='left'] .foot-left,
+.feet[data-up='right'] .foot-right { transform: translateY(-12px); }
+
+.feet[data-up='left'] .foot-left :is(path, circle),
+.feet[data-up='right'] .foot-right :is(path, circle) { fill: #2fd16f; stroke: #1c9a4d; }
+
+/* ---------- along the top: the ropes crossed, and the prizes ---------- */
+.rope-top {
+  position: fixed;
+  z-index: 3;
+  top: 8px;
+  left: 10px;
+  right: 66px;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+/* How wobbly the walker is, standing on the rope with both feet down: full is a drop into the net. */
+.wobble {
+  position: fixed;
+  z-index: 3;
+  top: 16px;
+  left: 50%;
+  width: min(30vw, 380px);
+  height: clamp(20px, 2.4vh, 26px);
+  transform: translateX(-50%);
+  background: rgba(18, 48, 77, 0.62);
+  border: 3px solid #fff;
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.wobble[data-wobbling='true'] { opacity: 1; }
+
+.wobble-fill {
+  width: 0;
+  height: 100%;
+  background: #ff9d3c;
+  border-radius: 999px;
+  transition: width 0.12s linear;
+}
+
+.finish-prizes {
+  font-size: clamp(16px, 1.8vw, 21px);
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.finish-prizes:empty { display: none; }
+
+@media (max-width: 620px) {
+  .rope-top { flex-wrap: wrap; right: 10px; }
+  .wobble { top: 78px; width: 56vw; }
+}
+
+/* Something new for this level, pointed out the first time it comes along. */
+.rope-new {
+  position: fixed;
+  z-index: 3;
+  top: calc(16px + clamp(58px, 6.4vw, 78px));
+  left: 50%;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 18px 7px 12px;
+  font-size: clamp(18px, 2.2vw, 26px);
+  font-weight: 700;
+  background: var(--surface);
+  border: 3px solid var(--sun);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+}
+
+body[data-screen='playing'] .rope-new { display: inline-flex; }
+
+.rope-new.is-showing { opacity: 1; transform: translateX(-50%) translateY(4px); }
+
+.rope-new-lead { color: var(--ink-soft); }
+
+.rope-new-mark { font-size: 1.3em; line-height: 1; }
+
+/* A prompt and the label would share the same place, so the prompt goes under it. */
+body[data-screen='playing']:has(.rope-new.is-showing) .prompt { top: calc(clamp(84px, 13vh, 110px) + 58px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rope-new, .rope-new.is-showing { transform: translateX(-50%); }
+  .foot { transition: none; }
+}
+
+/* ---------- crossing with friends ---------- */
+/* Each friend's name and face over their walker. */
+.walker-mark {
+  position: fixed;
+  z-index: 2;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.walker-mark[data-where='none'] { display: none; }
+
+.walker-mark-face {
+  position: absolute;
+  left: -18px;
+  top: -58px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  background: var(--surface-soft);
+  box-shadow: 0 2px 8px rgba(18, 48, 77, 0.3);
+}
+
+.walker-mark-name {
+  position: absolute;
+  top: -20px;
+  left: 0;
+  transform: translateX(-50%);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Everyone's line, top right: the stars each has, or who's in front. */
+.rope-scores {
+  position: fixed;
+  z-index: 3;
+  top: 84px;
+  right: 12px;
+  margin: 0;
+  padding: 8px 10px;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  min-width: 150px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow);
+}
+
+.rope-scores[hidden] { display: none; }
+body:not([data-screen='playing']):not([data-screen='countdown']):not([data-screen='finishing']) .rope-scores { display: none; }
+
+.rope-scores li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.rope-scores li.is-you { color: var(--accent); }
+.rope-scores li.is-all { border-bottom: 2px solid rgba(18, 48, 77, 0.15); padding-bottom: 3px; }
+.rope-scores[data-counts='stars'] strong::before { content: '⭐ '; }
+.rope-scores[data-counts='place'] strong::after { content: '.'; }

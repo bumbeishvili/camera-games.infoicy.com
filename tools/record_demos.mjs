@@ -942,6 +942,58 @@ const FILMS = {
       return { s: Math.round(s), clean: stats.clean, stars: stats.stars, leans: stats.leans, verge: stats.vergeSeconds };
     }),
   },
+  'rooftop-rope': {
+    settings: { levels: { 'rooftop-rope': 2 }, ropeCount: 4, ropeHold: 'short' },
+    // The child's picture, with all of them in it, feet too, and the meter beside it.
+    css: 'body { --rope-camera: 28vw !important; } .camera-frame { --camera-small: 28vw !important; }',
+    async ready(page) {
+      await footage(page, 'stands', { from: 0.5, playing: false });
+      await page.locator('#start').click();
+      await page.locator('#rope-start').click();
+      await screenIs(page, 'warmup');
+      await page.locator('#warm-skip').click();
+      await screenIs(page, 'playing');
+      await wait(page, 500);
+    },
+    async play(page) {
+      // The person in the footage lifts the foot the rope asks for, holds it all the way across, and puts it
+      // down on the rooftop. The footage has the right foot going up evenly, 6 centimetres a second, from 1 to 9
+      // seconds, and the left from 10 to 18, and the moment in it with the foot as high as it's wanted is the
+      // one shown: a little more of it each time, so that the foot goes up and comes down as a real one does.
+      await page.evaluate(() => new Promise((done) => {
+        const started = performance.now();
+        let foot = null;
+        let high = 0;
+        let busy = false;
+        const timer = setInterval(async () => {
+          if (performance.now() - started > 16_000) {
+            clearInterval(timer);
+            done();
+            return;
+          }
+          const { walk } = window.__game;
+          if (busy || !walk) return;
+          const lifting = walk.hint !== 'rest' && (walk.state === 'rope' || (walk.state === 'roof' && walk.idle > 0.6));
+          const wanted = lifting ? walk.asked : null;
+          // One foot comes down before the other goes up.
+          if (foot && wanted !== foot) {
+            high = Math.max(0, high - 6);
+            if (high === 0) foot = null;
+          } else if (wanted) {
+            foot = wanted;
+            high = Math.min(30, high + 5);
+          }
+          busy = true;
+          await window.__camera.showFootage('stands', { from: foot ? (foot === 'right' ? 1 : 10) + high / 6 : 0.5, playing: false });
+          busy = false;
+        }, 60);
+      }));
+    },
+    report: (page) => page.evaluate(() => {
+      const { stats, index } = window.__game.walk;
+      return { rope: index, crossed: stats.crossed, stars: stats.stars, falls: stats.falls, holds: stats.holds };
+    }),
+  },
   'gobble-grow': {
     // Played with the face, and there are no photos of faces here: the camera is a drawing of one, and the tracker
     // a stand-in that reports it, as in its tests (test/e2e/fake-face.js).

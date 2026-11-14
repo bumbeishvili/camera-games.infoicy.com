@@ -26,6 +26,7 @@ const GAMES = [
   { name: 'Gobble and Grow', folder: 'gobble-grow', start: 'Let’s eat!' },
   { name: 'Giraffe’s Paint Box', folder: 'giraffe-paint', start: 'Start painting' },
   { name: 'Moto Mountain', folder: 'moto-mountain', start: 'Choose your rider' },
+  { name: 'Rooftop Rope', folder: 'rooftop-rope', start: 'Choose your walker' },
 ];
 
 test('the hub offers every game, and each one opens and comes back', async ({ page }) => {
@@ -231,9 +232,9 @@ test('typing in the search finds games by their name, what they\'re about and wh
       await expect(page.locator('.hub-found-line .hub-show-all')).toBeVisible();
     });
   }
-  // Every game that can be played sitting down, which is all but Mighty Moves.
+  // Every game that can be played sitting down, which is all but Mighty Moves and Rooftop Rope.
   await box.fill('wheelchair');
-  await expectGames(page, ['Balloon Pop', 'Sky Wings', 'Tank Patrol', 'Bounce Back', 'Leap Trail'], ['Mighty Moves']);
+  await expectGames(page, ['Balloon Pop', 'Sky Wings', 'Tank Patrol', 'Bounce Back', 'Leap Trail'], ['Mighty Moves', 'Rooftop Rope']);
   await box.fill('');
   await expect.poll(() => showing(page)).toHaveLength(all);
   await expect(page.locator('#hub-found')).toHaveText('All games');
@@ -264,9 +265,9 @@ test('each filter narrows the games to the ones it\'s about', async ({ page }) =
     ['One hand', ['Balloon Pop', 'Tank Patrol', 'Bounce Back', 'High Five Racers'], ['Sky Wings', 'Mighty Moves', 'Leap Trail', 'Frost Arena']],
     ['Both hands', ['Frost Arena'], ['Balloon Pop', 'Tank Patrol', 'Sky Wings', 'Mighty Moves']],
     ['Both arms', ['Sky Wings'], ['Balloon Pop', 'Mighty Moves', 'Leap Trail']],
-    ['Whole body', ['Mighty Moves', 'Leap Trail'], ['Sky Wings', 'Balloon Pop', 'Bounce Back']],
+    ['Whole body', ['Mighty Moves', 'Leap Trail', 'Rooftop Rope'], ['Sky Wings', 'Balloon Pop', 'Bounce Back']],
     ['Mouth', ['Gobble and Grow'], ['Balloon Pop', 'Sky Wings', 'Mighty Moves', 'Frost Arena']],
-    ['Sitting down', ['Balloon Pop', 'Sky Wings', 'Tank Patrol', 'Bounce Back'], ['Mighty Moves']],
+    ['Sitting down', ['Balloon Pop', 'Sky Wings', 'Tank Patrol', 'Bounce Back'], ['Mighty Moves', 'Rooftop Rope']],
   ];
   for (const [name, wanted, unwanted] of FILTERS) {
     await test.step(name, async () => {
@@ -310,7 +311,7 @@ test('filters in one group add games, the groups narrow each other, and the sear
   // Both of these, not either.
   await filterNamed(page, 'Sitting down').check();
   await filterNamed(page, 'With friends').check();
-  await expectGames(page, ['Balloon Pop', 'Bounce Back', 'Cannon Bay', 'Giraffe’s Smoothie Stand', 'High Five Racers', 'Sky Wings', 'Spider Catcher', 'Tank Patrol', 'The Lighthouse Keeper'], ['Mighty Moves']);
+  await expectGames(page, ['Balloon Pop', 'Bounce Back', 'Cannon Bay', 'Giraffe’s Smoothie Stand', 'High Five Racers', 'Sky Wings', 'Spider Catcher', 'Tank Patrol', 'The Lighthouse Keeper'], ['Mighty Moves', 'Rooftop Rope']);
   await page.locator('#hub-filters-clear').click();
 
   // The search and a filter together.

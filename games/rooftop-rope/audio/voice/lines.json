@@ -1,0 +1,15 @@
+[
+  {"id": "choose", "text": "Who’s walking the rope today?", "speak": "Who's walking the rope today?", "ka": "დღეს ვინ გაივლის ბაგირზე?"},
+  {"id": "mission", "text": "Stand on one leg, and cross to the last rooftop!", "ka": "ცალ ფეხზე დადექი და ბოლო სახურავამდე მიდი!"},
+  {"id": "warm-left", "text": "Lift your left foot high, and hold it!", "ka": "ასწიე მარცხენა ფეხი მაღლა და ასე გააჩერე!"},
+  {"id": "warm-right", "text": "Lift your right foot high, and hold it!", "ka": "ასწიე მარჯვენა ფეხი მაღლა და ასე გააჩერე!"},
+  {"id": "ready", "text": "That’s it! You’re ready to cross!", "speak": "That's it! You're ready to cross!", "ka": "აი ასე, ახლა მზად ხარ გადასასვლელად!"},
+  {"id": "left", "text": "Lift your left foot!", "ka": "ასწიე მარცხენა ფეხი!"},
+  {"id": "right", "text": "Lift your right foot!", "ka": "ასწიე მარჯვენა ფეხი!"},
+  {"id": "other", "text": "Now the other foot!", "ka": "ახლა მეორე ფეხი!"},
+  {"id": "any", "text": "Lift one foot!", "ka": "ასწიე ცალი ფეხი!"},
+  {"id": "higher", "text": "Higher!", "ka": "უფრო მაღლა!"},
+  {"id": "rest", "text": "Foot down, and have a rest.", "ka": "ფეხი დადგი და დაისვენე."},
+  {"id": "wait", "text": "Wait here for your friends!", "ka": "აქ დაელოდე მეგობრებს!"},
+  {"id": "top", "text": "You crossed them all!", "ka": "ყველა ბაგირი გადალახე!"}
+]

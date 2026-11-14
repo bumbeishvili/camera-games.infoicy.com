@@ -442,6 +442,59 @@ def leans_body(t):
     return 0, 0, 0, math.radians(lean_at(t))
 
 
+# Rooftop Rope: standing on one leg. First a dial for each foot, to pick a height from by its time: the right
+# foot goes up evenly from the floor at 1 second to 48 centimetres at 9, and the left from 10 seconds to 18. Then
+# lifts as a child makes them: the right foot up 30 centimetres and held, down, the left the same, and a small
+# lift of the right, 8 centimetres.
+STAND_RIGHT = [(19, 0), (20, 0), (21, 0.3), (24.5, 0.3), (25.5, 0), (33, 0), (34, 0.08), (36, 0.08), (36.8, 0), (38, 0)]
+STAND_LEFT = [(19, 0), (26.5, 0), (27.5, 0.3), (31, 0.3), (32, 0), (38, 0)]
+
+
+def feet_up(t):
+    """How high each foot is off the floor, in metres."""
+    if 1 <= t < 9:
+        return {"R": (t - 1) * 0.06, "L": 0}
+    if 10 <= t < 18:
+        return {"R": 0, "L": (t - 10) * 0.06}
+    if t >= 19:
+        return {"R": angle_at(t, STAND_RIGHT), "L": angle_at(t, STAND_LEFT)}
+    return {"R": 0, "L": 0}
+
+
+def stands(t):
+    """Arms a little out from the sides, as someone balancing holds them."""
+    return {sid: hanging(sid) + Vector((SIDE[sid] * 0.14, 0, 0.06)) for sid in ("R", "L")}
+
+
+def stands_body(t):
+    # A lifted foot comes forward a little as it goes up, as the knee bends.
+    return 0, 0, 0, 0, {sid: Vector((0, 0.3 * high, high)) for sid, high in feet_up(t).items()}
+
+
+# Rooftop Rope: both feet on the floor, one behind the other, which is not a lifted foot, though the camera sees
+# the foot that's further away as higher in the picture. The right foot slides back evenly, 10 centimetres a
+# second, from 1 second to 40 centimetres behind at 5, and is back beside the other by 6. The left does the same
+# from 7 seconds to 11, and is back by 12.
+def feet_back(t):
+    """How far behind the other each foot is, in metres, on the floor."""
+    if 1 <= t < 5:
+        return {"R": (t - 1) * 0.1, "L": 0}
+    if 5 <= t < 6:
+        return {"R": 0.4 * (6 - t), "L": 0}
+    if 7 <= t < 11:
+        return {"R": 0, "L": (t - 7) * 0.1}
+    if 11 <= t < 12:
+        return {"R": 0, "L": 0.4 * (12 - t)}
+    return {"R": 0, "L": 0}
+
+
+def staggers_body(t):
+    back = feet_back(t)
+    # The body sinks a little as the feet come apart, as a real one does, so that both stay flat on the floor.
+    most = max(back.values())
+    return 0.8 * most * most, 0, 0, 0, {sid: Vector((0, -far, 0)) for sid, far in back.items()}
+
+
 # Each clip: what the arms do, how long it lasts, and what the rest of the body does if it moves.
 CLIPS = {
     "claps": (claps, 20, None),
@@ -451,6 +504,8 @@ CLIPS = {
     "demo-trail": (trail_demo, 11, trail_body),
     "lifts": (lifts, 37, None),
     "leans": (leans, 24, leans_body),
+    "stands": (stands, 38, stands_body),
+    "staggers": (stands, 13, staggers_body),
 }
 pick, length, body_at = CLIPS[CLIP]
 FEET = {"R": rest["J_Bip_R_Foot"], "L": rest["J_Bip_L_Foot"]}
@@ -468,10 +523,12 @@ for index in range(first, last + 1):
     if body_at:
         drop, up, lean, *more = body_at(t)
         side = more[0] if more else 0
+        lifted = more[1] if len(more) > 1 else {}
         arm.location.z = up - drop
         for sid in ("R", "L"):
-            # Feet stay on the floor while the body sinks, and go with it when it leaves the floor.
-            solve_leg(sid, SIDE[sid], FEET[sid] + Vector((0, 0, drop)))
+            # Feet stay on the floor while the body sinks, and go with it when it leaves the floor. One that's
+            # lifted goes where the clip puts it.
+            solve_leg(sid, SIDE[sid], FEET[sid] + Vector((0, 0, drop)) + lifted.get(sid, Vector((0, 0, 0))))
         set_rel("J_Bip_C_UpperChest", Euler((-lean, 0, 0)).to_quaternion())
     for sid in ("L", "R"):
         for finger in ("Index", "Middle", "Ring", "Little"):

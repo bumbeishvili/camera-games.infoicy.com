@@ -142,6 +142,12 @@
 //                                      how many stars and bends ridden on the road, and whether it's waiting or
 //                                      has finished. Everyone lays out the same road from the seed. length is how
 //                                      many bends a ride has, and mode how fast the bike goes
+//   balancer { ms, a, u, w, g, f, n, c, d }  where their walker is in Rooftop Rope: which rope it's on and how
+//                                      far along it, how high the lifted foot is, how much the walker wobbles,
+//                                      which foot is up, whether it's dropping into the net, how many stars and
+//                                      ropes it has, and whether it has finished. Everyone lays out the same ropes
+//                                      from the seed. length is how many ropes a game has, and mode how long a
+//                                      rope takes
 //   eater  { ms, x, y, m, n, v }           where their creature is in Gobble and Grow, across and down the soup
 //                                      from 0 to 1, how far its mouth is open, from 0 to 1, how many bites it has
 //                                      had, and whether their face can be seen. Everyone makes the same things to
@@ -691,6 +697,25 @@ export function cleanRider(message) {
   };
 }
 
+/**
+ * Only what a walker's message in Rooftop Rope should hold, rounded and kept to the ropes. a is the rope's
+ * number with how far along it added on, u how high the foot is in whole lifts, and g which foot is up: -1 for
+ * the left, 1 for the right, and 0 for neither.
+ */
+export function cleanBalancer(message) {
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    a: number(message.a, 0, 9, 3),
+    u: number(message.u, 0, 2.5, 2),
+    w: number(message.w, 0, 1, 2),
+    g: number(message.g, -1, 1, 0),
+    f: message.f ? 1 : 0,
+    n: number(message.n, 0, 200, 0),
+    c: number(message.c, 0, 8, 0),
+    d: message.d ? 1 : 0,
+  };
+}
+
 /** Only what a car message should hold, rounded, so nothing else can be passed on. */
 export function cleanCar(message) {
   return {
@@ -935,6 +960,11 @@ export class RaceRoom {
         // Moto Mountain: where each bike is on the road goes to the others.
         if (!meta.racing) return;
         for (const other of others) other.send({ t: 'rider', from: meta.id, ...cleanRider(message) });
+        break;
+      case 'balancer':
+        // Rooftop Rope: where each walker is on the ropes goes to the others.
+        if (!meta.racing) return;
+        for (const other of others) other.send({ t: 'balancer', from: meta.id, ...cleanBalancer(message) });
         break;
       case 'eater':
         // Gobble and Grow: where their creature is, for everyone else to see it.

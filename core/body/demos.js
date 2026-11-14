@@ -40,6 +40,9 @@ const circleFrames = Array.from({ length: CIRCLE_STEPS + 1 }, (_, index) => {
 
 const kneeUp = pose({ footLX: 0.12, footLY: 0.44, footLZ: 0.34, footRX: -0.12, pitch: 0.05, roll: -0.03, handLX: 0.52, handLY: -0.52, handLZ: 0.22, handRX: -0.52, handRY: -0.52, handRZ: 0.22 });
 
+// Standing on one leg, the other knee up, arms out a little to balance.
+const footHeld = pose({ footLX: 0.12, footLY: 0.36, footLZ: 0.26, footRX: -0.06, hipX: -0.03, handLX: 0.8, handLY: -0.25, handLZ: 0.1, handRX: -0.8, handRY: -0.25, handRZ: 0.1 });
+
 const kickReady = pose({ footLX: 0.14, footLY: 0.3, footLZ: 0.25, footRX: -0.12, handLX: 0.55, handLY: -0.45, handLZ: 0.15, handRX: -0.55, handRY: -0.45, handRZ: 0.15 });
 const kickOut = pose({ footLX: 0.14, footLY: 0.5, footLZ: 0.85, footRX: -0.12, footLPitch: -0.9, pitch: -0.22, hipDrop: 0.03, handLX: 0.6, handLY: -0.35, handLZ: 0.1, handRX: -0.6, handRY: -0.35, handRZ: 0.1 });
 
@@ -173,6 +176,10 @@ export const DEMOS = {
   },
   lean: {
     frames: [[0, REST], [0.6, pose({ roll: 0.42, hipX: -0.05 })], [1, pose({ roll: 0.42, hipX: -0.05 })], [1.5, REST], [2.1, pose({ roll: -0.42, hipX: 0.05 })], [2.5, pose({ roll: -0.42, hipX: 0.05 })], [3, REST], [3.2, REST]],
+  },
+  // One foot lifted off the floor and held up, as Rooftop Rope asks for on a rope.
+  footUp: {
+    frames: [[0, REST], [0.4, REST], [1.1, footHeld], [2.8, footHeld], [3.4, REST], [3.8, REST]],
   },
   // Leaning to one side and holding it there, as Moto Mountain asks for in a bend.
   leanOver: {
