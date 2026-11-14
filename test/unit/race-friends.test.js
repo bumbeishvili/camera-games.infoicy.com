@@ -840,16 +840,18 @@ test('together in Arrow Meadow, a target goes to the first to claim it, everyone
     for (const game of games) game.update(1 / 60);
     hear();
   };
-  // Ben and Cal both let an arrow go at the same target, Ben's a little sooner: it's Ben's, on every computer.
-  const k = games[1].live[1].k;
-  const aimAt = (game) => game.solve(game.live.find((target) => target.k === k), 1);
-  games[1].loose(aimAt(games[1]), 1);
+  // Ben and Cal both let an arrow go along the same arc, Ben's a little sooner: what it comes to first is Ben's, on
+  // every computer. The seed is the server's, so a nearer target may be in the way of the one aimed at.
+  const angle = games[1].solve(games[1].live[1], 1);
+  const { k } = games[1].trace(angle, 1).end.target;
+  games[1].loose(angle, 1);
   for (let n = 0; n < 6; n += 1) frame();
-  games[2].loose(aimAt(games[2]), 1);
+  games[2].loose(angle, 1);
   for (let n = 0; n < 240; n += 1) frame();
   for (const game of games) {
     assert.equal(game.owners.get(k), 'bbbbbbbb');
-    assert.equal(game.total, 1);
+    assert.deepEqual([...game.owners.entries()].sort(), [...games[0].owners.entries()].sort());
+    assert.ok(game.total >= 1 && game.total <= 2);
   }
   // Played on, turn about, until the team has enough: every game ends together, with the same share for each.
   let turn = 0;
