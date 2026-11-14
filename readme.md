@@ -19,8 +19,8 @@ Movement-based games for children, played in front of a webcam.
 
 - Resting never costs anything.
 - Each game has 10 levels.
-- Play with friends on their own computers in 15 of the games: make a game on the title card and send them the link or its 3-letter code. Mighty Moves, Bounce Back, Tank Patrol and Cannon Bay are for two, and Frost Arena and Arrow Meadow for up to four, together or against each other as whoever makes the game chooses, and the rest are everyone playing in the same game.
-- Gobble and Grow is played with the mouth, and up to four friends can play it, together or against each other.
+- Play with friends on their own computers in 20 of the games: make a game on the title card and send them the link or its 3-letter code. Mighty Moves, Bounce Back, Tank Patrol and Cannon Bay are for two, and Frost Arena, Arrow Meadow, Giraffe's Puzzles, Flap, Little Chick!, Mighty Lift, Gobble and Grow and Giraffe's Paint Box for up to four, together or against each other as whoever makes the game chooses, and the rest are everyone playing in the same game.
+- Gobble and Grow is played with the mouth, Mighty Lift by raising an arm, and Flap, Little Chick! by bending the wrists back.
 - A grown-up can change the settings under the gear icon, including which hand shape makes a game's move, like pointing instead of an open hand.
 - The camera picture stays on your computer. The site counts visits with Google Analytics.
 
