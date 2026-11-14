@@ -128,9 +128,14 @@ test('against each other: each paints their own copy of the host\'s picture, see
   await expect(ben.page.locator('#paint-scores li').first()).toContainText('%');
   await page.waitForTimeout(300);
   await ben.page.screenshot({ path: 'test-results/screens/paint-against-guest.png' });
-  // Ben starts painting a little later.
+  // Ana rests and Ben paints a little: now she sees how far he has got. Then he rests, and nothing of his is lost.
+  await stopHand(page);
   await leadHand(ben.page);
-  // Ana finishes first, and her card says so, with Ben still painting.
+  await expectSoon(async () => (await view(page)).scores[his.you] ?? 0, { timeout: 90_000 }).toBeGreaterThan(10);
+  await stopHand(ben.page);
+  const bens = (await view(page)).scores[his.you];
+  // Ana paints on and finishes first, and her card says so, with Ben's picture still part done.
+  await leadHand(page);
   await waitForScreen(page, 'finish');
   await stopHand(page);
   await expect(page.locator('#screen-finish h2')).toHaveText('You finished first!');
@@ -139,7 +144,7 @@ test('against each other: each paints their own copy of the host\'s picture, see
   await shot(page, 'paint-against-finish');
   // Ben's time runs out before he's done: his picture is as far as it got, and he's second.
   expect((await state(ben.page)).done).toBe(false);
-  await stopHand(ben.page);
+  expect((await view(page)).scores[his.you]).toBeGreaterThanOrEqual(bens);
   await ben.page.evaluate(() => {
     window.__game.game.goAt -= 179_000;
   });

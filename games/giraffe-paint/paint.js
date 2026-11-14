@@ -45,6 +45,7 @@ const STICK = 0.6; // Free painting: the brush stays with its part while that's 
 const SWITCH_SECONDS = 0.3; // And for this long in another part, before it's that one's.
 const TOUCH = 9; // How near the hand has to come to the big brush or a paint balloon to take it.
 const MOST_PARTS = 30; // Which parts are done goes to friends as one number, a bit for each.
+export const CLAIM_LATE = 0.5; // Together: seconds a done part can be nobody's before each child who painted some of it claims it.
 
 // What the levels bring. Missing any of it never costs anything.
 export const EXTRAS = {
@@ -202,7 +203,7 @@ export class Painting {
       const outlines = source.shapes.map(outlineOf);
       const boxes = outlines.map(boxOf);
       const box = { left: Math.min(...boxes.map((each) => each.left)), top: Math.min(...boxes.map((each) => each.top)), right: Math.max(...boxes.map((each) => each.right)), bottom: Math.max(...boxes.map((each) => each.bottom)) };
-      return { index, id: source.id, kind, colour, outlines, box, cells: 0, covered: 0, done: kind === 'paper', magic: hidden?.part === source.id, need: kind === 'free' ? FREE_SHARE : this.share, dot: null };
+      return { index, id: source.id, kind, colour, outlines, box, cells: 0, covered: 0, done: kind === 'paper', painted: false, claimed: false, unclaimedFor: 0, magic: hidden?.part === source.id, need: kind === 'free' ? FREE_SHARE : this.share, dot: null };
     });
     if (this.parts.length > MOST_PARTS) throw new Error(`${page.id} has too many parts`);
     this.mirror = Boolean(page.mirror && plan.mirror);
@@ -394,6 +395,7 @@ export class Painting {
    */
   update(dt, { at = null, open = false } = {}) {
     this.fresh = 0;
+    this.claimLeftovers(dt);
     if (this.done) {
       this.lift();
       return;
@@ -524,6 +526,7 @@ export class Painting {
         const part = this.parts[index];
         if (!this.takes(part, colour, lock)) continue;
         touched.add(index);
+        if (mine) part.painted = true;
         if (this.paint[cell] === 0) {
           part.covered += 1;
           if (mine) this.stats.cells += 1;
@@ -577,7 +580,10 @@ export class Painting {
       this.onEvent({ type: 'friend', friend: this.friend, part });
     }
     // With friends, whoever's stroke finished it claims it, and the server says whose it is.
-    if (this.shared && mine) this.shared.claim(part.index);
+    if (this.shared && mine) {
+      part.claimed = true;
+      this.shared.claim(part.index);
+    }
     if (!this.done && this.toPaint.every((each) => each.done)) {
       this.done = true;
       this.hint = null;
@@ -866,6 +872,23 @@ export class Painting {
     this.owners.set(k, by);
     this.tally.set(by, (this.tally.get(by) ?? 0) + 1);
     this.finish(part, false);
+  }
+
+  /**
+   * Together, a part can be finished on each sheet by the other child's strokes as they arrive, so that on neither
+   * was it the child's own stroke that finished it, and nobody claims it. A part that's done and still nobody's after
+   * a moment is claimed by each game whose child painted some of it, and the server gives it to the first.
+   */
+  claimLeftovers(dt) {
+    if (!this.shared) return;
+    for (const part of this.toPaint) {
+      if (!part.done || part.claimed || !part.painted || this.owners.has(part.index)) continue;
+      part.unclaimedFor += dt;
+      if (part.unclaimedFor >= CLAIM_LATE) {
+        part.claimed = true;
+        this.shared.claim(part.index);
+      }
+    }
   }
 
   /* ---------- for the tests and the films, which play as a child would ---------- */

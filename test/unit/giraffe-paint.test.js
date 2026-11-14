@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { cleanBrush, MAX_RACERS, MOST_BYTES, MOST_STROKE_NUMBERS, mostIn } from '../../server/race-room.js';
 import { COLOUR_NAMES, COLOURS, boxOf, insideOutline, mixes, mixOf, outlineOf, PAGES, RAINBOW, recipeFor, SHEET } from '../../games/giraffe-paint/pages.js';
 import {
-  BRUSHES, DESK, DIP_SECONDS, DONE_SHARES, EXTRAS, FREE_SHARE, LABELS, modeWord, NEWS, newsIsOn, Painting, paintLevel,
+  BRUSHES, CLAIM_LATE, DESK, DIP_SECONDS, DONE_SHARES, EXTRAS, FREE_SHARE, LABELS, modeWord, NEWS, newsIsOn, Painting, paintLevel,
   paintNewAt, REACH, readMode, ROW, STROKE_NUMBERS,
 } from '../../games/giraffe-paint/paint.js';
 
@@ -1050,6 +1050,42 @@ test('together: whoever\'s stroke finishes a part claims it, the server says who
   ana.claimed(99, 'ben');
   ana.claimed(part(ana, 'tower').index, 'ben');
   assert.deepEqual([...ana.tally], [['ana', 3]]);
+});
+
+test('together: a part finished on each sheet by the other\'s strokes, so nobody\'s own stroke finished it, is still somebody\'s', () => {
+  const { ana, ben, send, settle, claims } = together();
+  dip(ana, 'orange');
+  dip(ben, 'orange');
+  const sun = part(ana, 'sun');
+  // Each paints a little under half of the sun, Ana from the top and Ben from the bottom.
+  scrub(ana, 'sun', { until: () => part(ana, 'sun').covered >= sun.cells * 0.45 });
+  const cells = [...ben.owner.keys()].filter((cell) => ben.owner[cell] === sun.index).reverse();
+  for (const cell of cells) {
+    if (part(ben, 'sun').covered >= sun.cells * 0.45) break;
+    if (!ben.paint[cell]) ben.update(FRAME, { at: { x: (cell % SHEET.width) + 0.5, y: Math.floor(cell / SHEET.width) + 0.5 }, open: OPEN });
+  }
+  away(ben);
+  assert.ok(!part(ana, 'sun').done && !part(ben, 'sun').done);
+  // Each one's strokes arrive at the other's sheet and finish it there, so neither stroke was the finisher's own.
+  send(ana, ben);
+  send(ben, ana);
+  assert.ok(part(ana, 'sun').done && part(ben, 'sun').done);
+  assert.equal(claims.length, 0);
+  // A moment later both claim it, as both painted some, and the server gives it to the first: it's counted once.
+  hold(ana, CLAIM_LATE + 0.1, null);
+  hold(ben, CLAIM_LATE + 0.1, null);
+  assert.deepEqual(claims.map(({ by }) => by), ['ana', 'ben']);
+  settle();
+  assert.deepEqual([...ana.tally], [['ana', 1]]);
+  assert.deepEqual([...ben.tally], [['ana', 1]]);
+  // Nothing more is claimed after that, and a part done by someone else that this child never touched isn't claimed.
+  dip(ana, 'blue');
+  scrub(ana, 'sea');
+  send(ana, ben);
+  settle();
+  hold(ben, CLAIM_LATE + 0.1, null);
+  assert.equal(claims.filter((each) => each.by === 'ben').length, 1);
+  assert.deepEqual([...ben.tally], [['ana', 2]]);
 });
 
 test('together: which parts are done goes as one number, and a friend who missed some strokes still gets the parts they finished', () => {
