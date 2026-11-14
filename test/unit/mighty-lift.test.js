@@ -272,6 +272,12 @@ test('an arm on its way down from the line is not a try, however long it then re
     steps(30, (through) => -0.4 - through * 0.5);
     steps(300, -0.9);
   }
+  // And then one try that falls short is only one, not the second of two with the way down before it.
+  steps(20, (through) => -0.9 + through * 0.6);
+  steps(30, -0.3);
+  steps(20, (through) => -0.3 - through * 0.6);
+  steps(10, -0.9);
+  assert.equal(arm.fails, 1);
   assert.equal(arm.line, line);
   assert.equal(arm.eased, null);
   // The same, when the game says the line was reached, as it does for an arm that got there while nothing was asked.
@@ -304,11 +310,47 @@ test('standing still never brings the line down, and it never comes as low as an
   weak.read(-0.9, 0.03);
   weak.tried(0.03);
   for (let i = 0; i < 400; i += 1) {
-    weak.read(i % 60 < 40 ? -0.72 : -0.9, 0.03);
+    weak.read(i % 60 < 40 ? -0.55 : -0.9, 0.03);
     weak.tried(0.03);
   }
-  assert.ok(weak.line - weak.rest >= 0.18 - 1e-9, `the line is ${weak.line - weak.rest} above rest`);
-  assert.ok(weak.line < -0.6);
+  assert.ok(weak.eased !== null, 'it came down');
+  assert.ok(weak.line - weak.rest >= 0.3 - 1e-9, `the line is ${weak.line - weak.rest} above rest`);
+  assert.ok(weak.line <= -0.55, 'and those tries reach it');
+
+  // Nor does an arm that only comes up a little way, or only for a moment, as the tracker's guess at a hand by the hip does.
+  for (const [high, seconds] of [[0.2, 1.2], [0.5, 0.2]]) {
+    const resting = new Arm(HEIGHTS.shoulder);
+    resting.read(-0.9, 0.03);
+    for (let i = 0; i < 600; i += 1) {
+      resting.read(i % 80 < seconds / 0.03 ? -0.9 + high : -0.9, 0.03);
+      assert.equal(resting.tried(0.03), false, `up ${high} for ${seconds} seconds`);
+    }
+  }
+});
+
+test('on real footage, an arm hanging at rest while the other one lifts never has its line come down, or reaches it', () => {
+  // The left hangs while the right is up, from 1.5 to 10.5, and the right while the left is, from 12 to 16. The
+  // tracker's guess at a hand by the hip jumps about, by 0.4 torso lengths at times. The game asks each arm that
+  // lifts whether it's trying, every time the screen is drawn, as long as there's something to lift.
+  for (const [side, from, to] of [['left', 0, 11], ['right', 11.5, 16.5], ['left', 22.5, 31.5]]) {
+    const arms = new Arms({ side: 'right', liftWith: 'both', height: 'shoulder' });
+    for (let round = 0; round < 10; round += 1) {
+      play(from, to, {
+        arms,
+        each: () => {
+          for (let i = 0; i < 4; i += 1) arms.tried(FRAME / 4);
+          if (round > 0) assert.ok(arms[side].lift < 0.8, `the ${side} arm, at rest, read ${arms[side].lift} of a lift`);
+        },
+      });
+    }
+    assert.equal(arms[side].eased, null, `the ${side} arm's line came down to ${arms[side].line}`);
+  }
+  // While the same footage, of an arm that does try, brings its line down: up to the shoulder with the line above the head.
+  const trying = new Arms({ side: 'right', height: 'head' });
+  let eased = false;
+  for (let round = 0; round < 3 && !eased; round += 1) play(6.6, 11.5, { arms: trying, each: () => { for (let i = 0; i < 4; i += 1) eased = trying.tried(FRAME / 4) || eased; } });
+  assert.equal(eased, true);
+  assert.ok(trying.right.line < HEIGHTS.head);
 });
 
 /* ------------------------------- the warm-up ------------------------------- */
@@ -381,10 +423,28 @@ test('with both arms, the warm-up waits for both, but not for ever if only one c
 test('an arm that moves but can\'t get far still ends the warm-up, after a while', () => {
   const arms = new Arms({ side: 'right', height: 'shoulder' });
   const warmup = new Warmup({ arms });
-  for (let i = 0; i < 300 && !warmup.done; i += 1) warmup.update({ left: -0.9, right: i < 20 ? -0.9 : -0.7 }, 0.03);
+  for (let i = 0; i < 300 && !warmup.done; i += 1) warmup.update({ left: -0.9, right: i < 20 ? -0.9 : -0.62 }, 0.03);
   assert.equal(warmup.done, false, 'not in the first nine seconds');
-  for (let i = 0; i < 200 && !warmup.done; i += 1) warmup.update({ left: -0.9, right: -0.7 }, 0.03);
+  for (let i = 0; i < 200 && !warmup.done; i += 1) warmup.update({ left: -0.9, right: -0.62 }, 0.03);
   assert.equal(warmup.done, true);
+});
+
+test('the warm-up goes by how high a real arm stays, so an arm at rest, which the tracker sees jump about, doesn\'t end it', () => {
+  // Real footage of an arm hanging while the other one lifts, over and over: the tracker has it up 0.4 torso lengths
+  // now and then, for a moment, and that isn't a lift.
+  for (const [liftWith, from, to] of [['other', 0, 11], ['play', 11.5, 16.5], ['other', 22.5, 31.5]]) {
+    const arms = new Arms({ side: 'right', liftWith, height: 'shoulder' });
+    const warmup = new Warmup({ arms });
+    for (let round = 0; round < 6; round += 1) play(from, to, { arms, warmup });
+    assert.equal(warmup.done, false, `${liftWith}, ${from} to ${to}`);
+  }
+  // A hand that only gets high for a moment doesn't set the line, and one that stays there does.
+  const arms = new Arms({ side: 'right', height: 'head' });
+  const warmup = new Warmup({ arms });
+  for (let i = 0; i < 40; i += 1) warmup.update({ left: -0.9, right: i % 20 < 5 ? 0.6 : -0.9 }, 0.03);
+  assert.ok(arms.right.best < -0.5, `a moment up set the best to ${arms.right.best}`);
+  for (let i = 0; i < 60 && !warmup.done; i += 1) warmup.update({ left: -0.9, right: 0.6 }, 0.03);
+  assert.ok(Math.abs(arms.right.best - 0.6) < 0.01);
 });
 
 /* ------------------------------- real footage, through a whole rescue ------------------------------- */

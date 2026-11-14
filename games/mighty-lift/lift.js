@@ -28,12 +28,17 @@ const REST_USUAL = -0.85; // Where a hand hangs, until this child's own has been
 const LEAST_RISE = 0.3; // The line is never nearer than this to where the arm rests, so resting can't count.
 const OWN_SHARE = 0.9; // Of the way from resting to the highest the arm reached in the warm-up.
 // A try is the arm coming up from rest, falling short of its line, and coming down again, or being held there.
-const LEAST_TRY = 0.15; // It has to get this far above where the arm rests, or it's just an arm at rest,
-const TRY_OVER = 0.1; // and it's over once the arm is back within this of it.
+// The tracker's guess at a hand hanging half hidden by the hip jumps about: on test footage of an arm at rest,
+// by up to 0.2 torso lengths for seconds at a time, and up to 0.45 for a moment.
+const LEAST_TRY = 0.3; // So it has to get this far above where the arm rests, as far as the line ever comes down,
+const TRY_HELD = 0.4; // and be up there for this long, or it's just an arm at rest,
+const TRY_OVER = 0.1; // and it's over once the arm is back within this of where it rests.
 const EASE_AFTER = 2; // This many tries in a row that fall short bring the line down,
 const EASE_HELD = 4; // and so does one held short of it for this many seconds,
-const EASE_SHARE = 0.85; // to this share of the best of them.
-const LEAST_EASED = 0.18; // But never nearer than this to where the arm rests.
+const EASE_SHARE = 0.85; // to this share of the best of them, but never nearer to rest than LEAST_RISE.
+// In the warm-up, a height counts as reached once the arm has stayed at least that high for this long, so the
+// tracker jumping up for a moment doesn't set a line an arm at rest could reach.
+const BEST_HELD = 0.4;
 const FOLLOW_RATE = 18; // How quickly the height read follows the tracker, which jitters.
 const UNSEEN_GRACE = 0.6; // An arm the camera loses stays where it was for this long.
 const UNSEEN_SINKS = 0.9; // And then comes down gently, this many lifts a second.
@@ -76,6 +81,7 @@ export class Arm {
     this.eased = null; // Where the line has come down to, for a child who was trying.
     this.height = null; // Where it is now, smoothed, or null until it's seen.
     this.lately = []; // The last three readings: the middle one is used, so one wild frame from the tracker isn't.
+    this.measured = []; // In the warm-up, the heights it has been at lately, each with how long: see BEST_HELD.
     this.seen = false;
     this.unseenFor = Infinity;
     this.downSeen = false; // Whether the arm has been seen at rest while a lift was wanted: tries start from there.
@@ -95,7 +101,7 @@ export class Arm {
     let line = this.target;
     if (this.best !== null) line = Math.min(line, this.rest + (this.best - this.rest) * OWN_SHARE);
     if (this.eased !== null) line = Math.min(line, this.eased);
-    return Math.max(line, this.rest + (this.eased !== null ? LEAST_EASED : LEAST_RISE));
+    return Math.max(line, this.rest + LEAST_RISE);
   }
 
   /** How far up the arm is: 0 at rest, 1 at its line, and on above it. */
@@ -128,6 +134,7 @@ export class Arm {
         this.height = Math.max(this.rest, Math.min(this.height, this.rest + MOST_LIFT * this.span) - UNSEEN_SINKS * this.span * dt);
       }
       this.lately = [];
+      this.measured = [];
       return this.lift;
     }
     this.seen = true;
@@ -138,8 +145,16 @@ export class Arm {
     this.height = this.height === null ? middle : this.height + (middle - this.height) * (1 - Math.exp(-FOLLOW_RATE * dt));
     // Where it rests follows the arm down at once. It only comes up when the game says so: see restHere.
     if (this.height < this.rest) this.rest = this.height;
-    if (measuring) this.best = Math.max(this.best ?? -Infinity, this.height);
+    if (measuring) this.measure(dt);
     return this.lift;
+  }
+
+  /** In the warm-up: the highest the arm has stayed for a moment is the best it can do. */
+  measure(dt) {
+    this.measured.push({ dt, height: this.height });
+    let lasted = this.measured.reduce((sum, each) => sum + each.dt, 0);
+    while (this.measured.length > 1 && lasted - this.measured[0].dt >= BEST_HELD) lasted -= this.measured.shift().dt;
+    if (lasted >= BEST_HELD) this.best = Math.max(this.best ?? -Infinity, Math.min(...this.measured.map((each) => each.height)));
   }
 
   /** The arm is at rest right now, wherever that is: a bent arm held by the chest rests higher than one that hangs. */
@@ -162,8 +177,8 @@ export class Arm {
       return false;
     }
     if (rise < TRY_OVER) {
-      // Down again. If it had been up, short of the line, that was a try.
-      const fell = this.downSeen && !this.tryMade && this.tryPeak - this.rest >= LEAST_TRY;
+      // Down again. If it had been up for a while, short of the line, that was a try.
+      const fell = this.tryFor >= TRY_HELD;
       const peak = this.tryPeak;
       this.downSeen = true;
       this.tryMade = false;
@@ -183,7 +198,7 @@ export class Arm {
 
   /** The line comes down to just below this height, if that's lower than it is. */
   easeTo(best) {
-    const eased = this.rest + Math.max(LEAST_EASED, (best - this.rest) * EASE_SHARE);
+    const eased = this.rest + Math.max(LEAST_RISE, (best - this.rest) * EASE_SHARE);
     this.forgetTries();
     if (eased >= this.line - 0.005) return false;
     this.eased = eased;
@@ -295,7 +310,8 @@ export class Arms {
 const WARM_STOPPED = 0.8; // The arm has got as high as it's going once it hasn't risen for this long.
 const WARM_RISING = 0.02; // Rising by less than this isn't rising.
 const WARM_ONE_ARM = 8; // With both arms, if only one comes up, the warm-up ends after this long anyway.
-const WARM_PATIENCE = 12; // And for an arm that moves but can't get far, it ends this long after it first moved.
+const WARM_PATIENCE = 12; // And for an arm that moves but can't get far, it ends this long after it first moved,
+const WARM_MOVED = 0.25; // this far above where it rests: further than a hand at rest seems to move, if not as far as a line.
 
 /**
  * Before the first game: the child raises the arm as high as it goes, and that's what its line is set
@@ -336,7 +352,7 @@ export class Warmup {
     const up = rises.filter((rise) => rise >= LEAST_RISE).length;
     this.oneArmFor = up > 0 && up < rises.length ? this.oneArmFor + dt : 0;
     const allUp = up === rises.length;
-    if (rises.some((rise) => rise >= LEAST_TRY)) this.triedFor += dt;
+    if (rises.some((rise) => rise >= WARM_MOVED)) this.triedFor += dt;
     if ((allUp && this.sinceRose >= WARM_STOPPED) || this.oneArmFor >= WARM_ONE_ARM || this.triedFor >= WARM_PATIENCE) this.finish(true);
   }
 

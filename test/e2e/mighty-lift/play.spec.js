@@ -241,7 +241,7 @@ test('a child who keeps trying and can\'t reach the line has it come down to mee
   await expectSoon(async () => (await state(page)).right.eased !== null, { timeout: 20_000 }).toBe(true);
   const eased = await state(page);
   expect(eased.right.line).toBeLessThan(before);
-  expect(eased.right.line).toBeGreaterThan(eased.right.rest + 0.18);
+  expect(eased.right.line).toBeGreaterThanOrEqual(eased.right.rest + 0.3 - 1e-6);
   await expectSoon(async () => (await state(page)).stats.freed, { timeout: 20_000 }).toBe(1);
   expect((await state(page)).stats.eased).toBeGreaterThanOrEqual(1);
 });
