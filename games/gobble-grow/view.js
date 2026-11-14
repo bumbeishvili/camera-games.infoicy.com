@@ -15,7 +15,9 @@ import { WORLDS, worldAt } from './worlds.js';
 const TAU = Math.PI * 2;
 const LABEL_SECONDS = 2.6;
 // When a world is won: a moment of being pleased, the pull back, and then the picture stays for a moment.
-export const PULL = { cheer: 0.8, zoom: 4.2, hold: 2.2 };
+export const PULL = { cheer: 0.8, zoom: 5, hold: 2.2 };
+// The most the pull back moves on in one frame, in seconds.
+const PULL_STEP = 1 / 30;
 const PULL_STILL = { cheer: 0.4, zoom: 1.2, hold: 2.6 }; // With reduced motion: it fades across instead.
 const FONT = 'Fredoka, "Noto Sans Georgian", ui-rounded, system-ui, sans-serif';
 const WORDS = {
@@ -26,6 +28,34 @@ const WORDS = {
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const lerp = (from, to, share) => from + (to - from) * share;
+
+/** How much of a screen w by h a circle round centre with radius r covers, added up in narrow strips. */
+function areaShowing(centre, r, w, h) {
+  const left = Math.max(0, centre.x - r);
+  const right = Math.min(w, centre.x + r);
+  const STRIPS = 96;
+  const strip = (right - left) / STRIPS;
+  let area = 0;
+  for (let index = 0; index < STRIPS; index += 1) {
+    const across = left + (index + 0.5) * strip - centre.x;
+    const half = Math.sqrt(Math.max(0, r * r - across * across));
+    area += (clamp(centre.y + half, 0, h) - clamp(centre.y - half, 0, h)) * strip;
+  }
+  return area;
+}
+
+/** The radius of a circle round centre that covers this much of a screen w by h, and is at least smallest. */
+function bubbleShowing(centre, area, w, h, smallest) {
+  let low = smallest;
+  let high = Math.max(Math.hypot(centre.x, centre.y), Math.hypot(w - centre.x, centre.y), Math.hypot(centre.x, h - centre.y), Math.hypot(w - centre.x, h - centre.y));
+  if (high <= low) return low;
+  for (let step = 0; step < 22; step += 1) {
+    const middle = (low + high) / 2;
+    if (areaShowing(centre, middle, w, h) < area) low = middle;
+    else high = middle;
+  }
+  return (low + high) / 2;
+}
 const ease = (share) => share * share * (3 - 2 * share);
 
 /** What a child is in a world, said to them: "Now you’re a water flea!". The voice says the same: see lines.json. */
@@ -65,6 +95,22 @@ export class GobbleView {
     this.left = (this.width - FIELD.wide * this.scale) / 2;
     this.top = (this.height - FIELD.tall * this.scale) / 2;
     this.backdrops.clear();
+  }
+
+  /** A clear see-through canvas as big as the screen, ready to draw on in the screen's places. */
+  layer() {
+    const { canvas } = this;
+    if (!this.layerCtx || this.layerCtx.canvas.width !== canvas.width || this.layerCtx.canvas.height !== canvas.height) {
+      const made = document.createElement('canvas');
+      made.width = canvas.width;
+      made.height = canvas.height;
+      this.layerCtx = made.getContext('2d');
+    }
+    const ctx = this.layerCtx;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(this.ratio, 0, 0, this.ratio, 0, 0);
+    return ctx;
   }
 
   get word() {
@@ -117,7 +163,8 @@ export class GobbleView {
     this.shown.snap = Math.max(0, this.shown.snap - dt);
     // The ladder fades in and out, rather than coming and going all at once.
     this.ladderShown += ((this.ladderWanted ? 1 : 0) - this.ladderShown) * (1 - Math.exp(-dt * 5));
-    if (this.pull) this.pull.t += dt;
+    // A frame that came late doesn't make the pull back jump to catch up: it goes on from where it was.
+    if (this.pull) this.pull.t += Math.min(dt, PULL_STEP);
   }
 
   /* ---------- small things that happen ---------- */
@@ -458,23 +505,30 @@ export class GobbleView {
     ctx.drawImage(newBackdrop, (w - w * near) / 2, (h - h * near) / 2, w * near, h * near);
     if (place.thing) {
       // The everyday thing and the creature the child is now come in from the side as the view pulls back, and
-      // fade in as they come, so that something big and bright is never suddenly there.
-      const arriving = ease(clamp((move - 0.5) / 0.4, 0, 1));
+      // fade in slowly as they come, so that something big and bright is never suddenly there. They're never more
+      // than a little bigger than they'll be, so that nothing huge sweeps across the screen as it shrinks.
+      const arriving = ease(clamp((move - 0.4) / 0.55, 0, 1));
       if (arriving > 0) {
+        // Drawn whole on a layer of their own first, and then faded in, so that a creature's own parts don't show
+        // through each other as it fades.
+        const layer = this.layer();
+        const comes = (point) => ({ ...seen(point), r: point.r * Math.min(zoom, 1.5) });
+        const thing = comes(place.thing);
+        drawThing(layer, ladder.thing.id, thing.x, thing.y, thing.r);
+        const next = comes(place.next);
+        drawCreature(layer, ladder.next.id, next.x, next.y + Math.sin(time * 2) * next.r * 0.03, next.r, { facing: -1, time });
         ctx.globalAlpha = arriving;
-        const thing = seen(place.thing);
-        drawThing(ctx, ladder.thing.id, thing.x, thing.y, thing.r);
-        const next = seen(place.next);
-        drawCreature(ctx, ladder.next.id, next.x, next.y + Math.sin(time * 2) * next.r * 0.03, next.r, { facing: -1, time });
+        ctx.drawImage(layer.canvas, 0, 0, w, h);
         ctx.globalAlpha = 1;
       }
     }
 
     // The world that was, closing to a bubble round the creature the child was.
-    // It closes by the same amount of the screen each moment, rather than quickest at first, so that going from a
-    // bright world to a dark one, as from the sky to among the moons, is a slow change and never a sudden one.
+    // It uncovers the same amount of the screen each moment, as much at the start, when only the corners go, as at
+    // the end, so that going from a bright world to a dark one, as from the sky to among the moons, is a slow change
+    // and never a sudden one.
     const cover = Math.max(Math.hypot(from.x, from.y), Math.hypot(w - from.x, from.y), Math.hypot(from.x, h - from.y), Math.hypot(w - from.x, h - from.y)) * 1.02;
-    const bubble = Math.sqrt(lerp(cover * cover, place.bubble * place.bubble, move));
+    const bubble = move <= 0 ? cover : bubbleShowing(centre, lerp(w * h, Math.PI * place.bubble * place.bubble, move), w, h, place.bubble);
     // The old world's backdrop shrinks with the creature, but never to less than fills what can be seen of the
     // bubble: at first that's the whole screen, just as it was while the world was played.
     const fills = (reach, room) => Math.min(reach, bubble) / Math.max(1, room);
@@ -488,6 +542,8 @@ export class GobbleView {
     drawCreature(ctx, ladder.old.id, old.x, old.y, old.r, { facing: 1, time, happy: true });
     ctx.restore();
     if (move > 0.02) {
+      // Its edge comes in gently too.
+      ctx.globalAlpha = still ? 1 : clamp((move - 0.02) / 0.3, 0, 1);
       ctx.beginPath();
       ctx.arc(centre.x, centre.y, bubble, 0, TAU);
       ctx.lineWidth = Math.max(3, place.unit * 0.012);
@@ -496,6 +552,7 @@ export class GobbleView {
       ctx.lineWidth = Math.max(2, place.unit * 0.007);
       ctx.strokeStyle = '#ffffff';
       ctx.stroke();
+      ctx.globalAlpha = 1;
     }
     if (still && share < 1) {
       // The old world still over it all, fading away.
