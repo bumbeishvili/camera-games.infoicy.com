@@ -806,12 +806,21 @@ test('with friends, together, a piece one child holds can\'t be taken by another
   tell();
   assert.deepEqual([theirs.state, theirs.holder], ['loose', null]);
   assert.ok(Math.abs(theirs.x - mine.x) < 0.002 && Math.abs(theirs.y - mine.y) < 0.002);
+  // What Ana's game said then, which may still be on its way when Ben picks the piece up.
+  const late = JSON.parse(JSON.stringify(ana.report()));
   run(ben, 0.1, open(theirs));
   assert.equal(ben.held, theirs);
   assert.ok(ben.sure);
   assert.deepEqual([mine.state, mine.holder], ['held', 'bbbb'], 'and now it\'s in Ben\'s hand on Ana\'s computer');
   run(ana, 0.5, open(mine));
   assert.equal(ana.held, null);
+  // Ben puts it down somewhere else. Ana's old word on it, arriving late, is about an older grab, so it doesn't move it.
+  const there = { x: 1.8, y: 0.2 };
+  sweep(ben, theirs, there);
+  run(ben, 1, closed(there));
+  const put = { x: theirs.x, y: theirs.y };
+  ben.heard('aaaa', late);
+  assert.deepEqual([theirs.state, theirs.x, theirs.y], ['loose', put.x, put.y]);
 });
 
 test('with friends, together, a piece put in place is in place for everyone, and counts for whoever put it there', () => {
@@ -861,7 +870,8 @@ test('with friends, together, two children finish the puzzle between them, and i
 test('with friends, together, of two hands that come to a piece at once only one has it, and nothing goes in before the server says whose it is', () => {
   const setup = friendsPuzzle();
   const { aaaa: ana, bbbb: ben } = setup.puzzles;
-  const mine = ana.pieces.find((piece) => piece.col === 0 && piece.row === 0);
+  // Not the first piece, whose number is 0, so a claim for it couldn't be mistaken for none.
+  const mine = ana.pieces.find((piece) => piece.col === 1 && piece.row === 1);
   const theirs = ben.piece(mine.id);
   setup.hold();
   // Both pick it up, as far as each can tell, and carry it to its place: it waits there for the answer.
@@ -870,7 +880,12 @@ test('with friends, together, of two hands that come to a piece at once only one
     sweep(puzzle, piece, piece.home, { speed: 2 });
     assert.equal(piece.state, 'held');
     assert.ok(!puzzle.sure);
+    // Until the server says whose it is, nobody tells the others it's in their hand.
+    assert.equal(puzzle.report().h, -1);
   }
+  // So what each game says while they wait takes it from neither.
+  setup.tell();
+  assert.deepEqual([ana.held, ben.held], [mine, theirs]);
   // Ana's claim was first, so it's hers, and in. Ben's hand lets go of it.
   setup.letGo();
   run(ana, 0.1, open(mine.home));

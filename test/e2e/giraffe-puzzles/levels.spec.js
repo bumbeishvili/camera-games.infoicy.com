@@ -121,7 +121,10 @@ test('level 5: an open hand brushes the leaf off a piece, and then picks the pie
   await expectSoon(() => labelShown(page, 'leaf'), { timeout: 8000 }).toBe(true);
   await page.waitForTimeout(300);
   await shot(page, 'puzzles-leaf');
-  // A fist rubbing at it does nothing.
+  // A fist rubbing at it does nothing. The hand closes where it is first, and is read as closed, so it isn't still
+  // open on its way to the leaf: the tracker takes a moment to see a hand close, longer on a busy computer.
+  await handNow(page, 'fist');
+  await expectSoon(async () => (await state(page)).open, { timeout: 10_000 }).toBe(false);
   const rub = (hand) => `(puzzle, at) => (puzzle.held ? puzzle.wants(at) : { x: puzzle.piece(${id}).x + Math.sin(performance.now() / 160) * 0.06, y: puzzle.piece(${id}).y${hand} })`;
   await leadHand(page, { target: rub(', hand: "fist"'), gain: 0.2 });
   await page.waitForTimeout(3000);
