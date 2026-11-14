@@ -13,6 +13,12 @@ let lastTimestamp = -1;
 // A child may be on a grown-up's lap, or have someone beside them: mouth.js follows one face of these.
 const MOST_FACES = 2;
 
+// The face model has a part that always runs on the CPU, even on the GPU, and the engine says so with
+// "INFO: Created TensorFlow Lite XNNPACK delegate for CPU." written as an error. It's only a note, so it's kept
+// as one; anything else written as an error is still an error.
+const logError = console.error.bind(console);
+console.error = (...args) => (typeof args[0] === 'string' && args[0].startsWith('INFO: ') ? console.info(...args) : logError(...args));
+
 // detectForVideo requires strictly increasing timestamps.
 function nextTimestamp(wanted) {
   lastTimestamp = Math.max(wanted, lastTimestamp + 1);
