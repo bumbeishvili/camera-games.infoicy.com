@@ -419,7 +419,8 @@ export class Farm {
   /**
    * One frame. wings is { left, right }, each { lift, up, seen }: how far up that wing is, whether it's up, and
    * whether its hand can be seen. flaps lists the wings that flapped just now, and open says which of them were
-   * flapped with an open hand. flock is the friends' chicks, each { x, home, gone }, flying home together or racing.
+   * flapped with an open hand. flock is the friends' chicks, each { x, home, gone, carried }, flying home together
+   * or racing.
    */
   update(dt, { wings = this.wings, flaps = [], open = {}, flock = [] } = {}) {
     if (this.done || !this.started) return;
@@ -572,13 +573,16 @@ export class Farm {
       chick.vy = Math.min(chick.vy, 0);
     }
 
-    // Along, as far as the hen house. A chick ahead of its flock waits for it, on the ground.
+    // Along, as far as the hen house. A chick ahead of its flock waits for it, on the ground, and so does one ahead
+    // of a chick the mother hen is carrying up, until she has set it down just behind.
     const home = this.end - HOME.door;
     let to = Math.min(home, chick.x + this.plan.speed * (gust ? GUST.faster : 1) * dt);
     chick.flockWait = false;
     if (this.together && !chick.air) {
-      const last = Math.min(Infinity, ...this.flock.filter((friend) => !friend.gone).map((friend) => friend.x));
-      if (chick.x - last >= FLOCK.leash) {
+      const others = this.flock.filter((friend) => !friend.gone);
+      const last = Math.min(Infinity, ...others.map((friend) => friend.x));
+      const henComing = others.some((friend) => friend.carried && friend.x < chick.x);
+      if (chick.x - last >= FLOCK.leash || henComing) {
         to = chick.x;
         chick.flockWait = true;
       }

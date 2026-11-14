@@ -1217,6 +1217,18 @@ test('together, a chick the flock has waited ten seconds for is carried up to it
   const race = farmWith('fence', { together: false, friends: true });
   run(race.farm, 30, { flock: [ahead] });
   assert.equal(race.farm.stats.hen, 0);
+  // And a chick ahead waits while the hen carries its friend up, so she sets the friend down just behind it.
+  const front = openField({ together: true, friends: true });
+  front.begin();
+  front.chick.x = 2;
+  const carried = { x: 0, home: false, carried: true };
+  run(front, 3, { flock: [carried] });
+  assert.ok(front.chick.x < 2.05, `${front.chick.x}`);
+  assert.equal(front.chick.flockWait, true);
+  carried.carried = false;
+  run(front, 0.5, { flock: [carried] });
+  assert.equal(front.chick.flockWait, false);
+  assert.ok(front.chick.x > 2.3, 'off again once the friend is down');
 });
 
 test('together, nobody tumbles the fox nearer, and everyone is home when the whole flock is', () => {
@@ -1299,7 +1311,8 @@ test('what a game tells its friends about its chick is numbers and nothing else,
     { friend: { id: 'c' }, shown: { x: 90, home: true } },
     { friend: { id: 'd', gone: true }, shown: { x: 12, home: false } },
   ], 120);
-  assert.deepEqual(flock, [{ x: 0, home: false, gone: false }, { x: 40, home: false, gone: false }, { x: 120, home: true, gone: false }, { x: 12, home: false, gone: true }]);
+  assert.deepEqual(flock, [{ x: 0, home: false, gone: false, carried: false }, { x: 40, home: false, gone: false, carried: false }, { x: 120, home: true, gone: false, carried: false }, { x: 12, home: false, gone: true, carried: false }]);
+  assert.equal(flockFrom([{ friend: { id: 'e' }, shown: { x: 30, home: false, carried: true } }], 120)[0].carried, true);
 });
 
 test('two games fly home together through what they tell each other: one waits, and both are home in the end', () => {
@@ -1326,7 +1339,7 @@ test('two games fly home together through what they tell each other: one waits, 
       }
       hand.upFor = hand.left || hand.right ? hand.upFor + DT : 0;
       const other = seenBy[1 - index];
-      farm.update(DT, { wings: { left: still(hand.left ? 1 : 0), right: still(hand.right ? 1 : 0) }, flaps, flock: other ? [{ x: other.d, home: other.s >= STATES.indexOf('door') }] : [{ x: 0, home: false }] });
+      farm.update(DT, { wings: { left: still(hand.left ? 1 : 0), right: still(hand.right ? 1 : 0) }, flaps, flock: other ? [{ x: other.d, home: other.s >= STATES.indexOf('door'), carried: other.s === STATES.indexOf('carried') }] : [{ x: 0, home: false }] });
       seenBy[index] = wireFor(farm);
     });
     if (games[0].chick.flockWait) waited += DT;

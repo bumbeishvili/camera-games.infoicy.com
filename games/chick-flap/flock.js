@@ -76,13 +76,14 @@ export function friendFrom(at, ghost, finished = false) {
 }
 
 /**
- * The friends' chicks, as the rules want them: each { x, home, gone }. One nothing has come from yet is at the
- * start, and one whose game has ended is home.
+ * The friends' chicks, as the rules want them: each { x, home, gone, carried }, carried being on the mother hen's
+ * back. One nothing has come from yet is at the start, and one whose game has ended is home.
  */
 export function flockFrom(ghosts, end) {
   return ghosts.map(({ friend, shown }) => ({
     x: shown ? (shown.home ? end : shown.x) : 0,
     home: Boolean(shown?.home),
     gone: Boolean(friend.gone),
+    carried: Boolean(shown?.carried && !shown.home),
   }));
 }
