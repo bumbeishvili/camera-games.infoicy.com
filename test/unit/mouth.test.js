@@ -121,6 +121,10 @@ test('one frame of a wide mouth doesn\'t open it, and one lost frame doesn\'t sh
   // A glitch: wide open for a single frame.
   const glitch = feed(monitor, [{ open: 0.45 }, { open: 0.01 }, { open: 0.01 }, { open: 0.01 }], clock);
   assert.ok(glitch.every((snapshot) => snapshot.status === 'closed'));
+  // Wide open for three frames, which takes it over its line for less than a tenth of a second, and shut again.
+  const brief = feed(monitor, [...times(3, { open: 0.45 }), ...times(6, { open: 0.01 })], clock);
+  assert.ok(brief.some((snapshot) => snapshot.openness >= monitor.line), 'it did go over its line');
+  assert.ok(brief.every((snapshot) => snapshot.status === 'closed'), 'a mouth has to stay over its line for about a tenth of a second');
   // Really open, and the tracker loses the face for a frame, and then two more.
   assert.equal(last(feed(monitor, times(12, { open: 0.4 }), clock)).status, 'open');
   assert.equal(last(feed(monitor, [null], clock)).status, 'open');

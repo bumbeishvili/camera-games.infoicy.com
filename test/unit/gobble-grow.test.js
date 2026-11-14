@@ -396,14 +396,19 @@ test('once the creature has grown, what was too big can be eaten: the middle kin
     soup.foods = soup.foods.filter((each) => each !== food);
     return soup.eaten > before;
   };
+  // Eats small things until the creature can eat this many kinds, and no more than a world's worth of them.
+  const growUntil = (kinds) => {
+    for (let bite = 0; bite < 12 && kindsEdible(soup.creature.r) < kinds; bite += 1) eatSmall();
+    assert.equal(kindsEdible(soup.creature.r), kinds, `${kinds} kinds can be eaten after ${soup.eaten} bites`);
+  };
   assert.equal(tryKind(1), false);
   assert.equal(tryKind(2), false);
-  while (kindsEdible(soup.creature.r) < 2) eatSmall();
+  growUntil(2);
   const unlocks = () => events.filter((event) => event.type === 'unlock').map((event) => event.kind);
   assert.deepEqual(unlocks(), [1], 'it says so, once');
   assert.equal(tryKind(2), false, 'the biggest is still too big');
   assert.equal(tryKind(1), true);
-  while (kindsEdible(soup.creature.r) < 3) eatSmall();
+  growUntil(3);
   assert.deepEqual(unlocks(), [1, 2]);
   assert.equal(tryKind(2), true);
   assert.ok(soup.eaten < 12, 'with bites still to go');

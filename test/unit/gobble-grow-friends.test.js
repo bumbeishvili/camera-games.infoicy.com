@@ -99,6 +99,7 @@ test('together, everyone has the same things to eat, and as much as each would h
     const { children } = makeGame(count, { bites: 12 });
     for (const child of children) {
       assert.equal(child.soup.together, true);
+      assert.equal(child.soup.goal, 12 * count, 'as much as each would have alone, all added up');
       assert.equal(child.soup.goal, teamGoal(12, count));
       assert.ok(Number.isInteger(child.go.seed));
       assert.equal(child.go.seed, children[0].go.seed, 'the room gives everyone the same seed');
