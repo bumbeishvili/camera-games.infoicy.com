@@ -43,6 +43,7 @@ export class FarmView {
     this.time = 0;
     this.cam = 0;
     this.giraffe = null; // Giraffe's pictures, if they could be drawn.
+    this.clearOf = null; // Where a card over the farm starts across the screen, so the chick stands to its left.
     this.reset();
     window.addEventListener('resize', () => this.resize());
     this.resize();
@@ -56,7 +57,18 @@ export class FarmView {
     this.canvas.height = Math.round(this.height * this.ratio);
     this.unit = Math.min(this.width / UNITS_ACROSS, this.height / UNITS_DOWN);
     this.ground = this.height * GROUND_AT;
-    this.chickX = this.width * CHICK_AT;
+    this.chickX = this.chickAt();
+  }
+
+  /**
+   * How far across the screen the chick is: 0.3 of the way, or just to the left of a card over the farm, such as the
+   * title card on a wide screen. If there isn't room for it there, it stays where it is.
+   */
+  chickAt() {
+    const usual = this.width * CHICK_AT;
+    if (this.clearOf === null) return usual;
+    const beside = this.clearOf - this.unit * 1.1;
+    return beside < this.unit * 2.5 ? usual : Math.min(usual, beside);
   }
 
   /** A new game: nothing left over from the last one. */
@@ -168,6 +180,9 @@ export class FarmView {
   update(dt, farm) {
     this.time += dt;
     const { chick, fox } = farm;
+    // The chick slides over to where it's to stand on the screen, or is just there with reduced motion.
+    const at = this.chickAt();
+    this.chickX = this.reducedMotion ? at : this.chickX + (at - this.chickX) * (1 - Math.exp(-dt * 4));
     // The picture follows the chick, a moment behind, so a tumble doesn't jolt it.
     this.cam += (chick.x - this.cam) * (1 - Math.exp(-dt * 9));
     if (Math.abs(chick.x - this.cam) > 6) this.cam = chick.x;

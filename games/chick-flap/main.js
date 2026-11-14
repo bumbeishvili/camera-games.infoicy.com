@@ -484,6 +484,9 @@ class FlapGame {
 
   idle(dt, snapshot) {
     const { screen } = this.session;
+    // On the title card, the chick stands to the left of it, where it can be seen, if the screen is wide enough.
+    const card = screen === 'welcome' ? document.querySelector('#screen-welcome .title-card')?.getBoundingClientRect() : null;
+    this.view.clearOf = card?.width ? card.left : null;
     if (this.filmShown) {
       this.filmShown = false;
       document.body.dataset.film = 'off';

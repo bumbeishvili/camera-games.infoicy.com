@@ -185,6 +185,15 @@ body[data-flap-wings='one'][data-hands='left'] #flap-wing-right { display: none;
 /* During play it's in the bottom corner, clear of the wings' gauges. */
 .flap-film { width: min(15vw, 22vh); }
 
+/* On a narrow screen, such as a phone held upright, the band along the top is smaller, Giraffe's words go under it,
+   and the film up in the sky, so nothing hides anything else. */
+@media (max-width: 700px) {
+  :root { --camera-small: 110px; }
+  .flap-way { width: 76px; margin-right: 12px; }
+  .story { top: 100px; left: 12px; right: 12px; width: auto; transform: none; }
+  .flap-film { top: 184px; bottom: auto; }
+}
+
 /* ---------- the finish card ---------- */
 /* How long the hand was open is what the other games are about. Here it's the flaps, each hand's own, so both
    hands' columns show whichever hand is in play. */
