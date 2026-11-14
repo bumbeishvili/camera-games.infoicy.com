@@ -10,6 +10,33 @@ const farFrom = async (page, where) => {
   return at ? Math.hypot(at.x - where.x, at.y - where.y) : 999;
 };
 
+/**
+ * The squares of the sheet where the screen shows paint that the rules say can't be there: paper, or a part that
+ * doesn't take this paint and has none, well inside it (its neighbours all the same), so the lines' soft edges
+ * don't count. As [x, y] pairs.
+ */
+const spilt = (page, colour) => page.evaluate((paint) => {
+  const { painting, view } = window.__game;
+  const pixels = view.paint.getContext('2d').getImageData(0, 0, view.paint.width, view.paint.height);
+  const { owner } = painting;
+  const found = [];
+  for (let y = 1; y < 99; y += 1) {
+    for (let x = 1; x < 149; x += 1) {
+      const cell = y * 150 + x;
+      const here = owner[cell];
+      if (painting.paint[cell]) continue;
+      if (here >= 0 && painting.parts[here].colour === paint) continue;
+      let inside = true;
+      for (let j = -1; j <= 1 && inside; j += 1) for (let i = -1; i <= 1; i += 1) if (owner[cell + j * 150 + i] !== here) inside = false;
+      if (!inside) continue;
+      const px = Math.round((x + 0.5) * view.scale);
+      const py = Math.round((y + 0.5) * view.scale);
+      if (pixels.data[(py * pixels.width + px) * 4 + 3] > 0) found.push([x, y]);
+    }
+  }
+  return found;
+}, colour);
+
 test('the open hand is the brush: paint goes down where it moves and never over the lines, parts fill themselves in, and the last one ends the picture', async ({ page }) => {
   test.setTimeout(300_000);
   await startPlaying(page);
@@ -37,6 +64,9 @@ test('the open hand is the brush: paint goes down where it moves and never over 
   expect(onHead.drawn[0]).toBeGreaterThan(230);
   expect(onHead.drawn[2]).toBeLessThan(110);
   expect([onMuzzle.paint, onMuzzle.drawn[3]]).toEqual([null, 0]);
+  // And all over the sheet, what's drawn on the screen is inside the lines too: nothing shows on paper, or on a part
+  // that doesn't take yellow, away from the lines themselves.
+  expect(await spilt(page, 'yellow')).toEqual([]);
   expect([onPaper.paint, onPaper.drawn[3]]).toEqual([null, 0]);
   await shot(page, 'paint-inside-the-lines');
 
