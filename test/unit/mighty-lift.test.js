@@ -798,28 +798,25 @@ test('level 2: a star hangs above the line, had by lifting a little higher, and 
 });
 
 test('level 3: a heavy crate comes up slowly however quick the arm, and a basket comes up with it', () => {
-  const upAfter = (level, index) => {
-    const { game } = newGame({ level });
-    while (game.index < index) playThrough({ ...game, update: game.update.bind(game) }, 0) || oneLift(game, 6);
+  // How long a weight takes to get up to the line with the arm held over it from the start.
+  const secondsToUp = (game) => {
     let seconds = 0;
     while (!game.up && seconds < 10) {
       game.update(1 / 60, 1.2);
       seconds += 1 / 60;
     }
-    return { seconds, game };
+    return seconds;
   };
   const crate = newGame({ level: 3 });
   assert.equal(crate.game.rescue.kind, 'crate');
   assert.equal(crate.game.slow, true);
-  let seconds = 0;
-  while (!crate.game.up && seconds < 10) {
-    crate.game.update(1 / 60, 1.2);
-    seconds += 1 / 60;
-  }
+  const seconds = secondsToUp(crate.game);
   assert.ok(Math.abs(seconds - liftLevel(3).heavyRise) < 0.1, `a crate took ${seconds} seconds to come up`);
   assert.ok(liftLevel(3).heavyRise >= 1.2 && liftLevel(10).heavyRise <= 1.7);
-  const basket = upAfter(1, 0);
-  assert.ok(basket.seconds < 0.4, `a basket took ${basket.seconds}`);
+  const basket = newGame({ level: 1 });
+  assert.equal(basket.game.rescue.kind, 'basket');
+  const basketSeconds = secondsToUp(basket.game);
+  assert.ok(basketSeconds < 0.4, `a basket took ${basketSeconds}`);
   // It comes down with the arm as anything does, and what it has risen isn't lost by a pause on the way up.
   run(crate.game, 0.3, 0);
   assert.ok(crate.game.height < 0.1);

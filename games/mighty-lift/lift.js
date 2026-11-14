@@ -78,7 +78,6 @@ export class Arm {
     this.lately = []; // The last three readings: the middle one is used, so one wild frame from the tracker isn't.
     this.seen = false;
     this.unseenFor = Infinity;
-    this.reached = -Infinity; // The highest it's been at all, for the finish card.
     this.downSeen = false; // Whether the arm has been seen at rest while a lift was wanted: tries start from there.
     this.forgetTries();
     this.tryMade = false;
@@ -139,7 +138,6 @@ export class Arm {
     this.height = this.height === null ? middle : this.height + (middle - this.height) * (1 - Math.exp(-FOLLOW_RATE * dt));
     // Where it rests follows the arm down at once. It only comes up when the game says so: see restHere.
     if (this.height < this.rest) this.rest = this.height;
-    this.reached = Math.max(this.reached, this.height);
     if (measuring) this.best = Math.max(this.best ?? -Infinity, this.height);
     return this.lift;
   }
