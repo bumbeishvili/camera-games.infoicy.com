@@ -114,6 +114,9 @@
 //                                      screen however far apart each one's are, y how far down the screen, whether
 //                                      it can be seen, how far it's tipped and how much it's pouring, from 0 to 1,
 //                                      and p, its glove's 21 points, as in hand
+//   chick  { ms, d, y, v, l, r, s, n, c }  where their chick is in Flap, Little Chick!: how far along the track, how
+//                                      high, how fast, how far up each wing is, what it's doing, and how many flaps
+//                                      and pieces of corn it has. Everyone lays out the same track from the seed
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
@@ -511,6 +514,25 @@ export function cleanTag(message) {
   return { k: number(message.k, 0, 1_000_000, 0), n: number(message.n, 0, 1000, 0) };
 }
 
+/**
+ * Only what a chick in Flap, Little Chick! should hold, rounded: how far along the track it is, how high, how fast
+ * it's going, how far up each wing is, from 0 to 1, what it's doing, as a whole number (see STATES in
+ * games/chick-flap/flock.js), and how many flaps and pieces of corn it has.
+ */
+export function cleanChick(message) {
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    d: number(message.d, -10, 10_000, 2),
+    y: number(message.y, 0, 10, 2),
+    v: number(message.v, 0, 20, 2),
+    l: number(message.l, 0, 1, 2),
+    r: number(message.r, 0, 1, 2),
+    s: number(message.s, 0, 8, 0),
+    n: number(message.n, 0, 100_000, 0),
+    c: number(message.c, 0, 10_000, 0),
+  };
+}
+
 /** Only what a car message should hold, rounded, so nothing else can be passed on. */
 export function cleanCar(message) {
   return {
@@ -730,6 +752,10 @@ export class RaceRoom {
         for (const other of others) other.send({ t: message.t, from: meta.id, ...moved });
         break;
       }
+      case 'chick':
+        // Flap, Little Chick!: where their chick is, to everyone else.
+        for (const other of others) other.send({ t: 'chick', from: meta.id, ...cleanChick(message) });
+        break;
       case 'done':
         if (!meta.racing) return;
         player.setMeta({ ...meta, racing: false });

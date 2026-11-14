@@ -59,6 +59,8 @@
     blur: 0, // In pixels, for a moving hand or a poor camera.
     squeeze: 1, // Each hand's photo narrower across, as a hand turned part of the way to side-on looks.
     shorten: 1, // And shorter, as a hand tipped towards the camera looks, its wrist dropped.
+    leftShorten: null, // One hand shorter than the other, for a game where each hand does its own: instead of shorten.
+    rightShorten: null,
     sameHand: false, // Every photo drawn as the same hand in the same place: see PALM above.
   };
   const scene = { left: 'open', right: 'open', ...DEFAULTS };
@@ -133,7 +135,7 @@
     ctx.translate(centreX, centreY);
     ctx.rotate((scene.rotate * Math.PI) / 180);
     if (flip) ctx.scale(-1, 1);
-    ctx.scale(scene.squeeze, scene.shorten);
+    ctx.scale(scene.squeeze, scene[`${side}Shorten`] ?? scene.shorten);
     ctx.drawImage(image, -width / 2, -height / 2, width, height);
     ctx.restore();
   }

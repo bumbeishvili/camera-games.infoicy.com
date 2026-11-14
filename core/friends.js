@@ -339,6 +339,9 @@ export class FriendsRoom {
       this.events.onGo?.(message);
     } else if (['car', 'plane', 'score', 'hand', 'world', 'claimed', 'hit', 'pose', 'racket', 'ball', 'shot', 'runner', 'wiped', 'stand', 'ship', 'catcher', 'tank', 'walker', 'can', 'trooper', 'foes', 'tag'].includes(message.t)) {
       this.events.onMove?.(message.from, message);
+    } else if (message.t === 'chick') {
+      // Flap, Little Chick!: where a friend's chick is.
+      this.events.onMove?.(message.from, message);
     } else if (message.t === 'done') {
       this.events.onDone?.(message.from, message);
     }
