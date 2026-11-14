@@ -145,20 +145,29 @@ export const labelShown = (page, id) => page.evaluate((thing) => window.__game.g
 
 /**
  * Reads how bright each part of the picture is, frame by frame, as the child sees it. The yard is drawn again
- * just before each reading, as a 3D picture can only be read in the moment it's drawn.
+ * just before each reading, as a 3D picture can only be read in the moment it's drawn. It's made small in two
+ * steps, each smoothing, so that each part's reading is the average of all of it: made small in one step, each
+ * part is only a few of its pixels, and a camera gliding over the yard's fine detail reads as flicker that isn't there.
  */
 export const watchBrightness = (page, frames) => page.evaluate(async (count) => {
   const [wide, high] = [32, 18];
-  const small = document.createElement('canvas');
-  small.width = wide;
-  small.height = high;
-  const context = small.getContext('2d', { willReadFrequently: true });
+  const canvas = (across, down) => {
+    const made = document.createElement('canvas');
+    made.width = across;
+    made.height = down;
+    const drawing = made.getContext('2d', { willReadFrequently: true });
+    drawing.imageSmoothingQuality = 'high';
+    return drawing;
+  };
+  const middle = canvas(wide * 8, high * 8);
+  const context = canvas(wide, high);
   const { world } = window.__game;
   const reading = [];
   for (let i = 0; i < count; i += 1) {
     await new Promise((resolve) => requestAnimationFrame(resolve));
     world.render();
-    context.drawImage(world.renderer.domElement, 0, 0, wide, high);
+    middle.drawImage(world.renderer.domElement, 0, 0, wide * 8, high * 8);
+    context.drawImage(middle.canvas, 0, 0, wide, high);
     const { data } = context.getImageData(0, 0, wide, high);
     const cells = new Array(wide * high);
     for (let j = 0; j < cells.length; j += 1) cells[j] = (data[j * 4] + data[j * 4 + 1] + data[j * 4 + 2]) / 3;
