@@ -345,6 +345,9 @@ export class FriendsRoom {
     } else if (message.t === 'chick') {
       // Flap, Little Chick!: where a friend's chick is.
       this.events.onMove?.(message.from, message);
+    } else if (message.t === 'lifter') {
+      // Mighty Lift: how far up a friend's arm is.
+      this.events.onMove?.(message.from, message);
     } else if (message.t === 'done') {
       this.events.onDone?.(message.from, message);
     }

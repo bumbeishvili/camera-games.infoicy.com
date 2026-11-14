@@ -78,6 +78,8 @@ Arrow Meadow has no sounds of its own either, only voices: it plays Tank Patrol'
 
 Flap, Little Chick! has no sounds of its own either, only voices: it plays Tank Patrol's `birds.ogg` and `engine.ogg`, Leap Trail's `music.ogg`, `land.ogg` and `bump.ogg`, Mighty Moves' `whoosh-1.ogg` to `whoosh-3.ogg` and `cheer.ogg`, Robot Rescue's `boing.ogg`, Cannon Bay's `splash.ogg` and `wind.ogg`, and Spider Catcher's `home.ogg`, with the shared sounds in `core/audio/sfx/`.
 
+Mighty Lift has no sounds of its own either, only voices: it plays Cannon Bay's `creak.ogg` and `thud.ogg`, Leap Trail's `land.ogg`, Mighty Moves' music, `cheer.ogg`, `sparkle.ogg`, `bell.ogg` and `whoosh-1.ogg`, Spider Catcher's `home.ogg`, Robot Rescue's `unlock.ogg` and `boing.ogg`, and Tank Patrol's `birds.ogg`.
+
 The engine loop's CC-BY licence requires this credit to stay with the game: **"Car Engine Loop 96kHz, 4s" by qubodup, CC-BY 3.0, resampled and level adjusted.**
 
 ## Voices
@@ -88,7 +90,7 @@ The folders called `voice/ka/` were rendered with Microsoft's `ka-GE-EkaNeural` 
 
 ## Characters
 
-All ten characters in `core/body/roster.js`, and the worlds of High Five Racers, Leap Trail, Sky Wings, Robot Rescue, Tank Patrol, Cannon Bay, Spider Catcher, Bounce Back, Giraffe's Maze, Giraffe's Goal, Frost Arena and the games with a mission, with Robot Rescue's robots and Spider Catcher's spiders, are original designs made for these games.
+All ten characters in `core/body/roster.js`, and the worlds of High Five Racers, Leap Trail, Sky Wings, Robot Rescue, Tank Patrol, Cannon Bay, Spider Catcher, Bounce Back, Giraffe's Maze, Giraffe's Goal, Frost Arena and the games with a mission, with Robot Rescue's robots and Spider Catcher's spiders, are original designs made for these games. So are Mighty Lift's yard, its crane and the heavy things on it.
 
 So are the farm in Flap, Little Chick!, and its chick, fox, mother hen and duck, which are drawn by the game itself.
 
@@ -106,3 +108,4 @@ These are only used by the tests, and don't ship with the games' own folders. `t
 | `star-jumps.webm`, `jumps.webm` | [Jumping jacks and burpees](https://commons.wikimedia.org/wiki/File:Jumping_jacks_and_burpees.webm) | Taco fleur |
 | `squat.webm` | [Squat and Frontal Raise](https://commons.wikimedia.org/wiki/File:Squat_and_Frontal_Raise.webm) | Taco fleur |
 | `claps.webm`, `circles.webm`, `wings.webm`, `demo-fight.webm`, `demo-trail.webm` | Rendered with `tools/render_test_moves.py`, using the character Vita from [vrm-samples](https://github.com/madjin/vrm-samples), marked CC0 in its own metadata | Made for these tests |
+| `lifts.webm` | Rendered with `tools/render_test_moves.py`, using the character Vita from [vrm-samples](https://github.com/madjin/vrm-samples), marked CC0 in its own metadata | Made for these tests |

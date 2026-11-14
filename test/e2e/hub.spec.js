@@ -22,6 +22,7 @@ const GAMES = [
   { name: 'Arrow Meadow', folder: 'arrow-meadow', start: 'Pick up the bow' },
   { name: 'Giraffe’s Puzzles', folder: 'giraffe-puzzles', start: 'Fix the picture' },
   { name: 'Flap, Little Chick!', folder: 'chick-flap', start: 'Flap home!' },
+  { name: 'Mighty Lift', folder: 'mighty-lift', start: 'Choose your lifter' },
 ];
 
 test('the hub offers every game, and each one opens and comes back', async ({ page }) => {

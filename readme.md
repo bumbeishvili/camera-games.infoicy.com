@@ -14,6 +14,7 @@ Movement-based games for children, played in front of a webcam.
 | ![Giraffe's Garden](demos/gif/giraffe-garden.gif)<br>**Giraffe's Garden:** turn your hand over to water the garden | ![Giraffe's Goal](demos/gif/giraffe-goal.gif)<br>**Giraffe's Goal:** save penalties with your hand held up like a high five |
 | ![Frost Arena](demos/gif/frost-arena.gif)<br>**Frost Arena:** a team shooter in the snow for grown-up players, played with two hands in the air like two thumbs on a phone: an open hand is a thumb on the glass, dragged to walk on one side and to look round on the other, a closed one is a thumb lifted, and a thumb up fires | ![Arrow Meadow](demos/gif/arrow-meadow.gif)<br>**Arrow Meadow:** archery with both hands: one holds the bow, the other pulls the string back and opens to let the arrow fly |
 | ![Giraffe's Puzzles](demos/gif/giraffe-puzzles.gif)<br>**Giraffe's Puzzles:** put Giraffe's broken picture back together, carrying each piece with an open hand | ![Flap, Little Chick!](demos/gif/chick-flap.gif)<br>**Flap, Little Chick!:** bend your wrists back to flap a chick's wings, and fly it home before the fox |
+| ![Mighty Lift](demos/gif/mighty-lift.gif)<br>**Mighty Lift:** raise your arm to lift heavy things off your friends | |
 
 - Resting never costs anything.
 - Each game has 10 levels.

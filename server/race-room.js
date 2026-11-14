@@ -130,6 +130,11 @@
 //   chick  { ms, d, y, v, l, r, s, n, c }  where their chick is in Flap, Little Chick!: how far along the track, how
 //                                      high, how fast, how far up each wing is, what it's doing, and how many flaps
 //                                      and pieces of corn it has. Everyone lays out the same track from the seed
+//   lifter { ms, u, a, n, f, r }           how far up their arm is in Mighty Lift, as a share of the way to their
+//                                      own line, whether it's up at it, how many lifts they've made and friends
+//                                      they've freed, and whether they're resting. length is how many lifts a game
+//                                      has, and mode how long a hold is. Lifting one weight together, each game
+//                                      claims a rescue, by its number, as it's done there, and their bodies go as pose
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
@@ -590,6 +595,21 @@ export function cleanChick(message) {
   };
 }
 
+/**
+ * Only what a lifter in Mighty Lift should hold, rounded: how far up their arm is, as a share of the way to their
+ * own line, whether it's up at it, how many lifts they've made and friends they've freed, and whether they're resting.
+ */
+export function cleanLifter(message) {
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    u: number(message.u, 0, 2, 2),
+    a: message.a ? 1 : 0,
+    n: number(message.n, 0, 10_000, 0),
+    f: number(message.f, 0, 1000, 0),
+    r: message.r ? 1 : 0,
+  };
+}
+
 /** Only what a car message should hold, rounded, so nothing else can be passed on. */
 export function cleanCar(message) {
   return {
@@ -820,6 +840,10 @@ export class RaceRoom {
       case 'chick':
         // Flap, Little Chick!: where their chick is, to everyone else.
         for (const other of others) other.send({ t: 'chick', from: meta.id, ...cleanChick(message) });
+        break;
+      case 'lifter':
+        // Mighty Lift: each lifter's arm goes to the others.
+        for (const other of others) other.send({ t: 'lifter', from: meta.id, ...cleanLifter(message) });
         break;
       case 'done':
         if (!meta.racing) return;

@@ -1,0 +1,299 @@
+/* Mighty Lift's own display. What the body games share is in core/body/style.css. */
+
+/* ---------- which pieces each screen shows ---------- */
+.lift-top,
+.lift-meter,
+.warm-bar { display: none; }
+
+body[data-screen='countdown'] .lift-top,
+body[data-screen='playing'] .lift-top,
+body[data-screen='finishing'] .lift-top { display: flex; }
+
+body[data-screen='warmup'] .camera-frame { display: block; }
+
+body[data-screen='warmup'] .lift-meter,
+body[data-screen='countdown'] .lift-meter,
+body[data-screen='playing'] .lift-meter { display: block; }
+
+body[data-screen='warmup'] .warm-bar { display: flex; }
+
+body[data-screen='warmup'] .coach.is-visible,
+body[data-screen='playing'] .coach.is-visible { display: flex; }
+
+/* What to do is said along the top, clear of the weight and of whoever is under it. */
+body[data-screen='warmup'] .prompt,
+body[data-screen='bodycheck'] .prompt { display: flex; }
+
+body[data-screen='playing'] .prompt { top: clamp(84px, 13vh, 110px); }
+body[data-screen='warmup'] .prompt { top: 12px; }
+
+/* Big enough for a child across the room to see their arm go up in. */
+.body-frame { --camera-small: clamp(190px, 25vw, 350px); }
+
+/* How high the arm has to go is this game's own setting, so the one the other body games share is put away. */
+.choice:has(input[name='moveSize']) { display: none; }
+
+/* ---------- choosing ---------- */
+.choose-tip {
+  font-size: clamp(16px, 1.7vw, 21px);
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--ink-soft);
+}
+
+/* ---------- the warm-up: the child's own picture beside their lifter ---------- */
+body[data-screen='warmup'] .body-frame {
+  --warm-width: min(38vw, calc((100vh - 200px) * var(--camera-aspect)));
+  top: 110px;
+  bottom: auto;
+  left: clamp(50px, 6vw, 90px);
+  width: var(--warm-width);
+}
+
+/* Between the child's picture and their lifter, which is copying them. */
+body[data-screen='warmup'] .coach {
+  top: 70px;
+  bottom: auto;
+  right: auto;
+  left: calc(clamp(50px, 6vw, 90px) + 38vw + 16px);
+}
+
+body[data-screen='warmup'] .lift-meter {
+  top: 110px;
+  bottom: auto;
+  left: 8px;
+  width: clamp(34px, 4vw, 50px);
+  height: min(60vh, calc(100vh - 200px));
+}
+
+.warm-bar {
+  position: fixed;
+  z-index: 3;
+  right: 14px;
+  bottom: 12px;
+  gap: 12px;
+  align-items: center;
+}
+
+/* Smaller while playing, so that it never covers the weight. */
+body[data-screen='playing'] .coach { width: min(21vw, 42vh); }
+body[data-screen='playing'] .coach-text { font-size: clamp(18px, 2.2vw, 30px); }
+
+/* ---------- how far up the arm is, from resting at the bottom to its line at the top ---------- */
+.lift-meter {
+  position: fixed;
+  z-index: 3;
+  left: calc(12px + var(--camera-small) + 14px);
+  bottom: 12px;
+  width: clamp(30px, 3.4vw, 44px);
+  height: calc(var(--camera-small) / var(--camera-aspect) + 8px);
+  --camera-small: clamp(190px, 25vw, 350px);
+  background: rgba(18, 48, 77, 0.6);
+  border: 3px solid #fff;
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.meter-zone {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 10%;
+}
+
+.meter-zone-up { top: 0; background: #2fd16f; }
+
+.meter-middle {
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 9%;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.meter-dot {
+  position: absolute;
+  left: 50%;
+  bottom: 9%;
+  width: 76%;
+  aspect-ratio: 1;
+  transform: translate(-50%, 50%);
+  background: var(--sun);
+  border: 3px solid #fff;
+  border-radius: 50%;
+}
+
+.lift-meter[data-zone='up'] .meter-dot { background: #2fd16f; }
+
+/* ---------- along the top: the lifts, the prizes, and the friends who are free ---------- */
+.lift-top {
+  position: fixed;
+  z-index: 3;
+  top: 8px;
+  left: 10px;
+  right: 66px;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.freed-row {
+  list-style: none;
+  margin: 0 0 0 6px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.freed-row li {
+  width: clamp(38px, 4.4vw, 54px);
+  height: clamp(38px, 4.4vw, 54px);
+  display: grid;
+  place-items: center;
+  background: #fff;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 3px 10px rgba(18, 48, 77, 0.25);
+  font-size: clamp(22px, 2.6vw, 32px);
+  line-height: 1;
+  overflow: hidden;
+}
+
+.freed-row img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.finish-faces {
+  justify-content: center;
+  margin: 0;
+}
+
+.finish-faces:empty { display: none; }
+
+.finish-faces li { box-shadow: none; background: var(--surface-soft); }
+
+.finish-prizes {
+  font-size: clamp(16px, 1.8vw, 21px);
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.finish-prizes:empty { display: none; }
+
+@media (max-width: 620px) {
+  .lift-top { flex-wrap: wrap; right: 10px; }
+}
+
+/* Something new for this level, pointed out the first time it comes along. */
+.lift-new {
+  position: fixed;
+  z-index: 3;
+  top: calc(16px + clamp(58px, 6.4vw, 78px));
+  left: 50%;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 18px 7px 12px;
+  font-size: clamp(18px, 2.2vw, 26px);
+  font-weight: 700;
+  background: var(--surface);
+  border: 3px solid var(--sun);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+}
+
+body[data-screen='playing'] .lift-new { display: inline-flex; }
+
+.lift-new.is-showing { opacity: 1; transform: translateX(-50%) translateY(4px); }
+
+.lift-new-lead { color: var(--ink-soft); }
+
+.lift-new-mark { font-size: 1.3em; line-height: 1; }
+
+/* A prompt and the label would share the same place, so the prompt goes under it. */
+body[data-screen='playing']:has(.lift-new.is-showing) .prompt { top: calc(clamp(84px, 13vh, 110px) + 58px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .lift-new, .lift-new.is-showing { transform: translateX(-50%); }
+}
+
+/* ---------- lifting with friends ---------- */
+/* Each friend's name and face over their lifter. */
+.lifter-mark {
+  position: fixed;
+  z-index: 2;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.lifter-mark[data-where='none'] { display: none; }
+
+.lifter-mark-face {
+  position: absolute;
+  left: -18px;
+  top: -58px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  background: var(--surface-soft);
+  box-shadow: 0 2px 8px rgba(18, 48, 77, 0.3);
+}
+
+.lifter-mark-name {
+  position: absolute;
+  top: -20px;
+  left: 0;
+  transform: translateX(-50%);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Everyone's count, the most first, top right. */
+.lift-scores {
+  position: fixed;
+  z-index: 3;
+  top: 84px;
+  right: 12px;
+  margin: 0;
+  padding: 8px 10px;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  min-width: 150px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow);
+}
+
+.lift-scores[hidden] { display: none; }
+body:not([data-screen='playing']):not([data-screen='countdown']):not([data-screen='finishing']) .lift-scores { display: none; }
+
+.lift-scores li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.lift-scores li.is-you { color: var(--accent); }
+.lift-scores[data-counts='freed'] strong::before { content: '♥ '; color: #e2513f; }
+.lift-scores[data-counts='lifts'] strong::before { content: '▲ '; color: #2fd16f; }

@@ -865,6 +865,36 @@ const FILMS = {
       return { flaps, cleared, clean, corn, tumbles, splashes, bonks };
     }),
   },
+  'mighty-lift': {
+    settings: { levels: { 'mighty-lift': 2 }, lifts: 12 },
+    css: '.lift-meter { display: none !important; }',
+    async ready(page) {
+      await footage(page, 'lifts', { from: 0.3, playing: false });
+      await page.locator('#start').click();
+      await page.locator('#lift-start').click();
+      await screenIs(page, 'warmup');
+      await page.locator('#warm-skip').click();
+      await screenIs(page, 'playing');
+      await wait(page, 600);
+    },
+    async play(page) {
+      // The right arm goes right up and holds it there while the friend scrambles out and the star is had, and a
+      // moment after they're free it comes down with care, and up again for the next: the footage goes on from where
+      // the person in it starts lowering their arm, and back to its start for the next lift.
+      const started = Date.now();
+      while (Date.now() - started < 12_000) {
+        await footage(page, 'lifts', { from: 1.2, playing: true });
+        await page.waitForFunction(() => window.__game.lifting.phase === 'freed', null, { timeout: 20_000 });
+        await wait(page, 700);
+        await footage(page, 'lifts', { from: 5.1, playing: true });
+        await page.waitForFunction(() => window.__game.lifting.phase !== 'freed', null, { timeout: 20_000 });
+        // Down, and resting there until the next friend is in.
+        await footage(page, 'lifts', { from: 0.6, playing: false });
+        await page.waitForFunction(() => window.__game.lifting.phase === 'lifting', null, { timeout: 20_000 });
+      }
+    },
+    report: (page) => page.evaluate(() => window.__game.lifting.stats),
+  },
   'balloon-pop': {
     settings: { reach: 'none', pace: 'medium' },
     async ready(page) {
