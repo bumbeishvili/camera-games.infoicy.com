@@ -13,6 +13,7 @@ Movement-based games for children, played in front of a webcam.
 | ![Bounce Back](demos/gif/bounce-back.gif)<br>**Bounce Back:** hit a big, slow ball over the net with an open hand | ![Giraffe's Maze](demos/gif/giraffe-maze.gif)<br>**Giraffe's Maze:** lead Giraffe through a maze with an open hand |
 | ![Giraffe's Garden](demos/gif/giraffe-garden.gif)<br>**Giraffe's Garden:** turn your hand over to water the garden | ![Giraffe's Goal](demos/gif/giraffe-goal.gif)<br>**Giraffe's Goal:** save penalties with your hand held up like a high five |
 | ![Frost Arena](demos/gif/frost-arena.gif)<br>**Frost Arena:** a team shooter in the snow for grown-up players, played with two hands in the air like two thumbs on a phone: an open hand is a thumb on the glass, dragged to walk on one side and to look round on the other, a closed one is a thumb lifted, and a thumb up fires | |
+| ![Giraffe's Puzzles](demos/gif/giraffe-puzzles.gif)<br>**Giraffe's Puzzles:** put Giraffe's broken picture back together, carrying each piece with an open hand | |
 
 - Resting never costs anything.
 - Each game has 10 levels.
