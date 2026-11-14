@@ -39,6 +39,12 @@ const RACE_SECONDS = 180; // Against each other, everyone's picture is done, or 
 const BRUSH_LEVEL = 0.5;
 const BIRDS_LEVEL = 0.1;
 const SEND_EVERY_MS = 100; // With friends, the strokes painted go to them 10 times a second.
+// How far down the camera picture the middle of the hand can be with the whole of an open hand still in it, as
+// shares of its height: its fingers reach up a good way, so not near the top, and its wrist may go off the bottom.
+const HAND_BAND = { top: 0.24, bottom: 0.9 };
+// What core/glove.js spreads over the field it's given: the camera picture from a tenth of the way down, 0.78 of
+// its height and 0.8 of its width.
+const GLOVE_VIEW = { top: 0.1, high: 0.78, wide: 0.8 };
 // Painting with friends, each on their own computer. See core/friends-ui.js for what each of these is.
 const PAINT_WORDS = {
   toggle: 'Play with friends',
@@ -364,18 +370,22 @@ class PaintGame {
   /* ---------- each frame ---------- */
 
   /**
-   * The glove follows the hand in play over the desk. The middle of the camera picture covers the desk, with the
-   * same measure across and down, so a circle drawn in the air is a circle on the sheet, and reach help makes it
-   * cover more, so a smaller movement goes further.
+   * The glove follows the hand in play over the desk. The brush is the middle of the hand, so the top of the sheet
+   * has to be where the middle of the hand can get to with its fingers still in the camera picture: a band of the
+   * picture, HAND_BAND, covers the desk from top to bottom, with the same measure across as down, so a circle drawn
+   * in the air is a circle on the sheet. Reach help makes a narrower band cover it, round the same middle, so a
+   * smaller movement goes further.
    */
   followHand(dt, snapshot) {
     const { desk, palmSize } = this.view;
     const gain = REACH[this.settings.paintReach] ?? REACH.little;
     const aspect = this.session.camera.aspect;
-    // What the glove follows is the middle 0.8 of the camera picture's width and 0.78 of its height: see core/glove.js.
-    const height = desk.height * gain;
-    const width = Math.max(desk.width * gain, height * aspect * (0.8 / 0.78));
-    this.gloveOffset = { x: desk.left - (width - desk.width) / 2, y: desk.top - (height - desk.height) / 2 };
+    const middle = (HAND_BAND.top + HAND_BAND.bottom) / 2;
+    const half = (HAND_BAND.bottom - HAND_BAND.top) / 2 / gain;
+    // The glove is placed on a field that the middle of the camera picture fills: see GLOVE_VIEW.
+    const height = (desk.height * GLOVE_VIEW.high) / (half * 2);
+    const width = Math.max(height * aspect * (GLOVE_VIEW.wide / GLOVE_VIEW.high), desk.width * gain * 1.1);
+    this.gloveOffset = { x: desk.left + desk.width / 2 - width / 2, y: desk.top - ((middle - half - GLOVE_VIEW.top) / GLOVE_VIEW.high) * height };
     for (const [hand, glove] of Object.entries(this.gloves)) {
       if (hand !== snapshot.side) glove.hide();
       else glove.follow(snapshot[hand], dt, { aspect, palmSize, width, height });
@@ -446,6 +456,12 @@ class PaintGame {
     // During the countdown the glove comes out, so the child can find their hand.
     if (screen === 'countdown') this.followHand(dt, snapshot);
     else for (const glove of Object.values(this.gloves)) glove.hide();
+    // Behind the title card is the level's own picture: a grown-up may just have chosen another level.
+    if (screen === 'welcome' && this.painting.level !== this.session.levels.current) {
+      this.painting = this.newPainting(this.session.levels.current);
+      this.view.setPainting(this.painting);
+      this.showProgress();
+    }
     this.view.drawMarks(this.painting.takeMarks());
     this.view.update(dt, this.painting);
   }

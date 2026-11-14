@@ -230,6 +230,30 @@ test('a grown-up\'s choices: a bigger brush, how much of a part is enough, and r
   expect(await page.evaluate(() => window.__game.session.settings.paintDone)).toBe('some');
 });
 
+for (const reach of ['none', 'lots']) {
+  test(`the whole desk is in reach with reach help ${reach}: an open hand gets to every corner of the sheet and the pots at each end, still whole in the camera's picture`, async ({ page }) => {
+    test.setTimeout(180_000);
+    // Level 9 has the longest row of pots.
+    await startPlaying(page, { paintReach: reach, levels: { [GAME]: 9 } });
+    const { pots } = await state(page);
+    expect(pots.length).toBe(9);
+    const places = [{ x: 3, y: 3 }, { x: 147, y: 3 }, { x: 147, y: 97 }, { x: 3, y: 97 }, { x: pots[0].x, y: pots[0].y }, { x: pots.at(-1).x, y: pots.at(-1).y }];
+    for (const where of places) {
+      await leadHand(page, { target: where });
+      await expectSoon(() => farFrom(page, where), { timeout: 40_000 }).toBeLessThan(3);
+      await page.waitForTimeout(400);
+      // All of the hand is in the picture there: it's seen, and it's open, so it paints and dips.
+      const hand = await page.evaluate(() => {
+        const { right } = window.__game.monitor.snapshot;
+        return { status: right.status, reason: right.reason ?? null };
+      });
+      expect(hand, `at ${where.x}, ${where.y}`).toEqual({ status: 'open', reason: null });
+    }
+    await shot(page, `paint-reach-${reach}`);
+    await stopHand(page);
+  });
+}
+
 test('with the left hand, the game is played the same, and Giraffe stands on the other side', async ({ page }) => {
   test.setTimeout(150_000);
   await startPlaying(page, { hands: 'left' });
