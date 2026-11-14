@@ -42,6 +42,7 @@ const SPOKEN_AT_MOST = 2; // Each prompt is spoken this many times in a game, an
 const BIRDS_LEVEL = 0.1;
 const MUSIC_LEVEL = 0.13;
 const ENGINE_LEVEL = 0.1;
+const WIND_LEVEL = 0.3;
 
 // With friends, each on their own computer: see core/friends-ui.js for what each of these is.
 const FLAP_WORDS = {
@@ -150,6 +151,7 @@ class FlapGame {
     this.spokenTimes = new Map();
     this.lastPromptKey = null;
     this.engineOn = false;
+    this.windOn = false;
   }
 
   /* ---------- the grown-ups' choices ---------- */
@@ -282,12 +284,27 @@ class FlapGame {
     sound.startLoop('music', MUSIC_LEVEL);
     this.story.say('giraffe', INTRO);
     this.storyFor = STORY_SECONDS;
-    // Whatever is first in the way has its label as it comes.
-    const first = this.farm.things.find((thing) => thing.type !== 'zone');
-    if (first) this.introduceThing(first);
+    this.introduceAhead();
+    // And the corn, by the first piece that's still there, once what's in the way has had its label.
+    const { farm } = this;
+    if (farm.plan.corn) {
+      this.view.introduce('corn', () => {
+        const piece = farm.corn.find((each) => !each.taken && each.x > farm.chick.x + 1);
+        return piece ? { x: piece.x, h: piece.h } : null;
+      });
+    }
   }
 
-  /** A thing's label, the first time one of its kind comes along: by the thing, while it's still ahead. */
+  /**
+   * The next things in the way have their labels as they come onto the screen, the first time one of each kind
+   * comes along in a game: a gust of wind, and what's in it.
+   */
+  introduceAhead() {
+    const ahead = this.farm.things.filter((thing) => !thing.done).slice(0, 2);
+    for (const thing of ahead) this.introduceThing(thing);
+  }
+
+  /** A thing's label: by the thing, while it's still ahead. */
   introduceThing(thing) {
     const { farm, view } = this;
     const key = thing.type === 'zone' ? 'gust' : thing.kind;
@@ -335,7 +352,9 @@ class FlapGame {
         this.showCounts();
         break;
       case 'gust':
-        sound.play('gust', { gain: 0.2 });
+        // The wind is heard for as long as the chick is in it: see update().
+        sound.startLoop('wind', WIND_LEVEL);
+        this.windOn = true;
         break;
       case 'tractor':
         sound.startLoop('engine', ENGINE_LEVEL);
@@ -381,9 +400,7 @@ class FlapGame {
           // The hint for that kind of thing has done its job.
           if ((thing.type === 'water' && this.hint === 'glide') || (thing.type === 'over' && this.hint === 'under')) this.hint = null;
         }
-        // The next thing of a new kind has its label as it comes into view.
-        const next = farm.things.find((each) => !each.done && each !== thing);
-        if (next) this.introduceThing(next);
+        this.introduceAhead();
         this.showProgress();
         break;
       }
@@ -451,6 +468,11 @@ class FlapGame {
     for (const side of ['left', 'right']) this.missingFor[side] = this.reading.wings[side].seen ? 0 : this.missingFor[side] + dt;
     // A chick waiting for a slower one, flying home together, says so.
     if (farm.chick.flockWait) view.introduce('flock', () => (farm.chick.flockWait ? { x: farm.chick.x, h: 1.1 } : null));
+    // Out of the gust, or down on the ground in it, the wind dies away.
+    if (this.windOn && !(farm.chick.air && farm.gustAt(farm.chick.x))) {
+      session.sound.stopLoop('wind');
+      this.windOn = false;
+    }
     view.update(dt, farm);
     this.showFilm();
     if (this.storyFor > 0) {
@@ -562,13 +584,16 @@ class FlapGame {
     if (waiting) {
       // The chick waits for as long as it takes, and after a while it's said that resting is fine.
       if (farm.restFor > RESTING_AFTER) return this.once('resting', RESTING);
-      if (chick.waitFor < HINT_AFTER) return quiet();
-      // A hand the game needs that isn't in the picture is asked for: the hand in play, and then both.
       const play = snapshot.side;
       const other = play === 'left' ? 'right' : 'left';
+      // Something that takes both wings: said as soon as one alone has been tried and didn't do it, and the other
+      // hand is asked for if it isn't in the picture.
+      if (!this.single && waiting.wings === 2 && waiting.fails >= 1) {
+        return this.missingFor[other] > MISSING_AFTER ? this.once('show-both', SHOW_BOTH) : this.once('both', BOTH_HINT);
+      }
+      if (chick.waitFor < HINT_AFTER) return quiet();
+      // The hand in play is asked for if it isn't in the picture, and otherwise it's said what to do.
       if (this.missingFor[play] > MISSING_AFTER && needed && !needed.key.startsWith('closed')) return this.once(needed.key, needed.text, { side: needed.side });
-      if (!this.single && this.missingFor[other] > MISSING_AFTER && waiting.wings === 2) return this.once('show-both', SHOW_BOTH);
-      if (!this.single && waiting.wings === 2 && waiting.fails >= 1) return this.once('both', BOTH_HINT);
       return this.once('flap', FLAP_HINT);
     }
     // After a splash or a bump, what to do is said as the next thing of that kind comes.
@@ -587,7 +612,9 @@ class FlapGame {
     sound.stopLoop('birds');
     sound.stopLoop('music');
     if (this.engineOn) sound.stopLoop('engine');
+    if (this.windOn) sound.stopLoop('wind');
     this.engineOn = false;
+    this.windOn = false;
     this.story.hide();
     const { flaps } = this.farm.stats;
     // The friends' finish cards fill in with how long this chick took, and how many flaps it made.
@@ -743,7 +770,7 @@ new GameSession({
       bump: new URL('../leap-trail/audio/bump.ogg', import.meta.url),
       boing: new URL('../robot-rescue/audio/boing.ogg', import.meta.url),
       splash: new URL('../cannon-bay/audio/splash.ogg', import.meta.url),
-      gust: new URL('../high-five-racers/audio/rush.ogg', import.meta.url),
+      wind: new URL('../cannon-bay/audio/wind.ogg', import.meta.url),
       engine: new URL('../tank-patrol/audio/engine.ogg', import.meta.url),
       hen: new URL('../spider-catcher/audio/home.ogg', import.meta.url),
       cheer: new URL('../mighty-moves/audio/cheer.ogg', import.meta.url),

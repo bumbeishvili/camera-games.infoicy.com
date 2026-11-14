@@ -323,7 +323,8 @@ export class Farm {
     this.started = false;
     // The chick: where it is along the track, how high, how fast it's rising, and what it's doing: 'run' (on the
     // ground or in the air), 'tumble', 'splash', 'carried' by the hen, 'ride' on the duck, 'door', at the hen house
-    // waiting for the flock, and 'home'. waiting is the thing it has stopped at, and behind the tractor it's following.
+    // waiting for the flock, and 'home'. waiting is the thing it has stopped at, waitFor how long it has stood there,
+    // and behind the tractor it's following.
     this.chick = { x: 0, h: 0, vy: 0, state: 'run', t: 0, air: false, dizzy: 0, waiting: null, waitFor: 0, behind: null, flockWait: false };
     this.wings = { left: { lift: 0, up: false, seen: false }, right: { lift: 0, up: false, seen: false } };
     this.flock = [];
@@ -547,7 +548,7 @@ export class Farm {
   /** Running and flying: the chick's own frame. */
   fly(dt, flaps, open) {
     const { chick } = this;
-    if (this.flapUp(flaps, open)) chick.waitFor = 0;
+    this.flapUp(flaps, open);
     // Off the end of a log or a bale, it's in the air.
     if (!chick.air && chick.h > this.floorAt(chick.x) + 0.001) chick.air = true;
     const ups = Number(this.wings.left.up) + Number(this.wings.right.up);
