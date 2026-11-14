@@ -397,9 +397,10 @@ test('with the wrong paint nothing lands: the part shows which pot it wants, and
   assert.ok(muzzle.covered > 100);
   assert.equal(painting.stats.helped, 0);
 
-  // A child who doesn't go: after a good while the brush is given the paint, and it lands.
+  // A child who doesn't go: after a good while, 6 seconds, the brush is given the paint, and it lands. (In seconds,
+  // not EXTRAS.helpAfter, so a child left waiting much longer would be noticed.)
   const stuck = makePainting({ level: 1 });
-  hold(stuck, EXTRAS.helpAfter - 0.2, at);
+  hold(stuck, 5.8, at);
   assert.equal(stuck.brush.colour, 'yellow');
   assert.equal(part(stuck, 'muzzle').covered, 0);
   hold(stuck, 0.6, at);
@@ -603,8 +604,8 @@ test('level 4: the big brush lying on the sheet makes the brush much bigger for 
   for (const each of [ordinary, painting]) sweep(each, { x: 50, y: 92 }, { x: 110, y: 92 });
   assert.ok(part(painting, 'sea').covered > part(ordinary, 'sea').covered * 1.4);
   assert.ok(roller.left < EXTRAS.rollerSeconds && roller.left > EXTRAS.rollerSeconds - 3);
-  // Used up, the brush is its own size again.
-  hold(painting, EXTRAS.rollerSeconds, { x: 20, y: 20 });
+  // Used up after 10 seconds of painting in all, the brush is its own size again.
+  hold(painting, 10, { x: 20, y: 20 });
   assert.equal(roller.left, 0);
   assert.equal(painting.radius, BRUSHES.medium);
   assert.equal(said(painting, 'roller-done').length, 1);
