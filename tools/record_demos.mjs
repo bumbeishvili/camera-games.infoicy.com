@@ -725,6 +725,49 @@ const FILMS = {
       return { tags, shots, hits, reloads, walked: Math.round(walked) };
     }),
   },
+  'giraffe-paint': {
+    settings: { paintReach: 'lots', paintBrush: 'big', levels: { 'giraffe-paint': 1 } },
+    css: '.camera-frame { --camera-small: 22vw !important; } .paint-film { display: none !important; }',
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: null, right: 'open', scale: 0.62 }));
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await wait(page, 600);
+    },
+    async play(page) {
+      // The open hand goes where a child would next (guide in paint.js): to the pot for the paint a part asks for,
+      // and then along what's still to paint of it, a little unsteadily, part after part, until the picture is done
+      // and comes to life.
+      await page.evaluate(() => new Promise((done) => {
+        let x = 0;
+        let y = 0;
+        let finishedAt = 0;
+        const started = performance.now();
+        const timer = setInterval(() => {
+          const { game, painting, view } = window.__game;
+          const at = game.brushOnSheet('right');
+          const wanted = painting.guide(at ?? undefined);
+          const t = (performance.now() - started) / 1000;
+          if (at && wanted) {
+            x += (((wanted.x + Math.sin(t * 5.1) * 2 - at.x) * view.unit) / innerWidth) * 1280 * 0.12;
+            y += (((wanted.y + Math.cos(t * 3.7) * 2 - at.y) * view.unit) / innerHeight) * 720 * 0.12;
+          }
+          x = Math.max(-780, Math.min(220, x));
+          y = Math.max(-260, Math.min(240, y));
+          window.__camera.show({ left: null, right: 'open', scale: 0.62, rightOffsetX: x, rightOffsetY: y });
+          if (painting.done && !finishedAt) finishedAt = t;
+          if ((finishedAt && t > finishedAt + 3.5) || t > 40) {
+            clearInterval(timer);
+            done();
+          }
+        }, 33);
+      }));
+    },
+    report: (page) => page.evaluate(() => {
+      const { painting } = window.__game;
+      return { done: painting.done, progress: Math.round(painting.progress * 100), cells: painting.stats.cells };
+    }),
+  },
   'balloon-pop': {
     settings: { reach: 'none', pace: 'medium' },
     async ready(page) {

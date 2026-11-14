@@ -19,6 +19,7 @@ const GAMES = [
   { name: 'Giraffe’s Garden', folder: 'giraffe-garden', start: 'Water the garden' },
   { name: 'Giraffe’s Goal', folder: 'giraffe-goal', start: 'Go in goal' },
   { name: 'Frost Arena', folder: 'frost-arena', start: 'Join the team' },
+  { name: 'Giraffe’s Paint Box', folder: 'giraffe-paint', start: 'Start painting' },
 ];
 
 test('the hub offers every game, and each one opens and comes back', async ({ page }) => {
