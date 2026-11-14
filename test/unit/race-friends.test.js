@@ -3,6 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanBall, cleanCar, cleanFoes, cleanHand, cleanName, cleanRacket, cleanShip, cleanShot, cleanTag, cleanTank, cleanTrooper, COMES_BACK_WITHIN_MS, idFor, makeCode, MAX_RACERS, MOST_BYTES, MOST_FOES, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
+import { cleanLifter } from '../../server/race-room.js';
 import { BODY_KEYS } from '../../games/mighty-moves/clips.js';
 import { Track } from '../../core/friends.js';
 import { CarTrack, codeInLink } from '../../games/high-five-racers/friends.js';
@@ -777,4 +778,48 @@ test('in Cannon Bay, each ship goes to the other with only what a ship should ho
   assert.deepEqual(ben.last('done'), { t: 'done', from: 'aaaaaaaa', ms: 180_000, n: 42, w: 1 });
   const biggest = JSON.stringify({ t: 'ship', from: 'abcdefghijkl', ...cleanShip({ ms: 3_599_999, x: -1999.99, z: -1999.99, h: -6.999, s: 99.9, v: 0.99, f: 999_999, r: 1 }) });
   assert.ok(biggest.length < 160, `${biggest.length} long`);
+});
+
+test('in Mighty Lift up to four lift together, and each one\'s arm goes to the others with only what it should hold', () => {
+  assert.equal(mostIn('mighty-lift'), 4);
+  const { join } = makeRoom(mostIn('mighty-lift'));
+  const [ana, ben, cal, dee] = ['aaaaaaaa', 'bbbbbbbb', 'cccccccc', 'dddddddd'].map((id) => join(id));
+  assert.equal(join('eeeeeeee'), null, 'a fifth is told it\'s full');
+  // How many lifts and how long a hold is are the host\'s, and so is whether it\'s together.
+  ana.say({ t: 'hi', name: 'Ana', driver: 'giraffe', level: 4, length: 8, mode: 'long', team: 1 });
+  ben.say({ t: 'hi', name: 'Ben', driver: 'kit', level: 9, length: 12, mode: 'short', team: 0 });
+  for (const each of [ana, ben, cal, dee]) each.say({ t: 'ready' });
+  const go = dee.last('go');
+  assert.deepEqual([go.level, go.length, go.mode, go.team], [4, 8, 'long', 1]);
+  assert.deepEqual(go.racers, ['aaaaaaaa', 'bbbbbbbb', 'cccccccc', 'dddddddd']);
+  assert.equal(ana.last('go').seed, go.seed, 'and the same friends are under the same things for everyone');
+
+  ben.say({ t: 'lifter', ms: 1500.4, u: 1.0449, a: 1, n: 3, f: 2, r: 0, picture: 'not this', name: 'Ben' });
+  const heard = { t: 'lifter', from: 'bbbbbbbb', ms: 1500, u: 1.04, a: 1, n: 3, f: 2, r: 0 };
+  for (const each of [ana, cal, dee]) assert.deepEqual(each.last('lifter'), heard);
+  assert.equal(ben.last('lifter'), undefined, 'nobody hears their own');
+  // Their bodies go as they do in a fight, for each one\'s lifter to copy.
+  const body = Array.from({ length: POSE_NUMBERS }, (_, index) => index / 10);
+  cal.say({ t: 'pose', ms: 1600, p: body });
+  assert.deepEqual(ana.last('pose'), { t: 'pose', from: 'cccccccc', ms: 1600, p: body });
+
+  // Lifting one weight together, each rescue goes to whoever\'s game says first that it\'s done, and everyone hears.
+  cal.say({ t: 'claim', k: 0 });
+  ana.say({ t: 'claim', k: 0 });
+  for (const each of [ana, ben, cal, dee]) assert.deepEqual(each.heard.filter(({ t }) => t === 'claimed'), [{ t: 'claimed', k: 0, by: 'cccccccc' }]);
+  dee.say({ t: 'done', ms: 60_000, n: 9, w: 1 });
+  assert.deepEqual(ana.last('done'), { t: 'done', from: 'dddddddd', ms: 60_000, n: 9, w: 1 });
+});
+
+test('a lifter message holds only what it should, rounded, and well under the most a message can be', () => {
+  assert.deepEqual(Object.keys(cleanLifter({})), ['ms', 'u', 'a', 'n', 'f', 'r']);
+  assert.deepEqual(cleanLifter({}), { ms: 0, u: 0, a: 0, n: 0, f: 0, r: 0 });
+  assert.deepEqual(
+    cleanLifter({ ms: -5, u: 'high', a: 'yes', n: -2, f: 5000, r: 'resting', picture: 'not this', p: [1, 2, 3] }),
+    { ms: 0, u: 0, a: 1, n: 0, f: 1000, r: 1 },
+  );
+  assert.deepEqual(cleanLifter({ ms: 99_999_999, u: 37.5, n: 1e9, f: 2.4 }), { ms: 3_600_000, u: 2, a: 0, n: 10_000, f: 2, r: 0 });
+  assert.deepEqual(cleanLifter({ u: -3 }), cleanLifter({}), 'an arm is never below resting');
+  const biggest = JSON.stringify({ t: 'lifter', from: 'abcdefghijkl', ...cleanLifter({ ms: 3_599_999, u: 1.99, a: 1, n: 9999, f: 999, r: 1 }) });
+  assert.ok(biggest.length < 100 && biggest.length < MOST_BYTES, `${biggest.length} characters`);
 });

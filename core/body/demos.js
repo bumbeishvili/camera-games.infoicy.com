@@ -77,6 +77,10 @@ const reachOut = pose({ footLX: REST.footLX + 0.3, roll: -0.05, handLX: 0.56, ha
 const steppedAcross = pose({ side: 0.38, roll: 0.02, handLX: 0.5, handLY: -0.7, handRX: -0.4 });
 const reachBack = pose({ side: 0.38, footRX: REST.footRX - 0.3, roll: 0.05, handRX: -0.56, handRY: -0.62, handLX: 0.36 });
 
+// Mighty Lift: an arm raised right up with a weight in the hand, held there, and brought down again, and both.
+const lifted = pose({ handLX: 0.16, handLY: 0.98, handLZ: 0.06, wristL: 0.2, openL: 0.3 });
+const liftedBoth = pose({ ...lifted, handRX: -0.16, handRY: 0.98, handRZ: 0.06, wristR: 0.2, openR: 0.3 });
+
 const stepA = pose({ up: 0.03, footLZ: 0.36, footRZ: -0.3, footRY: 0.1, handLX: 0.36, handLY: -0.72, handLZ: -0.28, handRX: -0.36, handRY: -0.72, handRZ: 0.28 });
 const stepB = mirrorPose(stepA);
 
@@ -169,5 +173,11 @@ export const DEMOS = {
   },
   lean: {
     frames: [[0, REST], [0.6, pose({ roll: 0.42, hipX: -0.05 })], [1, pose({ roll: 0.42, hipX: -0.05 })], [1.5, REST], [2.1, pose({ roll: -0.42, hipX: 0.05 })], [2.5, pose({ roll: -0.42, hipX: 0.05 })], [3, REST], [3.2, REST]],
+  },
+  lift: {
+    frames: [[0, REST], [0.4, REST], [1.3, lifted], [2.6, lifted], [3.5, REST], [3.9, REST]],
+  },
+  liftBoth: {
+    frames: [[0, REST], [0.4, REST], [1.3, liftedBoth], [2.6, liftedBoth], [3.5, REST], [3.9, REST]],
   },
 };

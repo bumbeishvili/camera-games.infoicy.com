@@ -372,6 +372,44 @@ def trail_body(t):
     return 0, 0, 0
 
 
+def raised(sid, degrees):
+    """A hand raised in front and a little out to the side: 0 hangs down, 90 is shoulder height, 180 straight up."""
+    angle = math.radians(degrees)
+    reach = ARM * 0.93
+    return SHOULDER[sid] + Vector((
+        SIDE[sid] * (0.075 + 0.42 * reach * math.sin(angle)),
+        0.03 + 0.8 * reach * math.sin(angle),
+        -reach * math.cos(angle),
+    ))
+
+
+def angle_at(t, keys):
+    """How far an arm is raised at a moment, from a list of (seconds, degrees), easing from each to the next."""
+    for (start, a), (end, b) in zip(keys, keys[1:]):
+        if start <= t < end:
+            share = (t - start) / (end - start)
+            return a + (b - a) * share * share * (3 - 2 * share)
+    return keys[-1][1]
+
+
+# Mighty Lift: an arm raised and held, as lifting a weight. The right arm right up, held, and down gently;
+# to shoulder height, held, and dropped; the left arm; both; a hold that wobbles; a small raise; and both
+# with the left only as high as the shoulder.
+LIFT_RIGHT = [(0, 0), (1.5, 0), (2.6, 172), (5.2, 172), (6.4, 0), (7.6, 0), (8.5, 92), (10.5, 92), (10.9, 0),
+              (17, 0), (18, 172), (20.5, 172), (21.5, 0), (22.5, 0), (23.4, 165), (26, 165), (26.9, 0),
+              (28, 0), (28.8, 55), (30.6, 55), (31.3, 0), (32.3, 0), (33.3, 172), (35.3, 172), (36.2, 0), (37, 0)]
+LIFT_LEFT = [(0, 0), (12, 0), (13, 172), (15, 172), (16, 0), (17, 0), (18, 172), (20.5, 172), (21.5, 0),
+             (32.3, 0), (33.3, 90), (35.3, 90), (36.2, 0), (37, 0)]
+
+
+def lifts(t):
+    hands = {"R": raised("R", angle_at(t, LIFT_RIGHT)), "L": raised("L", angle_at(t, LIFT_LEFT))}
+    if 23.4 <= t < 26:  # Held up, but shaking, as a tired arm does.
+        beat = (t - 23.4) * 2 * math.pi * 2.2
+        hands["R"] = hands["R"] + Vector((math.sin(beat) * 0.05, 0, math.sin(beat + 1) * 0.1))
+    return hands
+
+
 # Each clip: what the arms do, how long it lasts, and what the rest of the body does if it moves.
 CLIPS = {
     "claps": (claps, 20, None),
@@ -379,6 +417,7 @@ CLIPS = {
     "wings": (wings, 24, None),
     "demo-fight": (fight_demo, 13.5, fight_body),
     "demo-trail": (trail_demo, 11, trail_body),
+    "lifts": (lifts, 37, None),
 }
 pick, length, body_at = CLIPS[CLIP]
 FEET = {"R": rest["J_Bip_R_Foot"], "L": rest["J_Bip_L_Foot"]}

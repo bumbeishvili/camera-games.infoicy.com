@@ -24,7 +24,7 @@ await page.route('**/recorder-video/**', (route) => {
   route.fulfill({ body: readFileSync(path), contentType: 'video/webm' });
 });
 // A plain file, because the games' own pages have a security policy that blocks this recorder.
-await page.goto('http://localhost:8642/package.json');
+await page.goto(`http://localhost:${process.env.PORT ?? 8642}/package.json`);
 
 // Runs the same worker the game does, so the numbers are what the game would see.
 await page.evaluate(async () => {
