@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { cleanBrush, MAX_RACERS, MOST_BYTES, MOST_STROKE_NUMBERS, mostIn } from '../../server/race-room.js';
 import { COLOUR_NAMES, COLOURS, boxOf, insideOutline, mixes, mixOf, outlineOf, PAGES, RAINBOW, recipeFor, SHEET } from '../../games/giraffe-paint/pages.js';
 import {
   BRUSHES, DESK, DIP_SECONDS, DONE_SHARES, EXTRAS, FREE_SHARE, LABELS, modeWord, NEWS, newsIsOn, Painting, paintLevel,
@@ -1091,6 +1092,39 @@ test('with a connection that\'s down for a long while, what\'s kept to send neve
   let numbers = 0;
   for (let each = ana.takeStrokes(); each.length; each = ana.takeStrokes()) numbers += each.length;
   assert.ok(numbers > 500 && numbers <= 2600, `${numbers} numbers kept`);
+});
+
+test('the strokes a game sends fit in one message, come through the server unchanged, and paint the same on the other side', () => {
+  assert.ok(STROKE_NUMBERS <= MOST_STROKE_NUMBERS, 'no more numbers than the server passes on');
+  const { ana, ben } = together({ level: 9 });
+  dip(ana, 'blue');
+  for (let row = 0; row < 3; row += 1) sweep(ana, { x: row % 2 ? 140 : 10, y: 88 + row * 4 }, { x: row % 2 ? 10 : 140, y: 88 + row * 4 });
+  let messages = 0;
+  for (let numbers = ana.takeStrokes(); numbers.length; numbers = ana.takeStrokes()) {
+    const sent = JSON.stringify({ t: 'brush', ms: 123456, x: 75.5, y: 90.1, v: 1, o: 1, c: 4, r: 6.5, p: Array(42).fill(-1.23), s: numbers, d: ana.doneBits() });
+    assert.ok(sent.length <= MOST_BYTES, `${sent.length} characters, which the server takes`);
+    const heard = cleanBrush(JSON.parse(sent));
+    assert.deepEqual(heard.s, numbers, 'nothing changed on the way');
+    ben.friendStrokes(heard.s);
+    ben.learnDone(heard.d);
+    messages += 1;
+  }
+  assert.ok(messages >= 2);
+  assert.deepEqual(ben.paint, ana.paint);
+});
+
+test('the paint box\'s rooms are known to both servers, hold four, and a friend\'s brush is passed on to the game', () => {
+  assert.equal(mostIn('giraffe-paint'), MAX_RACERS);
+  for (const file of ['../../server/worker.js', '../../tools/race-server.mjs']) {
+    const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+    assert.match(source, /const GAMES = \[[^\]]*'giraffe-paint'/, file);
+  }
+  const friends = readFileSync(new URL('../../core/friends.js', import.meta.url), 'utf8');
+  assert.match(friends, /'brush'[^\]]*\]\.includes\(message\.t\)/);
+  // The game makes its rooms under the same name, and sends nothing a friend's game doesn't clean.
+  const main = readFileSync(new URL('../../games/giraffe-paint/main.js', import.meta.url), 'utf8');
+  assert.match(main, /game: 'giraffe-paint'/);
+  assert.match(main, /t: 'brush'/);
 });
 
 test('every line the game says has its English and Georgian voice files, and the game says each one', () => {
