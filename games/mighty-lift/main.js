@@ -522,6 +522,8 @@ class MightyLift extends BodyGame {
     const hint = arms.both && arms.oneSided && !lifting.up ? 'both' : lifting.hint;
     this.prompt.show(hint ? { key: hint, text: HINTS[hint].text, side: null } : null, now);
     if (hint && HINTS[hint].film) this.showFilm(hint);
+    // The bar under the film fills as the arm gets near its line.
+    if (this.filmFor) this.setCoachEffort(Math.min(1, arms.lift));
     this.updateMeter(arms.lift);
     this.updateHud();
     this.sendLifter(now);

@@ -655,6 +655,19 @@ body.hub {
 .art-bay-smoke { fill: #fff; opacity: 0.9; }
 .art-bay-splash { fill: #fff; }
 
+/* Mighty Lift's picture. */
+.game-art-lift { background: linear-gradient(#7cc8ff, #e4f6ff 70%); }
+.art-lift-hill { fill: #7bd65b; }
+.art-lift-ground { fill: #f0dfb8; }
+.art-lift-crane { fill: none; stroke: #e2513f; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; }
+.art-lift-rope { fill: none; stroke: #8a6a44; stroke-width: 3; stroke-linecap: round; }
+.art-lift-tape { fill: none; stroke: #27c96b; stroke-width: 5; stroke-linecap: round; }
+.art-lift-basket { fill: #d9a55b; stroke: #8a5a2b; stroke-width: 3; stroke-linejoin: round; }
+.art-lift-slats { fill: none; stroke: #8a5a2b; stroke-width: 3; stroke-linecap: round; }
+.art-lift-limb { fill: none; stroke: #f5c451; stroke-width: 9; stroke-linecap: round; }
+.art-lift-bar { fill: none; stroke: #9aa3ab; stroke-width: 5; stroke-linecap: round; }
+.art-lift-plate { fill: #12304d; }
+
 /* Each card's film, over its picture, fading in once it's playing. */
 .game-art { position: relative; }
 

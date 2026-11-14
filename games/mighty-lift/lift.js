@@ -112,9 +112,10 @@ export class Arm {
     if (height === null || !Number.isFinite(height)) {
       this.seen = false;
       this.unseenFor += dt;
-      // Lost for a moment, as an arm right overhead can be, it stays where it was, and then comes down gently.
+      // Lost for a moment, as an arm right overhead can be, it stays where it was, and then comes down gently,
+      // from no higher than a weight goes.
       if (this.height !== null && this.unseenFor > UNSEEN_GRACE) {
-        this.height = Math.max(this.rest, this.height - UNSEEN_SINKS * this.span * dt);
+        this.height = Math.max(this.rest, Math.min(this.height, this.rest + MOST_LIFT * this.span) - UNSEEN_SINKS * this.span * dt);
       }
       this.lately = [];
       return this.lift;
