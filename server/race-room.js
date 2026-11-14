@@ -114,6 +114,12 @@
 //                                      screen however far apart each one's are, y how far down the screen, whether
 //                                      it can be seen, how far it's tipped and how much it's pouring, from 0 to 1,
 //                                      and p, its glove's 21 points, as in hand
+//   archer { ms, a, d, h, v, n, sa, sp, k }   how their bow is in Arrow Meadow: how far it's tilted, in radians, and
+//                                      drawn, from 0 to 1, whether its string is held and their hands can be seen,
+//                                      how many arrows they've let go, with the angle and the draw of the last, so a
+//                                      friend's game can show it flying, and how many targets they've hit. Everyone
+//                                      lays out the same targets from the seed. Together, each claims the ones their
+//                                      own arrows hit, by number, and against each other the first to enough wins
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
@@ -511,6 +517,25 @@ export function cleanTag(message) {
   return { k: number(message.k, 0, 1_000_000, 0), n: number(message.n, 0, 1000, 0) };
 }
 
+/**
+ * Only what a bow in Arrow Meadow should hold, rounded: how far it's tilted, in radians, and drawn, whether its
+ * string is held and its child's hands can be seen, how many arrows it has let go, with the angle and the draw of
+ * the last of them, and how many targets its child has hit.
+ */
+export function cleanArcher(message) {
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    a: number(message.a, -1.6, 1.6, 3),
+    d: number(message.d, 0, 1, 2),
+    h: message.h ? 1 : 0,
+    v: message.v ? 1 : 0,
+    n: number(message.n, 0, 100_000, 0),
+    sa: number(message.sa, -1.6, 1.6, 3),
+    sp: number(message.sp, 0, 1, 2),
+    k: number(message.k, 0, 1000, 0),
+  };
+}
+
 /** Only what a car message should hold, rounded, so nothing else can be passed on. */
 export function cleanCar(message) {
   return {
@@ -730,6 +755,10 @@ export class RaceRoom {
         for (const other of others) other.send({ t: message.t, from: meta.id, ...moved });
         break;
       }
+      case 'archer':
+        // Arrow Meadow: how their bow is, and what they've let go, for the others' games to show.
+        for (const other of others) other.send({ t: 'archer', from: meta.id, ...cleanArcher(message) });
+        break;
       case 'done':
         if (!meta.racing) return;
         player.setMeta({ ...meta, racing: false });

@@ -725,6 +725,61 @@ const FILMS = {
       return { tags, shots, hits, reloads, walked: Math.round(walked) };
     }),
   },
+  'arrow-meadow': {
+    settings: { arrowGoal: 14, levels: { 'arrow-meadow': 4 } },
+    css: '.camera-frame { --camera-small: 24vw !important; } .arrow-film, .prompt { display: none !important; }',
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: 'open', right: 'open', scale: 0.5, sameHand: true, leftOffsetX: 140, rightOffsetX: -140 }));
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await wait(page, 300);
+    },
+    async play(page) {
+      // Two hands, one holding the bow and one the string. The right one, a fist on the string, is pulled away from
+      // the left to draw the bow, the left goes up or down until the dotted line is on a target, and then the right
+      // opens to let the arrow go, and closes again for the next: a plain target, the far one, and the one on wheels.
+      await page.evaluate(() => new Promise((done) => {
+        const started = performance.now();
+        const TILT = (24 * Math.PI) / 180;
+        let lift = 0; // How much higher the bow hand is than the string hand, in the camera's pixels.
+        let apart = 200; // And how far apart they are across.
+        let frame = 0;
+        let phase = 'hold';
+        let since = 0;
+        let steady = 0;
+        let wanted = null;
+        const timer = setInterval(() => {
+          frame += 1;
+          since += 33;
+          const { meadow, game } = window.__game;
+          const palm = (game.bow.palm || 0.119) * 720;
+          if (frame % 5 === 1) wanted = meadow.wants();
+          if (wanted) {
+            apart += ((1.6 + wanted.draw * (game.bow.full - 1.6) + 0.5) * palm - apart) * 0.12;
+            const aimed = game.hands.nocked ? game.hands.angle : (lift / palm) * TILT;
+            lift = Math.max(-0.6 * palm, Math.min(3.4 * palm, lift + ((wanted.angle - aimed) / TILT) * palm * 0.16));
+            const shown = game.aim?.angle ?? game.hands.angle;
+            steady = game.ready && Math.abs(shown - wanted.angle) < 0.035 && game.hands.draw > 0.9 ? steady + 1 : 0;
+          } else {
+            steady = 0;
+          }
+          // A moment on the target before letting go, as a child would take.
+          if (phase === 'hold' && steady >= 10 && since > 1100) [phase, since] = ['open', 0];
+          else if (phase === 'open' && since > 600) [phase, since, steady] = ['hold', 0, 0];
+          const inwards = (620 - apart) / 2;
+          window.__camera.show({ left: 'open', right: phase === 'open' ? 'open' : 'fist', scale: 0.5, sameHand: true, leftOffsetX: inwards, rightOffsetX: -inwards, leftOffsetY: -lift / 2, rightOffsetY: lift / 2 });
+          if (performance.now() - started > 16_000) {
+            clearInterval(timer);
+            done();
+          }
+        }, 33);
+      }));
+    },
+    report: (page) => page.evaluate(() => {
+      const { hits, shots, stars, bestRun } = window.__game.meadow.stats;
+      return { hits, shots, stars, bestRun };
+    }),
+  },
   'balloon-pop': {
     settings: { reach: 'none', pace: 'medium' },
     async ready(page) {

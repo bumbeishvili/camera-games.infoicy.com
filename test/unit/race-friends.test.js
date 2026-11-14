@@ -778,3 +778,92 @@ test('in Cannon Bay, each ship goes to the other with only what a ship should ho
   const biggest = JSON.stringify({ t: 'ship', from: 'abcdefghijkl', ...cleanShip({ ms: 3_599_999, x: -1999.99, z: -1999.99, h: -6.999, s: 99.9, v: 0.99, f: 999_999, r: 1 }) });
   assert.ok(biggest.length < 160, `${biggest.length} long`);
 });
+
+/* ---------- Arrow Meadow ---------- */
+
+import { cleanArcher } from '../../server/race-room.js';
+import { Meadow } from '../../games/arrow-meadow/meadow.js';
+
+test('in Arrow Meadow up to four share a meadow: each one\'s bow goes to the others, with only what a bow should hold', () => {
+  assert.equal(mostIn('arrow-meadow'), 4);
+  const { join } = makeRoom(mostIn('arrow-meadow'));
+  const [ana, ben, cal, dee] = ['aaaaaaaa', 'bbbbbbbb', 'cccccccc', 'dddddddd'].map((id) => join(id));
+  assert.equal(join('eeeeeeee'), null, 'a fifth is told it\'s full');
+  // Together or against each other is the host's choice, and everyone is told.
+  ana.say({ t: 'hi', name: 'Ana', driver: 'giraffe', level: 3, length: 14, team: 1 });
+  ben.say({ t: 'hi', name: 'Ben', driver: 'giraffe', level: 7, length: 6, team: 0 });
+  assert.equal(dee.last('room').team, 1);
+  for (const each of [ana, ben, cal, dee]) each.say({ t: 'ready' });
+  const go = dee.last('go');
+  assert.deepEqual(go.racers, ['aaaaaaaa', 'bbbbbbbb', 'cccccccc', 'dddddddd']);
+  // The host's level and number of targets, and one seed for everyone's meadow.
+  assert.deepEqual([go.level, go.length, go.team], [3, 14, 1]);
+  assert.ok(Number.isInteger(go.seed) && go.seed >= 0);
+  assert.equal(ana.last('go').seed, go.seed);
+
+  ben.say({ t: 'archer', ms: 1500.4, a: 0.41888, d: 0.876, h: 1, v: 1, n: 3, sa: 0.52361, sp: 0.954, k: 2, picture: 'not this', name: 'Ben' });
+  const heard = { t: 'archer', from: 'bbbbbbbb', ms: 1500, a: 0.419, d: 0.88, h: 1, v: 1, n: 3, sa: 0.524, sp: 0.95, k: 2 };
+  for (const each of [ana, cal, dee]) assert.deepEqual(each.last('archer'), heard);
+  assert.equal(ben.last('archer'), undefined, 'nobody hears their own');
+});
+
+test('a bow message holds only numbers, kept to what a bow could be, and well under the most a message can be', () => {
+  assert.deepEqual(Object.keys(cleanArcher({})), ['ms', 'a', 'd', 'h', 'v', 'n', 'sa', 'sp', 'k']);
+  assert.deepEqual(cleanArcher({}), { ms: 0, a: 0, d: 0, h: 0, v: 0, n: 0, sa: 0, sp: 0, k: 0 });
+  assert.deepEqual(
+    cleanArcher({ ms: -1, a: 'up', d: 7, h: 'yes', v: 'yes', n: -3, sa: 99, sp: -2, k: 1e9, picture: 'not this', p: [1, 2, 3] }),
+    { ms: 0, a: 0, d: 1, h: 1, v: 1, n: 0, sa: 1.6, sp: 0, k: 1000 },
+  );
+  assert.deepEqual(cleanArcher({ a: -9, sa: -9, n: 2.6, k: 3.4 }), { ...cleanArcher({}), a: -1.6, sa: -1.6, n: 3, k: 3 });
+  for (const value of Object.values(cleanArcher({ ms: '1', a: {}, d: [], h: null, v: undefined, n: NaN, sa: Infinity, sp: '0.5', k: true }))) assert.equal(typeof value, 'number');
+  const biggest = JSON.stringify({ t: 'archer', from: 'abcdefghijkl', ...cleanArcher({ ms: 3_599_999, a: -1.599, d: 0.99, h: 1, v: 1, n: 99_999, sa: -1.599, sp: 0.99, k: 999 }) });
+  assert.ok(biggest.length < 140, `${biggest.length} characters`);
+});
+
+test('together in Arrow Meadow, a target goes to the first to claim it, everyone is told, and every game counts the same', () => {
+  const { join } = makeRoom(mostIn('arrow-meadow'));
+  const players = ['aaaaaaaa', 'bbbbbbbb', 'cccccccc'].map((id) => join(id));
+  const [ana, ben, cal] = players;
+  ana.say({ t: 'hi', name: 'Ana', driver: 'giraffe', level: 2, length: 6, team: 1 });
+  // A claim before the game has started counts for nothing.
+  ben.say({ t: 'claim', k: 0 });
+  assert.equal(ana.last('claimed'), undefined);
+  for (const each of players) each.say({ t: 'ready' });
+  const { seed, level, length, racers } = cal.last('go');
+  // Each one's game, laid out from the same seed, claiming through the server what its own arrows hit.
+  const games = players.map((player) => new Meadow({ level, goal: length * racers.length, me: player.meta.id, help: 'off', team: { seed, players: racers.length, claim: (k) => player.say({ t: 'claim', k }) } }));
+  const hear = () => players.forEach((player, index) => {
+    for (const message of player.heard.splice(0)) if (message.t === 'claimed') games[index].claimed(message.k, message.by);
+  });
+  hear();
+  const frame = () => {
+    for (const game of games) game.update(1 / 60);
+    hear();
+  };
+  // Ben and Cal both let an arrow go at the same target, Ben's a little sooner: it's Ben's, on every computer.
+  const k = games[1].live[1].k;
+  const aimAt = (game) => game.solve(game.live.find((target) => target.k === k), 1);
+  games[1].loose(aimAt(games[1]), 1);
+  for (let n = 0; n < 6; n += 1) frame();
+  games[2].loose(aimAt(games[2]), 1);
+  for (let n = 0; n < 240; n += 1) frame();
+  for (const game of games) {
+    assert.equal(game.owners.get(k), 'bbbbbbbb');
+    assert.equal(game.total, 1);
+  }
+  // Played on, turn about, until the team has enough: every game ends together, with the same share for each.
+  let turn = 0;
+  for (let guard = 0; guard < 400 && !games[0].done; guard += 1) {
+    const game = games[turn % games.length];
+    turn += 1;
+    const wanted = game.wants();
+    if (wanted) game.loose(wanted.angle, wanted.draw);
+    for (let n = 0; n < 70; n += 1) frame();
+  }
+  for (const game of games) {
+    assert.equal(game.done, true);
+    assert.equal(game.total, 18);
+    assert.deepEqual([...game.tally.entries()].sort(), [...games[0].tally.entries()].sort());
+  }
+  assert.equal([...games[0].tally.values()].reduce((sum, hits) => sum + hits, 0), 18);
+});

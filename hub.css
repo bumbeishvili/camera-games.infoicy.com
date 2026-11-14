@@ -595,6 +595,26 @@ body.hub {
 .art-arena-wood { fill: #9a5f2e; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
 .art-arena-steel { fill: #3a3f47; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
 .art-arena-barrel { fill: none; stroke: #3a3f47; stroke-width: 7; stroke-linecap: round; }
+
+/* Arrow Meadow's picture. */
+.game-art-arrows { background: linear-gradient(#8fd3ff, #dff3ff 62%); }
+.art-arrows-hill { fill: #9fd685; }
+.art-arrows-grass { fill: #6fc253; }
+.art-arrows-tent-a { fill: #ff8787; }
+.art-arrows-tent-b { fill: #fff5f5; }
+.art-arrows-stand { fill: none; stroke: #8a5a2b; stroke-width: 6; stroke-linecap: round; }
+.art-arrows-ring-a { fill: #fff; stroke: #b98a2e; stroke-width: 4; }
+.art-arrows-ring-b { fill: #2b3440; }
+.art-arrows-ring-c { fill: #4dabf7; }
+.art-arrows-ring-d { fill: #ff6b6b; }
+.art-arrows-ring-e { fill: #ffd23f; }
+.art-arrows-arc { fill: none; stroke: #fff; stroke-width: 5; stroke-linecap: round; stroke-dasharray: 1 12; }
+.art-arrows-bow-ink { fill: none; stroke: #74491f; stroke-width: 13; stroke-linecap: round; }
+.art-arrows-bow { fill: none; stroke: #c0703a; stroke-width: 8; stroke-linecap: round; }
+.art-arrows-string { fill: none; stroke: #fff; stroke-width: 3; stroke-linejoin: round; }
+.art-arrows-shaft { fill: none; stroke: #74491f; stroke-width: 5; stroke-linecap: round; }
+.art-arrows-feather { fill: #4dabf7; stroke: #74491f; stroke-width: 2; stroke-linejoin: round; }
+.art-arrows-tip { fill: #ff6b6b; stroke: #74491f; stroke-width: 2; }
 .art-paint-pink { fill: #ff7eb6; stroke: var(--ink); stroke-width: 2; }
 .art-paint-blue { fill: #3fb7ff; stroke: var(--ink); stroke-width: 2; }
 .art-paint-yellow { fill: #ffd23f; stroke: var(--ink); stroke-width: 2; }

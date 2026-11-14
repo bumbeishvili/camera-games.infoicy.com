@@ -1,0 +1,165 @@
+/* Arrow Meadow: the meadow fills the screen, under a band along the top with the mirror and the hand meter over
+   Giraffe, on the side of the hand in play, the targets hit and the stars on the other side, and Giraffe's words in
+   the middle. */
+:root {
+  --meter-size: clamp(66px, 7vw, 92px);
+  --camera-small: clamp(140px, 15vw, 230px);
+}
+
+/* The mirror, in the top corner over Giraffe: on the right with the right hand in play, by the gear, and on the
+   left with the left. Both hands are drawn on it, as both are played with. */
+body:not([data-screen='check']) .camera-frame { left: auto; right: 70px; transform: none; }
+body[data-hands='left']:not([data-screen='check']) .camera-frame { left: 12px; right: auto; }
+
+/* The hand meter, beside the mirror. */
+.hands-bar {
+  top: 12px;
+  bottom: auto;
+  left: auto;
+  right: calc(70px + var(--camera-small) + 12px);
+  transform: none;
+}
+body[data-hands='left'] .hands-bar { left: calc(12px + var(--camera-small) + 12px); right: auto; }
+body[data-screen='check'] .hands-bar { top: auto; bottom: 10px; left: 50%; right: auto; transform: translateX(-50%); }
+.meter { padding: 6px 6px 4px; border-radius: 20px; }
+.meter-caption { font-size: clamp(11px, 1vw, 13px); }
+
+/* ---------- the targets hit, and the stars ---------- */
+.arrow-hud {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  top: 12px;
+  left: 12px;
+  align-items: center;
+  gap: 8px;
+}
+body[data-hands='left'] .arrow-hud { left: auto; right: 70px; flex-direction: row-reverse; }
+body[data-screen='playing'] .arrow-hud,
+body[data-screen='countdown'] .arrow-hud { display: flex; }
+.arrow-hud .chip { min-width: clamp(64px, 7vw, 96px); padding: 4px 10px 6px; }
+.arrow-hud .chip[hidden] { display: none; }
+.chip-targets .chip-label::before { content: '🎯 '; }
+.chip-stars .chip-label::before { content: '⭐ '; }
+
+/* With friends: how many targets each one has hit, the most first. */
+.arrow-scores {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 40vw;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.arrow-scores[hidden] { display: none; }
+.arrow-scores li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px 3px 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 4px 14px rgba(18, 48, 77, 0.18);
+  font-size: clamp(14px, 1.4vw, 18px);
+  font-weight: 600;
+}
+.arrow-scores li.is-you { background: var(--sun); }
+.arrow-scores img { width: 30px; height: 30px; border-radius: 50%; background: var(--surface-soft); }
+.arrow-score-name { max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arrow-score { margin-left: 4px; font-variant-numeric: tabular-nums; }
+
+/* ---------- Giraffe's words, in the middle of the band ---------- */
+.story {
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(30vw, 360px);
+}
+body[data-screen='playing']:has(.story.is-visible) .prompt { left: 50%; max-width: calc(100vw - 32px); }
+
+/* What the child is asked for goes along the bottom, on the grass, so it never hides a target or an arrow. */
+body[data-screen='playing'] .prompt { top: auto; bottom: 14px; font-size: clamp(20px, 2.8vw, 36px); }
+
+/* ---------- a little film: one hand holds the bow, the other, closed on the string, pulls it back, and opens:
+   the arrow flies to the target. It's drawn for the right hand in play, and turned round for the left. ---------- */
+.arrow-film { width: min(15vw, 22vh); }
+body[data-hands='left'] .arrow-film { left: auto; right: 16px; }
+body[data-hands='left'] .arrow-film svg { transform: scaleX(-1); }
+
+.film-grass { fill: #7cc65c; }
+.film-stand { fill: none; stroke: #8a5a2b; stroke-width: 4; stroke-linecap: round; }
+.film-ring-a { fill: #ffffff; stroke: #b98a2e; stroke-width: 3; }
+.film-ring-b { fill: #4dabf7; }
+.film-ring-c { fill: #ff6b6b; }
+.film-star { fill: #ffd23f; stroke: #d99a1f; stroke-width: 1.5; }
+.film-limb { fill: none; stroke: #c0703a; stroke-width: 7; stroke-linecap: round; }
+.film-string { fill: none; stroke: #ffffff; stroke-width: 2.5; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.film-shaft { fill: none; stroke: #74491f; stroke-width: 4; stroke-linecap: round; }
+.film-tip { fill: #ff6b6b; stroke: #74491f; stroke-width: 1.5; }
+.film-hand rect { stroke: var(--ink); stroke-width: 3; }
+.film-finger { fill: none; stroke-width: 6; stroke-linecap: round; transform-box: fill-box; transform-origin: bottom center; }
+/* The bow hand stays where it is, open or closed: it only has to hold still. */
+.film-bow-hand { transform: translate(118px, 84px); }
+.film-bow-hand rect { fill: #9ad8ff; }
+.film-bow-hand .film-finger { stroke: #9ad8ff; transform: scaleY(0.35); }
+
+/* The string hand is closed on the string, goes back with it, and opens to let go. */
+.film-string-hand { animation: film-pull 6s ease-in-out infinite; }
+.film-string-hand rect { animation: film-colour 6s ease-in-out infinite; }
+.film-string-hand .film-finger { animation: film-fingers 6s ease-in-out infinite; }
+/* The string goes back to a point with the hand, and springs straight again. */
+.film-string { transform-origin: 128px 80px; animation: film-string 6s ease-in-out infinite; }
+/* The arrow goes back with the string, and then flies to the target and stays in it. */
+.film-arrow { animation: film-arrow 6s linear infinite; }
+.film-limb { transform-origin: 128px 80px; animation: film-limb 6s ease-in-out infinite; }
+.film-star { transform-origin: 34px 44px; animation: film-star 6s ease-in-out infinite; }
+
+@keyframes film-pull {
+  0%, 12% { transform: translate(140px, 84px); }
+  42%, 56% { transform: translate(184px, 84px); }
+  66%, 100% { transform: translate(184px, 84px); }
+}
+
+@keyframes film-colour {
+  0%, 54% { fill: #ffc21a; }
+  60%, 92% { fill: #3ddc84; }
+  100% { fill: #ffc21a; }
+}
+
+@keyframes film-fingers {
+  0%, 54% { stroke: #ffc21a; transform: scaleY(0.3); }
+  60%, 92% { stroke: #3ddc84; transform: scaleY(1); }
+  100% { stroke: #ffc21a; transform: scaleY(0.3); }
+}
+
+@keyframes film-string {
+  0%, 12% { d: path('M128 44L134 80L128 116'); }
+  42%, 57% { d: path('M128 44L176 80L128 116'); }
+  59%, 100% { d: path('M128 44L128 80L128 116'); }
+}
+
+@keyframes film-limb {
+  0%, 12% { transform: scaleX(1); }
+  42%, 57% { transform: scaleX(1.18); }
+  59%, 100% { transform: scaleX(1); }
+}
+
+@keyframes film-arrow {
+  0%, 12% { transform: translateX(4px); opacity: 1; }
+  42%, 57% { transform: translateX(46px); opacity: 1; }
+  66% { transform: translateX(-44px); opacity: 1; }
+  90% { transform: translateX(-44px); opacity: 1; }
+  96%, 99% { transform: translateX(-44px); opacity: 0; }
+  100% { transform: translateX(4px); opacity: 0; }
+}
+
+@keyframes film-star {
+  0%, 66% { transform: scale(0); opacity: 0; }
+  74%, 88% { transform: scale(1); opacity: 1; }
+  94%, 100% { transform: scale(1); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .film-string-hand, .film-string-hand rect, .film-string-hand .film-finger, .film-string, .film-arrow, .film-limb, .film-star { animation-duration: 9s; }
+}
