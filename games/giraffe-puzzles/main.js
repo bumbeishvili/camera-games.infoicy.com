@@ -29,7 +29,6 @@ const PRAISE = ['Nice one!', 'Way to go!', 'Great job!'];
 const FILM_SECONDS = 30; // The little film of what to do shows until the first piece is in, or this long.
 const STORY_SECONDS = 6; // Giraffe's words stay up this long, or until the first piece is in.
 const HINT_FROM = 3; // Seconds into a game that how to pick a piece up is said, if none has been by then.
-const HINT_UNTIL = 14;
 const PLACE_HINT_AFTER = 5; // Seconds the first piece has been carried before saying where to take it.
 const CLOSED_PROMPT_AFTER = 2.5; // Seconds of a closed hand before asking for it to open.
 const RESTING_AFTER = 15; // And before saying that resting is fine.
@@ -276,11 +275,14 @@ class PuzzleGame {
     if (input) input.checked = true;
   }
 
-  /** The little film of what to do goes under the easel, on the side away from the hand in play. */
+  /**
+   * The little film of what to do goes under the easel, on the side away from the hand in play, and what the child
+   * is asked for goes just under the band, between the two boards, where it hides no piece.
+   */
   placeFilm() {
     const { view, puzzle } = this;
     if (!puzzle) return;
-    const { film, easel } = puzzle.layout;
+    const { film, easel, boards } = puzzle.layout;
     const below = view.at(film.x, easel.y + easel.height);
     const room = view.at(0, TABLE.height).y - below.y;
     // As tall as fits under the easel, and no taller than under the bigger frame, where there's least room.
@@ -290,7 +292,8 @@ class PuzzleGame {
     style.setProperty('--film-left', `${Math.round(below.x - wide / 2)}px`);
     style.setProperty('--film-top', `${Math.round(below.y + (room - high) / 2 - 4)}px`);
     style.setProperty('--film-width', `${Math.round(wide)}px`);
-    style.setProperty('--prompt-top', `${Math.round(view.top + view.scale * 0.02)}px`);
+    style.setProperty('--prompt-top', `${Math.round(view.top + view.scale * 0.015)}px`);
+    style.setProperty('--prompt-wide', `${Math.round((boards[1].x - boards[0].x - boards[0].width) * view.scale - 12)}px`);
   }
 
   /* ---------- a new puzzle ---------- */
@@ -673,7 +676,7 @@ class PuzzleGame {
     // The first piece: how to pick one up, and then where to take it.
     if (puzzle.stats.placed > 0 || puzzle.index > 0) return null;
     if (puzzle.held && this.heldFor > PLACE_HINT_AFTER) return { key: 'place-hint', text: PLACE_HINT, side: null };
-    if (!this.pickedOnce && session.playSeconds > HINT_FROM && session.playSeconds < HINT_UNTIL) return { key: 'pick-hint', text: PICK_HINT, side: null, asks: 'open' };
+    if (!this.pickedOnce && session.playSeconds > HINT_FROM) return { key: 'pick-hint', text: PICK_HINT, side: null, asks: 'open' };
     return null;
   }
 

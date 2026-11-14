@@ -8,6 +8,7 @@
   --film-top: 70vh;
   --film-width: 150px;
   --prompt-top: 150px;
+  --prompt-wide: 46vw;
 }
 
 /* The mirror, in the top right corner, by the gear. */
@@ -53,14 +54,14 @@ body[data-screen='countdown'] .puzzle-hud { display: flex; }
 }
 
 /* What the child is asked for goes just under the band, between the two boards, and small enough to fit there, so
-   it never hides a piece. */
+   it never hides a piece. main.js says how much room there is. */
 body[data-screen='playing'] .prompt,
 body[data-screen='playing']:has(.story.is-visible) .prompt {
   top: var(--prompt-top);
   left: 50%;
-  max-width: min(calc(100vw - 32px), 46vw);
-  padding: 7px 20px 9px;
-  font-size: clamp(17px, 2.1vw, 28px);
+  max-width: var(--prompt-wide);
+  padding: 6px 18px 7px;
+  font-size: clamp(16px, 1.9vw, 26px);
 }
 
 /* ---------- a little film: an open hand goes to a piece, and carries it to its place in the picture ---------- */
