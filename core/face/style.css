@@ -1,0 +1,106 @@
+/* What the games played with the face share. The cards, buttons, prompts and panel come from core/base.css. */
+
+/* ---------- which pieces each screen shows ---------- */
+.mouth-bar,
+.mouth-demo,
+.face-guide { display: none; }
+
+body[data-screen='check'] .mouth-bar,
+body[data-screen='countdown'] .mouth-bar,
+body[data-screen='playing'] .mouth-bar { display: flex; }
+
+/* ---------- the mouth meter: a ring that fills as the mouth opens, round a little mouth that copies it ---------- */
+.mouth-bar {
+  position: fixed;
+  z-index: 2;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  align-items: center;
+}
+
+/* Its name over what it's doing, as "Open wide" is too long to go beside it. */
+.mouth-meter .meter-caption {
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+.mouth-meter .meter-word { text-align: center; }
+
+.mouth-meter-lips {
+  fill: #f08a9b;
+  stroke: var(--ink);
+  stroke-width: 4;
+}
+
+.mouth-meter-inside { fill: #5a1a26; }
+
+.mouth-meter[data-state='open'] .mouth-meter-lips { fill: var(--good); }
+.mouth-meter[data-state='missing'] .mouth-meter-lips { fill: var(--neutral); stroke: var(--neutral); }
+.mouth-meter[data-state='missing'] .mouth-meter-inside { display: none; }
+
+.meter-mark.mouth-meter-mark {
+  fill: var(--ink-soft);
+  font-size: 30px;
+  transform: translateY(-28px);
+}
+
+/* ---------- the mirror: where to put a face, while there's none to be seen ---------- */
+.face-guide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.6;
+  fill: none;
+  stroke: var(--surface);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-dasharray: 3 3;
+}
+
+body[data-screen='check'] .face-frame[data-face='missing'] .face-guide { display: block; }
+
+/* ---------- a little film of what the mouth should do: open wide, and shut again ---------- */
+.mouth-demo {
+  position: fixed;
+  z-index: 3;
+  left: 16px;
+  bottom: 16px;
+  width: min(19vw, 30vh);
+  min-width: 110px;
+  background: linear-gradient(#cfeeff, #f4fbff);
+  border: 5px solid var(--sun);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+}
+
+body[data-screen='check'] .mouth-demo { display: block; }
+
+.mouth-demo svg { display: block; width: 100%; height: auto; }
+.mouth-demo-head { fill: #ffd9a8; stroke: var(--ink); stroke-width: 3; }
+.mouth-demo-eye { fill: var(--ink); }
+.mouth-demo-cheek { fill: none; stroke: #f08a9b; stroke-width: 3; stroke-linecap: round; }
+.mouth-demo-mouth {
+  fill: #5a1a26;
+  stroke: #e0566e;
+  stroke-width: 4;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: mouth-opens 2.6s ease-in-out infinite;
+}
+
+/* Shut, opening wide, held open, and shut again. */
+@keyframes mouth-opens {
+  0%, 14% { transform: scale(1, 0.1); }
+  44%, 78% { transform: scale(1, 1); }
+  100% { transform: scale(1, 0.1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mouth-demo-mouth { animation-duration: 3.9s; }
+}
+
+/* ---------- the numbers at the finish, which are about one mouth rather than two hands ---------- */
+.mouth-summary td { width: 54%; }
+.mouth-summary tr[hidden] { display: none; }

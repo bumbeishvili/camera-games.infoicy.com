@@ -23,6 +23,7 @@ const GAMES = [
   { name: 'Giraffe’s Puzzles', folder: 'giraffe-puzzles', start: 'Fix the picture' },
   { name: 'Flap, Little Chick!', folder: 'chick-flap', start: 'Flap home!' },
   { name: 'Mighty Lift', folder: 'mighty-lift', start: 'Choose your lifter' },
+  { name: 'Gobble and Grow', folder: 'gobble-grow', start: 'Let’s eat!' },
 ];
 
 test('the hub offers every game, and each one opens and comes back', async ({ page }) => {
@@ -212,6 +213,7 @@ test('typing in the search finds games by their name, what they\'re about and wh
     ['penalty', ['Giraffe’s Goal']],
     ['rifle', ['Frost Arena']],
     ['jigsaw', ['Giraffe’s Puzzles']],
+    ['galaxy', ['Gobble and Grow']],
     // Capitals, accents and apostrophes don't matter, and every word has to fit.
     ['TÉNNIS', ['Bounce Back']],
     ['giraffe\'s smoothie', ['Giraffe’s Smoothie Stand']],
@@ -261,6 +263,7 @@ test('each filter narrows the games to the ones it\'s about', async ({ page }) =
     ['Both hands', ['Frost Arena'], ['Balloon Pop', 'Tank Patrol', 'Sky Wings', 'Mighty Moves']],
     ['Both arms', ['Sky Wings'], ['Balloon Pop', 'Mighty Moves', 'Leap Trail']],
     ['Whole body', ['Mighty Moves', 'Leap Trail'], ['Sky Wings', 'Balloon Pop', 'Bounce Back']],
+    ['Mouth', ['Gobble and Grow'], ['Balloon Pop', 'Sky Wings', 'Mighty Moves', 'Frost Arena']],
     ['Sitting down', ['Balloon Pop', 'Sky Wings', 'Tank Patrol', 'Bounce Back'], ['Mighty Moves']],
   ];
   for (const [name, wanted, unwanted] of FILTERS) {

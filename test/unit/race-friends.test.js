@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanBall, cleanCar, cleanFoes, cleanHand, cleanName, cleanRacket, cleanShip, cleanShot, cleanTag, cleanTank, cleanTrooper, COMES_BACK_WITHIN_MS, idFor, makeCode, MAX_RACERS, MOST_BYTES, MOST_FOES, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
 import { cleanLifter } from '../../server/race-room.js';
+import { cleanEater } from '../../server/race-room.js';
 import { BODY_KEYS } from '../../games/mighty-moves/clips.js';
 import { Track } from '../../core/friends.js';
 import { CarTrack, codeInLink } from '../../games/high-five-racers/friends.js';
@@ -1019,4 +1020,52 @@ test('a lifter message holds only what it should, rounded, and well under the mo
   assert.deepEqual(cleanLifter({ u: -3 }), cleanLifter({}), 'an arm is never below resting');
   const biggest = JSON.stringify({ t: 'lifter', from: 'abcdefghijkl', ...cleanLifter({ ms: 3_599_999, u: 1.99, a: 1, n: 9999, f: 999, r: 1 }) });
   assert.ok(biggest.length < 100 && biggest.length < MOST_BYTES, `${biggest.length} characters`);
+});
+
+test('in Gobble and Grow up to four are in the soup, each one\'s creature goes to the others, and together the first mouth to a thing has it', () => {
+  assert.equal(mostIn('gobble-grow'), 4);
+  const { join } = makeRoom(mostIn('gobble-grow'));
+  const [ana, ben, cal, dee] = ['aaaaaaaa', 'bbbbbbbb', 'cccccccc', 'dddddddd'].map((id) => join(id));
+  assert.equal(join('eeeeeeee'), null, 'a fifth is told it\'s full');
+  // Whoever made the game chose together, and how much there is to eat: everyone's game starts on that, with one seed.
+  ana.say({ t: 'hi', name: 'Ana', driver: 'giraffe', level: 4, length: 12, team: 1 });
+  // A bite before the game has started is nobody's.
+  ben.say({ t: 'claim', k: 3 });
+  assert.equal(ana.last('claimed'), undefined);
+  for (const each of [ana, ben, cal, dee]) each.say({ t: 'ready' });
+  const { seed, ...go } = dee.last('go');
+  assert.deepEqual(go, { t: 'go', level: 4, length: 12, laps: 12, mode: '', team: 1, racers: ['aaaaaaaa', 'bbbbbbbb', 'cccccccc', 'dddddddd'] });
+  assert.equal(ana.last('go').seed, seed, 'the same things to eat for everyone');
+
+  ben.say({ t: 'eater', ms: 1500.4, x: 0.51234, y: 0.48765, m: 0.756, n: 3, v: 1, picture: 'not this', name: 'Ben' });
+  const heard = { t: 'eater', from: 'bbbbbbbb', ms: 1500, x: 0.512, y: 0.488, m: 0.76, n: 3, v: 1 };
+  for (const each of [ana, cal, dee]) assert.deepEqual(each.last('eater'), heard);
+  assert.equal(ben.last('eater'), undefined, 'nobody hears their own');
+
+  // Two mouths go for thing 7 at once: the first to reach the server has it, and everyone is told whose, them too.
+  cal.say({ t: 'claim', k: 7 });
+  ben.say({ t: 'claim', k: 7 });
+  for (const each of [ana, ben, cal, dee]) {
+    assert.deepEqual(each.heard.filter(({ t }) => t === 'claimed'), [{ t: 'claimed', k: 7, by: 'cccccccc' }]);
+  }
+  ben.say({ t: 'claim', k: 8 });
+  assert.deepEqual(ana.last('claimed'), { t: 'claimed', k: 8, by: 'bbbbbbbb' });
+  // The next game starts with nothing claimed.
+  for (const each of [ana, ben, cal, dee]) each.say({ t: 'done', ms: 60_000, n: 6, w: 1 });
+  for (const each of [ana, ben, cal, dee]) each.say({ t: 'ready' });
+  dee.say({ t: 'claim', k: 7 });
+  assert.deepEqual(ana.last('claimed'), { t: 'claimed', k: 7, by: 'dddddddd' });
+});
+
+test('a creature\'s message holds only what it should, rounded and kept to the soup', () => {
+  assert.deepEqual(Object.keys(cleanEater({})), ['ms', 'x', 'y', 'm', 'n', 'v']);
+  assert.deepEqual(cleanEater({}), { ms: 0, x: 0, y: 0, m: 0, n: 0, v: 0 });
+  assert.deepEqual(
+    cleanEater({ ms: -5, x: 'far', y: 99, m: 7, n: -3, v: 'yes', picture: 'not this', points: [1, 2, 3] }),
+    { ms: 0, x: 0, y: 1.2, m: 1, n: 0, v: 1 },
+  );
+  assert.deepEqual(cleanEater({ ms: 4e9, x: -9, y: 0.123456, m: 0.555, n: 5000.4, v: 0 }), { ms: 3_600_000, x: -0.2, y: 0.123, m: 0.56, n: 1000, v: 0 });
+  assert.ok(Object.values(cleanEater({ x: NaN, y: Infinity, m: null, n: {}, ms: [] })).every((value) => typeof value === 'number' && Number.isFinite(value)));
+  const biggest = JSON.stringify({ t: 'eater', from: 'abcdefghijkl', ...cleanEater({ ms: 3_599_999, x: -0.199, y: -0.199, m: 0.99, n: 999, v: 1 }) });
+  assert.ok(biggest.length < 110, `${biggest.length} characters`);
 });

@@ -337,7 +337,7 @@ export class FriendsRoom {
     } else if (message.t === 'go') {
       this.readyToGo = false;
       this.events.onGo?.(message);
-    } else if (['car', 'plane', 'score', 'hand', 'world', 'claimed', 'hit', 'pose', 'racket', 'ball', 'shot', 'runner', 'wiped', 'stand', 'ship', 'catcher', 'tank', 'walker', 'can', 'jigsaw', 'trooper', 'foes', 'tag'].includes(message.t)) {
+    } else if (['car', 'plane', 'score', 'hand', 'world', 'claimed', 'hit', 'pose', 'racket', 'ball', 'shot', 'runner', 'wiped', 'stand', 'ship', 'catcher', 'tank', 'walker', 'can', 'jigsaw', 'trooper', 'eater', 'foes', 'tag'].includes(message.t)) {
       this.events.onMove?.(message.from, message);
     } else if (message.t === 'archer') {
       // Arrow Meadow: how a friend's bow is, and what they've let go.

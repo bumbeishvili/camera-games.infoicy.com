@@ -763,3 +763,21 @@ body.hub {
 
 .game-card:hover .game-about,
 .game-card:focus-visible .game-about { opacity: 1; }
+
+/* Gobble and Grow: a bacterium, a fish and a planet, each bigger than the last, with their mouths wide open. */
+.game-art-gobble { background: linear-gradient(120deg, #d6f3e2 0%, #a9dcf5 42%, #2b4a86 78%, #14204a 100%); }
+.art-gobble-stars { fill: none; stroke: #fff3c4; stroke-width: 5; stroke-linecap: round; }
+.art-gobble-way { fill: none; stroke: rgb(255 255 255 / 0.85); stroke-width: 4; stroke-linecap: round; stroke-dasharray: 1 10; }
+.art-gobble-germ rect { fill: #8fdc6c; stroke: var(--ink); stroke-width: 3; }
+.art-gobble-tail { fill: none; stroke: #4f9a3a; stroke-width: 3.5; stroke-linecap: round; }
+.art-gobble-speck { fill: #fff; stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; }
+.art-gobble-fish path,
+.art-gobble-fish > ellipse:first-of-type { fill: #ffa23f; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
+.art-gobble-planet > circle:first-of-type { fill: #62c7ad; stroke: var(--ink); stroke-width: 3; }
+.art-gobble-band { fill: none; stroke: #46ad93; stroke-width: 7; stroke-linecap: round; }
+.art-gobble-ring-ink { fill: none; stroke: var(--ink); stroke-width: 11; stroke-linecap: round; }
+.art-gobble-ring { fill: none; stroke: #f1cf86; stroke-width: 6; stroke-linecap: round; }
+.game-art-gobble .art-gobble-eye { fill: #fff; stroke: var(--ink); stroke-width: 2; }
+.game-art-gobble .art-gobble-pupil { fill: var(--ink); stroke: none; }
+.game-art-gobble .art-gobble-mouth { fill: #6e1f2e; stroke: var(--ink); stroke-width: 2.5; }
+.game-art-gobble .art-gobble-tongue { fill: #ff8fa3; stroke: none; }

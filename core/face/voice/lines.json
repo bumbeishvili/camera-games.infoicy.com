@@ -1,0 +1,8 @@
+[
+  {"id": "show-face", "text": "Show me your face!", "ka": "მაჩვენე შენი სახე!"},
+  {"id": "look-here", "text": "Look at the screen!", "ka": "ეკრანს შეხედე!"},
+  {"id": "mouth-wide", "text": "Open your mouth as wide as you can!", "ka": "გააღე პირი, რაც შეგიძლია ფართოდ!"},
+  {"id": "mouth-wide-again", "text": "One more try. Open your mouth as wide as you can!", "ka": "კიდევ ერთხელ სცადე. გააღე პირი, რაც შეგიძლია ფართოდ!"},
+  {"id": "mouth-open", "text": "Open your mouth wide!", "ka": "ფართოდ გააღე პირი!"},
+  {"id": "mouth-resting", "text": "Resting is OK. Open your mouth when you’re ready.", "speak": "Resting is okay. Open your mouth when you're ready.", "ka": "შეგიძლია დაისვენო. როცა მზად იქნები, გააღე პირი."}
+]
