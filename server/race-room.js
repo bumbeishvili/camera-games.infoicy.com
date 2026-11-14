@@ -114,6 +114,11 @@
 //                                      screen however far apart each one's are, y how far down the screen, whether
 //                                      it can be seen, how far it's tipped and how much it's pouring, from 0 to 1,
 //                                      and p, its glove's 21 points, as in hand
+//   eater  { ms, x, y, m, n, v }           where their creature is in Gobble and Grow, across and down the soup
+//                                      from 0 to 1, how far its mouth is open, from 0 to 1, how many bites it has
+//                                      had, and whether their face can be seen. Everyone makes the same things to
+//                                      eat from the seed. Playing together, each claims the things their creature
+//                                      gobbles, as in Balloon Pop, and the first mouth to one has it
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
@@ -464,6 +469,21 @@ export function cleanCan(message) {
   };
 }
 
+/**
+ * Only what a creature in Gobble and Grow should hold, rounded: where it is in the soup, how far its mouth is open,
+ * how many bites it has had, and whether its child's face can be seen.
+ */
+export function cleanEater(message) {
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    x: number(message.x, -0.2, 1.2, 3),
+    y: number(message.y, -0.2, 1.2, 3),
+    m: number(message.m, 0, 1, 2),
+    n: number(message.n, 0, 1000, 0),
+    v: message.v ? 1 : 0,
+  };
+}
+
 const MOST_IN_THE_YARD = 4; // Frost Arena: as many as can play, and so as many counts of who tagged whom.
 
 /**
@@ -730,6 +750,10 @@ export class RaceRoom {
         for (const other of others) other.send({ t: message.t, from: meta.id, ...moved });
         break;
       }
+      case 'eater':
+        // Gobble and Grow: where their creature is, for everyone else to see it.
+        for (const other of others) other.send({ t: 'eater', from: meta.id, ...cleanEater(message) });
+        break;
       case 'done':
         if (!meta.racing) return;
         player.setMeta({ ...meta, racing: false });

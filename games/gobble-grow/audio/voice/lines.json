@@ -1,0 +1,15 @@
+[
+  {"id": "mission", "text": "Eat up, and grow as big as the sky!", "ka": "ჭამე ბევრი და ცასავით დიდი გაიზარდე!"},
+  {"id": "open-to-gobble", "text": "Open wide to gobble it up!", "ka": "ფართოდ გააღე პირი და გადაყლაპე!"},
+  {"id": "shut-to-munch", "text": "Close your mouth to munch!", "ka": "დახურე პირი და დაღეჭე!"},
+  {"id": "now-flea", "text": "Now you’re a water flea!", "speak": "Now you're a water flea!", "ka": "ახლა წყლის რწყილი ხარ!"},
+  {"id": "now-fish", "text": "Now you’re a fish!", "speak": "Now you're a fish!", "ka": "ახლა თევზი ხარ!"},
+  {"id": "now-cat", "text": "Now you’re a cat!", "speak": "Now you're a cat!", "ka": "ახლა კატა ხარ!"},
+  {"id": "now-elephant", "text": "Now you’re an elephant!", "speak": "Now you're an elephant!", "ka": "ახლა სპილო ხარ!"},
+  {"id": "now-whale", "text": "Now you’re a whale!", "speak": "Now you're a whale!", "ka": "ახლა ვეშაპი ხარ!"},
+  {"id": "now-cloud", "text": "Now you’re a cloud giant!", "speak": "Now you're a cloud giant!", "ka": "ახლა ღრუბლის გოლიათი ხარ!"},
+  {"id": "now-planet", "text": "Now you’re a planet!", "speak": "Now you're a planet!", "ka": "ახლა პლანეტა ხარ!"},
+  {"id": "now-sun", "text": "Now you’re a sun!", "speak": "Now you're a sun!", "ka": "ახლა მზე ხარ!"},
+  {"id": "now-galaxy", "text": "Now you’re a galaxy!", "speak": "Now you're a galaxy!", "ka": "ახლა გალაქტიკა ხარ!"},
+  {"id": "as-big-as-the-sky", "text": "You’re as big as the sky!", "speak": "You're as big as the sky!", "ka": "ცასავით დიდი ხარ!"}
+]
