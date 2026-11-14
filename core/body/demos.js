@@ -174,6 +174,10 @@ export const DEMOS = {
   lean: {
     frames: [[0, REST], [0.6, pose({ roll: 0.42, hipX: -0.05 })], [1, pose({ roll: 0.42, hipX: -0.05 })], [1.5, REST], [2.1, pose({ roll: -0.42, hipX: 0.05 })], [2.5, pose({ roll: -0.42, hipX: 0.05 })], [3, REST], [3.2, REST]],
   },
+  // Leaning to one side and holding it there, as Moto Mountain asks for in a bend.
+  leanOver: {
+    frames: [[0, REST], [0.4, REST], [1.1, pose({ roll: 0.42, hipX: -0.05 })], [2.6, pose({ roll: 0.42, hipX: -0.05 })], [3.3, REST], [3.7, REST]],
+  },
   lift: {
     frames: [[0, REST], [0.4, REST], [1.3, lifted], [2.6, lifted], [3.5, REST], [3.9, REST]],
   },

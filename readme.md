@@ -15,12 +15,12 @@ Movement-based games for children, played in front of a webcam.
 | ![Frost Arena](demos/gif/frost-arena.gif)<br>**Frost Arena:** a team shooter in the snow for grown-up players, played with two hands in the air like two thumbs on a phone: an open hand is a thumb on the glass, dragged to walk on one side and to look round on the other, a closed one is a thumb lifted, and a thumb up fires | ![Arrow Meadow](demos/gif/arrow-meadow.gif)<br>**Arrow Meadow:** archery with both hands: one holds the bow, the other pulls the string back and opens to let the arrow fly |
 | ![Giraffe's Puzzles](demos/gif/giraffe-puzzles.gif)<br>**Giraffe's Puzzles:** put Giraffe's broken picture back together, carrying each piece with an open hand | ![Flap, Little Chick!](demos/gif/chick-flap.gif)<br>**Flap, Little Chick!:** bend your wrists back to flap a chick's wings, and fly it home before the fox |
 | ![Mighty Lift](demos/gif/mighty-lift.gif)<br>**Mighty Lift:** raise your arm to lift heavy things off your friends | ![Gobble and Grow](demos/gif/gobble-grow.gif)<br>**Gobble and Grow:** open your mouth wide to gobble things up, and grow from a bacterium into a galaxy |
-| ![Giraffe's Paint Box](demos/gif/giraffe-paint.gif)<br>**Giraffe's Paint Box:** colour in pictures with your open hand as the brush | |
+| ![Giraffe's Paint Box](demos/gif/giraffe-paint.gif)<br>**Giraffe's Paint Box:** colour in pictures with your open hand as the brush | ![Moto Mountain](demos/gif/moto-mountain.gif)<br>**Moto Mountain:** lean your body into the bends to ride a motorbike up a mountain |
 
 - Resting never costs anything.
 - Each game has 10 levels.
-- Play with friends on their own computers in 20 of the games: make a game on the title card and send them the link or its 3-letter code. Mighty Moves, Bounce Back, Tank Patrol and Cannon Bay are for two, and Frost Arena, Arrow Meadow, Giraffe's Puzzles, Flap, Little Chick!, Mighty Lift, Gobble and Grow and Giraffe's Paint Box for up to four, together or against each other as whoever makes the game chooses, and the rest are everyone playing in the same game.
-- Gobble and Grow is played with the mouth, Mighty Lift by raising an arm, and Flap, Little Chick! by bending the wrists back.
+- Play with friends on their own computers in 21 of the games: make a game on the title card and send them the link or its 3-letter code. Mighty Moves, Bounce Back, Tank Patrol and Cannon Bay are for two, and Frost Arena, Arrow Meadow, Giraffe's Puzzles, Flap, Little Chick!, Mighty Lift, Gobble and Grow, Giraffe's Paint Box and Moto Mountain for up to four, together or against each other as whoever makes the game chooses, and the rest are everyone playing in the same game.
+- Gobble and Grow is played with the mouth, Mighty Lift by raising an arm, Flap, Little Chick! by bending the wrists back, and Moto Mountain by leaning the body to the side.
 - A grown-up can change the settings under the gear icon, including which hand shape makes a game's move, like pointing instead of an open hand.
 - The camera picture stays on your computer. The site counts visits with Google Analytics.
 

@@ -75,6 +75,8 @@ export class CarSound extends Sound {
         boing: fromGame('robot-rescue/audio/boing.ogg'),
         unlock: fromGame('robot-rescue/audio/unlock.ogg'),
         bell: fromGame('robot-rescue/audio/bell.ogg'),
+        // A game that borrows this engine, as Moto Mountain does, brings its own sounds as well.
+        ...(options?.sounds ?? {}),
       },
     });
     this.backgroundLevel = CAR_LEVEL;

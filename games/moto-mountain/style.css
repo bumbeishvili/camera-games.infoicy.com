@@ -1,0 +1,299 @@
+/* Moto Mountain's own display. What the body games share is in core/body/style.css. */
+
+/* ---------- which pieces each screen shows ---------- */
+.moto-top,
+.lean-meter,
+.bend-arrow,
+.warm-bar { display: none; }
+
+body[data-screen='countdown'] .moto-top,
+body[data-screen='playing'] .moto-top,
+body[data-screen='finishing'] .moto-top { display: flex; }
+
+body[data-screen='warmup'] .camera-frame,
+body[data-screen='countdown'] .camera-frame { display: block; }
+
+body[data-screen='warmup'] .lean-meter,
+body[data-screen='countdown'] .lean-meter,
+body[data-screen='playing'] .lean-meter { display: block; }
+
+body[data-screen='playing'] .bend-arrow { display: grid; }
+
+body[data-screen='warmup'] .warm-bar { display: flex; }
+
+body[data-screen='warmup'] .coach.is-visible,
+body[data-screen='playing'] .coach.is-visible { display: flex; }
+
+/* What to do is said along the top, clear of the road. */
+body[data-screen='warmup'] .prompt,
+body[data-screen='bodycheck'] .prompt { display: flex; }
+
+body[data-screen='playing'] .prompt { top: clamp(84px, 13vh, 110px); }
+body[data-screen='warmup'] .prompt { top: 12px; }
+
+/* Big enough for a child across the room to see themselves lean in. */
+.body-frame { --camera-small: clamp(170px, 21vw, 300px); }
+
+/* How far a lean has to be is this game's own setting, so the one the other body games share is put away. */
+.choice:has(input[name='moveSize']) { display: none; }
+
+/* ---------- choosing ---------- */
+.choose-tip {
+  font-size: clamp(16px, 1.7vw, 21px);
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--ink-soft);
+}
+
+/* ---------- the warm-up: the child's own picture beside their bike ---------- */
+body[data-screen='warmup'] .body-frame {
+  --warm-width: min(40vw, calc((100vh - 230px) * var(--camera-aspect)));
+  top: 96px;
+  bottom: auto;
+  left: clamp(20px, 3vw, 60px);
+  width: var(--warm-width);
+}
+
+/* Above the bike, which is copying the child. */
+body[data-screen='warmup'] .coach {
+  top: 70px;
+  bottom: auto;
+  right: clamp(14px, 3vw, 50px);
+  width: min(20vw, 38vh);
+}
+
+.warm-bar {
+  position: fixed;
+  z-index: 3;
+  right: 14px;
+  bottom: 12px;
+  gap: 12px;
+  align-items: center;
+}
+
+/* Smaller while riding, so that it never covers the road. */
+body[data-screen='playing'] .coach { width: min(19vw, 36vh); }
+body[data-screen='playing'] .coach-text { font-size: clamp(17px, 2vw, 28px); }
+
+/* ---------- the lean: the dot is the child, and the green stretch is where the road needs them ---------- */
+.lean-meter {
+  position: fixed;
+  z-index: 3;
+  left: 50%;
+  bottom: 14px;
+  width: min(40vw, 520px);
+  height: clamp(34px, 4.4vh, 46px);
+  transform: translateX(-50%);
+  background: rgba(18, 48, 77, 0.62);
+  border: 3px solid #fff;
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.lean-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 38%;
+  width: 24%;
+  background: #2fd16f;
+  opacity: 0.9;
+  border-radius: 999px;
+}
+
+.lean-middle {
+  position: absolute;
+  left: 50%;
+  top: 18%;
+  bottom: 18%;
+  width: 3px;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.lean-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  height: 78%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  background: var(--sun);
+  border: 3px solid #fff;
+  border-radius: 50%;
+}
+
+.lean-meter[data-zone='in'] .lean-dot { background: #fff; }
+
+/* The bend that's coming: which way, at the end of the lean bar, where it never covers the bike. */
+.bend-arrow {
+  position: fixed;
+  z-index: 3;
+  left: calc(50% + min(20vw, 260px) + 10px);
+  bottom: 10px;
+  width: clamp(54px, 6.2vw, 82px);
+  aspect-ratio: 1;
+  place-items: center;
+  transform-origin: 0 100%;
+  background: #fff;
+  border: 5px solid var(--sun);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+}
+
+.bend-arrow svg {
+  width: 72%;
+  height: 72%;
+  fill: none;
+  stroke: #d9413a;
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Pale and small while the bend is still ahead, and bold once the bike is in it. */
+.bend-arrow[data-way='left'],
+.bend-arrow[data-way='right'] { opacity: 0.6; transform: scale(0.78); }
+.bend-arrow[data-now='true'] { opacity: 1; transform: none; }
+.bend-arrow[data-way='left'] svg { transform: scaleX(-1); }
+.bend-arrow[data-big='true'] { width: clamp(70px, 8vw, 104px); }
+
+/* ---------- along the top: the bends, and the prizes ---------- */
+.moto-top {
+  position: fixed;
+  z-index: 3;
+  top: 8px;
+  left: 10px;
+  right: 66px;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.finish-prizes {
+  font-size: clamp(16px, 1.8vw, 21px);
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.finish-prizes:empty { display: none; }
+
+@media (max-width: 620px) {
+  .moto-top { flex-wrap: wrap; right: 10px; }
+  .lean-meter { width: 56vw; }
+  .bend-arrow { left: calc(50% + 28vw + 8px); }
+}
+
+/* Something new for this level, pointed out the first time it comes along. */
+.moto-new {
+  position: fixed;
+  z-index: 3;
+  top: calc(16px + clamp(58px, 6.4vw, 78px));
+  left: 50%;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 18px 7px 12px;
+  font-size: clamp(18px, 2.2vw, 26px);
+  font-weight: 700;
+  background: var(--surface);
+  border: 3px solid var(--sun);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+}
+
+body[data-screen='playing'] .moto-new { display: inline-flex; }
+
+.moto-new.is-showing { opacity: 1; transform: translateX(-50%) translateY(4px); }
+
+.moto-new-lead { color: var(--ink-soft); }
+
+.moto-new-mark { font-size: 1.3em; line-height: 1; }
+
+/* A prompt and the label would share the same place, so the prompt goes under it. */
+body[data-screen='playing']:has(.moto-new.is-showing) .prompt { top: calc(clamp(84px, 13vh, 110px) + 58px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .moto-new, .moto-new.is-showing { transform: translateX(-50%); }
+}
+
+/* ---------- riding with friends ---------- */
+/* Each friend's name and face over their bike. */
+.rider-mark {
+  position: fixed;
+  z-index: 2;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.rider-mark[data-where='none'] { display: none; }
+
+.rider-mark-face {
+  position: absolute;
+  left: -18px;
+  top: -58px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  background: var(--surface-soft);
+  box-shadow: 0 2px 8px rgba(18, 48, 77, 0.3);
+}
+
+.rider-mark-name {
+  position: absolute;
+  top: -20px;
+  left: 0;
+  transform: translateX(-50%);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Everyone's line, top right: the stars each has brought, or who's in front. */
+.moto-scores {
+  position: fixed;
+  z-index: 3;
+  top: 84px;
+  right: 12px;
+  margin: 0;
+  padding: 8px 10px;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  min-width: 150px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow);
+}
+
+.moto-scores[hidden] { display: none; }
+body:not([data-screen='playing']):not([data-screen='countdown']):not([data-screen='finishing']) .moto-scores { display: none; }
+
+.moto-scores li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.moto-scores li.is-you { color: var(--accent); }
+.moto-scores li.is-all { border-bottom: 2px solid rgba(18, 48, 77, 0.15); padding-bottom: 3px; }
+.moto-scores[data-counts='stars'] strong::before { content: '⭐ '; }
+.moto-scores[data-counts='place'] strong::after { content: '.'; }

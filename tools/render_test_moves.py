@@ -410,6 +410,38 @@ def lifts(t):
     return hands
 
 
+# Moto Mountain: the body leaning to the side, bending at the waist as a child on a seat does. First a dial, to
+# pick a lean from by its time: from 20 degrees to the left at 1 second, evenly, to 20 degrees to the right at 11.
+# Then leans as a child makes them: to the right and held, upright, to the left and held, and upright again.
+LEAN_KEYS = [(11, 20), (12, 0), (13, 0), (14, 16), (16.5, 16), (17.5, 0), (18.5, 0), (19.5, -16), (22, -16), (23, 0), (24, 0)]
+LEAN_SHOULDERS = 0.7  # How far round the shoulders go, as a share of how far the top of the spine tips.
+
+
+def lean_at(t):
+    """How far the body leans to its right, in degrees."""
+    if t < 1:
+        return 0
+    if t < 11:
+        return (t - 6) * 4
+    return angle_at(t, LEAN_KEYS)
+
+
+def leans(t):
+    """Arms hanging from the shoulders, wherever the lean has taken them."""
+    turn = math.radians(lean_at(t)) * LEAN_SHOULDERS
+    pivot = rest["J_Bip_C_Spine"]
+    hands = {}
+    for sid in ("R", "L"):
+        x, z = SHOULDER[sid].x - pivot.x, SHOULDER[sid].z - pivot.z
+        shoulder = Vector((pivot.x + x * math.cos(turn) + z * math.sin(turn), SHOULDER[sid].y, pivot.z - x * math.sin(turn) + z * math.cos(turn)))
+        hands[sid] = shoulder + Vector((SIDE[sid] * 0.075, 0.03, -0.92 * ARM))
+    return hands
+
+
+def leans_body(t):
+    return 0, 0, 0, math.radians(lean_at(t))
+
+
 # Each clip: what the arms do, how long it lasts, and what the rest of the body does if it moves.
 CLIPS = {
     "claps": (claps, 20, None),
@@ -418,6 +450,7 @@ CLIPS = {
     "demo-fight": (fight_demo, 13.5, fight_body),
     "demo-trail": (trail_demo, 11, trail_body),
     "lifts": (lifts, 37, None),
+    "leans": (leans, 24, leans_body),
 }
 pick, length, body_at = CLIPS[CLIP]
 FEET = {"R": rest["J_Bip_R_Foot"], "L": rest["J_Bip_L_Foot"]}
@@ -431,8 +464,10 @@ for index in range(first, last + 1):
     hands = pick(t)
     for sid, at in hands.items():
         solve_arm(sid, SIDE[sid], at + sway(t, sid))
+    side = 0
     if body_at:
-        drop, up, lean = body_at(t)
+        drop, up, lean, *more = body_at(t)
+        side = more[0] if more else 0
         arm.location.z = up - drop
         for sid in ("R", "L"):
             # Feet stay on the floor while the body sinks, and go with it when it leaves the floor.
@@ -442,7 +477,11 @@ for index in range(first, last + 1):
         for finger in ("Index", "Middle", "Ring", "Little"):
             for joint in (1, 2, 3):
                 set_rel(f"J_Bip_{sid}_{finger}{joint}", Euler((0, 0, 0)).to_quaternion())
-    set_rel("J_Bip_C_Spine", Euler((math.radians(math.sin(t * 0.8) * 0.6), 0, 0)).to_quaternion())
+    # A lean to the side is a bend spread up the spine, a third at each of three places.
+    set_rel("J_Bip_C_Spine", Euler((math.radians(math.sin(t * 0.8) * 0.6), side / 3, 0)).to_quaternion())
+    if side:
+        set_rel("J_Bip_C_Chest", Euler((0, side / 3, 0)).to_quaternion())
+        set_rel("J_Bip_C_UpperChest", Euler((0, side / 3, 0)).to_quaternion())
     scene.render.filepath = os.path.join(OUT, f"{index:05d}.jpg")
     bpy.ops.render.render(write_still=True)
 print("rendered", first, last)

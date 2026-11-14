@@ -797,3 +797,27 @@ body.hub {
 .game-art-gobble .art-gobble-pupil { fill: var(--ink); stroke: none; }
 .game-art-gobble .art-gobble-mouth { fill: #6e1f2e; stroke: var(--ink); stroke-width: 2.5; }
 .game-art-gobble .art-gobble-tongue { fill: #ff8fa3; stroke: none; }
+
+/* Moto Mountain: a motorbike, seen from behind, leaning into a bend on a mountain road, with a board round the
+   outside of the bend and a star to catch. */
+.game-art-moto { background: linear-gradient(#7cc8ff, #e4f6ff 70%); }
+.art-moto-far { fill: #a9b6c9; }
+.art-moto-snow { fill: #fff; }
+.art-moto-meadow { fill: #7bd65b; }
+.art-moto-pine { fill: #2f8f5a; }
+.art-moto-road { fill: #5d6b7c; stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; }
+.art-moto-dash { fill: none; stroke: #f4f7fa; stroke-width: 3; stroke-linecap: round; }
+.art-moto-post { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linecap: round; }
+.art-moto-board { fill: #fff; stroke: var(--ink); stroke-width: 2.5; }
+.art-moto-chevron { fill: none; stroke: #e8433f; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.art-moto-tyre { fill: #2b3340; }
+.art-moto-bike { fill: #ff5a4f; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
+.art-moto-light { fill: #ffd23f; stroke: var(--ink); stroke-width: 2; }
+.art-moto-pipe { fill: #c3cad1; stroke: var(--ink); stroke-width: 2.5; }
+.art-moto-bars { fill: none; stroke: var(--ink); stroke-width: 4; stroke-linecap: round; }
+.art-moto-arm-ink { fill: none; stroke: var(--ink); stroke-width: 12; stroke-linecap: round; }
+.art-moto-arm { fill: none; stroke: #3b82f6; stroke-width: 6; stroke-linecap: round; }
+.art-moto-jacket { fill: #3b82f6; stroke: var(--ink); stroke-width: 3; }
+.art-moto-helmet { fill: #ffd23f; stroke: var(--ink); stroke-width: 3; }
+.art-moto-stripe { fill: none; stroke: #ff5a4f; stroke-width: 6; }
+.art-moto-rim { fill: none; stroke: var(--ink); stroke-width: 3; }

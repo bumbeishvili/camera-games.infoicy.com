@@ -82,6 +82,8 @@ Mighty Lift has no sounds of its own either, only voices: it plays Cannon Bay's 
 
 Giraffe's Paint Box has no sounds of its own either, only voices: it plays The Lighthouse Keeper's `wipe.ogg`, Spider Catcher's `birds.ogg` and `home.ogg`, Robot Rescue's `goo-pop.ogg` and `boing.ogg`, Mighty Moves' `sparkle.ogg` and `cheer.ogg`, Smoothie Stand's `mixer.ogg` and Balloon Pop's `pop.ogg`.
 
+Moto Mountain has no sounds of its own either, only voices: it plays High Five Racers' `engine-loop.flac`, played higher, `engine-start.ogg` and `rush.ogg`, Tank Patrol's `birds.ogg` and `hop.ogg`, Leap Trail's `music.ogg` and `land.ogg`, Cannon Bay's `wind.ogg` and `splash.ogg`, Spider Catcher's `rustle.ogg` and `home.ogg`, Mighty Moves' `whoosh-2.ogg`, `jump.ogg`, `thump.ogg`, `sparkle.ogg`, `bell.ogg` and `cheer.ogg`, Robot Rescue's `bell.ogg` and the Long Walk Home's `crunch.ogg`, with the shared sounds in `core/audio/sfx/`. The engine loop is the CC-BY one credited below. Its mountain, road, motorbikes, sheep, scooters and the rest on the road are original designs, made from simple shapes in the game's own code.
+
 The ten pictures in Giraffe's Paint Box are drawn by the game itself from simple shapes, and are original designs made for it. Its hidden friends are the computer's own emoji.
 
 The engine loop's CC-BY licence requires this credit to stay with the game: **"Car Engine Loop 96kHz, 4s" by qubodup, CC-BY 3.0, resampled and level adjusted.**

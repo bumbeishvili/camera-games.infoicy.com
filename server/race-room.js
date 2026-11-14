@@ -1,7 +1,7 @@
 // Playing with friends, in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail, Giraffe's
 // Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher, the Lighthouse Keeper, Giraffe's Garden, Frost
-// Arena, Arrow Meadow, Giraffe's Puzzles, Flap, Little Chick!, Mighty Lift, Gobble and Grow and Giraffe's Paint Box:
-// who's in a room, and what they pass to each other.
+// Arena, Arrow Meadow, Giraffe's Puzzles, Flap, Little Chick!, Mighty Lift, Gobble and Grow, Giraffe's Paint Box and
+// Moto Mountain: who's in a room, and what they pass to each other.
 // The same rules run on Cloudflare (server/worker.js) and on this computer for the tests
 // (tools/race-server.mjs). Each game has rooms of its own. Nothing here is kept once everyone has gone, and no
 // camera picture ever comes here: only where each car or plane is, the moves a fighter makes and how it stands,
@@ -137,6 +137,11 @@
 //                                      they've freed, and whether they're resting. length is how many lifts a game
 //                                      has, and mode how long a hold is. Lifting one weight together, each game
 //                                      claims a rescue, by its number, as it's done there, and their bodies go as pose
+//   rider  { ms, s, x, l, h, v, n, c, w, d }  where their bike is in Moto Mountain: how far along the road and
+//                                      where across it, how far over it leans, how high it is in a jump, how fast,
+//                                      how many stars and bends ridden on the road, and whether it's waiting or
+//                                      has finished. Everyone lays out the same road from the seed. length is how
+//                                      many bends a ride has, and mode how fast the bike goes
 //   eater  { ms, x, y, m, n, v }           where their creature is in Gobble and Grow, across and down the soup
 //                                      from 0 to 1, how far its mouth is open, from 0 to 1, how many bites it has
 //                                      had, and whether their face can be seen. Everyone makes the same things to
@@ -666,6 +671,26 @@ export function cleanLifter(message) {
   };
 }
 
+/**
+ * Only what a bike in Moto Mountain should hold, rounded: how far along the road it is and where across it, how
+ * far over it leans, as a share of a whole lean, how high it is in a jump, how fast it's going, how many stars
+ * and bends ridden on the road it has, and whether it's waiting or has finished.
+ */
+export function cleanRider(message) {
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    s: number(message.s, 0, 4000, 1),
+    x: number(message.x, -8, 8, 2),
+    l: number(message.l, -1.3, 1.3, 2),
+    h: number(message.h, 0, 3, 2),
+    v: number(message.v, 0, 40, 1),
+    n: number(message.n, 0, 200, 0),
+    c: number(message.c, 0, 20, 0),
+    w: message.w ? 1 : 0,
+    d: message.d ? 1 : 0,
+  };
+}
+
 /** Only what a car message should hold, rounded, so nothing else can be passed on. */
 export function cleanCar(message) {
   return {
@@ -905,6 +930,11 @@ export class RaceRoom {
       case 'lifter':
         // Mighty Lift: each lifter's arm goes to the others.
         for (const other of others) other.send({ t: 'lifter', from: meta.id, ...cleanLifter(message) });
+        break;
+      case 'rider':
+        // Moto Mountain: where each bike is on the road goes to the others.
+        if (!meta.racing) return;
+        for (const other of others) other.send({ t: 'rider', from: meta.id, ...cleanRider(message) });
         break;
       case 'eater':
         // Gobble and Grow: where their creature is, for everyone else to see it.

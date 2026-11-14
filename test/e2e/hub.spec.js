@@ -25,6 +25,7 @@ const GAMES = [
   { name: 'Mighty Lift', folder: 'mighty-lift', start: 'Choose your lifter' },
   { name: 'Gobble and Grow', folder: 'gobble-grow', start: 'Let’s eat!' },
   { name: 'Giraffe’s Paint Box', folder: 'giraffe-paint', start: 'Start painting' },
+  { name: 'Moto Mountain', folder: 'moto-mountain', start: 'Choose your rider' },
 ];
 
 test('the hub offers every game, and each one opens and comes back', async ({ page }) => {
@@ -202,7 +203,7 @@ test('typing in the search finds games by their name, what they\'re about and wh
   const cases = [
     // A kind of game, and the start of one.
     ['shoot', ['Sky Wings', 'Robot Rescue', 'Tank Patrol', 'Cannon Bay', 'Frost Arena']],
-    ['racing', ['High Five Racers', 'Leap Trail', 'Sky Wings', 'Flap, Little Chick!']],
+    ['racing', ['High Five Racers', 'Leap Trail', 'Sky Wings', 'Flap, Little Chick!', 'Moto Mountain']],
     // The game's own words.
     ['tennis', ['Bounce Back']],
     ['maths', ['Balloon Pop']],

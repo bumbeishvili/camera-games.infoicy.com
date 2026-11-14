@@ -83,6 +83,13 @@
     shiftFootage(shiftX) {
       scene.footageShiftX = shiftX;
     },
+    /**
+     * Tips the footage over, about the person's feet, by so many degrees towards the right of the mirror: a
+     * person standing still then looks like one leaning that far, all in a piece. 0 stands them up again.
+     */
+    tiltFootage(degrees) {
+      scene.footageTilt = degrees;
+    },
     /** shiftX moves the person across, as a share of the picture's width, towards the right of the mirror. */
     async showFootage(name, { from = 0, playing = true, height = 1, shiftY = 0, shiftX = 0 } = {}) {
       const source = `/test/fixtures/body/${name}.webm`;
@@ -105,6 +112,7 @@
       scene.footageHeight = height;
       scene.footageShiftY = shiftY;
       scene.footageShiftX = shiftX;
+      scene.footageTilt = 0;
       if (playing) await footage.play();
     },
     /** An empty room. */
@@ -158,7 +166,13 @@
         const width = (height * footage.videoWidth) / footage.videoHeight;
         // The picture isn't mirrored, so the right of the mirror is the left of this picture.
         ctx.fillStyle = '#808080';
-        if (scene.footageShiftX) ctx.fillRect(0, 0, WIDTH, HEIGHT);
+        if (scene.footageShiftX || scene.footageTilt) ctx.fillRect(0, 0, WIDTH, HEIGHT);
+        if (scene.footageTilt) {
+          // About the feet, near the bottom of the picture. The right of the mirror is the left of this picture.
+          ctx.translate(WIDTH / 2, HEIGHT * 0.94);
+          ctx.rotate((-scene.footageTilt * Math.PI) / 180);
+          ctx.translate(-WIDTH / 2, -HEIGHT * 0.94);
+        }
         ctx.drawImage(footage, (WIDTH - width) / 2 - (scene.footageShiftX ?? 0) * WIDTH, (HEIGHT - height) / 2 + scene.footageShiftY * HEIGHT, width, height);
         return;
       }

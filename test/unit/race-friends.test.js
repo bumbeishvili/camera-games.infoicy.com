@@ -3,6 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanLifter } from '../../server/race-room.js';
+import { cleanRider } from '../../server/race-room.js';
 import { cleanEater } from '../../server/race-room.js';
 import { cleanBall, cleanBrush, cleanCar, cleanFoes, cleanHand, cleanName, cleanRacket, cleanShip, cleanShot, cleanTag, cleanTank, cleanTrooper, COMES_BACK_WITHIN_MS, idFor, makeCode, MAX_RACERS, MOST_BYTES, MOST_FOES, MOST_STROKE_NUMBERS, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
 import { BODY_KEYS } from '../../games/mighty-moves/clips.js';
@@ -1114,4 +1115,41 @@ test('a brush message holds only numbers, no more strokes than a message can, an
   assert.equal(most.s.length, MOST_STROKE_NUMBERS);
   const biggest = JSON.stringify({ t: 'brush', from: 'abcdefghijkl', ...most });
   assert.ok(biggest.length < MOST_BYTES * 0.75, `${biggest.length} characters at most`);
+});
+
+test('in Moto Mountain up to four ride one road, and where each bike is goes to the others once the ride has started', () => {
+  assert.equal(mostIn('moto-mountain'), MAX_RACERS);
+  const { join } = makeRoom(mostIn('moto-mountain'));
+  const [ana, ben, cat, dan] = ['aaaaaaaa', 'bbbbbbbb', 'cccccccc', 'dddddddd'].map(join);
+  ana.say({ t: 'hi', name: 'Ana', driver: 'giraffe', level: 6, length: 14, mode: 'gentle', team: 1 });
+  const rider = { t: 'rider', ms: 1500.4, s: 312.26, x: -2.345, l: 0.567, h: 1.234, v: 15.26, n: 7, c: 3, w: 0, d: 0, picture: 'not this' };
+  // Before it starts, nobody is riding, so nothing is passed on.
+  ana.say(rider);
+  assert.equal(ben.last('rider'), undefined);
+  for (const player of [ana, ben, cat, dan]) player.say({ t: 'ready' });
+  // The host's level, how many bends, how fast and how to play are what everyone gets.
+  assert.deepEqual([ben.last('go').level, ben.last('go').length, ben.last('go').mode, ben.last('go').team], [6, 14, 'gentle', 1]);
+  ana.say(rider);
+  for (const player of [ben, cat, dan]) {
+    assert.deepEqual(player.last('rider'), { t: 'rider', from: 'aaaaaaaa', ms: 1500, s: 312.3, x: -2.35, l: 0.57, h: 1.23, v: 15.3, n: 7, c: 3, w: 0, d: 0 });
+  }
+  assert.equal(ana.last('rider'), undefined, 'not back to whoever sent it');
+  // A bike at the top says so, and then its child's time goes to everyone.
+  ana.say({ ...rider, s: 1400, d: 1 });
+  ana.say({ t: 'done', ms: 81_000, w: 1, n: 7 });
+  assert.equal(ben.last('rider').d, 1);
+  assert.equal(ben.last('done').from, 'aaaaaaaa');
+});
+
+test('a bike\'s message holds only what it should, rounded and kept to the road', () => {
+  assert.deepEqual(Object.keys(cleanRider({})), ['ms', 's', 'x', 'l', 'h', 'v', 'n', 'c', 'w', 'd']);
+  assert.deepEqual(cleanRider({}), { ms: 0, s: 0, x: 0, l: 0, h: 0, v: 0, n: 0, c: 0, w: 0, d: 0 });
+  assert.deepEqual(
+    cleanRider({ ms: -5, s: 'far', x: 99, l: -7, h: 12, v: 400, n: -3, c: 99, w: 'yes', d: {}, picture: 'not this', points: [1, 2, 3] }),
+    { ms: 0, s: 0, x: 8, l: -1.3, h: 3, v: 40, n: 0, c: 20, w: 1, d: 1 },
+  );
+  assert.deepEqual(cleanRider({ ms: 4e9, s: 99_999, x: -0.123456, l: 0.555, h: 0.126, v: 15.26, n: 5000.4, c: 4.4, w: 0, d: 0 }), { ms: 3_600_000, s: 4000, x: -0.12, l: 0.56, h: 0.13, v: 15.3, n: 200, c: 4, w: 0, d: 0 });
+  assert.ok(Object.values(cleanRider({ s: NaN, x: Infinity, l: null, h: {}, v: [], ms: 'now' })).every((value) => typeof value === 'number' && Number.isFinite(value)));
+  const biggest = JSON.stringify({ t: 'rider', from: 'abcdefghijkl', ...cleanRider({ ms: 3_599_999, s: 3999.9, x: -7.99, l: -1.29, h: 2.99, v: 39.9, n: 199, c: 19, w: 1, d: 1 }) });
+  assert.ok(biggest.length < 130, `${biggest.length} characters`);
 });

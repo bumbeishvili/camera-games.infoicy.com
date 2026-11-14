@@ -895,6 +895,53 @@ const FILMS = {
     },
     report: (page) => page.evaluate(() => window.__game.lifting.stats),
   },
+  'moto-mountain': {
+    settings: { levels: { 'moto-mountain': 2 }, motoBends: 6 },
+    // The bar and the arrow go over to the right, clear of the camera picture made big.
+    css: '.lean-meter { left: 62% !important; } .bend-arrow { left: calc(62% + min(20vw, 260px) + 10px) !important; }',
+    async ready(page) {
+      // The person from the hips up, so that their lean is easy to see in the film.
+      await footage(page, 'leans', { from: 0.5, playing: false, height: 1.7, shiftY: 0.3 });
+      await page.locator('#start').click();
+      await page.locator('#moto-start').click();
+      await screenIs(page, 'warmup');
+      await page.locator('#warm-skip').click();
+      await screenIs(page, 'playing');
+      // Up to speed, and coming to the first bend.
+      await page.waitForFunction(() => window.__game.ride.s > 40, null, { timeout: 30_000 });
+    },
+    async play(page) {
+      // The person in the footage leans as far as the road needs, a moment ahead of it. The footage has a stretch
+      // where the lean goes evenly from 20 degrees one way to 20 the other, between 1 and 11 seconds, and the
+      // moment in it with the lean that's wanted is the one shown: a little more or less of it, until the game
+      // reads the lean it should.
+      await page.evaluate(() => new Promise((done) => {
+        const started = performance.now();
+        let dial = 0;
+        let busy = false;
+        const timer = setInterval(async () => {
+          if (performance.now() - started > 16_000) {
+            clearInterval(timer);
+            done();
+            return;
+          }
+          const { ride, leaner } = window.__game;
+          if (busy || !ride || ride.state !== 'riding') return;
+          const want = ride.needAt(ride.s + ride.v * 0.45);
+          const reach = leaner.reachOf(want < 0 ? 'left' : 'right');
+          const wanted = want === 0 ? 0 : (Math.sign(want) * (0.14 + Math.abs(want) * 0.86) * reach * 180) / Math.PI;
+          dial = Math.max(-20, Math.min(20, dial + (wanted - (leaner.raw * 180) / Math.PI) * 0.18));
+          busy = true;
+          await window.__camera.showFootage('leans', { from: 6 + dial / 4, playing: false, height: 1.7, shiftY: 0.3 });
+          busy = false;
+        }, 60);
+      }));
+    },
+    report: (page) => page.evaluate(() => {
+      const { stats, s } = window.__game.ride;
+      return { s: Math.round(s), clean: stats.clean, stars: stats.stars, leans: stats.leans, verge: stats.vergeSeconds };
+    }),
+  },
   'gobble-grow': {
     // Played with the face, and there are no photos of faces here: the camera is a drawing of one, and the tracker
     // a stand-in that reports it, as in its tests (test/e2e/fake-face.js).

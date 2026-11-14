@@ -1,0 +1,10 @@
+[
+  {"id": "choose", "text": "Who’s riding today?", "speak": "Who's riding today?", "ka": "დღეს ვინ მართავს მოტოციკლს?"},
+  {"id": "mission", "text": "Lean into the bends, and ride to the top!", "ka": "მოსახვევებში გადაიხარე და მწვერვალამდე ადი!"},
+  {"id": "warm-left", "text": "Lean to the left as far as you can, and hold it!", "ka": "გადაიხარე მარცხნივ, რამდენადაც შეგიძლია, და ასე გაჩერდი!"},
+  {"id": "warm-right", "text": "Lean to the right as far as you can, and hold it!", "ka": "გადაიხარე მარჯვნივ, რამდენადაც შეგიძლია, და ასე გაჩერდი!"},
+  {"id": "ready", "text": "That’s it! You’re ready to ride!", "speak": "That's it! You're ready to ride!", "ka": "აი ასე, ახლა მზად ხარ წასასვლელად!"},
+  {"id": "left", "text": "Lean to the left!", "ka": "გადაიხარე მარცხნივ!"},
+  {"id": "right", "text": "Lean to the right!", "ka": "გადაიხარე მარჯვნივ!"},
+  {"id": "top", "text": "You made it to the top!", "ka": "მწვერვალზე ახვედი!"}
+]
