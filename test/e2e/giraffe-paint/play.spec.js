@@ -2,7 +2,7 @@
 // dipping it in a pot takes that pot's paint, and every part painted ends the picture. With real photos of hands
 // through the real tracker.
 import { shot } from '../helpers.js';
-import { dipIn, dotOf, expect, expectSoon, GAME, leadHand, paintAt, part, potOf, show, startPlaying, state, stopHand, test, waitForScreen } from './helpers.js';
+import { dipIn, dotOf, expect, expectSoon, FIST, GAME, leadHand, paintAt, part, potOf, show, startPlaying, state, stopHand, test, waitForScreen } from './helpers.js';
 
 /** How far the brush is from a place on the sheet, or a long way if it can't be seen. */
 const farFrom = async (page, where) => {
@@ -73,6 +73,11 @@ for (const [name, photo] of [['closed', 'fist'], ['missing', 'none']]) {
   test(`a ${name} hand is the brush lifted: it paints nothing, and the picture waits, for as long as it takes`, async ({ page }) => {
     test.setTimeout(150_000);
     await startPlaying(page);
+    // The hand comes out of the hand check open: it closes where it is, before it goes anywhere, as the test is
+    // about a hand that's closed. (A slow tracker can see it open for a moment after the photo changes.)
+    await show(page, ...FIST);
+    await expectSoon(() => page.evaluate(() => window.__game.monitor.snapshot.right.status), { timeout: 30_000 }).toBe('closed');
+    const before = (await state(page)).parts.map((each) => each.covered);
     // Over the head, where an open hand would paint.
     await leadHand(page, { target: { x: 62, y: 40 }, photo: 'fist' });
     await expectSoon(() => farFrom(page, { x: 62, y: 40 }), { timeout: 30_000 }).toBeLessThan(5);
@@ -82,7 +87,7 @@ for (const [name, photo] of [['closed', 'fist'], ['missing', 'none']]) {
     }
     await page.waitForTimeout(3200);
     const resting = await state(page);
-    expect(resting.parts.every((each) => each.covered === 0 || each.kind === 'paper')).toBe(true);
+    expect(resting.parts.map((each) => each.covered)).toEqual(before);
     expect(resting.brush.down).toBe(false);
     expect(resting.stats.dips).toBe(0);
     if (photo === 'fist') {
@@ -90,7 +95,7 @@ for (const [name, photo] of [['closed', 'fist'], ['missing', 'none']]) {
       await expect(page.locator('#prompt-text')).toHaveText('Open your hand to paint!');
       await leadHand(page, { target: { x: 110, y: 30 }, photo: 'fist' });
       await expectSoon(() => farFrom(page, { x: 110, y: 30 }), { timeout: 30_000 }).toBeLessThan(6);
-      expect((await state(page)).parts.every((each) => each.covered === 0 || each.kind === 'paper')).toBe(true);
+      expect((await state(page)).parts.map((each) => each.covered)).toEqual(before);
     }
     // Open again, it paints.
     await leadHand(page, { target: { x: 62, y: 40 } });
