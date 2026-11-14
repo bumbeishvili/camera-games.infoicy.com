@@ -1,7 +1,7 @@
 // Mighty Lift's ten levels, in the real page: what each one brings is named on the title card and under the
 // countdown, comes along and works in the real game, and nothing flashes, at level 1 or at level 10 with all of it
 // about. The child is played by a script, whose arm goes up when there's something to lift and is never quite still.
-import { childLifts, expect, expectSoon, judge, labelShown, openLift, reachPlay, shot, state, stopChild, test, waitForScreen, watchBrightness } from './helpers.js';
+import { childLifts, expect, expectSoon, judge, labelShown, openLift, reachPlay, reachWarmup, shot, state, stopChild, test, waitForScreen, watchBrightness } from './helpers.js';
 
 const atLevel = (level, settings = {}) => ({ levels: { 'mighty-lift': level }, ...settings });
 
@@ -90,11 +90,20 @@ test('level 3: a heavy crate comes up slowly, so the arm stays up for longer, an
 
 test('level 4: three ducklings waddle out to their mother one at a time, each one kept', async ({ page }) => {
   test.setTimeout(180_000);
-  await reachPlay(page, atLevel(4));
+  const ducklingsOut = () => page.evaluate(() => window.__game.world.ducks?.little.filter((one) => one.visible).length ?? -1);
+  await reachWarmup(page, atLevel(4));
+  await page.locator('#warm-skip').click();
+  // All through the countdown the family waits under the tub, with their mother beside it.
+  await waitForScreen(page, 'countdown');
+  for (let i = 0; i < 8; i += 1) {
+    expect(await ducklingsOut()).toBe(0);
+    await page.waitForTimeout(250);
+  }
+  expect(await page.evaluate(() => window.__game.world.ducks.mother.visible)).toBe(true);
+  await waitForScreen(page, 'playing');
   const start = await state(page);
   expect([start.kind, start.rescue.friend, start.rescue.parts]).toEqual(['tub', 'ducks', 3]);
   expect(await labelShown(page, 'tub')).toBe(true);
-  const ducklingsOut = () => page.evaluate(() => window.__game.world.ducks?.little.filter((one) => one.visible).length ?? -1);
   expect(await ducklingsOut()).toBe(0);
   await childLifts(page, { high: 1.2 });
   await expectSoon(async () => (await state(page)).parts, { timeout: 20_000 }).toBe(1);
@@ -108,9 +117,31 @@ test('level 4: three ducklings waddle out to their mother one at a time, each on
   const kept = (await state(page)).parts;
   await page.waitForTimeout(1500);
   expect((await state(page)).parts).toBe(kept);
+  // From now until the next friend comes along: how long all three are out with their mother, once they're free.
+  const allOut = page.evaluate(() => new Promise((done) => {
+    const { world } = window.__game;
+    let since = null;
+    let longest = 0;
+    const timer = setInterval(() => {
+      const { lifting } = window.__game;
+      const three = world.ducks?.little.every((one) => one.visible);
+      if (lifting.phase === 'freed' && three) {
+        since ??= performance.now();
+        longest = Math.max(longest, performance.now() - since);
+      } else since = null;
+      if (lifting.index > 0) {
+        clearInterval(timer);
+        done(longest);
+      }
+    }, 20);
+  }));
   await childLifts(page, { high: 1.2 });
   await expectSoon(async () => (await state(page)).stats.freed, { timeout: 30_000 }).toBe(1);
   expect((await state(page)).stats.ducklings).toBe(3);
+  // All three stay out with their mother while the tub comes down.
+  const together = await allOut;
+  console.log('all three ducklings out together for', Math.round(together), 'ms');
+  expect(together).toBeGreaterThan(600);
   await expect(page.locator('#freed-row li')).toHaveText('🦆');
   await stopChild(page);
 });
