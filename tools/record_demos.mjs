@@ -821,6 +821,50 @@ const FILMS = {
       return { placed, pictures, picks, prizes };
     }),
   },
+  'chick-flap': {
+    settings: { levels: { 'chick-flap': 6 } },
+    css: '.camera-frame { --camera-small: 24vw !important; }',
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: 'palm', right: 'palm', scale: 0.62 }));
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await wait(page, 200);
+    },
+    async play(page) {
+      // Both hands, as a child who knows the game holds them: tipped forwards while the chick runs, bent back at
+      // the wrist for a flap on the painted stretch, kept up while it's over something, and down again for the
+      // scarecrow. A gust of wind first, which carries it over a pond, then a fence, the scarecrow and a log.
+      await page.evaluate(() => new Promise((done) => {
+        const started = performance.now();
+        let upFor = 0;
+        let rest = 0;
+        let up = { left: false, right: false };
+        const timer = setInterval(() => {
+          const { farm } = window.__game;
+          let want = farm.wants();
+          // Hands that have been up a while with the chick still on the ground come down, to flap again.
+          if (rest > 0) {
+            rest -= 0.033;
+            want = { wings: 0, keep: false };
+          } else if (want.wings > 0 && !farm.chick.air && farm.chick.state === 'run' && upFor > 0.8) {
+            rest = 0.45;
+            want = { wings: 0, keep: false };
+          }
+          if (!want.keep) up = { right: want.wings >= 1, left: want.wings >= 2 };
+          upFor = up.left || up.right ? upFor + 0.033 : 0;
+          window.__camera.show({ left: 'palm', right: 'palm', scale: 0.62, leftShorten: up.left ? 1 : 0.5, rightShorten: up.right ? 1 : 0.5 });
+          if (performance.now() - started > 19_000) {
+            clearInterval(timer);
+            done();
+          }
+        }, 33);
+      }));
+    },
+    report: (page) => page.evaluate(() => {
+      const { flaps, cleared, clean, corn, tumbles, splashes, bonks } = window.__game.farm.stats;
+      return { flaps, cleared, clean, corn, tumbles, splashes, bonks };
+    }),
+  },
   'balloon-pop': {
     settings: { reach: 'none', pace: 'medium' },
     async ready(page) {

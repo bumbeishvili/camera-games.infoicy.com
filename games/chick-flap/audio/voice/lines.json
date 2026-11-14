@@ -1,0 +1,10 @@
+[
+  {"id": "flap-intro", "text": "Flap home, little chick! The fox is behind you!", "ka": "სახლისკენ იფრინე, პატარა წიწილო! მელია მოგდევს!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "flap-hint", "text": "Lift your hands to flap!", "ka": "ასწიე ხელები და დაიქნიე ფრთები!"},
+  {"id": "flap-both", "text": "Flap both wings together!", "ka": "ორივე ფრთა ერთად დაიქნიე!"},
+  {"id": "flap-glide", "text": "Keep your hands up to glide!", "ka": "ხელები მაღლა გეჭიროს და ჰაერში დარჩები!"},
+  {"id": "flap-under", "text": "Hands down to go under!", "ka": "ხელები დაუშვი და ქვეშ გაირბინე!"},
+  {"id": "flap-rest", "text": "Resting is OK. Flap when you’re ready.", "speak": "Resting is okay. Flap when you're ready.", "ka": "შეგიძლია დაისვენო. როცა მზად იქნები, დაიქნიე ფრთები."},
+  {"id": "flap-show-both", "text": "Show both hands!", "ka": "მაჩვენე ორივე ხელი!"},
+  {"id": "flap-home", "text": "Home safe! What a flyer!", "ka": "სახლში ხარ! რა კარგად დაფრინავ!"}
+]

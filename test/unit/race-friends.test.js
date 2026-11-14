@@ -931,3 +931,47 @@ test('a puzzle message holds only what it should, rounded and kept to the table,
   assert.ok(biggest.length < 1100, `${biggest.length} characters at most`);
   assert.ok(JSON.stringify({ t: 'jigsaw', ...most }).length < MOST_BYTES, 'and as it\'s sent, it\'s short enough to be heard');
 });
+
+/* ---------- Flap, Little Chick! ---------- */
+// Its own import, here with its tests, so that games added at the same time don't all change the same line.
+import { cleanChick } from '../../server/race-room.js';
+
+test('in Flap, Little Chick! up to four fly home on the host\'s track, together or racing, and each game tells the others where its chick is', () => {
+  assert.equal(mostIn('chick-flap'), 4);
+  const { join } = makeRoom(mostIn('chick-flap'));
+  const [ana, ben, cal, dee] = ['aaaaaaaa', 'bbbbbbbb', 'cccccccc', 'dddddddd'].map((id) => join(id));
+  assert.equal(join('eeeeeeee'), null, 'a fifth is told it\'s full');
+  // Whoever made the flock has level 6, a long way home, and together. A friend's own are different, and don't count.
+  ana.say({ t: 'hi', name: 'Ana', driver: 'giraffe', level: 6, length: 16, team: 1 });
+  ben.say({ t: 'hi', name: 'Ben', driver: 'kit', level: 2, length: 8, team: 0 });
+  assert.equal(ben.last('room').team, 1);
+  // Nothing about a chick is passed on before it starts, or after.
+  for (const each of [ana, ben, cal, dee]) each.say({ t: 'ready' });
+  const { seed, ...go } = dee.last('go');
+  assert.deepEqual(go, { t: 'go', level: 6, length: 16, laps: 16, mode: '', team: 1, racers: ['aaaaaaaa', 'bbbbbbbb', 'cccccccc', 'dddddddd'] });
+  assert.ok(Number.isInteger(seed), 'one seed, so every game lays out the same track');
+  assert.equal(ana.last('go').seed, seed);
+
+  ben.say({ t: 'chick', ms: 1500.4, d: 23.456, y: 1.234, v: 2.567, l: 0.876, r: 0.123, s: 1, n: 7, c: 12, picture: 'not this', name: 'Ben' });
+  const heard = { t: 'chick', from: 'bbbbbbbb', ms: 1500, d: 23.46, y: 1.23, v: 2.57, l: 0.88, r: 0.12, s: 1, n: 7, c: 12 };
+  for (const each of [ana, cal, dee]) assert.deepEqual(each.last('chick'), heard);
+  assert.equal(ben.last('chick'), undefined, 'nobody hears their own');
+  // Home: how long it took, and how many flaps, to everyone else.
+  ben.say({ t: 'done', ms: 81_234.6, n: 43, w: 1 });
+  assert.deepEqual(ana.last('done'), { t: 'done', from: 'bbbbbbbb', ms: 81_235, n: 43, w: 1 });
+});
+
+test('a chick message holds only what it should: numbers, rounded and kept to what a chick could be, and small', () => {
+  assert.deepEqual(Object.keys(cleanChick({})), ['ms', 'd', 'y', 'v', 'l', 'r', 's', 'n', 'c']);
+  assert.deepEqual(cleanChick({}), { ms: 0, d: 0, y: 0, v: 0, l: 0, r: 0, s: 0, n: 0, c: 0 });
+  assert.deepEqual(
+    cleanChick({ ms: -1, d: 'far', y: 99, v: -3, l: 7, r: -2, s: 99, n: 'lots', c: 1e9, picture: 'not this', p: [1, 2, 3] }),
+    { ms: 0, d: 0, y: 10, v: 0, l: 1, r: 0, s: 8, n: 0, c: 10_000 },
+  );
+  assert.deepEqual(cleanChick({ d: 99_999, y: -4, v: 500, s: 2.6, n: 1e9 }), { ms: 0, d: 10_000, y: 0, v: 20, l: 0, r: 0, s: 3, n: 100_000, c: 0 });
+  for (const value of Object.values(cleanChick({ d: NaN, y: Infinity, l: null, r: undefined, s: {}, n: [], c: 'x' }))) assert.equal(typeof value, 'number');
+  const biggest = JSON.stringify({ t: 'chick', from: 'abcdefghijkl', ...cleanChick({ ms: 3_599_999, d: 9999.99, y: 9.99, v: 19.99, l: 0.99, r: 0.99, s: 8, n: 99_999, c: 9999 }) });
+  assert.ok(biggest.length < 140, `${biggest.length} characters`);
+  // Ten of them a second are well within what a player may send.
+  assert.ok(MOST_BYTES > biggest.length * 10);
+});

@@ -342,6 +342,9 @@ export class FriendsRoom {
     } else if (message.t === 'archer') {
       // Arrow Meadow: how a friend's bow is, and what they've let go.
       this.events.onMove?.(message.from, message);
+    } else if (message.t === 'chick') {
+      // Flap, Little Chick!: where a friend's chick is.
+      this.events.onMove?.(message.from, message);
     } else if (message.t === 'done') {
       this.events.onDone?.(message.from, message);
     }

@@ -127,6 +127,9 @@
 //                                      friend's game can show it flying, and how many targets they've hit. Everyone
 //                                      lays out the same targets from the seed. Together, each claims the ones their
 //                                      own arrows hit, by number, and against each other the first to enough wins
+//   chick  { ms, d, y, v, l, r, s, n, c }  where their chick is in Flap, Little Chick!: how far along the track, how
+//                                      high, how fast, how far up each wing is, what it's doing, and how many flaps
+//                                      and pieces of corn it has. Everyone lays out the same track from the seed
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
@@ -568,6 +571,25 @@ export function cleanArcher(message) {
   };
 }
 
+/**
+ * Only what a chick in Flap, Little Chick! should hold, rounded: how far along the track it is, how high, how fast
+ * it's going, how far up each wing is, from 0 to 1, what it's doing, as a whole number (see STATES in
+ * games/chick-flap/flock.js), and how many flaps and pieces of corn it has.
+ */
+export function cleanChick(message) {
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    d: number(message.d, -10, 10_000, 2),
+    y: number(message.y, 0, 10, 2),
+    v: number(message.v, 0, 20, 2),
+    l: number(message.l, 0, 1, 2),
+    r: number(message.r, 0, 1, 2),
+    s: number(message.s, 0, 8, 0),
+    n: number(message.n, 0, 100_000, 0),
+    c: number(message.c, 0, 10_000, 0),
+  };
+}
+
 /** Only what a car message should hold, rounded, so nothing else can be passed on. */
 export function cleanCar(message) {
   return {
@@ -794,6 +816,10 @@ export class RaceRoom {
       case 'archer':
         // Arrow Meadow: how their bow is, and what they've let go, for the others' games to show.
         for (const other of others) other.send({ t: 'archer', from: meta.id, ...cleanArcher(message) });
+        break;
+      case 'chick':
+        // Flap, Little Chick!: where their chick is, to everyone else.
+        for (const other of others) other.send({ t: 'chick', from: meta.id, ...cleanChick(message) });
         break;
       case 'done':
         if (!meta.racing) return;

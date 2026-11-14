@@ -615,6 +615,27 @@ body.hub {
 .art-arrows-shaft { fill: none; stroke: #74491f; stroke-width: 5; stroke-linecap: round; }
 .art-arrows-feather { fill: #4dabf7; stroke: #74491f; stroke-width: 2; stroke-linejoin: round; }
 .art-arrows-tip { fill: #ff6b6b; stroke: #74491f; stroke-width: 2; }
+.game-art-flap { background: linear-gradient(#74c4f6, #dff3ff 62%); }
+.art-flap-hill { fill: #98d383; }
+.art-flap-hedge { fill: #4f9e54; }
+.art-flap-track { fill: #e2bd84; }
+.art-flap-grass { fill: #7cc75a; }
+.art-flap-stretch { fill: rgb(255 255 255 / 0.5); }
+.art-flap-arrow { fill: none; stroke: #fff; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.art-flap-log { fill: #b07a48; stroke: var(--ink); stroke-width: 3; }
+.art-flap-log-end { fill: #e8c48c; stroke: var(--ink); stroke-width: 2.5; }
+.art-flap-path { fill: none; stroke: #fff; stroke-width: 4; stroke-linecap: round; stroke-dasharray: 1 10; }
+.art-flap-fox-tail,
+.art-flap-fox-body { fill: #f08a3c; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
+.art-flap-fox-cheek { fill: #fff4e2; }
+.art-flap-fox-leg { fill: none; stroke: #8a4a1f; stroke-width: 6; stroke-linecap: round; }
+.art-flap-ink { fill: var(--ink); }
+.art-flap-body { fill: #ffd84a; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
+.art-flap-belly { fill: #ffeb99; }
+.art-flap-beak { fill: #ff9d1c; stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; }
+.art-flap-tuft { fill: none; stroke: #ffb703; stroke-width: 3.5; stroke-linecap: round; }
+.art-flap-wing { fill: #ffc21a; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
+.art-flap-wing-far { fill: #eda514; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
 .art-paint-pink { fill: #ff7eb6; stroke: var(--ink); stroke-width: 2; }
 .art-paint-blue { fill: #3fb7ff; stroke: var(--ink); stroke-width: 2; }
 .art-paint-yellow { fill: #ffd23f; stroke: var(--ink); stroke-width: 2; }
