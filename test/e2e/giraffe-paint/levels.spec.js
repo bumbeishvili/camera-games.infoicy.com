@@ -265,7 +265,10 @@ test('level 10: the space to draw in takes any paint, and is done once there\'s 
   const canvas = start.parts.find((each) => each.id === 'canvas');
   expect(canvas.kind).toBe('free');
   await expectSoon(() => labelShown(page, 'free'), { timeout: 15_000 }).toBe(true);
-  // A wavy line right across it, in whatever paint the brush has.
+  // A wavy line right across it, in blue, which the yellow frame round it doesn't take. (The brush starts with
+  // yellow, and a yellow brush near the edge of the space, or on its way to the pot, rightly paints the frame too.)
+  await dipIn(page, 'blue');
+  const frameBefore = (await part(page, 'frame')).covered;
   await page.evaluate(() => {
     window.__wave = performance.now();
   });
@@ -276,7 +279,16 @@ test('level 10: the space to draw in takes any paint, and is done once there\'s 
   // It's as it was drawn: not filled in.
   expect(done.covered).toBeLessThan(done.cells * 0.7);
   expect((await state(page)).hint).toBe(null);
-  expect((await part(page, 'frame')).covered).toBe(0);
+  // Not a drop of it went over the space's edge onto the frame, though the brush went right up to it.
+  expect((await part(page, 'frame')).covered).toBe(frameBefore);
+  // And what's drawn in the space is the blue.
+  const blue = await page.evaluate(() => {
+    const { painting } = window.__game;
+    const space = painting.parts.find((each) => each.id === 'canvas').index;
+    const code = ['red', 'orange', 'yellow', 'green', 'blue'].indexOf('blue') + 1;
+    return painting.owner.reduce((sum, owner, cell) => sum + (owner === space && painting.paint[cell] === code ? 1 : 0), 0);
+  });
+  expect(blue).toBeGreaterThan(done.cells * 0.2);
   await page.waitForTimeout(300);
   await shot(page, 'paint-draw-your-own');
 });
