@@ -1,6 +1,6 @@
 // Playing with friends, in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail, Giraffe's
-// Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher, the Lighthouse Keeper, Giraffe's Garden and Frost
-// Arena: who's in a room, and what they pass to each other.
+// Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher, the Lighthouse Keeper, Giraffe's Garden, Frost
+// Arena and Giraffe's Paint Box: who's in a room, and what they pass to each other.
 // The same rules run on Cloudflare (server/worker.js) and on this computer for the tests
 // (tools/race-server.mjs). Each game has rooms of its own. Nothing here is kept once everyone has gone, and no
 // camera picture ever comes here: only where each car or plane is, the moves a fighter makes and how it stands,
@@ -30,7 +30,8 @@
 //                                      each [id, x, y, r, colour, number, flags], and the sum being asked
 //   claim  { k }                           this player's hand got to balloon k: the first to says so has it.
 //                                      In Mighty Moves, k is a round this player's fighter has just won, and
-//                                      in Giraffe's Garden a sip of water for a plant: plant * 100 + which sip
+//                                      in Giraffe's Garden a sip of water for a plant: plant * 100 + which sip,
+//                                      and in Giraffe's Paint Box a part of the picture their stroke finished
 //   hit    { r, m, d, tot, sm, sg, sd }    Mighty Moves: their fighter makes move m in round r, doing d, and
 //                                      tot in all this round. sm is 1 for a small hit and sg for their
 //                                      fighter's own finishing move, and sd the side, l or r, if it has one.
@@ -140,6 +141,12 @@
 //                                      had, and whether their face can be seen. Everyone makes the same things to
 //                                      eat from the seed. Playing together, each claims the things their creature
 //                                      gobbles, as in Balloon Pop, and the first mouth to one has it
+//   brush  { ms, x, y, v, o, c, r, p, s, d }   their brush in Giraffe's Paint Box, painting one sheet together: where
+//                                      it is on the sheet, whether it can be seen and is down, its paint and its
+//                                      size, p, its glove's 21 points, as in hand, s, the strokes painted since the
+//                                      last one, as numbers (for each run: the part it's kept to or -1, the paint,
+//                                      the size, how many points, and the points), and d, which parts are done, a
+//                                      bit each. Whoever's stroke finishes a part claims it, as claim, by its number
 //   done   { ms, n, w }                    they've finished, this long after "GO!", with n dropped, and w 1
 //                                      if that's all of them (and in a race, always)
 //   leave  {}                              they're going (closing the socket says the same)
@@ -148,7 +155,7 @@
 //                                      the host's, so everyone can see how the game is going to be played
 //   go     { level, length, laps, mode, team, racers, seed }   the countdown starts now, on the host's course
 //                                      (laps is length). seed is the same for everyone, for a game laid out by chance
-//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker, stand, ship, catcher, tank, can, trooper, foes, tag { from, ... } and done { from, ms, n, w }
+//   car, plane, score, hand, world, hit, pose, racket, ball, shot, runner, walker, stand, ship, catcher, tank, can, brush, trooper, foes, tag { from, ... } and done { from, ms, n, w }
 //                                      passed on from the others: ball only from the host, shot only to the host,
 //                                      foes only from the game that runs the computer's side and tag only to it,
 //                                      and stand only from someone playing
@@ -530,6 +537,34 @@ export function cleanEater(message) {
   };
 }
 
+// Giraffe's Paint Box: the most numbers one brush message can hold of the strokes painted (see STROKE_NUMBERS in
+// games/giraffe-paint/paint.js), and the most parts a picture has, each a bit of one whole number.
+export const MOST_STROKE_NUMBERS = 120;
+const MOST_PARTS = 30;
+
+/**
+ * Only what a brush in Giraffe's Paint Box should hold, rounded: where it is on the sheet, whether it can be seen
+ * and is down, its paint and its size, its glove's 21 points while it can be seen, or none, the strokes painted,
+ * as numbers and nothing else, no more of them than a message holds, and which parts are done, as one whole number.
+ * What the numbers of a stroke mean is the game's own business, and it takes none of them on trust.
+ */
+export function cleanBrush(message) {
+  const points = Array.isArray(message.p) && message.p.length === 42 ? message.p.map((value) => number(value, -4, 4, 2)) : [];
+  const seen = message.v && points.length ? 1 : 0;
+  return {
+    ms: number(message.ms, 0, 3_600_000, 0),
+    x: number(message.x, -60, 260, 1),
+    y: number(message.y, -60, 260, 1),
+    v: seen,
+    o: seen && message.o ? 1 : 0,
+    c: number(message.c, 0, 40, 0),
+    r: number(message.r, 0, 40, 1),
+    p: seen ? points : [],
+    s: Array.isArray(message.s) ? message.s.slice(0, MOST_STROKE_NUMBERS).map((value) => number(value, -60, 260, 1)) : [],
+    d: number(message.d, 0, 2 ** MOST_PARTS - 1, 0),
+  };
+}
+
 const MOST_IN_THE_YARD = 4; // Frost Arena: as many as can play, and so as many counts of who tagged whom.
 
 /**
@@ -837,6 +872,11 @@ export class RaceRoom {
         runner.send({ t: 'tag', from: meta.id, ...cleanTag(message) });
         break;
       }
+      case 'brush':
+        // Giraffe's Paint Box: the brush of each one playing, and the strokes it has painted, go to the others.
+        if (!meta.racing) return;
+        for (const other of others) other.send({ t: 'brush', from: meta.id, ...cleanBrush(message) });
+        break;
       case 'car':
       case 'plane':
       case 'hand':

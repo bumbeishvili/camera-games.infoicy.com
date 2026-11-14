@@ -24,6 +24,7 @@ const GAMES = [
   { name: 'Flap, Little Chick!', folder: 'chick-flap', start: 'Flap home!' },
   { name: 'Mighty Lift', folder: 'mighty-lift', start: 'Choose your lifter' },
   { name: 'Gobble and Grow', folder: 'gobble-grow', start: 'Let’s eat!' },
+  { name: 'Giraffe’s Paint Box', folder: 'giraffe-paint', start: 'Start painting' },
 ];
 
 test('the hub offers every game, and each one opens and comes back', async ({ page }) => {

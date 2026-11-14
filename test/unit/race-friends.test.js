@@ -2,9 +2,9 @@
 // is moved smoothly from what their game sends.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanBall, cleanCar, cleanFoes, cleanHand, cleanName, cleanRacket, cleanShip, cleanShot, cleanTag, cleanTank, cleanTrooper, COMES_BACK_WITHIN_MS, idFor, makeCode, MAX_RACERS, MOST_BYTES, MOST_FOES, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
 import { cleanLifter } from '../../server/race-room.js';
 import { cleanEater } from '../../server/race-room.js';
+import { cleanBall, cleanBrush, cleanCar, cleanFoes, cleanHand, cleanName, cleanRacket, cleanShip, cleanShot, cleanTag, cleanTank, cleanTrooper, COMES_BACK_WITHIN_MS, idFor, makeCode, MAX_RACERS, MOST_BYTES, MOST_FOES, MOST_STROKE_NUMBERS, mostIn, POSE_NUMBERS, RaceRoom, takeOver, validCode } from '../../server/race-room.js';
 import { BODY_KEYS } from '../../games/mighty-moves/clips.js';
 import { Track } from '../../core/friends.js';
 import { CarTrack, codeInLink } from '../../games/high-five-racers/friends.js';
@@ -1068,4 +1068,50 @@ test('a creature\'s message holds only what it should, rounded and kept to the s
   assert.ok(Object.values(cleanEater({ x: NaN, y: Infinity, m: null, n: {}, ms: [] })).every((value) => typeof value === 'number' && Number.isFinite(value)));
   const biggest = JSON.stringify({ t: 'eater', from: 'abcdefghijkl', ...cleanEater({ ms: 3_599_999, x: -0.199, y: -0.199, m: 0.99, n: 999, v: 1 }) });
   assert.ok(biggest.length < 110, `${biggest.length} characters`);
+});
+
+test('in Giraffe\'s Paint Box up to four paint one sheet, and each one\'s brush and strokes go to the others once the game has started', () => {
+  assert.equal(mostIn('giraffe-paint'), MAX_RACERS);
+  const { join } = makeRoom(mostIn('giraffe-paint'));
+  const [ana, ben, cat] = ['aaaaaaaa', 'bbbbbbbb', 'cccccccc'].map(join);
+  ana.say({ t: 'hi', name: 'Ana', driver: 'giraffe', level: 4, length: 1, mode: 'freeAll', team: 1 });
+  const points = Array.from({ length: 42 }, (_, i) => (i % 2 ? 0.123456 : -9));
+  const brush = { t: 'brush', ms: 1500.4, x: 75.26, y: 999, v: 1, o: 1, c: 4, r: 6.5, p: points, s: [-1, 4, 6.5, 2, 10.04, 90.26, 20, 91], d: 5, picture: 'not this' };
+  // Before it starts, nobody is painting, so nothing is passed on.
+  ana.say(brush);
+  assert.equal(ben.last('brush'), undefined);
+  for (const player of [ana, ben, cat]) player.say({ t: 'ready' });
+  // The host's picture, rule for the paints and how to play are what everyone gets.
+  assert.deepEqual([ben.last('go').level, ben.last('go').mode, ben.last('go').team], [4, 'freeAll', 1]);
+  ana.say(brush);
+  for (const player of [ben, cat]) {
+    const heard = player.last('brush');
+    assert.deepEqual(Object.keys(heard), ['t', 'from', 'ms', 'x', 'y', 'v', 'o', 'c', 'r', 'p', 's', 'd']);
+    assert.deepEqual([heard.from, heard.ms, heard.x, heard.y, heard.v, heard.o, heard.c, heard.r, heard.d], ['aaaaaaaa', 1500, 75.3, 260, 1, 1, 4, 6.5, 5]);
+    assert.deepEqual(heard.p.slice(0, 2), [-4, 0.12]);
+    assert.deepEqual(heard.s, [-1, 4, 6.5, 2, 10, 90.3, 20, 91], 'the strokes, rounded');
+  }
+  assert.equal(ana.last('brush'), undefined, 'not back to whoever sent it');
+  // Whoever's stroke finishes a part claims it: the first to has it, and everyone hears whose it is.
+  ben.say({ t: 'claim', k: 7 });
+  ana.say({ t: 'claim', k: 7 });
+  for (const player of [ana, ben, cat]) assert.deepEqual(player.heard.filter(({ t }) => t === 'claimed'), [{ t: 'claimed', k: 7, by: 'bbbbbbbb' }]);
+  // Against each other, only how far along each one's picture is goes round, as a score.
+  cat.say({ t: 'score', ms: 2000, n: 43 });
+  assert.deepEqual(ana.last('score'), { t: 'score', from: 'cccccccc', ms: 2000, n: 43 });
+});
+
+test('a brush message holds only numbers, no more strokes than a message can, and is well under the most a message can be', () => {
+  // A hand that can't be seen has no glove and isn't down, but the strokes it painted just before still go.
+  assert.deepEqual(cleanBrush({ v: 0, o: 1, c: 2, r: 6.5, p: Array(42).fill(1), s: [-1, 2, 6.5, 1, 30, 40], d: 3 }), { ms: 0, x: 0, y: 0, v: 0, o: 0, c: 2, r: 6.5, p: [], s: [-1, 2, 6.5, 1, 30, 40], d: 3 });
+  // Anything that isn't a number comes out as one, and nothing else gets through.
+  const odd = cleanBrush({ ms: 'now', x: null, y: {}, v: 1, o: 1, c: 'red', r: Infinity, p: 'glove', s: ['<img>', { x: 1 }, null, 12.345, -9999, 9999], d: -4 });
+  assert.deepEqual(odd, { ms: 0, x: 0, y: 0, v: 0, o: 0, c: 0, r: 0, p: [], s: [0, 0, 0, 12.3, -60, 260], d: 0 });
+  assert.deepEqual(cleanBrush({ s: 'strokes', d: 2 ** 40 }).s, []);
+  assert.equal(cleanBrush({ d: 2 ** 40 }).d, 2 ** 30 - 1);
+  // More strokes than a message holds are cut off, and the biggest message there can be is well within the limit.
+  const most = cleanBrush({ ms: 3_599_999, x: 149.9, y: 124.9, v: 1, o: 1, c: 8, r: 18.7, p: Array(42).fill(-3.99), s: Array(500).fill(-59.9), d: 2 ** 30 - 1 });
+  assert.equal(most.s.length, MOST_STROKE_NUMBERS);
+  const biggest = JSON.stringify({ t: 'brush', from: 'abcdefghijkl', ...most });
+  assert.ok(biggest.length < MOST_BYTES * 0.75, `${biggest.length} characters at most`);
 });

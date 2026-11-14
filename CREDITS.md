@@ -80,6 +80,10 @@ Flap, Little Chick! has no sounds of its own either, only voices: it plays Tank 
 
 Mighty Lift has no sounds of its own either, only voices: it plays Cannon Bay's `creak.ogg` and `thud.ogg`, Leap Trail's `land.ogg`, Mighty Moves' music, `cheer.ogg`, `sparkle.ogg`, `bell.ogg` and `whoosh-1.ogg`, Spider Catcher's `home.ogg`, Robot Rescue's `unlock.ogg` and `boing.ogg`, and Tank Patrol's `birds.ogg`.
 
+Giraffe's Paint Box has no sounds of its own either, only voices: it plays The Lighthouse Keeper's `wipe.ogg`, Spider Catcher's `birds.ogg` and `home.ogg`, Robot Rescue's `goo-pop.ogg` and `boing.ogg`, Mighty Moves' `sparkle.ogg` and `cheer.ogg`, Smoothie Stand's `mixer.ogg` and Balloon Pop's `pop.ogg`.
+
+The ten pictures in Giraffe's Paint Box are drawn by the game itself from simple shapes, and are original designs made for it. Its hidden friends are the computer's own emoji.
+
 The engine loop's CC-BY licence requires this credit to stay with the game: **"Car Engine Loop 96kHz, 4s" by qubodup, CC-BY 3.0, resampled and level adjusted.**
 
 ## Voices

@@ -726,6 +726,22 @@ body.hub {
 .art-lift-limb { fill: none; stroke: #f5c451; stroke-width: 9; stroke-linecap: round; }
 .art-lift-bar { fill: none; stroke: #9aa3ab; stroke-width: 5; stroke-linecap: round; }
 .art-lift-plate { fill: #12304d; }
+/* Giraffe's Paint Box's picture. */
+.game-art-paint { background: linear-gradient(#9fd8ff, #e9f7ff 70%); }
+.art-easel-grass { fill: #8fd17a; }
+.art-easel-leg { fill: none; stroke: #9a6a43; stroke-width: 6; stroke-linecap: round; }
+.art-easel-easel { fill: #c08850; stroke: var(--ink); stroke-width: 3; }
+.art-easel-sheet { fill: #fffdf6; }
+.art-easel-sun { fill: #ffd43b; stroke: var(--ink); stroke-width: 3; }
+.art-easel-hill { fill: #4fc46c; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
+.art-easel-string { fill: none; stroke: var(--ink); stroke-width: 2; }
+.art-easel-stroke { fill: none; stroke: #ff8fc4; stroke-width: 15; stroke-linecap: round; }
+.art-easel-line { fill: none; stroke: var(--ink); stroke-width: 3; }
+.art-easel-pot { stroke: var(--ink); stroke-width: 3; }
+.art-easel-pot-red { fill: #f0504a; }
+.art-easel-pot-pink { fill: #ff8fc4; }
+.art-easel-pot-blue { fill: #4a94ff; }
+.art-easel-blob { fill: #ff8fc4; stroke: var(--ink); stroke-width: 2.5; }
 
 /* Each card's film, over its picture, fading in once it's playing. */
 .game-art { position: relative; }

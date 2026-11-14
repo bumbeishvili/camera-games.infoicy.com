@@ -1,0 +1,10 @@
+[
+  {"id": "paint-intro", "text": "I’m painting pictures for the party! Can you colour them in?", "speak": "I'm painting pictures for the party! Can you colour them in?", "ka": "წვეულებისთვის ნახატებს ვხატავ! გამიფერადებ?", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "paint-hint", "text": "Paint with your open hand!", "ka": "ხატე გაშლილი ხელით!"},
+  {"id": "open-to-paint", "text": "Open your hand to paint!", "ka": "გაშალე ხელი და ხატე!"},
+  {"id": "dip-hint", "text": "Dip your hand in that pot!", "ka": "ხელი იმ ქილაში ჩააწე!"},
+  {"id": "number-hint", "text": "Find the pot with the same number!", "ka": "იპოვე ქილა იმავე ციფრით!"},
+  {"id": "mix-hint", "text": "Mix those two paints in the dish!", "ka": "ეს ორი საღებავი ჯამში შეურიე!"},
+  {"id": "stamp-hint", "text": "Hold still to print a star!", "ka": "გააჩერე ხელი და ვარსკვლავი დაიბეჭდება!"},
+  {"id": "lovely-picture", "text": "What a lovely picture!", "ka": "რა ლამაზი ნახატია!"}
+]
