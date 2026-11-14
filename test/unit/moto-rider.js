@@ -75,7 +75,7 @@ export function ride(options = {}, { lean = null, skill = 1, late = 0.35, wobble
   while (game.state === 'riding' && time < seconds && !(until && until(game, time, events))) {
     wanted.push(lean ? lean(game, time) : game.needAt(game.s + game.v * 0.25) * skill);
     const share = wanted[Math.max(0, wanted.length - 1 - Math.round(late / STEP))] ?? 0;
-    const target = angleFor(leaner, Math.max(-1, Math.min(1, share)));
+    const target = angleFor(leaner, Math.max(-LEAN.most, Math.min(LEAN.most, share)));
     body += (target - body) * (1 - Math.exp(-5 * STEP));
     const shown = seen(game, time) ? body + (noise() - 0.5) * wobble * RAD : null;
     leaner.update(shown, STEP);

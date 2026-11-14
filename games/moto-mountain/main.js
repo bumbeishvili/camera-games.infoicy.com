@@ -12,7 +12,7 @@ import { ROSTER } from '../../core/body/roster.js';
 import { mountBodyShell } from '../../core/body/shell.js';
 import { seededRandom } from '../../core/friends.js';
 import { FriendsPanel, time as raceTime } from '../../core/friends-ui.js';
-import { BEND_COUNTS, BIKE, HELP, LEAN, Leaner, PACES, Ride, Warmup, newAt as newAtLevel, newThingsAt } from './ride.js';
+import { BEND_COUNTS, BIKE, HELP, LEAN, Leaner, PACES, Ride, Warmup, newAt as newAtLevel, newThingsAt, turnOf } from './ride.js';
 import { MotoSound } from './moto-sound.js';
 import { Mate, finishMessage, mateRoads, riderMessage, scoreRows, teamStars } from './team.js';
 import { World } from './world.js';
@@ -23,7 +23,9 @@ const GO_SHOWN_SECONDS = 0.9;
 const READY_SECONDS = 1.1;
 const NEW_SHOWN_SECONDS = 2.6; // How long something new is pointed out, the first time it comes.
 const NEW_GAP_SECONDS = 0.35;
-const METER_SPAN = 38; // How far the dot goes from the middle for a whole lean, as a percent of the bar.
+// How far the dot goes from the middle for a whole lean, as a percent of the bar. It goes by how much the lean
+// turns the bike, which is a logarithm of the lean, so three whole leans take it to the bar's end.
+const METER_SPAN = 27;
 const ARROW_FROM = 60; // Metres before a bend at which its arrow comes up.
 const RAD = Math.PI / 180;
 
@@ -251,12 +253,13 @@ class MotoMountain extends BodyGame {
    */
   updateMeter(share, need, wide) {
     const { lastNumbers } = this;
-    const dot = Math.round((50 + Math.max(-1.25, Math.min(1.25, share)) * METER_SPAN) * 10) / 10;
+    const turn = turnOf(Math.max(-LEAN.most, Math.min(LEAN.most, share)));
+    const dot = Math.round((50 + turn * METER_SPAN) * 10) / 10;
     if (lastNumbers.dot !== dot) {
       lastNumbers.dot = dot;
       byElementId('lean-dot').style.left = `${dot}%`;
     }
-    const middle = Math.round((50 + need * METER_SPAN) * 10) / 10;
+    const middle = Math.round((50 + turnOf(need) * METER_SPAN) * 10) / 10;
     const width = Math.round(wide * METER_SPAN * 2 * 10) / 10;
     if (lastNumbers.zone !== middle || lastNumbers.zoneWidth !== width) {
       lastNumbers.zone = middle;
@@ -265,7 +268,7 @@ class MotoMountain extends BodyGame {
       zone.style.left = `${middle - width / 2}%`;
       zone.style.width = `${width}%`;
     }
-    const inside = Math.abs(share - need) <= wide;
+    const inside = Math.abs(turn - turnOf(need)) <= wide;
     if (lastNumbers.inside !== inside) {
       lastNumbers.inside = inside;
       byElementId('lean-meter').dataset.zone = inside ? 'in' : 'out';

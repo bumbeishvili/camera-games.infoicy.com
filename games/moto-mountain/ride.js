@@ -37,7 +37,7 @@ export const LEAN = {
   // lean, and never less than this many degrees, which is what the tracker wobbles by.
   dead: 0.14,
   deadLeast: 1.6,
-  most: 1.25,
+  most: 3, // Leaning further than a whole lean goes on counting, up to this many whole leans: see turnOf.
   follow: 10, // How quickly the reading follows the body, per second.
   settle: 1.5, // And how quickly the slow average does, which is where upright is taken from.
   uprightMost: 10, // A body leaning more than this isn't taken as upright.
@@ -510,11 +510,26 @@ function layOutOnce({ level = 1, bends = 10, favour = 'even', side = 'left', ran
 
 /* ------------------------------- the ride ------------------------------- */
 
-// How far the lean can be from what a bend needs, as a share of a whole lean, with the bike still on the
-// road in the end: the grown-ups' setting for how much help the road gives.
+// How far the bike's turn can be from what a bend needs, as a share of a whole lean's turn, with the bike
+// still on the road in the end: the grown-ups' setting for how much help the road gives.
 export const HELP = { lots: 0.42, some: 0.3, little: 0.2 };
+// How a lean turns the bike. The bike doesn't jump across the road: a lean swings its nose round, little by
+// little, and the bike goes where its nose points. The more the child leans, the more it turns, by a
+// logarithm: the first of a lean turns it most, and leaning further always turns it more, by less and less,
+// so there's no lean at which it suddenly does a lot, and none past which it stops doing more.
+export const STEER = {
+  curve: 2, // How much of a logarithm it is: 0 would be a straight line.
+  align: 1.6, // How quickly the bike's nose comes back in line with the road, per second.
+  centre: 0.0427, // And how much the road draws the nose back towards its middle, in radians a second for each metre.
+  yawMost: 0.45, // The furthest the nose can point away from the road, in radians.
+};
+
+/** How much a lean turns the bike: 1 for a whole lean, more than half for half a one, and 1.8 for three. */
+export function turnOf(share) {
+  return (Math.sign(share) * Math.log(1 + STEER.curve * Math.abs(share))) / Math.log(1 + STEER.curve);
+}
+
 export const BIKE = {
-  pull: 0.9, // How strongly the road draws the bike back to the middle, per second.
   speedUp: 4, // Metres a second, each second.
   brake: 7,
   verge: 0.45, // The share of its speed the bike keeps on the grass.
@@ -524,17 +539,20 @@ export const BIKE = {
   boostSeconds: 2.2,
   splash: 0.7,
   splashSeconds: 0.9,
-  leanMost: 32 * RAD, // How far over the bike goes for a whole lean.
-  rollFollow: 9,
+  leanMost: 38 * RAD, // How far over the bike goes at the very most, for three whole leans. For one it's 21 degrees.
+  rollFollow: 5, // How quickly the bike tips over to follow the child's lean, per second.
   starReach: 1.5,
   snowReach: 1.7,
   jumpSeconds: 1.5,
   jumpHeight: 2.1,
   jumpLeast: 6, // A bike slower than this rolls over a ramp and doesn't fly.
 };
+/** How far over the bike tips for a lean, in radians: as its turn does, by a logarithm, up to BIKE.leanMost. */
+export const rollFor = (share) => clamp(turnOf(share) / turnOf(LEAN.most), -1, 1) * BIKE.leanMost;
+
 const WAIT = {
   into: 0.12, // Leaning this much into a bend is enough to get going again.
-  after: 2.2, // Seconds on the grass in a bend without leaning into it before the bike stops to wait.
+  after: 1.2, // Seconds on the grass in a bend without leaning into it before the bike stops to wait.
   away: 0.6, // Seconds with nobody in the picture before it does.
   said: 5, // Seconds stopped before the child is told there's no hurry.
   tow: 10, // Seconds stopped in a bend, with the child there, before the bike is helped round it.
@@ -564,8 +582,10 @@ export class Ride {
     this.leaner = leaner;
     this.onEvent = onEvent;
     this.cruise = this.rules.cruise * (PACES[pace] ?? 1);
-    // Metres a second the bike goes sideways when the lean is a whole lean away from what the bend needs.
-    this.side = (ROAD.half * BIKE.pull) / (HELP[help] ?? HELP.some);
+    // How quickly the bike's nose swings round when its turn is a whole lean's away from what the bend needs,
+    // in radians a second: enough to take it to the edge of the road when it's as far out as the help allows.
+    this.gain = (ROAD.half / (HELP[help] ?? HELP.some)) * STEER.centre;
+    this.yaw = 0; // How far the bike's nose points away from the way the road goes, in radians, the right positive.
     this.towed = null; // The bend the bike is being helped round, after a long wait.
     this.things = this.plan.things.map((thing) => ({ ...thing, done: false }));
     this.bridges = this.things.filter(({ kind }) => kind === 'bridge');
@@ -692,7 +712,7 @@ export class Ride {
     const { stats } = this;
     this.elapsed += dt;
     const seen = Boolean(lean?.seen);
-    const share = seen ? clamp(lean.share ?? 0, -1, 1) : 0;
+    const share = seen ? clamp(lean.share ?? 0, -LEAN.most, LEAN.most) : 0;
     this.away = seen ? 0 : this.away + dt;
 
     const bend = this.bendAt(this.s);
@@ -721,13 +741,24 @@ export class Ride {
     this.boostLeft = Math.max(0, this.boostLeft - dt);
     this.splashLeft = Math.max(0, this.splashLeft - dt);
 
-    // Across the road: the bend carries the bike to its outside, the lean carries it the way it leans, and
-    // the road draws it back to the middle. A bike that's hardly moving hardly goes sideways.
+    // Turning: the lean swings the bike's nose the way it leans, a bend swings it to the bend's outside by as
+    // much as the lean it needs would swing it back, and the road draws it into line and towards the middle.
+    // The bike then goes across the road as far as its nose points. One that's hardly moving hardly turns.
     const moving = clamp(this.v / 3, 0, 1);
-    if (!flying) this.x += (this.side * ((this.towed ? 0 : share) - need) - BIKE.pull * this.x) * moving * dt;
+    const steer = this.towed ? 0 : turnOf(share);
+    if (!flying) {
+      this.yaw += (this.gain * (steer - turnOf(need)) - STEER.centre * this.x) * moving * dt;
+      this.yaw *= Math.exp(-STEER.align * dt);
+      this.yaw = clamp(this.yaw, -STEER.yawMost, STEER.yawMost);
+      this.x += this.v * Math.sin(this.yaw) * dt;
+    }
     const edge = this.edgeAt(this.s);
-    this.x = clamp(this.x, -edge, edge);
-    this.roll += (share * BIKE.leanMost - this.roll) * (1 - Math.exp(-BIKE.rollFollow * dt));
+    if (Math.abs(this.x) >= edge) {
+      this.x = clamp(this.x, -edge, edge);
+      // At the far edge of the grass, or a bridge's railing, the nose can't point any further out.
+      if (this.yaw * this.x > 0) this.yaw = 0;
+    }
+    this.roll += (rollFor(share) - this.roll) * (1 - Math.exp(-BIKE.rollFollow * dt));
 
     const before = this.s;
     this.s = Math.min(this.plan.length, this.s + this.v * dt);

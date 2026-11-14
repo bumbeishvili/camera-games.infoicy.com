@@ -16,7 +16,8 @@ test('two friends ride up the mountain together from their own computers, as one
   test.setTimeout(400_000);
   const sockets = [];
   page.on('websocket', (socket) => sockets.push(socket.url()));
-  await openMoto(page, { motoBends: 6, motoPace: 'quick', levels: { [GAME]: 4 } });
+  // The host is at level 9, whose own road has puddles, sheep, a bridge, a jump, the big bend and a scooter.
+  await openMoto(page, { motoBends: 6, motoPace: 'quick', levels: { [GAME]: 9 } });
   const code = await makeRide(page, 'Ana');
   expect(page.url()).toContain(`#ride=${code}`);
   // Together is how it comes, and whoever made the ride can change it.
@@ -47,6 +48,7 @@ test('two friends ride up the mountain together from their own computers, as one
   expect(hers.cruise).toBeGreaterThan(17);
   for (const kind of hers.plan.kinds) expect(['star', 'boost']).toContain(kind);
   expect(hers.plan.kinds).toContain('star');
+  expect(hers.plan.bends.some(({ big }) => big)).toBe(false);
   // Each keeps their own lean: a little for Ben, 7 degrees, and for Ana the 8 of a child who skipped the warm-up.
   expect([Math.round(hers.reach.left), Math.round(his.reach.left)]).toEqual([8, 7]);
 
@@ -90,7 +92,7 @@ test('two friends ride up the mountain together from their own computers, as one
   await page.waitForTimeout(500);
   await shot(page, 'moto-friends-finish');
   // Nobody's own level moves on, and nobody's settings change.
-  expect(await page.evaluate(() => window.__game.game.levels.current)).toBe(4);
+  expect(await page.evaluate(() => window.__game.game.levels.current)).toBe(9);
   expect(await ben.page.evaluate(() => [window.__game.game.levels.current, window.__game.game.settings.motoBends, window.__game.game.settings.motoPace])).toEqual([1, 14, 'gentle']);
   // Only the race server on this computer was talked to.
   expect(sockets.length).toBeGreaterThanOrEqual(1);

@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { BEND_COUNTS, BIKE, HELP, LEAN, Leaner, NEW_THINGS, PACES, ROAD, Ride, WARM, Warmup, layOut, leanOf, newAt, rideLevel, thingsUpTo } from '../../games/moto-mountain/ride.js';
+import { BEND_COUNTS, BIKE, HELP, LEAN, Leaner, NEW_THINGS, PACES, ROAD, Ride, STEER, WARM, Warmup, layOut, leanOf, newAt, rideLevel, rollFor, thingsUpTo, turnOf } from '../../games/moto-mountain/ride.js';
 import { FULL_CURVE, curveAt, nearestApproach, nearestTo, placeAt, shapeOf } from '../../games/moto-mountain/road.js';
 import { RAD, STEP, angleFor, bodyLeaning, measuredLeaner, planOf, ride, seeded } from './moto-rider.js';
 
@@ -545,7 +545,7 @@ test('a child who skipped the warm-up is asked for a small lean, and rides the b
 test('in a bend the bike drifts to the outside, and the lean the bend needs holds it in the middle', () => {
   const upright = ride({ plan: oneBend(1) }, { lean: () => 0, until: (game) => game.offRoad });
   assert.ok(upright.game.x < -ROAD.half, `no lean in a bend to the right: carried out to the left, ${upright.game.x}`);
-  assert.ok(upright.game.s < 135, `within a couple of seconds of the bend starting: ${upright.game.s}`);
+  assert.ok(upright.game.s > 120 && upright.game.s < 145, `between one and three seconds after the bend starts, not at once: ${upright.game.s}`);
   assert.equal(upright.events.find(({ type }) => type === 'verge').side, 'left');
   const held = ride({ plan: oneBend(1) }, { until: (game) => game.s > 150 });
   near(held.game.x, 0, 0.8, 'the lean it needs');
@@ -553,9 +553,13 @@ test('in a bend the bike drifts to the outside, and the lean the bend needs hold
   assert.ok(left.game.x > ROAD.half, 'and a bend to the left carries it out to the right');
 });
 
-test('leaning too far takes the bike to the inside, and leaning the wrong way takes it out faster', () => {
-  const over = ride({ plan: oneBend(1, 0.5) }, { lean: (game) => (game.s > 100 ? 1 : 0), until: (game) => game.s > 150 });
-  assert.ok(over.game.x > ROAD.half, `a whole lean in a gentle bend: on the inside, ${over.game.x}`);
+test('leaning much too far takes the bike to the inside, a little too far doesn’t, and leaning the wrong way takes it out faster', () => {
+  const over = ride({ plan: oneBend(1, 0.5) }, { lean: (game) => (game.s > 100 ? 2.5 : 0), until: (game) => game.s > 150 });
+  assert.ok(over.game.x > ROAD.half, `two and a half whole leans in a gentle bend: on the inside, ${over.game.x}`);
+  // Half as far again as the bend needs is still on the road at the end of it: leaning further turns the bike
+  // more, but by less and less.
+  const little = ride({ plan: oneBend(1, 0.5) }, { lean: (game) => (game.bendAt(game.s) ? 0.75 : 0) });
+  assert.equal(little.game.stats.clean, 1, 'a lean half as big again as the bend needs');
   const offAt = (lean) => {
     const { game } = ride({ plan: oneBend(1) }, { lean, until: (ride) => ride.offRoad });
     return game.s;
@@ -568,18 +572,60 @@ test('on a straight, leaning moves the bike across the road and it comes back to
   const { game } = ride({ plan }, { lean: (ride, time) => (time < 3 ? 0.2 : 0), until: (ride, time) => time > 3 });
   assert.ok(game.x > 1.2 && game.x < ROAD.half, `a small lean to the right: ${game.x}`);
   const back = ride({ plan }, { lean: (ride, time) => (time < 3 ? 0.2 : 0), until: (ride, time) => time > 8 });
-  near(back.game.x, 0, 0.3, 'upright again');
+  near(back.game.x, 0, 0.6, 'upright again, five seconds on');
+  const later = ride({ plan }, { lean: (ride, time) => (time < 3 ? 0.2 : 0), until: (ride, time) => time > 13 });
+  near(later.game.x, 0, 0.1, 'and ten seconds on');
   const left = ride({ plan }, { lean: () => -0.2, until: (ride, time) => time > 3 });
   assert.ok(left.game.x < -1.2);
   assert.equal(left.game.stats.vergeSeconds, 0);
 });
 
-test('the bike leans over as the child does, and comes upright with them', () => {
+test('the bike leans over as the child does, further the further they lean, and comes upright with them', () => {
   const plan = planOf({ length: 600 });
   const { game } = ride({ plan }, { lean: () => -1, until: (ride, time) => time > 2 });
-  near(game.roll, -BIKE.leanMost, 0.06);
-  const up = ride({ plan }, { lean: (ride, time) => (time < 2 ? 1 : 0), until: (ride, time) => time > 4 });
-  near(up.game.roll, 0, 0.05);
+  near(game.roll, rollFor(-1), 0.03);
+  near(rollFor(-1) / RAD, -21.5, 0.5, 'a whole lean tips it about 21 degrees');
+  const up = ride({ plan }, { lean: (ride, time) => (time < 2 ? 1 : 0), until: (ride, time) => time > 5 });
+  near(up.game.roll, 0, 0.03);
+  // It doesn't snap over: half a second into a lean it's only part of the way.
+  const start = ride({ plan }, { lean: () => 1, late: 0, until: (ride, time) => time > 0.5 });
+  assert.ok(start.game.roll > 0.05 && start.game.roll < rollFor(1) * 0.75, `half a second in: ${start.game.roll}`);
+  // And leaning further than a whole lean goes on tipping it, up to three whole leans.
+  assert.ok(rollFor(0.5) < rollFor(1) && rollFor(1) < rollFor(2) && rollFor(2) < rollFor(3));
+  near(rollFor(3), BIKE.leanMost, 1e-9);
+  near(rollFor(5), BIKE.leanMost, 1e-9);
+});
+
+test('a lean turns the bike by a logarithm: the more lean the more turn, by less and less, and never all at once', () => {
+  assert.equal(turnOf(0), 0);
+  near(turnOf(1), 1, 1e-9, 'a whole lean');
+  near(turnOf(-1), -1, 1e-9, 'and the other way');
+  // Each step further adds less than the step before.
+  const steps = [0.5, 1, 1.5, 2, 2.5, 3].map((share) => turnOf(share) - turnOf(share - 0.5));
+  for (let i = 1; i < steps.length; i += 1) assert.ok(steps[i] > 0 && steps[i] < steps[i - 1], `steps of half a lean: ${steps}`);
+  assert.ok(turnOf(0.5) > 0.5 && turnOf(0.5) < 0.7, 'half a lean turns it more than half as much');
+  assert.ok(turnOf(3) > 1.6 && turnOf(3) < 2, 'three whole leans turn it less than twice as much as one');
+  near(turnOf(2) / Math.log(1 + STEER.curve * 2), turnOf(0.3) / Math.log(1 + STEER.curve * 0.3), 1e-9, 'it is a logarithm');
+  // In the ride: on a straight, the nose swings round by more for a bigger lean, and the bike goes that way.
+  const swing = (share) => {
+    let most = 0;
+    const { game } = ride({ plan: planOf({ length: 600 }) }, {
+      lean: () => share,
+      late: 0,
+      until: (ride, time) => {
+        most = Math.max(most, ride.yaw);
+        return time > 2;
+      },
+    });
+    return { most, x: game.x };
+  };
+  const [small, whole, far] = [swing(0.3), swing(1), swing(3)];
+  assert.ok(small.most > 0.02 && small.most < whole.most && whole.most < far.most, `the nose swings ${small.most}, ${whole.most}, ${far.most}`);
+  assert.ok(small.x > 0.5 && small.x < whole.x && whole.x <= far.x, `and the bike goes ${small.x}, ${whole.x}, ${far.x} metres across`);
+  assert.ok(far.most <= STEER.yawMost + 1e-9, 'the nose never points far from the road');
+  // Not at once: a quarter of a second into a whole lean the bike has hardly moved across.
+  const { game: early } = ride({ plan: planOf({ length: 600 }) }, { lean: (ride, time) => (time > 3 ? 1 : 0), late: 0, until: (ride, time) => time > 3.25 });
+  assert.ok(Math.abs(early.x) < 0.15, `a quarter of a second in: ${early.x} metres`);
 });
 
 test('how much help the road gives is the grown-ups’ setting: with lots, half the lean is plenty, and with little it isn’t', () => {
@@ -599,6 +645,11 @@ test('the grass slows the bike and never stops it while the child is leaning int
   assert.ok(!seen.includes('waiting'), 'it never stopped');
   assert.ok(game.v > 5 && game.v < game.cruise * 0.6, `slower on the grass: ${game.v}`);
   assert.ok(Math.abs(game.x) <= ROAD.half + ROAD.verge + 1e-9, 'and never beyond the grass');
+  // Leaning hard the wrong way takes it to the far edge of the grass and no further, and there its nose is
+  // back in line with the road, not pointing off the mountain.
+  const far = ride({ plan: oneBend(1, 0.8) }, { lean: (ride) => (ride.s > 95 ? -2 : 0), until: (ride) => ride.x <= -(ROAD.half + ROAD.verge) + 1e-9 || ride.s > 178 });
+  near(far.game.x, -(ROAD.half + ROAD.verge), 1e-6, 'at the far edge');
+  assert.ok(far.game.yaw >= -0.02, `its nose: ${far.game.yaw}`);
 });
 
 test('a child who doesn’t lean finds the bike waiting in the bend, and the smallest lean into it gets it going', () => {
@@ -677,7 +728,10 @@ test('a child who leans the right way and still can’t make a bend has a whole 
 test('leaning the wrong way, or to the inside, eases nothing', () => {
   const wrong = ride({ plan: oneBend(1, 0.8) }, { lean: (ride) => (ride.s > 95 ? -0.4 : 0), until: (ride) => ride.s > 175 });
   assert.deepEqual(wrong.game.stats.eased, { left: 0, right: 0 });
-  const inside = ride({ plan: oneBend(1, 0.5) }, { lean: (ride) => (ride.s > 95 ? 1 : 0), until: (ride) => ride.s > 175 });
+  // Leaning much too far, all the way round a long bend: on the grass on the inside for most of it.
+  const long = planOf({ bends: [{ from: 100, to: 260, turn: 1, need: 0.5 }], length: 360 });
+  const inside = ride({ plan: long }, { lean: (ride) => (ride.s > 95 ? 2.5 : 0), until: (ride) => ride.s > 255 });
+  assert.ok(inside.game.stats.vergeSeconds > 4 && inside.game.x > ROAD.half, `on the inside: ${inside.game.x}`);
   assert.deepEqual(inside.game.stats.eased, { left: 0, right: 0 });
   assert.equal(inside.game.waiting, null, 'and a bike on the inside is never made to wait');
 });
@@ -723,32 +777,39 @@ test('level 2: a star is caught by riding over it, and missed by riding past', (
   const { game, types: seen } = ride({ plan }, { lean: () => 0 });
   assert.equal(game.stats.stars, 1, 'the one in the middle');
   assert.equal(seen.filter((type) => type === 'star').length, 1);
-  const leaning = ride({ plan }, { lean: (ride) => (ride.s > 160 && ride.s < 205 ? 0.25 : ride.s >= 205 && ride.s < 255 ? -0.25 : 0) });
+  // A child who leans towards whichever star is next.
+  const far = straight([{ kind: 'star', at: 150, x: 0 }, { kind: 'star', at: 260, x: 2.6 }, { kind: 'star', at: 420, x: -2.6 }], 500);
+  const leaning = ride({ plan: far }, {
+    lean: (ride) => {
+      const next = ride.passing.find((thing) => !thing.done);
+      return next ? Math.max(-0.4, Math.min(0.4, (next.x - ride.x) * 0.1)) : 0;
+    },
+  });
   assert.equal(leaning.game.stats.stars, 3, 'leaning over to each of the others');
   assert.ok(leaning.game.things.every((thing) => thing.taken));
 });
 
 test('level 3: a puddle splashes and slows the bike for a moment, and leaning away misses it', () => {
   const plan = straight([{ kind: 'puddle', at: 200, x: 2.1, reach: 1.9 }]);
-  const through = ride({ plan }, { lean: (game) => (game.s < 200 ? 0.2 : 0), until: (game) => game.s > 206 });
+  const through = ride({ plan }, { lean: (game) => (game.s < 200 ? 0.1 : 0), until: (game) => game.s > 206 });
   assert.equal(through.game.stats.splashes, 1);
   assert.ok(through.types.includes('splash'));
   assert.ok(through.game.v < through.game.cruise * 0.9, 'slower');
-  const after = ride({ plan }, { lean: (game) => (game.s < 200 ? 0.2 : 0) });
+  const after = ride({ plan }, { lean: (game) => (game.s < 200 ? 0.1 : 0) });
   assert.equal(after.game.state, 'finished');
   near(after.game.v, after.game.cruise, 0.01, 'and back to speed');
-  const missed = ride({ plan }, { lean: () => -0.2 });
+  const missed = ride({ plan }, { lean: () => -0.1 });
   assert.equal(missed.game.stats.splashes, 0);
 });
 
 test('level 4: a speed arrow makes the bike faster for a couple of seconds', () => {
   const plan = straight([{ kind: 'boost', at: 150, x: -2.1, reach: 1.7 }], 500);
-  const { game } = ride({ plan }, { lean: () => -0.2, until: (ride) => ride.s > 175 });
+  const { game } = ride({ plan }, { lean: () => -0.1, until: (ride) => ride.s > 175 });
   assert.equal(game.stats.boosts, 1);
   assert.ok(game.v > game.cruise * 1.1, `faster: ${game.v}`);
-  const later = ride({ plan }, { lean: () => -0.2, until: (ride) => ride.s > 400 });
+  const later = ride({ plan }, { lean: () => -0.1, until: (ride) => ride.s > 400 });
   near(later.game.v, later.game.cruise, 0.01, 'for a while');
-  assert.equal(ride({ plan }, { lean: () => 0.2 }).game.stats.boosts, 0, 'and not for a bike on the other side');
+  assert.equal(ride({ plan }, { lean: () => 0.1 }).game.stats.boosts, 0, 'and not for a bike on the other side');
 });
 
 test('level 5: the bike stops for a sheep in its way, which walks off, and is never hit', () => {
@@ -811,7 +872,7 @@ test('level 7: riding over a ramp is a jump, and riding beside it is nothing', (
   const plan = straight([{ kind: 'ramp', at: 150, x: 1.7, reach: 1.5 }, { kind: 'star', at: 160, x: 1.7 }], 400);
   let highest = 0;
   const over = ride({ plan }, {
-    lean: (game) => (game.s < 150 ? 0.17 : 0),
+    lean: (game) => (game.s < 150 ? 0.08 : 0),
     until: (game) => {
       highest = Math.max(highest, game.height);
       return false;
@@ -855,7 +916,7 @@ test('level 9: a friend on a scooter is followed, never hit, and pulls over for 
   const plan = straight([{ kind: 'scooter', at: 150, from: 150, to: 250, x: 2, reach: 1.9 }], 500);
   let nearest = Infinity;
   const { game, types: seen } = ride({ plan }, {
-    lean: () => 0.2,
+    lean: () => 0.1,
     until: (ride) => {
       const scooter = ride.things[0];
       if (scooter.moving && !scooter.aside && !scooter.done) nearest = Math.min(nearest, scooter.pos - ride.s);

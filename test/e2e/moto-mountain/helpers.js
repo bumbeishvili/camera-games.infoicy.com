@@ -66,6 +66,7 @@ export const state = (page) => page.evaluate(() => {
     v: ride?.v,
     cruise: ride?.cruise,
     roll: ride?.roll,
+    yaw: ride?.yaw,
     height: ride?.height,
     offRoad: ride?.offRoad,
     waiting: ride?.waiting,
@@ -88,6 +89,8 @@ export const state = (page) => page.evaluate(() => {
     warmSide: warmup?.side ?? null,
     // How far over the bike on the screen is drawn, the right side positive.
     bikeRoll: world.rider?.bike.lean.rotation.z ?? 0,
+    // And how far its nose is drawn pointing away from the way the road goes, the right positive.
+    bikeYaw: world.rider?.drift ?? 0,
     view: world.view,
     cameraTip: world.cameraTip,
     mates: window.__game.mates.map((mate) => ({ s: mate.s, stars: mate.stars, done: mate.done, gone: mate.gone, heard: mate.heard })),
@@ -146,8 +149,8 @@ export const childRides = (page, { skill = 1, late = 0.3, wobble = 0.8, fixed = 
         const near = (thing) => (thing.pos ?? thing.at) > ride.s && (thing.pos ?? thing.at) - ride.s < 45 && !thing.done;
         const prize = child.goFor ? ride.passing.find((thing) => near(thing) && ['star', 'snow', 'boost', 'ramp'].includes(thing.kind)) : null;
         const block = child.avoid ? ride.blockers.find((thing) => near(thing) && !thing.aside) : null;
-        if (block) want += block.x > 0 ? -0.22 : 0.22;
-        else if (prize) want += Math.max(-0.3, Math.min(0.3, (prize.x - ride.x) * 0.12));
+        if (block) want += block.x > 0 ? -0.15 : 0.15;
+        else if (prize) want += Math.max(-0.25, Math.min(0.25, (prize.x - ride.x) * 0.1));
       }
     }
     wanted.push(want);
@@ -173,7 +176,7 @@ export const stopChild = (page) => page.evaluate(() => clearInterval(window.__ch
  * ride all the way to it. what is a kind of thing, 'big' for the big bend, 'top' for the last of the road, or a
  * distance along the road in metres. Returns where the thing is.
  */
-export const putBefore = (page, what, { before = 34, x = 0 } = {}) => page.evaluate(({ kind, back, across }) => {
+export const putBefore = (page, what, { before = 34, x = 0, lane = false } = {}) => page.evaluate(({ kind, back, across, inLane }) => {
   const { ride } = window.__game;
   const thing = typeof kind === 'number' ? { at: kind }
     : kind === 'big' ? ride.plan.bends.find((bend) => bend.big)
@@ -183,7 +186,9 @@ export const putBefore = (page, what, { before = 34, x = 0 } = {}) => page.evalu
   if (!thing) return null;
   const at = thing.at ?? thing.from;
   ride.s = Math.max(0, at - back);
-  ride.x = across;
+  // In the middle of the road, or in line with the thing, for a test that's about riding over it.
+  ride.x = inLane ? thing.x ?? across : across;
+  ride.yaw = 0;
   ride.v = ride.cruise;
   ride.offRoad = false;
   ride.waiting = null;
@@ -197,7 +202,13 @@ export const putBefore = (page, what, { before = 34, x = 0 } = {}) => page.evalu
   // The camera goes with it at once: flying there isn't part of the game.
   window.__game.world.snapNext = true;
   return at;
-}, { kind: what, back: before, across: x });
+}, { kind: what, back: before, across: x, inLane: lane });
+
+/** The bike has stopped in a bend to wait for a lean, and is staying there. */
+export const waitingInBend = async (page) => {
+  const now = await state(page);
+  return now.waiting === 'bend' && now.v === 0 && now.bend !== null;
+};
 
 /** Whether the small label that names something new has shown it, in this ride. */
 export const labelShown = (page, id) => page.evaluate((thing) => window.__game.game.newShown.has(thing), id);

@@ -3,6 +3,10 @@
 // about. The child is played by a script, whose lean goes where the road needs it and is never quite still.
 import { childHolds, childRides, expect, expectSoon, judge, labelShown, openMoto, putBefore, reachPlay, reachWarmup, shot, state, stopChild, test, waitForScreen, watchBrightness } from './helpers.js';
 
+// How far a child has to lean, as a share of a whole lean, to hold the bike a couple of metres to one side of
+// the road: the bike is put down in line with a thing, and this keeps it there.
+const TO_ONE_SIDE = 0.09;
+
 const atLevel = (level, settings = {}) => ({ levels: { 'moto-mountain': level }, ...settings });
 
 const NEW = {
@@ -84,10 +88,10 @@ test('level 3: a puddle splashes and slows the bike for a moment', async ({ page
   await reachPlay(page, atLevel(3));
   await listen(page);
   await childRides(page, { fixed: 0 });
-  const at = await putBefore(page, 'puddle', { before: 30 });
+  const at = await putBefore(page, 'puddle', { before: 30, lane: true });
   const puddle = await page.evaluate((where) => window.__game.ride.things.find((thing) => thing.kind === 'puddle' && thing.at === where).x, at);
-  // Leaning over to its side of the road rides through it.
-  await childHolds(page, puddle > 0 ? 0.2 : -0.2);
+  // Held over on its side of the road, the bike rides through it.
+  await childHolds(page, puddle > 0 ? TO_ONE_SIDE : -TO_ONE_SIDE);
   await expectSoon(async () => (await state(page)).stats.splashes, { timeout: 20_000 }).toBe(1);
   // Slower for a moment,
   await expectSoon(async () => {
@@ -107,9 +111,9 @@ test('level 3: a puddle splashes and slows the bike for a moment', async ({ page
 test('level 4: a speed arrow makes the bike faster for a couple of seconds', async ({ page }) => {
   await reachPlay(page, atLevel(4));
   await childRides(page, { fixed: 0 });
-  const at = await putBefore(page, 'boost', { before: 30 });
+  const at = await putBefore(page, 'boost', { before: 30, lane: true });
   const arrow = await page.evaluate((where) => window.__game.ride.things.find((thing) => thing.kind === 'boost' && thing.at === where).x, at);
-  await childHolds(page, arrow > 0 ? 0.2 : -0.2);
+  await childHolds(page, arrow > 0 ? TO_ONE_SIDE : -TO_ONE_SIDE);
   await expectSoon(async () => (await state(page)).stats.boosts, { timeout: 20_000 }).toBe(1);
   await expectSoon(async () => {
     const now = await state(page);
@@ -126,7 +130,7 @@ test('level 5: the bike stops for a sheep in its way, rings, and the sheep trots
   const at = await putBefore(page, 'sheep', { before: 40 });
   const sheep = await page.evaluate((where) => window.__game.ride.things.find((thing) => thing.kind === 'sheep' && thing.at === where).x, at);
   // Straight at it.
-  await childHolds(page, sheep > 0 ? 0.15 : -0.15);
+  await childHolds(page, sheep > 0 ? 0.1 : -0.1);
   await expectSoon(async () => (await heard(page)).includes('sheep-goes'), { timeout: 30_000 }).toBe(true);
   const stopped = await state(page);
   expect(stopped.v).toBeLessThan(1);
@@ -144,7 +148,7 @@ test('level 5: leaning round the sheep passes it without stopping', async ({ pag
   await childRides(page, { fixed: 0 });
   const at = await putBefore(page, 'sheep', { before: 50 });
   const sheep = await page.evaluate((where) => window.__game.ride.things.find((thing) => thing.kind === 'sheep' && thing.at === where).x, at);
-  await childHolds(page, sheep > 0 ? -0.22 : 0.22);
+  await childHolds(page, sheep > 0 ? -0.15 : 0.15);
   await expectSoon(async () => (await state(page)).s, { timeout: 20_000 }).toBeGreaterThan(at + 3);
   const after = await state(page);
   expect(after.stats.passed).toBe(1);
@@ -162,7 +166,7 @@ test('level 6: a narrow wooden bridge, which can be ridden across and never fall
   expect(await labelShown(page, 'bridge')).toBe(true);
   await shot(page, 'moto-level-6');
   // Held hard over to one side, the bike is on the edge of the planks, slowed, and no further.
-  await childHolds(page, 0.6);
+  await childHolds(page, 1);
   await expectSoon(async () => (await state(page)).offRoad).toBe(true);
   const edge = await state(page);
   expect(Math.abs(edge.x)).toBeLessThanOrEqual(2.8 + 0.5 + 0.001);
@@ -176,9 +180,9 @@ test('level 7: riding over the ramp is a jump, up and down again', async ({ page
   await reachPlay(page, atLevel(7));
   await listen(page);
   await childRides(page, { fixed: 0 });
-  const at = await putBefore(page, 'ramp', { before: 34 });
+  const at = await putBefore(page, 'ramp', { before: 34, lane: true });
   const ramp = await page.evaluate((where) => window.__game.ride.things.find((thing) => thing.kind === 'ramp' && thing.at === where).x, at);
-  await childHolds(page, ramp > 0 ? 0.17 : -0.17);
+  await childHolds(page, ramp > 0 ? TO_ONE_SIDE : -TO_ONE_SIDE);
   await expectSoon(async () => (await state(page)).height, { timeout: 20_000 }).toBeGreaterThan(1.2);
   await shot(page, 'moto-level-7');
   await expectSoon(async () => (await state(page)).stats.jumps, { timeout: 20_000 }).toBe(1);
@@ -215,7 +219,7 @@ test('level 9: a friend on a scooter is followed, never hit, and pulls over with
     return { x: thing.x, pos: thing.pos, moving: Boolean(thing.moving), aside: Boolean(thing.aside), done: thing.done };
   }, from);
   const { x } = await scooter();
-  await childHolds(page, x > 0 ? 0.2 : -0.2);
+  await childHolds(page, x > 0 ? 0.1 : -0.1);
   await expectSoon(async () => (await scooter()).moving, { timeout: 20_000 }).toBe(true);
   expect(await labelShown(page, 'scooter')).toBe(true);
   // Never nearer than a couple of metres, until it's out of the way.
@@ -237,7 +241,7 @@ test('level 9: leaning over to the other side passes the scooter', async ({ page
   await childRides(page, { fixed: 0 });
   const from = await putBefore(page, 'scooter', { before: 50 });
   const x = await page.evaluate((where) => window.__game.ride.things.find((one) => one.kind === 'scooter' && one.from === where).x, from);
-  await childHolds(page, x > 0 ? -0.2 : 0.2);
+  await childHolds(page, x > 0 ? -0.12 : 0.12);
   await expectSoon(async () => (await state(page)).stats.passed, { timeout: 30_000 }).toBe(1);
   expect((await state(page)).stats.stops).toBe(0);
   await stopChild(page);
@@ -277,7 +281,7 @@ for (const level of [1, 10]) {
     console.log(`level ${level} setting off`, JSON.stringify(start));
     expect(start.biggestStep).toBeLessThan(4);
     expect(start.flickeringShare).toBeLessThan(0.01);
-    await expectSoon(async () => Math.abs((await state(page)).roll), { timeout: 30_000 }).toBeGreaterThan(0.2);
+    await expectSoon(async () => Math.abs((await state(page)).roll), { timeout: 30_000 }).toBeGreaterThan(0.15);
     // Fifteen seconds or more of it: into a bend, through it, out, and along the straight to the next.
     const reading = judge(await watchBrightness(page, 900));
     console.log(`level ${level} on the road`, JSON.stringify(reading));

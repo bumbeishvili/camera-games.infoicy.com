@@ -9,7 +9,7 @@ import * as THREE from '../../vendor/three/three.module.js';
 import { Fighter3D, makePose } from '../../core/body/characters.js';
 import { ROSTER, byId as characterById } from '../../core/body/roster.js';
 import { Sparks } from '../../core/body/sparks.js';
-import { BIKE, ROAD } from './ride.js';
+import { BIKE, ROAD, rollFor } from './ride.js';
 import { placeAt, shapeOf } from './road.js';
 import { buildLand } from './land.js';
 import { BIKE_SIZE, buildBike, buildBoost, buildPuddle, buildRamp, buildScooter, buildSheep, buildSnowHeap, buildStar, ridingPose, scooterPose } from './models.js';
@@ -59,14 +59,18 @@ class Rider {
     this.body.setPose(this.pose);
   }
 
-  /** Puts the bike on the road: s along it, x across it, leaning by roll, height off the ground. */
-  ride(shape, { s, x, roll, height = 0, v = 0, air = 0 }, dt, wave = 0) {
+  /**
+   * Puts the bike on the road: s along it, x across it, leaning by roll, height off the ground. yaw is how far
+   * its nose points away from the way the road goes, as the rules have it. A friend's bike, whose game doesn't
+   * say, points the way it's going across the road.
+   */
+  ride(shape, { s, x, roll, height = 0, v = 0, air = 0, yaw = null }, dt, wave = 0) {
     const at = placeAt(shape, s, x, scratch.a);
     this.root.position.set(at.x, at.y + 0.06 + height, at.z);
-    // It points a little the way it's going across the road.
     const across = dt > 0 ? (x - this.lastX) / dt : 0;
     this.lastX = x;
-    this.drift = damp(this.drift, clamp(Math.atan2(across, Math.max(v, 5)), -0.3, 0.3), 6, dt);
+    if (yaw === null) this.drift = damp(this.drift, clamp(Math.atan2(across, Math.max(v, 5)), -0.3, 0.3), 6, dt);
+    else this.drift = yaw;
     this.root.rotation.set(0, Math.PI - at.heading - this.drift, 0);
     this.roll = roll;
     // Nose up the hill, up off a ramp and down again to land.
@@ -397,11 +401,13 @@ export class World {
     if (finished) this.coast = damp(this.coast, COAST, 1.1, dt);
     this.wave = damp(this.wave, finished ? 1 : 0, 3, dt);
     const s = riding ? ride.s + this.coast : START_AT;
-    const roll = riding && !finished ? ride.roll : damp(rider.roll, this.lean * BIKE.leanMost, 9, dt);
+    const roll = riding && !finished ? ride.roll : damp(rider.roll, rollFor(this.lean), BIKE.rollFollow, dt);
     const speed = finished ? (COAST - this.coast) * 1.1 : riding ? ride.v : 0;
     const air = ride.air ? clamp(ride.air.t / BIKE.jumpSeconds, 0.001, 1) : 0;
     rider.bounce = ride.offRoad && speed > 1 ? Math.sin(this.time * 31) * 0.012 : 0;
-    rider.ride(shape, { s, x: riding ? ride.x : 0, roll, height: ride.height, v: speed, air }, dt, this.wave * (0.6 + 0.4 * Math.sin(this.time * 7)));
+    // Its nose swings round as it turns, and comes back in line as it rolls up to the hut.
+    const yaw = riding ? ride.yaw * (finished ? Math.max(0, 1 - this.coast / 8) : 1) : 0;
+    rider.ride(shape, { s, x: riding ? ride.x : 0, roll, height: ride.height, v: speed, air, yaw }, dt, this.wave * (0.6 + 0.4 * Math.sin(this.time * 7)));
 
     this.updateItems(dt);
     this.updateFans(dt);

@@ -79,7 +79,7 @@ function makeRide(children, { together = true, bends = 6, level = 4, pace = 'usu
       player.read = player.socket.heard.length;
       if (player.game.state !== 'riding') continue;
       // A body takes a moment to get where it's going, as a real one does.
-      const wanted = angleFor(player.leaner, Math.max(-1, Math.min(1, player.lean(player.game, seconds))));
+      const wanted = angleFor(player.leaner, Math.max(-3, Math.min(3, player.lean(player.game, seconds))));
       player.body += (wanted - player.body) * (1 - Math.exp(-5 * STEP));
       player.leaner.update(player.body, STEP);
       player.game.update(STEP, player.leaner, mateRoads(player.mates, clock));
@@ -232,7 +232,8 @@ test('together: the stars of a friend who has gone are no longer counted', () =>
 });
 
 test('against each other: it’s a race, nobody is held back, and everyone rides on to the top', () => {
-  const ride = makeRide([keen(), keen(0.75), resting], { together: false });
+  // One who leans well, one who leans only a third as far as the bends need, and one who doesn't lean.
+  const ride = makeRide([keen(), keen(0.35), resting], { together: false });
   assert.equal(ride.team, false);
   const [ana, ben, cat] = ride.players;
   ride.runFor(30);
