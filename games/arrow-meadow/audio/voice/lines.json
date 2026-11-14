@@ -1,0 +1,11 @@
+[
+  {"id": "meadow-intro", "text": "It’s the meadow fair! Help me hit the targets!", "speak": "It's the meadow fair! Help me hit the targets!", "ka": "მდელოზე ზეიმია! დამეხმარე, სამიზნეებში მოვარტყა!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "take-string", "text": "Close your hand to hold the string!", "ka": "მოკუმე ხელი, რომ ლარი დაიჭირო!"},
+  {"id": "pull-string", "text": "Pull the string back!", "ka": "ლარი უკან გაწიე!"},
+  {"id": "let-go", "text": "Open your hand to let the arrow go!", "ka": "გაშალე ხელი, რომ ისარი გაუშვა!"},
+  {"id": "other-hand", "text": "Hold up your other hand, for the bow!", "ka": "მეორე ხელიც ასწიე, მშვილდი რომ დაიჭირო!"},
+  {"id": "we-won", "text": "We won the contest! What an archer!", "ka": "შეჯიბრი მოვიგეთ! რა მშვილდოსანი ხარ!", "voice": "am_michael", "kaVoice": "ka-GE-GiorgiNeural", "kaPitch": 0},
+  {"id": "together-done", "text": "You did it together!", "ka": "ერთად შეძელით!"},
+  {"id": "you-won", "text": "You won the contest!", "ka": "შეჯიბრი მოიგე!"},
+  {"id": "great-shooting", "text": "Great shooting!", "ka": "მშვენივრად ისროლე!"}
+]
