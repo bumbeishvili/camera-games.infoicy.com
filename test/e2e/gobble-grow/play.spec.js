@@ -101,6 +101,11 @@ test('a shut mouth never eats, nor one that\'s only a little open, and after a w
   await emptySoup(page);
   await putFood(page);
   await expectSoon(async () => (await state(page)).target).not.toBeNull();
+  // Shut, with something waiting in front of it: after a few seconds it's asked to open wide. It's looked for
+  // as soon as it comes, as a mouth that goes on doing nothing is told later that resting is fine instead.
+  await face(page, { open: SHUT });
+  await expect(page.locator('#prompt-text')).toHaveText('Open wide to gobble it up!', { timeout: 12_000 });
+  await shot(page, 'gobble-open-wide-prompt');
   // Shut, and then lips a little apart, as for talking, and then half way to the line.
   for (const open of [SHUT, 0.07, 0.15]) {
     await face(page, { open });
@@ -113,8 +118,6 @@ test('a shut mouth never eats, nor one that\'s only a little open, and after a w
   // The creature's mouth opens a little with the child's, so they can see it's on its way.
   expect((await state(page)).shownMouth).toBeGreaterThan(0.05);
   expect((await state(page)).shownMouth).toBeLessThan(0.35);
-  await expect(page.locator('#prompt-text')).toHaveText('Open wide to gobble it up!');
-  await shot(page, 'gobble-open-wide-prompt');
   // Wide enough: in it goes.
   await face(page, { open: 0.3 });
   await expectSoon(async () => (await state(page)).stats.gulps).toBe(1);
@@ -136,9 +139,10 @@ test('a mouth held open takes one bite, is asked to shut, swallows after a while
   const still = await state(page);
   expect(still.stats.gulps).toBe(1);
   expect(still.foods.length).toBe(2);
-  // It shuts, and opens again: the next one.
+  // It shuts, and once the game has seen it shut, opens again: the next one.
   await face(page, { open: SHUT });
-  await page.waitForTimeout(400);
+  await expectSoon(async () => (await state(page)).mouth.open).toBe(false);
+  await page.waitForTimeout(300);
   await face(page, { open: WIDE });
   await expectSoon(async () => (await state(page)).stats.gulps).toBe(2);
 });
