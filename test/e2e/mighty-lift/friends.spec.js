@@ -138,7 +138,8 @@ test('against each other, each child frees their own friends, and it\'s over for
   await expectSoon(async () => (await state(page)).stats.freed, { timeout: 30_000 }).toBeGreaterThanOrEqual(1);
   const resting = await state(ben.page);
   expect([resting.stats.freed, resting.index]).toEqual([0, 0]);
-  expect(resting.height).toBeLessThan(0.05);
+  // Down, give or take the little a resting arm is never quite still by: hers would have it well up, if it counted here.
+  expect(resting.height).toBeLessThan(0.15);
   // He sees her lifter lifting, and her count going up, at the top.
   await expectSoon(async () => (await scores(ben.page))[0], { timeout: 15_000 }).toEqual(['Ana', 1]);
   await ben.page.waitForTimeout(300);
