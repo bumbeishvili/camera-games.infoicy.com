@@ -212,17 +212,79 @@ test('a child who keeps trying and can\'t reach the line has it come down to jus
   const arm = new Arm(HEIGHTS.head);
   arm.read(-0.9, 0.03);
   const before = arm.line;
-  // Up to shoulder height, again and again, for five seconds: a long way short of above the head.
-  let eased = false;
-  for (let i = 0; i < 170 && !eased; i += 1) {
-    arm.read(i % 60 < 40 ? 0 : -0.9, 0.03);
-    eased = arm.tried(0.03);
-  }
-  assert.equal(eased, true);
-  assert.ok(arm.line < before);
+  // Up to shoulder height and down again: a long way short of above the head. Once is nothing.
+  const tryOnce = () => {
+    let eased = false;
+    for (let i = 0; i < 60; i += 1) {
+      arm.read(i < 40 ? 0 : -0.9, 0.03);
+      eased = arm.tried(0.03) || eased;
+    }
+    return eased;
+  };
+  arm.tried(0.03);
+  assert.equal(tryOnce(), false);
+  assert.equal(arm.line, before);
+  // Twice running, and the line comes down to just below how high they got.
+  assert.equal(tryOnce(), true);
   assert.ok(Math.abs(arm.line - (-0.9 + 0.9 * 0.85)) < 0.03, `the line is now ${arm.line}`);
   for (let i = 0; i < 60; i += 1) arm.read(0, 0.03);
   assert.ok(arm.lift >= 1, 'and the same try now reaches it');
+});
+
+test('an arm held short of the line for a few seconds has it come down too, and one held there that never moved doesn\'t', () => {
+  const arm = new Arm(HEIGHTS.head);
+  arm.read(-0.9, 0.03);
+  arm.tried(0.03);
+  let easedAt = null;
+  for (let i = 0; i < 200 && easedAt === null; i += 1) {
+    arm.read(0.1, 0.03);
+    if (arm.tried(0.03)) easedAt = i * 0.03;
+  }
+  assert.ok(easedAt > 3.5 && easedAt < 5, `eased after ${easedAt} seconds`);
+  assert.ok(arm.lift >= 1, 'and where it\'s held is now over the line');
+
+  // A bent arm that rests by the chest, and has never been seen any lower, isn't trying: it's resting.
+  const bent = new Arm(HEIGHTS.shoulder);
+  for (let i = 0; i < 400; i += 1) {
+    bent.read(-0.45, 0.03);
+    assert.equal(bent.tried(0.03), false);
+  }
+  assert.equal(bent.eased, null);
+});
+
+test('an arm on its way down from the line is not a try, however long it then rests', () => {
+  const arm = new Arm(HEIGHTS.shoulder);
+  arm.read(-0.9, 0.03);
+  const line = arm.line;
+  const steps = (count, height) => {
+    for (let i = 0; i < count; i += 1) {
+      arm.read(typeof height === 'function' ? height(i / count) : height, 0.03);
+      assert.equal(arm.tried(0.03), false);
+    }
+  };
+  for (let round = 0; round < 4; round += 1) {
+    steps(10, -0.9);
+    steps(20, (through) => -0.9 + through * 1.1);
+    steps(40, 0.2);
+    // Down slowly, stopping half way for a while, and then a long rest.
+    steps(30, (through) => 0.2 - through * 0.6);
+    steps(60, -0.4);
+    steps(30, (through) => -0.4 - through * 0.5);
+    steps(300, -0.9);
+  }
+  assert.equal(arm.line, line);
+  assert.equal(arm.eased, null);
+  // The same, when the game says the line was reached, as it does for an arm that got there while nothing was asked.
+  const other = new Arm(HEIGHTS.shoulder);
+  other.read(-0.9, 0.03);
+  other.tried(0.03);
+  for (let i = 0; i < 60; i += 1) other.read(0.2, 0.03);
+  other.made();
+  for (let i = 0; i < 400; i += 1) {
+    other.read(Math.max(-0.9, 0.2 - i * 0.02), 0.03);
+    assert.equal(other.tried(0.03), false);
+  }
+  assert.equal(other.eased, null);
 });
 
 test('standing still never brings the line down, and it never comes as low as an arm at rest', () => {
@@ -240,6 +302,7 @@ test('standing still never brings the line down, and it never comes as low as an
   // An arm that can only come up a little: the line comes down, but stays clear of where it rests.
   const weak = new Arm(HEIGHTS.shoulder);
   weak.read(-0.9, 0.03);
+  weak.tried(0.03);
   for (let i = 0; i < 400; i += 1) {
     weak.read(i % 60 < 40 ? -0.72 : -0.9, 0.03);
     weak.tried(0.03);

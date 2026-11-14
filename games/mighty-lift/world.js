@@ -1137,7 +1137,8 @@ export class World {
     const bob = this.reducedMotion ? 0 : Math.sin(this.time * 7) * 0.03;
     ducks.mother.position.y = bob > 0 ? bob : 0;
     ducks.mother.visible = this.thingSize > 0.5 || game.phase !== 'arriving';
-    const done = game.phase === 'lifting' ? game.parts : 3;
+    // All three are out once the family is free, and none before the tub has been lifted.
+    const done = game.phase === 'freed' || game.phase === 'resting' ? 3 : game.parts;
     ducks.little.forEach((one, index) => {
       // The one whose turn it is goes as far as the hold has got, and back under if the tub comes down.
       const share = game.freeing && index === done ? clamp(game.progress * 3 - index, 0, 1) : 0;

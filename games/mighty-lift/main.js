@@ -428,6 +428,9 @@ class MightyLift extends BodyGame {
       onEvent: (event) => this.onLiftEvent(event),
     });
     this.setUpMates(friendly);
+    // Wherever the arm is as the countdown starts is where it rests, unless it's held up: a bent arm rests
+    // higher than one that hangs, and lifting is measured from there.
+    this.arms.restHere(0.8);
     world.lifter.presenting = false;
     world.lifter.setWeight(this.liftSides, levelNumber);
     world.setGame(this.lifting);
@@ -512,7 +515,7 @@ class MightyLift extends BodyGame {
     world.setLive(reader.hasPose ? reader.pose : null);
     world.setLift(arms.lift, { left: arms.left.lift, right: arms.right.lift });
     // A child who's trying and not getting there: the line comes down to meet them.
-    if (lifting.phase === 'lifting' && !lifting.up && !lifting.mustLower && arms.tried(dt)) lifting.stats.eased += 1;
+    if (lifting.phase === 'lifting' && !lifting.mustLower && arms.tried(dt)) lifting.stats.eased += 1;
     const before = lifting.height;
     lifting.update(dt, arms.lift, mates);
     if (lifting.state === 'finished') return;

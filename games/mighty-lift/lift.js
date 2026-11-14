@@ -27,10 +27,13 @@ export const HEIGHTS = { little: -0.45, shoulder: 0, head: 0.7 };
 const REST_USUAL = -0.85; // Where a hand hangs, until this child's own has been seen.
 const LEAST_RISE = 0.3; // The line is never nearer than this to where the arm rests, so resting can't count.
 const OWN_SHARE = 0.9; // Of the way from resting to the highest the arm reached in the warm-up.
-const EASE_EVERY = 5; // Seconds of trying before the line comes down.
-const EASE_SHARE = 0.85; // It comes down to this share of the best try.
+// A try is the arm coming up from rest, falling short of its line, and coming down again, or being held there.
+const LEAST_TRY = 0.15; // It has to get this far above where the arm rests, or it's just an arm at rest,
+const TRY_OVER = 0.1; // and it's over once the arm is back within this of it.
+const EASE_AFTER = 2; // This many tries in a row that fall short bring the line down,
+const EASE_HELD = 4; // and so does one held short of it for this many seconds,
+const EASE_SHARE = 0.85; // to this share of the best of them.
 const LEAST_EASED = 0.18; // But never nearer than this to where the arm rests.
-const LEAST_TRY = 0.15; // A try has to get this far, or it's just an arm at rest.
 const FOLLOW_RATE = 18; // How quickly the height read follows the tracker, which jitters.
 const UNSEEN_GRACE = 0.6; // An arm the camera loses stays where it was for this long.
 const UNSEEN_SINKS = 0.9; // And then comes down gently, this many lifts a second.
@@ -76,8 +79,16 @@ export class Arm {
     this.seen = false;
     this.unseenFor = Infinity;
     this.reached = -Infinity; // The highest it's been at all, for the finish card.
-    this.trySeconds = 0;
-    this.tryBest = -Infinity;
+    this.downSeen = false; // Whether the arm has been seen at rest while a lift was wanted: tries start from there.
+    this.forgetTries();
+    this.tryMade = false;
+  }
+
+  forgetTries() {
+    this.tryPeak = -Infinity; // The highest the arm has got in this try.
+    this.tryFor = 0; // How long this try has been held short of the line.
+    this.fails = 0; // Tries in a row that fell short,
+    this.failBest = -Infinity; // and the best of them.
   }
 
   /** The height the wrist has to reach, in torso lengths above the shoulder. */
@@ -136,32 +147,55 @@ export class Arm {
   /** The arm is at rest right now, wherever that is: a bent arm held by the chest rests higher than one that hangs. */
   restHere() {
     if (this.seen && this.height !== null) this.rest = this.height;
-    this.trySeconds = 0;
-    this.tryBest = -Infinity;
+    this.forgetTries();
   }
 
   /**
-   * The child is being asked to lift and hasn't reached the line. After a few seconds of trying, the line
-   * comes down to just below the best they've done, though never as low as an arm at rest.
+   * Called while a lift is wanted. A child who comes up from rest and falls short of the line, twice running,
+   * or holds the arm there short of it for a few seconds, has the line come down to just below the best they've
+   * done, though never as low as an arm at rest. An arm on its way down from the line isn't a try, and neither
+   * is one that hasn't moved. Returns whether the line came down.
    */
   tried(dt) {
-    this.trySeconds += dt;
-    if (this.height !== null) this.tryBest = Math.max(this.tryBest, this.height);
-    if (this.trySeconds < EASE_EVERY) return false;
-    const rise = this.tryBest - this.rest;
-    this.trySeconds = 0;
-    this.tryBest = -Infinity;
-    if (rise < LEAST_TRY) return false;
-    const eased = this.rest + Math.max(LEAST_EASED, rise * EASE_SHARE);
+    if (this.height === null) return false;
+    const rise = this.height - this.rest;
+    if (this.lift >= 1) {
+      this.made();
+      return false;
+    }
+    if (rise < TRY_OVER) {
+      // Down again. If it had been up, short of the line, that was a try.
+      const fell = this.downSeen && !this.tryMade && this.tryPeak - this.rest >= LEAST_TRY;
+      const peak = this.tryPeak;
+      this.downSeen = true;
+      this.tryMade = false;
+      this.tryPeak = -Infinity;
+      this.tryFor = 0;
+      if (!fell) return false;
+      this.fails += 1;
+      this.failBest = Math.max(this.failBest, peak);
+      return this.fails >= EASE_AFTER ? this.easeTo(this.failBest) : false;
+    }
+    if (!this.downSeen || this.tryMade || rise < LEAST_TRY) return false;
+    this.tryPeak = Math.max(this.tryPeak, this.height);
+    this.tryFor += dt;
+    if (this.tryFor < EASE_HELD) return false;
+    return this.easeTo(this.tryPeak);
+  }
+
+  /** The line comes down to just below this height, if that's lower than it is. */
+  easeTo(best) {
+    const eased = this.rest + Math.max(LEAST_EASED, (best - this.rest) * EASE_SHARE);
+    this.forgetTries();
     if (eased >= this.line - 0.005) return false;
     this.eased = eased;
     return true;
   }
 
-  /** The line was reached, so the next tries are counted afresh. */
+  /** The line was reached, so what comes down from it isn't a try, and the next tries are counted afresh. */
   made() {
-    this.trySeconds = 0;
-    this.tryBest = -Infinity;
+    this.forgetTries();
+    this.tryMade = true;
   }
 }
 
@@ -246,10 +280,10 @@ export class Arms {
     for (const arm of this.arms) if (arm.lift < below) arm.restHere();
   }
 
-  /** The child is trying to lift. Returns whether a line came down for them. */
+  /** A lift is wanted. Returns whether a line came down, for a child who's trying and can't reach it. */
   tried(dt) {
     let eased = false;
-    for (const arm of this.arms) if (arm.lift < 1 && arm.tried(dt)) eased = true;
+    for (const arm of this.arms) if (arm.tried(dt)) eased = true;
     return eased;
   }
 

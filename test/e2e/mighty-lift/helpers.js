@@ -125,7 +125,7 @@ export const childLifts = (page, { high = 1.12, wait = 0.4, shake = 0, drop = fa
     const wanted = child.lifts && lifting?.state === 'playing' && lifting.phase === 'lifting' && !lifting.mustLower && lifting.phaseFor >= child.wait;
     const target = wanted ? arm.rest + arm.span * child.high : REST;
     // Up at an arm's pace, and down with care, or let fall.
-    const speed = target > height ? 2.6 : child.drop ? 9 : 1.5;
+    const speed = target > height ? 2.6 : child.drop ? 9 : 1;
     height += Math.max(-speed * dt, Math.min(speed * dt, target - height));
     // Never quite still: the tracker's own jitter, and a tired arm's shake while it's held up.
     const jitter = Math.sin(frame * 1.7) * 0.012 + Math.sin(frame * 0.53) * 0.01;
