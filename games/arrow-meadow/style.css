@@ -86,6 +86,8 @@ body[data-screen='playing'] .prompt { top: auto; bottom: 14px; font-size: clamp(
 .arrow-film { width: min(15vw, 22vh); }
 body[data-hands='left'] .arrow-film { left: auto; right: 16px; }
 body[data-hands='left'] .arrow-film svg { transform: scaleX(-1); }
+/* It's on the title card's screen too, beside the card, so the move can be seen before the game starts. */
+body[data-screen='welcome']:not([data-friends-box]) .arrow-film { display: block; width: min(21vw, 32vh); }
 
 .film-grass { fill: #7cc65c; }
 .film-stand { fill: none; stroke: #8a5a2b; stroke-width: 4; stroke-linecap: round; }

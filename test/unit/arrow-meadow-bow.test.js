@@ -243,8 +243,9 @@ test('trembling hands hold the bow nearly still', () => {
 
 test('without the bow hand the string hand does nothing, and with the two together nothing happens either', () => {
   const rig = archer();
-  rig.run(1, { string: held(3.4).string, bow: null });
+  const alone = rig.run(3, { string: held(3.4).string, bow: null });
   assert.deepEqual([rig.state.nocked, rig.state.bowSeen, rig.state.stringSeen], [false, false, true]);
+  assert.ok(alone.every((state) => !state.nocked), 'it never has the string, even for a moment');
   rig.run(1, { string: letGo(3.4).string, bow: null });
   assert.equal(rig.shots.length, 0);
   // The bow hand alone.

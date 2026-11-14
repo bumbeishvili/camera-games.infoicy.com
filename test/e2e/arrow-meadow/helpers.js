@@ -8,13 +8,16 @@ import { expect, openGame, show, test, waitForScreen } from '../helpers.js';
 export { judge, watchBrightness } from '../giraffe-garden/helpers.js';
 
 export const GAME = 'arrow-meadow';
-export const SCALE = 0.5;
+// Big enough for the tracker to find a hand again after it has jumped from one place to another, as the tests' hands
+// do and real ones don't, and small enough for one hand to be well above the other without leaving the picture.
+export const SCALE = 0.62;
 // How long a palm is in the fake camera's picture at that scale, in its own pixels, as the tracker measures it.
-export const PALM = 85.5;
+export const PALM = 106;
 // How far the bow tilts for each palm length the bow hand is above the string hand, in degrees: see TILT in bow.js.
 export const TILT = 24;
-// One hand that opens and closes where it is, rather than a different photo somewhere else each time.
-const SCENE = { scale: SCALE, sameHand: true };
+// One hand that opens and closes where it is, rather than a different photo somewhere else each time. The bow
+// hand's photo is the smaller, so it's the one in front where the two photos' edges meet.
+const sceneFor = (side) => ({ scale: SCALE, sameHand: true, leftOnTop: side === 'right' });
 
 /**
  * Where the two hands are, and what they look like. apart is how far apart they are across the picture, in palm
@@ -27,7 +30,7 @@ export const hands = (page, { apart = 4, lift = 0, string = 'fist', bow = 'open'
   const sign = side === 'right' ? 1 : -1;
   const other = side === 'right' ? 'left' : 'right';
   const scene = {
-    ...SCENE,
+    ...sceneFor(side),
     [`${side}OffsetX`]: -sign * inwards + dx * PALM,
     [`${other}OffsetX`]: sign * inwards + dx * PALM,
     [`${side}OffsetY`]: (lift / 2 + dy) * PALM,
@@ -86,7 +89,7 @@ export const archer = (page, { target = null, every = 1.2, wobble = 0, shoot = t
   const sign = hand === 'right' ? 1 : -1;
   const other = hand === 'right' ? 'left' : 'right';
   let lift = window.__archer?.lift ?? 0; // How much higher the bow hand is than the string hand, in the camera's pixels.
-  let apart = window.__archer?.apart ?? 340; // And how far apart they are across.
+  let apart = window.__archer?.apart ?? 420; // And how far apart they are across.
   let frame = 0;
   let phase = 'hold';
   let since = 0;
@@ -96,7 +99,7 @@ export const archer = (page, { target = null, every = 1.2, wobble = 0, shoot = t
     frame += 1;
     since += 33;
     const { meadow, game } = window.__game;
-    const palm = (game.bow.palm || 0.119) * 720;
+    const palm = (game.bow.palm || 0.147) * 720;
     // What to hit is looked at afresh a few times a second, as a child looks.
     if (frame % 5 === 1) wanted = pick ? pick(meadow, game) : meadow.wants();
     if (wanted) {
@@ -135,7 +138,7 @@ export const archer = (page, { target = null, every = 1.2, wobble = 0, shoot = t
     window.__archer.phase = phase;
   }, 33);
   window.__archer = { lift, apart, phase, stop: () => clearInterval(timer) };
-}, { aim: target, least: every, shake: wobble, lets: shoot, hand: side, near: within, scene: SCENE, tilt: (TILT * Math.PI) / 180 });
+}, { aim: target, least: every, shake: wobble, lets: shoot, hand: side, near: within, scene: sceneFor(side), tilt: (TILT * Math.PI) / 180 });
 
 export const stopArcher = (page) => page.evaluate(() => window.__archer?.stop());
 

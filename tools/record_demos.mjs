@@ -729,7 +729,7 @@ const FILMS = {
     settings: { arrowGoal: 14, levels: { 'arrow-meadow': 4 } },
     css: '.camera-frame { --camera-small: 24vw !important; } .arrow-film, .prompt { display: none !important; }',
     async ready(page) {
-      await page.evaluate(() => window.__camera.show({ left: 'open', right: 'open', scale: 0.5, sameHand: true, leftOffsetX: 140, rightOffsetX: -140 }));
+      await page.evaluate(() => window.__camera.show({ left: 'open', right: 'open', scale: 0.62, sameHand: true, leftOnTop: true, leftOffsetX: 100, rightOffsetX: -100 }));
       await page.locator('#start').click();
       await screenIs(page, 'playing');
       await wait(page, 300);
@@ -742,7 +742,7 @@ const FILMS = {
         const started = performance.now();
         const TILT = (24 * Math.PI) / 180;
         let lift = 0; // How much higher the bow hand is than the string hand, in the camera's pixels.
-        let apart = 200; // And how far apart they are across.
+        let apart = 420; // And how far apart they are across.
         let frame = 0;
         let phase = 'hold';
         let since = 0;
@@ -752,7 +752,7 @@ const FILMS = {
           frame += 1;
           since += 33;
           const { meadow, game } = window.__game;
-          const palm = (game.bow.palm || 0.119) * 720;
+          const palm = (game.bow.palm || 0.147) * 720;
           if (frame % 5 === 1) wanted = meadow.wants();
           if (wanted) {
             apart += ((1.6 + wanted.draw * (game.bow.full - 1.6) + 0.5) * palm - apart) * 0.12;
@@ -767,7 +767,7 @@ const FILMS = {
           if (phase === 'hold' && steady >= 10 && since > 1100) [phase, since] = ['open', 0];
           else if (phase === 'open' && since > 600) [phase, since, steady] = ['hold', 0, 0];
           const inwards = (620 - apart) / 2;
-          window.__camera.show({ left: 'open', right: phase === 'open' ? 'open' : 'fist', scale: 0.5, sameHand: true, leftOffsetX: inwards, rightOffsetX: -inwards, leftOffsetY: -lift / 2, rightOffsetY: lift / 2 });
+          window.__camera.show({ left: 'open', right: phase === 'open' ? 'open' : 'fist', scale: 0.62, sameHand: true, leftOnTop: true, leftOffsetX: inwards, rightOffsetX: -inwards, leftOffsetY: -lift / 2, rightOffsetY: lift / 2 });
           if (performance.now() - started > 16_000) {
             clearInterval(timer);
             done();

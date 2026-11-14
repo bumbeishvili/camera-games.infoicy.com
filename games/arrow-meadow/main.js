@@ -279,8 +279,8 @@ class ArcherGame {
     this.view.introduce(key, () => {
       if (!meadow.targets.includes(target) || target.state !== 'up') return null;
       const where = meadow.whereAt(target);
-      // The bird's label waits until its gift is over the meadow, and near enough to hit.
-      if (target.kind === 'gift' && where.x > 1.45) return null;
+      // The bird's label waits until its gift is well over the meadow.
+      if (target.kind === 'gift' && where.x > 1.62) return null;
       return { x: where.x, y: where.y - target.r };
     });
   }
@@ -410,6 +410,8 @@ class ArcherGame {
       }
     }
     meadow.update(dt);
+    // The bird's gift is named once it's over the meadow, which is a while after it sets out.
+    if (meadow.bird?.gift.state === 'up') this.introduce(meadow.bird.gift);
     view.update(dt, { bow: hands, wind: meadow.wind });
     if (this.mode !== 'solo' && session.screen === 'playing') {
       this.friends.sendMove('archer', this.bowState(), this.sinceGo);
@@ -470,7 +472,7 @@ class ArcherGame {
     const playing = screen === 'playing' || screen === 'countdown';
     const ghosts = [];
     let row = 0;
-    for (const each of this.others) {
+    for (const each of screen === 'playing' ? this.others : []) {
       if (!each.at || each.fade < 0.02) continue;
       ghosts.push({ angle: each.at.a, draw: each.at.d, nocked: Boolean(each.at.h), name: each.name, alpha: each.fade, row });
       row += 1;
@@ -521,8 +523,9 @@ class ArcherGame {
     if (!each) return;
     each.track.push(message, performance.now());
     each.heardAt = performance.now();
-    // An arrow of theirs is shown flying, as theirs flew: it hits nothing here.
-    if (each.shots !== null && message.n > each.shots) this.meadow.loose(message.sa, message.sp, { ghost: true, by: id });
+    // Together, an arrow of theirs is shown flying, as theirs flew: it hits nothing here. Against each other their
+    // targets are in a lane of their own, so only their bow is shown.
+    if (this.mode === 'team' && each.shots !== null && message.n > each.shots) this.meadow.loose(message.sa, message.sp, { ghost: true, by: id });
     each.shots = message.n;
     if (message.k !== each.hits) {
       each.hits = message.k;

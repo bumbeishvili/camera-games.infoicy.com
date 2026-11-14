@@ -151,6 +151,12 @@ test('level 6: a low arrow bonks off the hay wall, and a high arc goes over it t
   test.setTimeout(180_000);
   await startPlaying(page, atLevel(6, { arrowHelp: 'off' }));
   await firstSpecial(page, 'wall');
+  // With the plain target out of the line of fire, for this.
+  await page.evaluate(() => {
+    const { meadow } = window.__game;
+    meadow.targets = meadow.targets.filter((target) => target.slot !== 'plain');
+    meadow.waits.plain = Infinity;
+  });
   // Straight at the target, which is behind the wall.
   await archer(page, { target: '(meadow) => (meadow.live.some((each) => each.kind === "wall") ? { angle: 0.12, draw: 1 } : null)', every: 0.4, within: 3 });
   await expectSoon(async () => (await state(page)).happened['bonk-wall'] ?? 0, { timeout: 40_000 }).toBeGreaterThanOrEqual(1);
@@ -278,7 +284,7 @@ test('with a hand opening and closing as quickly as it can, nothing flashes eith
     let n = 0;
     window.__flap = setInterval(() => {
       n += 1;
-      window.__camera.show({ left: 'open', right: n % 2 ? 'fist' : 'open', scale: 0.5, sameHand: true, leftOffsetX: 140, rightOffsetX: -140, leftOffsetY: -60, rightOffsetY: 60 });
+      window.__camera.show({ left: 'open', right: n % 2 ? 'fist' : 'open', scale: 0.62, sameHand: true, leftOnTop: true, leftOffsetX: 100, rightOffsetX: -100, leftOffsetY: -70, rightOffsetY: 70 });
     }, 125);
   });
   await page.waitForTimeout(1500);
