@@ -47,6 +47,8 @@ export class GobbleView {
     this.introduced = new Set();
     this.wanted = [];
     this.shown = { r: 0, mouth: 0, bounce: 0, snap: 0 };
+    this.ladderWanted = false;
+    this.ladderShown = 0;
     this.pull = null;
     window.addEventListener('resize', () => this.resize());
     this.resize();
@@ -108,9 +110,13 @@ export class GobbleView {
     if (!this.labels.length && this.wanted.length) {
       const next = this.wanted.shift();
       if (next.target()) this.labels.push({ ...next, life: LABEL_SECONDS, total: LABEL_SECONDS });
+      // What it was about has gone before its turn came: it's said the next time there's one.
+      else this.introduced.delete(next.key);
     }
     this.shown.bounce = Math.max(0, this.shown.bounce - dt);
     this.shown.snap = Math.max(0, this.shown.snap - dt);
+    // The ladder fades in and out, rather than coming and going all at once.
+    this.ladderShown += ((this.ladderWanted ? 1 : 0) - this.ladderShown) * (1 - Math.exp(-dt * 5));
     if (this.pull) this.pull.t += dt;
   }
 
@@ -119,12 +125,13 @@ export class GobbleView {
   /**
    * A new thing has a small label beside it for a moment, the first time it comes along in a game, in the language
    * the voice speaks. words is [English, Georgian], and target() says where it is on the screen now, or null once
-   * it has gone.
+   * it has gone. They show one at a time, and first puts this one before any that are waiting.
    */
-  introduce(key, words, target) {
+  introduce(key, words, target, { first = false } = {}) {
     if (this.introduced.has(key)) return;
     this.introduced.add(key);
-    this.wanted.push({ key, words, target });
+    if (first) this.wanted.unshift({ key, words, target });
+    else this.wanted.push({ key, words, target });
   }
 
   /** A bite: a few crumbs fly out, the creature's mouth snaps shut for a moment, and it swells a little. */
@@ -149,15 +156,20 @@ export class GobbleView {
     const { ctx, ratio } = this;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.globalAlpha = 1;
+    this.ladderWanted = Boolean(model.hud) && !this.pull;
     if (this.pull) {
       this.renderPull(model);
-      return;
+    } else {
+      ctx.drawImage(this.backdrop(this.world.id), 0, 0, this.width, this.height);
+      this.drawSoup(model, 1);
+      this.drawEffects();
+      this.drawLabels();
     }
-    ctx.drawImage(this.backdrop(this.world.id), 0, 0, this.width, this.height);
-    this.drawSoup(model, 1);
-    this.drawEffects();
-    this.drawLabels();
-    if (model.hud) this.drawLadder(this.level, model.soup.share);
+    if (this.ladderShown > 0.01) {
+      ctx.globalAlpha = this.ladderShown;
+      this.drawLadder(this.level, model.soup.share);
+      ctx.globalAlpha = 1;
+    }
   }
 
   /** How big the child's creature is drawn just now: it grows smoothly to its new size, and swells with each bite. */
@@ -445,16 +457,28 @@ export class GobbleView {
     const near = 1 + 0.25 * (1 - move);
     ctx.drawImage(newBackdrop, (w - w * near) / 2, (h - h * near) / 2, w * near, h * near);
     if (place.thing) {
-      const thing = seen(place.thing);
-      drawThing(ctx, ladder.thing.id, thing.x, thing.y, thing.r);
-      const next = seen(place.next);
-      drawCreature(ctx, ladder.next.id, next.x, next.y + Math.sin(time * 2) * next.r * 0.03, next.r, { facing: -1, time });
+      // The everyday thing and the creature the child is now come in from the side as the view pulls back, and
+      // fade in as they come, so that something big and bright is never suddenly there.
+      const arriving = ease(clamp((move - 0.5) / 0.4, 0, 1));
+      if (arriving > 0) {
+        ctx.globalAlpha = arriving;
+        const thing = seen(place.thing);
+        drawThing(ctx, ladder.thing.id, thing.x, thing.y, thing.r);
+        const next = seen(place.next);
+        drawCreature(ctx, ladder.next.id, next.x, next.y + Math.sin(time * 2) * next.r * 0.03, next.r, { facing: -1, time });
+        ctx.globalAlpha = 1;
+      }
     }
 
     // The world that was, closing to a bubble round the creature the child was.
+    // It closes by the same amount of the screen each moment, rather than quickest at first, so that going from a
+    // bright world to a dark one, as from the sky to among the moons, is a slow change and never a sudden one.
     const cover = Math.max(Math.hypot(from.x, from.y), Math.hypot(w - from.x, from.y), Math.hypot(from.x, h - from.y), Math.hypot(w - from.x, h - from.y)) * 1.02;
-    const bubble = cover * (place.bubble / cover) ** move;
-    const roomy = Math.max(zoom / start, (bubble * 1.02) / Math.max(1, Math.min(from.x, w - from.x, from.y, h - from.y)));
+    const bubble = Math.sqrt(lerp(cover * cover, place.bubble * place.bubble, move));
+    // The old world's backdrop shrinks with the creature, but never to less than fills what can be seen of the
+    // bubble: at first that's the whole screen, just as it was while the world was played.
+    const fills = (reach, room) => Math.min(reach, bubble) / Math.max(1, room);
+    const roomy = Math.max(zoom / start, fills(centre.x, from.x), fills(w - centre.x, w - from.x), fills(centre.y, from.y), fills(h - centre.y, h - from.y));
     ctx.save();
     ctx.beginPath();
     ctx.arc(centre.x, centre.y, bubble, 0, TAU);
@@ -485,9 +509,10 @@ export class GobbleView {
     ctx.restore();
   }
 
-  drawGrewWords(ctx, w, h, ladder, place, alpha) {
+  /** The words on the picture. brief leaves out the two small ones, for the finish card, where it's drawn small. */
+  drawGrewWords(ctx, w, h, ladder, place, alpha, brief = false) {
     const word = this.word;
-    const size = clamp(place.unit * 0.042, 12, 30);
+    const size = brief ? clamp(place.unit * 0.085, 11, 18) : clamp(place.unit * 0.042, 12, 30);
     const under = (point, text, extra = 0, options = {}) => this.pill(text, clamp(point.x, w * 0.1, w * 0.9), point.y + extra, { ctx, size, alpha, ...options });
     if (!ladder.next) {
       // After the last world: the whole sky, and every creature the child has been, in a row.
@@ -503,7 +528,13 @@ export class GobbleView {
       WORLDS.forEach((world, index) => drawCreature(ctx, world.id, first + step * index + step * 0.04, rowY, step * (0.16 + index * 0.012), { time: 0 }));
       ctx.globalAlpha = 1;
       this.pill(WORDS.all[word], w / 2, rowY + step * 1.05, { ctx, size, alpha });
-      under(place.old, word ? ladder.old.youKa : ladder.old.you, place.bubble + size * 1.4);
+      if (!brief) under(place.old, word ? ladder.old.youKa : ladder.old.you, place.bubble + size * 1.4);
+      return;
+    }
+    if (brief) {
+      // Small, there's room for how many times bigger, at the top, and what the child is now, at the bottom.
+      this.pill(timesWords(ladder.ratio, this.language()), w * 0.27, size * 1.5, { ctx, size, alpha });
+      this.pill(word ? nowLineKa(ladder.next) : nowLine(ladder.next), w * 0.27, h - size * 1.5, { ctx, size, alpha, fill: '#ffd23f' });
       return;
     }
     under(place.old, WORDS.were[word], place.bubble + size * 1.4);
@@ -545,7 +576,7 @@ export class GobbleView {
     ctx.lineWidth = 3;
     ctx.strokeStyle = '#ffffff';
     ctx.stroke();
-    this.drawGrewWords(ctx, wide, tall, ladder, place, 1);
+    this.drawGrewWords(ctx, wide, tall, ladder, place, 1, true);
     return true;
   }
 }

@@ -145,6 +145,12 @@ export class MouthMonitor {
 
   setStrictness(value) {
     this.strictness = value;
+    // A line moved to above where the mouth is shuts it at once: that's a grown-up's choice, not a tremble.
+    if (this.status === 'open' && this.openness < this.line) {
+      this.status = 'closed';
+      this.reason = 'closed';
+      this.pendingSince = null;
+    }
     this.snapshot = this.view();
   }
 
@@ -240,6 +246,10 @@ export class MouthMonitor {
       this.snapshot = this.view();
       return this.snapshot;
     }
+
+    // Where the mouth rests is the lowest it has been, steadied. A mouth that was already open when the check
+    // began, so that the check never saw it shut, shows where it rests the first time it shuts.
+    if (this.checked && this.openness < this.rest) this.rest = this.openness;
 
     // A face in view is never "missing". Its mouth starts as shut until it has proved it's open.
     if (this.status === 'missing') this.status = 'closed';

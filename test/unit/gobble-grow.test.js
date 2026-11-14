@@ -38,7 +38,7 @@ function putFood(soup, kind = 0, at = null) {
     beat: 0,
     phase: 0,
     state: 'drift',
-    bumpedAt: -Infinity,
+    bumped: false,
     ...place,
   };
   soup.foods.push(food);
@@ -133,8 +133,8 @@ test('at level 10 there\'s still most of level 1\'s time to get to a thing, and 
     // Half or more of what comes is the smallest kind, so there's always something to eat.
     assert.ok(plan.pattern.filter((kind) => kind === 0).length * 2 >= plan.pattern.length, `level ${level}`);
     assert.ok([0, 1, 2].every((kind) => plan.pattern.includes(kind)), `level ${level} has all three kinds`);
-    // About seven things on the screen at once, at every level.
-    near(plan.cross / plan.gap, 7.3, 0.5, `things at once at level ${level}`);
+    // Eight or nine things in the soup at once, at every level.
+    near(plan.cross / plan.gap, 8.5, 0.5, `things at once at level ${level}`);
   }
 });
 
@@ -599,7 +599,8 @@ test('a child who goes after the food and opens wide for it wins every world, in
       playWell(soup, 1);
       seconds += 1;
     }
-    assert.ok(seconds >= 15 && seconds <= 110, `level ${level} took ${seconds} s`);
+    // A made-up child who never hesitates: a real one takes a good deal longer over each bite.
+    assert.ok(seconds >= 8 && seconds <= 110, `level ${level} took ${seconds} s`);
   }
 });
 

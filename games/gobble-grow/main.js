@@ -243,19 +243,19 @@ class GobbleGame {
         // What was too big a moment ago: one of them is pointed out, if there's one to be seen.
         sound.play('sparkle', { gain: 0.3 });
         const food = this.soup?.foods.find((each) => each.kind === event.kind && this.inView(each));
-        if (food) view.introduce(`can-eat-${event.kind}`, LABELS.canEat, this.placeOf(food));
+        if (food) view.introduce(`can-eat-${event.kind}`, LABELS.canEat, this.placeOf(food), { first: true });
         break;
       }
       case 'bump': {
         sound.play('bump', { gain: 0.22, rate: this.pitch });
         const at = view.at(event.food.x, event.food.y);
         view.ring(at.x, at.y, event.food.r * view.scale);
-        view.introduce('too-big', LABELS.tooBig, this.placeOf(event.food));
+        view.introduce('too-big', LABELS.tooBig, this.placeOf(event.food), { first: true });
         break;
       }
       case 'toobig':
         sound.play('boing', { gain: 0.25, rate: this.pitch });
-        view.introduce('too-big', LABELS.tooBig, this.placeOf(event.food));
+        view.introduce('too-big', LABELS.tooBig, this.placeOf(event.food), { first: true });
         break;
       case 'won':
         sound.play('cheer', { gain: 0.3 });

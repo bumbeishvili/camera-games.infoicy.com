@@ -54,7 +54,6 @@ const MOST_PUSH = 0.2;
 // Swimming by itself, the creature is only nudged a little, so that it stays in reach of the food it's waiting by:
 // a child playing with the mouth alone can't steer back to it.
 const MOST_PUSH_ALONE = 0.045;
-const BUMP_AGAIN_AFTER = 1.5;
 const TOO_BIG_AGAIN_AFTER = 1.2;
 // The soup is already going when the game begins: this share of a crossing has gone by, so there's food about.
 const LEAD = 0.55;
@@ -74,8 +73,8 @@ export function soupLevel(level) {
     world: worldAt(at),
     // Seconds for a thing to drift across the field: at level 10, still more than three quarters of level 1's.
     cross: ramp(at, 15, 11.5),
-    // Seconds between one thing arriving and the next.
-    gap: ramp(at, 2, 1.6),
+    // Seconds between one thing arriving and the next: eight or nine in the soup at once, at any level.
+    gap: ramp(at, 1.7, 1.4),
     sway: ramp(at, 0.02, 0.045),
     pattern: at <= 4 ? EASY : BUSY,
   };
@@ -211,7 +210,7 @@ export class Soup {
       const food = foodPlan(this.seed, this.next, plan);
       this.next += 1;
       if (food.born + food.life <= this.time || this.gone.has(food.id)) continue;
-      Object.assign(food, foodPlace(food, this.time), { state: 'drift', bumpedAt: -Infinity });
+      Object.assign(food, foodPlace(food, this.time), { state: 'drift', bumped: false });
       this.foods.push(food);
       this.emit('spawn', { food });
     }
@@ -316,8 +315,9 @@ export class Soup {
       const blend = 1 - Math.exp(-dt * PUSH_RATE);
       push.x += (dx / far) * overlap * blend * 2;
       push.y += (dy / far) * overlap * blend * 2;
-      if (this.time - food.bumpedAt > BUMP_AGAIN_AFTER) {
-        food.bumpedAt = this.time;
+      // It's heard and seen once for each thing, however long the creature sits against it.
+      if (!food.bumped) {
+        food.bumped = true;
         this.stats.bumps += 1;
         this.emit('bump', { food });
       }

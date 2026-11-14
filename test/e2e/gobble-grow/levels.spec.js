@@ -106,8 +106,8 @@ for (const level of [1, 10]) {
 
 // The pull back from one world to the next is the biggest change of picture there is: a whole new world comes into
 // view. From the microscope to the drop of water, from the bright sky to the dark among the moons, which is the
-// greatest change of brightness, and from the last world to the whole sky.
-for (const level of [1, 7, 10]) {
+// greatest change of brightness, and from the last world to the whole sky. ALL_PULLS=1 measures every one of them.
+for (const level of process.env.ALL_PULLS ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] : [1, 7, 10]) {
   test(`nothing flashes as the view pulls back from level ${level}: one slow, steady change`, async ({ page }) => {
     test.setTimeout(300_000);
     await startPlaying(page, { ...atLevel(level), gobbleBites: 8 });

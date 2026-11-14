@@ -285,6 +285,46 @@ test('a mouth held open all through the check still has a line below what it did
   near(monitor.snapshot.rest, result.best * MOUTH_RULES.mostRestShare, 0.001);
 });
 
+test('a mouth that was already open when the check began shows where it rests the first time it shuts, and its line comes right', () => {
+  const monitor = new MouthMonitor(0.6);
+  const check = new MouthCheck();
+  const clock = { now: 1000 };
+  // Wide open from the first frame of the check to the last.
+  for (const snapshot of feed(monitor, times(40, { open: 0.4 }), clock)) check.add(snapshot, FRAME_MS / 1000);
+  assert.equal(check.done, true);
+  monitor.applyCheck(check.result());
+  near(monitor.line, 0.32, 0.01, 'four fifths of its widest, as it never saw the mouth shut');
+  // It shuts, as it must before long: now the line is where it should be, 60% of the way from shut to widest.
+  feed(monitor, times(20, { open: 0.012 }), clock);
+  near(monitor.snapshot.rest, 0.012, 0.004);
+  near(monitor.line, 0.012 + 0.6 * (0.4 - 0.012), 0.004);
+  // Where it rests only ever comes down: opening again doesn't move it.
+  feed(monitor, times(20, { open: 0.3 }), clock);
+  near(monitor.snapshot.rest, 0.012, 0.004);
+  assert.equal(monitor.snapshot.mouthOpen, true);
+  // And it isn't learnt from a face that can't be trusted: turned right away, with nothing to be seen of the mouth.
+  const turned = new MouthMonitor(0.6);
+  turned.applyCheck({ best: 0.4, rest: 0.1, centre: null });
+  feed(turned, times(20, { open: 0, yaw: 70 }), clock);
+  near(turned.snapshot.rest, 0.1, 1e-9);
+});
+
+test('a grown-up moving the line above where the mouth is shuts it at once, without waiting for it to come back down', () => {
+  const monitor = new MouthMonitor(0.6);
+  monitor.applyCheck({ best: 0.4, rest: 0.01, centre: null });
+  const clock = { now: 1000 };
+  assert.equal(last(feed(monitor, times(15, { open: 0.3 }), clock)).mouthOpen, true);
+  monitor.setStrictness(1);
+  assert.equal(monitor.snapshot.mouthOpen, false);
+  assert.equal(monitor.snapshot.reason, 'closed');
+  // And it stays shut where it is, though it's above where an open mouth would have had to come down to.
+  assert.ok(0.3 > monitor.releaseLine);
+  assert.equal(last(feed(monitor, times(15, { open: 0.3 }), clock)).mouthOpen, false);
+  // Moved back down, it opens again, in its own time.
+  monitor.setStrictness(0.5);
+  assert.equal(last(feed(monitor, times(15, { open: 0.3 }), clock)).mouthOpen, true);
+});
+
 test('the line goes up with how much of the widest is asked for', () => {
   let before = 0;
   for (const strictness of [0.3, 0.45, 0.6, 0.8, 1]) {

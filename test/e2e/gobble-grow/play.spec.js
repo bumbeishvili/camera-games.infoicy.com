@@ -346,7 +346,8 @@ test('resting never costs anything: half a minute of doing nothing, and it says 
 test('a grown-up can set how wide the mouth has to open, and see it live, with the game paused', async ({ page }) => {
   await startPlaying(page);
   await emptySoup(page);
-  await face(page, { open: 0.24 });
+  // Three quarters of its widest, which is over the line of 60%.
+  await face(page, { open: 0.3 });
   await expectSoon(async () => (await state(page)).mouth.open).toBe(true);
   await page.locator('#open-panel').click();
   await expect(page.locator('#panel .panel-state')).toHaveText('✓ Open');

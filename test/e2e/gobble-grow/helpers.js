@@ -31,9 +31,10 @@ export const face = (page, change) => page.evaluate((scene) => window.__face.sho
 
 export const atLevel = (level) => ({ levels: { [GAME]: level } });
 
-/** Opens wide for the mouth check, as anyone would, and shuts again. */
+/** Opens wide for the mouth check, as anyone would once they've heard what's asked, and shuts again. */
 export async function passCheck(page, wide = WIDE) {
   await waitForScreen(page, 'check');
+  await page.waitForTimeout(500);
   await face(page, { open: wide });
   await expect.poll(() => page.evaluate(() => window.__game.screen), { timeout: 30_000, intervals: [50] }).not.toBe('check');
   await face(page, { open: SHUT });
@@ -152,17 +153,23 @@ export const putFood = (page, kind = 0, { dx = 0.5, dy = 0 } = {}) => page.evalu
     beat: 0,
     phase: 0,
     state: 'drift',
-    bumpedAt: -Infinity,
+    bumped: false,
     ...place,
   };
   soup.foods.push(food);
   return food.id;
 }, [kind, dx, dy]);
 
-/** Empties the soup, and stops anything more arriving, for a test that wants only what it puts there. */
+/**
+ * Empties the soup, and stops anything more arriving, for a test that wants only what it puts there, with no
+ * labels showing or said yet.
+ */
 export const emptySoup = (page) => page.evaluate(() => {
-  const { soup } = window.__game;
+  const { soup, view } = window.__game;
   soup.foods = [];
   soup.next = Infinity;
   soup.spawnDue = () => {};
+  view.labels = [];
+  view.wanted = [];
+  view.introduced.clear();
 });

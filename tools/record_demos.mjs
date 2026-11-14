@@ -725,6 +725,64 @@ const FILMS = {
       return { tags, shots, hits, reloads, walked: Math.round(walked) };
     }),
   },
+  'gobble-grow': {
+    // Played with the face, and there are no photos of faces here: the camera is a drawing of one, and the tracker
+    // a stand-in that reports it, as in its tests (test/e2e/fake-face.js).
+    init: 'test/e2e/fake-face.js',
+    settings: { gobbleBites: 8, levels: { 'gobble-grow': 3 } },
+    css: '.camera-frame { --camera-small: 22vw !important; } .gobble-film, .prompt { display: none !important; }',
+    async ready(page) {
+      await page.evaluate(() => window.__face.show({ open: 0.01 }));
+      await page.locator('#start').click();
+      await screenIs(page, 'check');
+      await wait(page, 500);
+      await page.evaluate(() => window.__face.show({ open: 0.4 }));
+      await screenIs(page, 'countdown');
+      await page.evaluate(() => window.__face.show({ open: 0.01 }));
+      await screenIs(page, 'playing');
+      // Part of the way through the world already, so that the film has its end in it: the pull back to the next.
+      await page.evaluate(() => {
+        const { soup, game } = window.__game;
+        for (let bite = 0; bite < 3; bite += 1) {
+          soup.eaten += 1;
+          soup.count();
+        }
+        game.showProgress();
+      });
+      await wait(page, 300);
+    },
+    async play(page) {
+      // The face goes after the nearest thing that can be eaten, as a child's would, the mouth opens wide when it's in
+      // reach and shuts to munch, and once the world is eaten the view pulls back to the next.
+      await page.evaluate(() => new Promise((done) => {
+        let x = 0.5;
+        let y = 0.42;
+        let open = false;
+        let openFor = 0;
+        const timer = setInterval(() => {
+          const { soup, view, screen } = window.__game;
+          const wanted = soup.wants();
+          if (wanted && !soup.won) {
+            x += Math.max(-0.005, Math.min(0.005, (wanted.x - soup.creature.x) * 0.012));
+            y += Math.max(-0.005, Math.min(0.005, (wanted.y - soup.creature.y) * 0.012));
+          }
+          x = Math.max(0.3, Math.min(0.7, x));
+          y = Math.max(0.3, Math.min(0.56, y));
+          if (!open && soup.target) [open, openFor] = [true, 0];
+          else if (open && (openFor += 1) > 16) open = false;
+          window.__face.show({ x, y, open: open ? 0.4 : 0.01 });
+          if (screen === 'finish' || (view.pull && view.pull.t > view.pullSeconds - 0.4)) {
+            clearInterval(timer);
+            done();
+          }
+        }, 33);
+      }));
+    },
+    report: (page) => page.evaluate(() => {
+      const { soup } = window.__game;
+      return { level: soup.level, eaten: soup.eaten, won: soup.won, gulps: soup.stats.gulps, bumps: soup.stats.bumps };
+    }),
+  },
   'balloon-pop': {
     settings: { reach: 'none', pace: 'medium' },
     async ready(page) {
@@ -777,6 +835,8 @@ for (const [game, film] of Object.entries(FILMS)) {
   const opened = Date.now();
   page.on('pageerror', (error) => console.error(game, 'page error', error.message));
   await page.addInitScript({ path: join(ROOT, 'test/e2e/fake-camera.js') });
+  // A game played with the face has a camera, and a stand-in for its tracker, of its own.
+  if (film.init) await page.addInitScript({ path: join(ROOT, film.init) });
   await page.addInitScript((saved) => localStorage.setItem('camera-games-settings', JSON.stringify(saved)), { voice: false, sound: false, ...film.settings });
   await page.goto(`${SITE}/games/${game}/index.html?debug`);
   await page.waitForFunction(() => window.__game, null, { timeout: 60_000 });

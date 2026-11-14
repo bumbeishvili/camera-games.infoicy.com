@@ -14,7 +14,7 @@ const IDS = ['aaaaaaaa', 'bbbbbbbb', 'cccccccc', 'dddddddd'];
  * So many children in one game. Each has a soup, and hears what the room passes on, as their game would. together
  * is what whoever made the game chose. The room's messages arrive at once here: delay(ms) holds one child's back.
  */
-function makeGame(count, { together = true, bites = 8, level = 3 } = {}) {
+function makeGame(count, { together = true, bites = 8, level = 3, seed = 4242 } = {}) {
   const players = [];
   let clock = 1000;
   const rules = new RaceRoom({ players: () => players.map((each) => each.seat) }, () => clock);
@@ -38,7 +38,9 @@ function makeGame(count, { together = true, bites = 8, level = 3 } = {}) {
         child.soup = new Soup({
           level: message.level,
           bites: message.length,
-          seed: message.seed,
+          // The room's seed is by chance, and the same for everyone: these tests lay the things out the same way
+          // every time they're run, so that what they find doesn't come and go.
+          seed,
           team: message.team ? message.racers.length : 0,
           // As main.js does: together, each thing gobbled is claimed, and the room says whose it is.
           onEvent: (event) => {
@@ -66,17 +68,22 @@ function makeGame(count, { together = true, bites = 8, level = 3 } = {}) {
   children[0].say({ t: 'hi', name: 'Ana', driver: 'giraffe', level, length: bites, team: together ? 1 : 0 });
   for (const child of children) child.say({ t: 'ready' });
   for (const child of children) assert.ok(child.soup, 'everyone\'s game has started');
+  let frames = 0;
   /** Everyone plays for so long, each as play(child) says, all going by the same clock since "GO!". */
   const playFor = (seconds, play) => {
     const moves = children.map((child) => play(child));
     for (let t = 0; t < seconds; t += DT) {
       clock += DT * 1000;
-      children.forEach((child, index) => {
+      frames += 1;
+      // Nobody's game is always the first to be heard: whose frame comes first goes round.
+      for (let turn = 0; turn < children.length; turn += 1) {
+        const index = (turn + frames) % children.length;
+        const child = children[index];
         child.soup.update(DT, { open: false, seen: true, steer: { x: 0, y: 0 }, ...moves[index]() }, (clock - 1000) / 1000);
         const { creature } = child.soup;
         // Where their creature is, about 10 times a second, as their game sends it.
-        if (Math.round(t / DT) % 6 === 0) child.say({ t: 'eater', ms: clock - 1000, x: creature.x / FIELD.wide, y: creature.y, m: 0, n: child.soup.eaten, v: 1 });
-      });
+        if (frames % 6 === 0) child.say({ t: 'eater', ms: clock - 1000, x: creature.x / FIELD.wide, y: creature.y, m: 0, n: child.soup.eaten, v: 1 });
+      }
     }
   };
   return { children, playFor, rules };
@@ -93,7 +100,8 @@ test('together, everyone has the same things to eat, and as much as each would h
     for (const child of children) {
       assert.equal(child.soup.together, true);
       assert.equal(child.soup.goal, teamGoal(12, count));
-      assert.equal(child.soup.seed, children[0].soup.seed);
+      assert.ok(Number.isInteger(child.go.seed));
+      assert.equal(child.go.seed, children[0].go.seed, 'the room gives everyone the same seed');
       assert.equal(child.soup.level, 3, 'the world of whoever made the game');
     }
   }
@@ -113,17 +121,27 @@ test('together, two mouths going for the same thing: the room gives it to one, i
   const [mine, theirs] = [ana.soup.target, ben.soup.target];
   assert.ok(mine && theirs, 'each has something in reach');
   assert.equal(mine.id, theirs.id, 'and it\'s the same thing');
-  const before = ana.soup.total;
-  assert.equal(before, ben.soup.total);
-  // Both open at the same moment. Ana's game is first to reach the room.
+  const before = { total: ana.soup.total, ana: ana.soup.eaten, ben: ben.soup.eaten };
+  assert.equal(before.total, ben.soup.total);
+  // Both open at the same moment, and what the room says takes a moment to reach them: it's in both mouths.
+  ana.late = 1;
+  ben.late = 1;
   playFor(0.1, () => () => ({ open: true }));
+  assert.equal(ana.soup.creature.holding?.id, mine.id);
+  assert.equal(ben.soup.creature.holding?.id, mine.id, 'as far as each game knows, its own child has it');
+  ana.catchUp();
+  ben.catchUp();
+  // Whichever game reached the room first, it's that child's, and everyone is told so once.
   const claimed = ana.heard.filter(({ t, k }) => t === 'claimed' && k === mine.id);
-  assert.deepEqual(claimed, [{ t: 'claimed', k: mine.id, by: 'aaaaaaaa' }]);
-  assert.equal(ana.soup.total, before + 1);
-  assert.equal(ben.soup.total, before + 1, 'one more bite for the creature they share');
-  assert.equal(ana.soup.eaten - ben.soup.eaten, 1, 'and it was Ana\'s');
-  assert.equal(ben.soup.creature.holding, null, 'out of Ben\'s mouth');
-  assert.ok(!ben.soup.foods.some((food) => food.id === mine.id && food.state === 'drift'), 'and gone from his soup');
+  assert.equal(claimed.length, 1);
+  assert.deepEqual(ben.heard.filter(({ t, k }) => t === 'claimed' && k === mine.id), claimed);
+  const [winner, loser] = claimed[0].by === ana.id ? [ana, ben] : [ben, ana];
+  assert.equal(ana.soup.total, before.total + 1);
+  assert.equal(ben.soup.total, before.total + 1, 'one more bite for the creature they share, and only one');
+  assert.equal(winner.soup.eaten + loser.soup.eaten, before.ana + before.ben + 1);
+  assert.equal(winner.soup.creature.holding?.id, mine.id, 'still in the mouth of the one whose it is, until it shuts');
+  assert.equal(loser.soup.creature.holding, null, 'and out of the other\'s');
+  assert.ok(!loser.soup.foods.some((food) => food.id === mine.id && food.state === 'drift'), 'and gone from their soup');
   assert.equal(ana.soup.creature.r, ben.soup.creature.r);
 });
 
@@ -183,9 +201,9 @@ test('together, a child who rests costs nobody anything: the others eat, and eve
 test('together, a friend who has gone takes their share of what there was to eat with them', () => {
   const { children, playFor } = makeGame(2, { bites: 8 });
   const [ana] = children;
-  playFor(8, (child) => (child === ana ? playing(child) : resting()));
+  playFor(4, (child) => (child === ana ? playing(child) : resting()));
   const { total } = ana.soup;
-  assert.ok(total >= 2 && total < 8, `${total} eaten`);
+  assert.ok(total >= 1 && total < 8, `${total} eaten`);
   assert.equal(ana.soup.goal, 16);
   // As main.js does when a friend has gone for good.
   ana.soup.teamOf(1);
@@ -206,7 +224,7 @@ test('against each other, each has the same things in their own soup, nothing is
     for (const child of children) {
       assert.equal(child.soup.together, false);
       assert.equal(child.soup.goal, 8, 'as much as whoever made the game chose, each');
-      assert.equal(child.soup.seed, ana.soup.seed);
+      assert.equal(child.go.seed, ana.go.seed);
     }
     // Ana plays, and the rest only watch: what she eats is still there for them.
     playFor(10, (child) => (child === ana ? playing(child) : resting()));

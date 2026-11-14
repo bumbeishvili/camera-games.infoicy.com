@@ -93,6 +93,16 @@ body[data-screen='playing'] .prompt { top: auto; bottom: 18px; }
 /* With friends there's a list of how everyone did instead, and the numbers are about this child's own mouth. */
 body[data-friends-race] .finish-ladder { display: none; }
 
+/* On a shorter screen the card is kept short enough to see its button. */
+@media (max-height: 820px) {
+  .finish-ladder { aspect-ratio: 4 / 1; }
+  #screen-finish .small-print { display: none; }
+  #screen-finish .finish-hero { font-size: clamp(26px, 3.4vw, 40px); }
+  #screen-finish .card { padding-top: 18px; padding-bottom: 18px; }
+  .mouth-summary th,
+  .mouth-summary td { padding: 4px 10px; }
+}
+
 @media (max-height: 560px) {
   .gobble-hud .chip-you { display: none; }
 }

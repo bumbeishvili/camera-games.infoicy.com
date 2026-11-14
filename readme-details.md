@@ -21,6 +21,7 @@ They're played at <https://hemi.infoicy.com> in Google Chrome, on a computer wit
 - **Giraffe's Garden:** Giraffe's garden has dried up in the sun. The open hand holds his watering can, and turning the hand over tips it, so the water pours onto the plant below, which grows and flowers. Turning the hand over is turning the forearm, the hardest movement of all with hemiplegia. On their own or with friends, all watering the same garden. See [below](#giraffes-garden).
 - **Giraffe's Goal:** the cup final has gone to penalties, and Giraffe's team needs a goalkeeper. A kicker shoots once the child's hand is open and held up like a high five, a ring shows where the ball is coming, and the glove there saves it. An open hand with its wrist dropped doesn't count, and the balls go far out to the side and across the body on purpose. See [below](#giraffes-goal).
 - **Frost Arena:** a team shooter for grown-up players, in a snowy yard, seen through the player's own eyes: blue, with Giraffe on it, against the computer's red. It's played with two hands in the air the way a shooter is played with two thumbs on a phone: a hand that opens is a thumb put down, and dragged from there, one hand to walk, sidestep, back away and sprint, and the other to look round. A closed hand is a thumb lifted, and a thumb held up fires on one hand and changes the magazine on the other. Up to four friends can play it together, or against each other, each on their own computer. See [below](#frost-arena).
+- **Gobble and Grow:** the child is a tiny creature that grows by eating, from a bacterium to a galaxy, one world to each level. It's played with the mouth: opening it wide gobbles up whatever small thing is in reach, and shutting it munches. Opening the mouth wide and closing it again is hard for children with one weaker side of the face. When a world is won, the view pulls slowly back to the next, with a picture of how much the child grew. On their own, or with up to four friends, together or against each other. See [below](#gobble-and-grow).
 
 Every game's grown-ups' panel, under the gear icon, has a way back to all the games. On the page for choosing a game, each game's card plays a film of it being played, with just its name, and pointing at a card shows a line about the game. With reduced motion turned on in the computer's settings, a film only plays while its card is pointed at.
 
@@ -64,6 +65,11 @@ core/                   what every game shares
     characters.js, roster.js    the ten characters
     pose.worker.js      whole-body tracking, and reading hands from close-ups
     voice/              lines they share, and each character's own
+  face/                 what the games played with the face share
+    mouth.js            decides whether a mouth is open, and says where the face is
+    face.worker.js      face tracking
+    session.js, shell.js, hud.js    runs a game: title, mouth check, countdown, play, finish, with the mouth meter and the panel
+    voice/              the lines they share
 games/
   high-five-racers/     its rules, 3D world, cars, big hands and sounds
   balloon-pop/          its balloons, gloves, maths questions and sounds
@@ -82,6 +88,7 @@ games/
   giraffe-garden/       its garden and levels, the garden drawn, its sounds and its voices
   giraffe-goal/         its rules and levels, the pitch drawn, the kickers' pictures and its voices
   frost-arena/          how its two hands are read, its rules and levels, playing it with friends, the yard, the rifles and the players in 3D, its sounds and its voices
+  gobble-grow/          its rules and levels, its ten worlds, how the creatures, the things they eat and the worlds are drawn, the game as it's played, and its voices
 tools/                  the local server, the local race server, and what prepares voices and sounds
 server/                 the server for playing with friends in High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail, Giraffe's Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher, the Lighthouse Keeper and Giraffe's Garden: its rules, and the Cloudflare Worker that runs them
 vendor/                 libraries, the tracking model and fonts
@@ -869,6 +876,83 @@ Up to four can play in the same yard, each on their own computer with their own 
 
 Only the name typed, whether together or against each other was chosen, how hard and how many tags, where the player is in the yard and which way they face, how fast they're going, which rifle they have and how many shots it has fired, how much they have left, whether they're sitting out or their hands are out of the picture, and who has tagged them out and how often go to their friends. Together, the game of whoever made the match also sends where Giraffe and the red team are, how much each has left and how the match is going, and each friend's game sends which of the red team its shots have hit, and how many times. Against each other, each game sends which friend its shots have hit, and how many times. They go as numbers and nothing else, and each game passes over any that make no sense. Never anything from the camera. The rules are in [arena.js](games/frost-arena/arena.js), with what everyone in the yard shares in [squad.js](games/frost-arena/squad.js), a match together in [team.js](games/frost-arena/team.js) and one against each other in [rivals.js](games/frost-arena/rivals.js). They're tested with two, three and four games wired to each other as the server would wire them ([test/unit/frost-arena-friends.test.js](test/unit/frost-arena-friends.test.js)), and with two browsers talking through the server on this computer ([test/e2e/frost-arena/friends.spec.js](test/e2e/frost-arena/friends.spec.js)).
 
+## Gobble and Grow
+
+The child is a tiny creature that grows by eating, all the way from a bacterium to a galaxy. It's the first game played with the face: opening the mouth wide gobbles up whatever small thing is in reach, and shutting it again munches it. Opening the mouth wide and closing it again, the jaw opening and the lips closing, is what children with one weaker side of the face find hard. It's played sitting close to the camera, and needs no hands at all.
+
+**How it's played.** Things drift slowly through the soup: half or more of them smaller than the child's creature, and the rest bigger. The creature goes where the child's face goes, like a mirror, and a small move of the head takes it right across the screen. When something small enough is in reach, a ring turns round it, and opening the mouth wide gobbles it: it goes into the creature's mouth with a gulp, and when the child's mouth shuts, the creature's shuts on it with a chomp. That's a bite, and the creature grows a little with every one, to a little over twice the size it began. Each opening of the mouth is one bite, so it has to shut before the next. A thing that's bigger than the creature can't be eaten yet: it only nudges the creature gently aside as it passes, with a label the first time, *Too big for now!*, and a few bites later the creature is big enough for it. Nothing ever eats the child's creature. The creature's own mouth opens a little as the child's does, and wide once the child's is wide enough to count, so the moment it counts can be seen. A world is won when everything there is to eat in it has been eaten: 8, 12 or 16 bites, as a grown-up chooses under **How much to eat in each world**. A little film of a mouth opening on its food and shutting shows until the first bite.
+
+**How much the child grew.** When a world is won, the view pulls slowly back from it, over about four seconds. The world that was closes to a little bubble round the creature the child was, and the next world comes into view round it, with an everyday thing and the creature the child is now, side by side, each as big beside the others as it really would be, as far as a picture can show it: a bacterium, a grain of sand, a water flea. Words under them say *You were this big*, what the thing is, and *Now you’re a water flea!*, and above them how many times bigger that is, in round numbers: 230 times from a bacterium to a water flea, and 260 billion times from a sun to a galaxy. Past a few times bigger, the difference is drawn as less than it really is, as something hundreds of times smaller couldn't be seen at all, and the words give the real number. The same picture is on the finish card, to look at while the card is up. After the last world the view pulls back to the whole sky, full of galaxies, with every creature the child has been in a row. During play a small ladder down the left of the screen has all ten creatures, from the bacterium at the bottom to the galaxy at the top, with the one the child is now bigger than the rest, and a ring round it that fills as they eat.
+
+**For children with hemiplegia:**
+
+- **Only a mouth that's open wide eats, and it fails closed.** How it's told is [below](#how-the-mouth-is-read). A face that's missing, turned away, too far off or with its mouth out of the picture never eats, and the game says which: *Show me your face!*, *Look at the screen!* or *Come a little closer*.
+- **The mouth sets its own line.** The check at the start asks for the mouth as wide as it will go, and after that it has to get 60% of the way from where it rests to its own widest. A mouth that opens only a little can play, and the grown-ups' panel moves the line.
+- **Opening and shutting are both practised.** A bite counts when the mouth shuts, and the next one needs it to open again. A mouth that stays open on its food is asked to shut, *Close your mouth to munch!*, and after three seconds the food is swallowed anyway, so that nothing ever gets stuck: but nothing more goes in until the mouth has shut.
+- **Resting never costs anything.** There's no clock, nothing is ever lost, and the things to eat keep coming for as long as it takes. Food that waits by a shut mouth for a few seconds is asked for, *Open wide to gobble it up!*, twice at most, and after 15 seconds the voice says resting is fine.
+- **It can't be lost,** at any level.
+- **The mouth alone.** Under **How the creature moves**, a grown-up can have the creature swim to the food by itself and wait beside it, so that opening and shutting the mouth is all there is to do. The bigger things then only nudge it a little, so that it stays by its food.
+- **A small move of the head.** With steering, moving the head a tenth of the camera's picture to one side takes the creature from the middle of the screen to its edge, and less than that up and down, as a head moves less that way. **How far the head has to move** makes that a little or a lot. The creature glides after the face, so a tracker's tremble doesn't shake it, and being roughly on a thing is enough to reach it.
+- **Nothing flashes.** Things drift, a bite is a few crumbs, the creature grows smoothly, and the pull back is one slow, steady move. Measured through eating and growing at level 1 and at level 10, among the stars, brightness changed by at most 1.5 out of 255 from one frame to the next, and none of the picture flickered. With a mouth opening and shutting more than twice a second, quicker than any child, it changed by at most 1.2. Through the pull back, which is the biggest change of picture there is, it changed by at most 3.4 from eight of the ten worlds, but by 4.9 from the garden and 4.6 from the sky, where something big comes into view quickly. That's more than the 4 the other games keep to, and still has to be slowed down: see [Not tested yet](#not-tested-yet). With reduced motion turned on, the picture of how much the child grew fades in instead, and nothing moves across the screen: that changed by at most 1.6.
+
+**Levels** ([games/gobble-grow/rules.js](games/gobble-grow/rules.js) and [worlds.js](games/gobble-grow/worlds.js)). Each level is a world of its own, with a new creature to be and three new things to eat, and that's what's new at each level. Things also drift a little quicker from level to level, taking 15 seconds to cross the screen at level 1 and 11.5 at level 10, which still leaves 77% of the time to get to one, and from level 5 more of them are the bigger kinds.
+
+| Level | The child is | In | Eating | Then, for scale |
+|---|---|---|---|---|
+| 1 | **a bacterium** | under a microscope | specks of sugar, round germs, buds of yeast | a grain of sand |
+| 2 | **a water flea** | a drop of water | green algae, slipper animals, amoebas | a ladybird |
+| 3 | **a fish** | a pond | water fleas, tadpoles, pond snails | a football |
+| 4 | **a cat** | a garden | little fish, cheese, chicken legs | a bicycle |
+| 5 | **an elephant** | the savanna | peanuts, watermelons, haystacks | a house |
+| 6 | **a whale** | the ocean | shrimps, shoals of fish, giant squid | a mountain |
+| 7 | **a cloud giant** | the sky | kites, hot-air balloons, rainbows | the Moon |
+| 8 | **a planet** | among the moons | space rocks, comets, moons | Jupiter |
+| 9 | **a sun** | among the planets | moons, small planets, planets with rings | the Sun's family of planets |
+| 10 | **a galaxy** | among the stars | stars, clouds of stars, little galaxies | the whole sky |
+
+In each world the smallest kind of thing can be eaten from the start, the middle kind after about a quarter of the bites, and the biggest after about two thirds. Each of a world's three things has a small label with its name the first time one is well in view, and so does what was too big, once it can be eaten: *Now you can eat this!*. They're in the language the voice speaks, and nothing new is said aloud. There are eight or nine things in the soup at once at every level. How much there is to eat, how wide the mouth has to open, how the creature moves and how far the head has to move stay as a grown-up set them. The numbers are in `soupLevel` in `rules.js`, and how big each creature and thing really is, which is where the times bigger come from, in `worlds.js`.
+
+### How the mouth is read
+
+It's in [core/face/mouth.js](core/face/mouth.js), with the rest of what a game played with the face needs beside it, for other games to use. MediaPipe's face tracker finds 478 points on the face, in a worker, as the hand tracker does, on the GPU or without one. How open the mouth is, is how far apart the insides of the lips are, measured against the distance between the outer corners of the eyes, in 3D, so that it reads the same near or far, and with the head turned or tipped. It's steadied over about a twelfth of a second.
+
+There are no photos of faces in this folder, so what the real model measures was looked at once on old paintings, which aren't kept here (see [Not tested yet](#not-tested-yet)):
+
+| Painting | Mouth | Lips apart, in distances between the eyes' corners |
+|---|---|---|
+| Mona Lisa, the Laughing Cavalier | shut | 0.01 |
+| Girl with a Pearl Earring | lips a little apart | 0.07 |
+| Ducreux's Self-Portrait, Yawning | a wide yawn | 0.37 to 0.46 |
+| The same, with a box drawn over the mouth | covered | 0.02 |
+
+**The mouth sets its own line.** The check before a game asks for the mouth as wide as it will go, and finds its widest opening and where it rests. It's done once the mouth has been open for a second. If the mouth hasn't opened after seven seconds it asks once more, and then the game goes on anyway. The line is 60% of the way from where the mouth rests to its widest, and the grown-ups' panel can make that anything from 30% to all of it, with the mouth shown live against its line. Where the mouth rests is the lowest it has been seen, so a mouth that was already open when the check began is put right the first time it shuts.
+
+**Lips a little apart can never pass.** However low the settings go, the line is never below 0.12, nor less than 0.07 above where the mouth rests: lips a little apart, as for breathing or talking quietly, measured 0.07. A mouth that can't open that far can't play. To change that for a child who needs it, edit `floor` in `MOUTH_RULES`.
+
+**It doesn't flicker.** A mouth has to be over its line for about a tenth of a second to count as open, and has to come nearly a third of the way back down from its line to where it rests before it counts as shut again: a little more to stop than to start.
+
+**Anything uncertain counts as not open:** no face in the picture, a face turned more than about 45° to the side, or tipped that far up or down, a face too far away to trust, a mouth past the edge of the picture, or a stalled tracker. A covered mouth reads as shut, because the tracker fills in a shut mouth where it can't see one. A problem with the view shuts the mouth at once, and what was read while it lasted isn't carried over to afterwards. Of two faces in the picture, it follows the one it has been following, which to begin with is the biggest, so a grown-up looking over a shoulder doesn't play for the child.
+
+**Where the face is,** between the eyes, is steadied too, and measured from where it was in the check, like a mirror. That's what steers.
+
+**To add a game played with the face,** give `FaceSession` in [core/face/session.js](core/face/session.js) the game's words and settings, and an object with the same methods a hand game has: its top lists them. The camera, the mouth check, the mouth meter, the mirror with the lips drawn on it, voice, pausing and the panel all come with it, and so do levels and playing with friends, as they do for the hand games.
+
+### Playing Gobble and Grow with friends
+
+Up to 4 children can play, each on their own computer with their own camera: together, eating from one soup and growing as one, or against each other.
+
+- **Making and joining:** under **Play with friends** on the title card, a grown-up presses **Make a game** and tells their friends the 3-letter code, or sends the link. A friend types the code, or opens the link, and is in. A fifth is told the game already has four players.
+- **Together or against each other:** whoever made the game chooses, in the box where the code is or under the gear icon as **With friends**, and the friends are shown what they chose. Together is how it comes. A friend's own choice is kept for the games they make themselves.
+- **Starting:** everyone presses **Let’s eat!**. After the mouth check, each waits until everyone is ready, and then all count down together. Whoever made the game can press **Start now**, and anyone can play on their own instead.
+- **The same things for everyone:** the game has a seed, the same for everyone, and each computer works out the same things on the same paths from it, by how long it is since "GO!". Nothing about the things themselves is sent.
+- **Together:** everyone is in the same soup, and there's one size, which everyone's creature is, that grows with every bite anyone takes. The first mouth to a thing has it: each game says which thing its creature gobbled, the server says whose it is, as each reaches it, and it's gone from everyone's soup. There's as much to eat as each would have alone, all added up: 24 bites for two on the host's 12. A child who rests costs nobody anything. The world is won for everyone at once, and the finish card says "You grew together!", with each one's bites, and nobody placed first or second. If a friend goes, there's as much left to eat as the rest would have.
+- **Against each other:** each has their own soup, with the same things in it, and what one eats is still there for the others. The first to eat it all has grown up first, and everyone else carries on until they have too: nobody loses, and the finish card says who came where, by how long each took.
+- **Friends' creatures:** each friend's creature shows, fainter, where it is in their own soup, with its mouth as far open as theirs and their name over it, and against each other how many bites they've had. They're only there to see. Nobody eats anybody.
+- **The host's game:** everyone plays the host's world and how much to eat. Each child keeps their own way of moving the creature, how far the head has to move and how wide the mouth has to open.
+- **The end:** with friends there's no next world to pull back to: everyone is pleased for a moment, and then comes the finish card. A game with friends doesn't move anyone's own level on.
+
+Only the name typed, the character from the other games, whether together or against each other was chosen, where the creature is, how far its mouth is open, how many bites it has had and, together, which things it gobbled go to friends. Never anything from the camera.
+
 ## Sound
 
 **A line is never cut off,** in any of the games, as nothing sounds more robotic. If something is being said, a new line waits for it to finish, after a short pause, and only the newest one waits, so a queue can't build up. A line that has waited more than 4 seconds is out of date and goes unsaid, and small remarks are simply dropped if anything's being said. Lines only stop mid-way if everything is stopping, such as when the panel opens.
@@ -915,11 +999,15 @@ Each recording is trimmed and set to the same level as the rest. Any lines not r
 
 **The yard** in Frost Arena has nothing new recorded for it. The rifles are Robot Rescue's real paintball markers, a little deeper for the Kalashnikov and higher for the M4, each shot a little different from the last, with its dry click for an empty magazine and its reload for a new one. A hit is Tank Patrol's paintball on a metal drum, kept quiet, a tag its little hop with Mighty Moves' sparkle, a shot off the shield and one landing on the player Mighty Moves' hand drum, and the player's steps in the snow are Leap Trail's, quicker at a sprint, under Mighty Moves' music. Giraffe says his lines in his own voice, and the coach says the two hints there are.
 
+**The soup** in Gobble and Grow has nothing new recorded for it. A gulp is Robot Rescue's real bubble bursting, and a chomp the Long Walk Home's real apple crunch, each a little different from the last, and both higher for the small creatures and lower for the big ones, so a bacterium squeaks and a galaxy rumbles. A thing that's too big bumps with Leap Trail's bump, or boings with Robot Rescue's cartoon boing if the mouth opens on it, a new kind of thing to eat twinkles with Mighty Moves' sparkle, a world won has its cheering, kept quiet, and the pull back its swish, slowed right down. Underneath are The Lighthouse Keeper's waves, very quietly, in the watery worlds, Spider Catcher's wood full of birds in the garden, Tank Patrol's countryside on the savanna and Cannon Bay's wind in the sky, and among the moons, planets and stars there's nothing, as there's no sound out there. The coach says the one line at the start, the hints and what the child has become.
+
 Where each sound came from is in [CREDITS.md](CREDITS.md).
 
 ## Privacy
 
 Camera frames are only ever used in the browser and are never saved. Each page's security policy blocks it from sending anything to another computer, except Google Analytics, and except that High Five Racers, Sky Wings, Balloon Pop, Mighty Moves, Bounce Back, Leap Trail, Giraffe's Maze, Cannon Bay, Tank Patrol, the Smoothie Stand, Spider Catcher, the Lighthouse Keeper, Giraffe's Garden and Frost Arena may reach the server for playing with friends, which they only do once a grown-up makes or joins a race, a flight, a game, a fight, a run, a battle or a match (see [Racing friends](#high-five-racers)), and the camera turns off as soon as a round ends. Only settings are stored, in the browser, along with which level each game is on. A round's numbers are shown once and then discarded. All libraries, the model and the sounds are in this folder, so the games also work offline.
+
+Gobble and Grow reads the face rather than the hands, in the same way. Its tracker runs in the browser, and all that comes out of it is where the points of the face are, which are used there and then, to say how open the mouth is and where the face is, and never kept or sent. Nothing recognises anyone. With friends it reaches the same server as the other games, on the same terms, and only once a grown-up makes or joins a game.
 
 **Google Analytics** (`G-BPC62S5T34`) counts visits to every page, through [core/analytics.js](core/analytics.js): Google's tag says which page was opened, with what any website's visit tells it, such as the browser, the screen size and roughly where. Nothing from this site goes with it: never anything from the camera, and nothing about how a child plays. Google signals and ad personalisation are turned off, as this is a site for children. It sets Google's own cookies, which in some countries means a website should ask first. It never loads on this computer, as in the tests, so nothing leaves it there. Each page's security policy lets in Google's tag and analytics, and nothing else new.
 
@@ -935,6 +1023,8 @@ Unit tests run the rules against what the real model reported for real photos an
 [tools/record_pose.mjs](tools/record_pose.mjs) records what the model reports for a video, which is where [test/fixtures/body-moves.json](test/fixtures/body-moves.json) came from. What happens in each clip was checked by eye against its frames.
 
 There's no free footage of a person clapping, circling a hand or holding their arms out in full view of a camera, so [tools/render_test_moves.py](tools/render_test_moves.py) renders it in Blender with a rigged character. The real tracker reads those pictures, so what's made up is the person, not the tracking. Those three moves have only been tried on that rendered person.
+
+**The games played with the face** can't be tested with photos, as there are no photos of faces in this folder, and none may be added. The unit tests read made-up faces ([test/fixtures/made-up-face.js](test/fixtures/made-up-face.js)): the points the tracker would report, with the mouth as far open as each test says, and the head turned, tipped, far off or half out of the picture. In the Playwright tests the webcam is a drawing of a face, and the tracker a stand-in that reports that same face ([test/e2e/fake-face.js](test/e2e/fake-face.js)), which the game only takes when its page is opened for testing. Everything after the tracker is the real thing. The real tracker and its model are tested for loading, running on the camera's frames, falling back to the CPU, and seeing nobody in an empty room.
 
 ## Not tested yet
 
@@ -963,6 +1053,9 @@ There's no free footage of a person clapping, circling a hand or holding their a
 - **The left and right label on these hands.** It has only been checked on photos of adult hands, so a child's hand or a hand with hemiplegia could be named wrongly. If the tracker is confidently wrong, the hand won't count, and the panel says "Only sees the other hand", so it's quick to spot.
 - **How it all sounds.** Loading, levels, clipping and timing are tested and the mix was measured, but the sound choices, the music and the balance need a human ear. The Georgian especially needs a native speaker's, both the voices and my translations.
 - **Real phones and tablets.** The layouts were checked at those sizes in desktop Chrome.
+- **A real mouth, in Gobble and Grow.** No real face has played it. How the mouth is read was only checked on five old paintings, shown once to the real model and not kept here: a shut mouth, lips a little apart, a wide yawn, the yawn with a box drawn over its mouth, and a face seen from the side, which the tracker didn't find at all. Everything else was tested with made-up faces and a stand-in for the tracker. So it isn't known how a child's mouth reads, or one that opens more on one side than the other, as with a weak side of the face, how far a real mouth gets on the way to its widest, how well the tracker keeps hold of a face with a wide open mouth, glasses, a hand near it or a head that moves, whether 45° of turn is the right place to stop trusting it, or how steady where the face is turns out to be on a real camera, which is what the creature is steered by. Whether 60% of the widest is the right line, whether three seconds is right for swallowing what a mouth is left open on, whether a tenth of the picture is a comfortable move of the head, and how tiring it is to open wide a dozen times a world, are for a therapist and a child to say. Nobody has listened to its sound, playing with friends was only tried with browsers on one computer, and its Georgian lines and labels need a native speaker to check them.
+- **The pull back from the garden and from the sky, in Gobble and Grow, is a little too quick.** As the view pulls back from those two worlds, the picture's brightness was measured changing by up to 4.9 out of 255 from one frame to the next, where the other games keep under 4, and its own test for the sky fails until that's slowed down. Nothing blinks or strobes: it's one change, in one direction. The other eight measured 1.4 to 3.4.
+- **Gobble and Grow's hub card, film and some of its browser tests.** Its film for the page of games hasn't been recorded yet, and its browser tests for each level, for playing with friends and for the real tracker have been written but not yet run. Its tests of the mouth check, eating, resting, the panel and a whole world won have been run, and pass.
 
 ## Known limits
 
@@ -972,6 +1065,8 @@ There's no free footage of a person clapping, circling a hand or holding their a
 - **Distance.** In the hand games, the tracker only finds a new hand when the palm is at least about 15% of the picture's height. Once found, it follows the hand down to about 6%. For a child's hand on a typical webcam, that works out at roughly 60 cm and 1.5 m from the camera. Those distances are calculated rather than measured. The hand check shows how big hands need to look.
 - **A hand hidden behind the hand in play can't be seen.** The camera only sees what's in front, so a child could hold the hand open from behind. An adult watching will notice, but the game won't.
 - **The wrist isn't measured.** Hand tracking can't see the forearm, so it can't tell if a child opens their fingers by bending the wrist down, a common way of compensating. A therapist may want to watch for this. Giraffe's Goal goes part of the way: it can tell a hand that's tipped over towards the camera or hanging down, which is how a dropped wrist looks with the arm held up, but not how far the wrist itself is bent.
+- **How close the face has to be.** The face tracker only finds a new face when it's about a quarter of the picture's height or more, and can follow it a little further than that. For a child's face on a typical webcam, that works out at within about 90 cm of the camera, which is calculated rather than measured. Further away, Gobble and Grow asks the child to come closer.
+- **One side of the mouth isn't told from the other.** How open a mouth is, is measured in the middle of the lips. A mouth that opens more on one side, as with a weak side of the face, is read by its middle, and the game can't tell whether both sides opened. A therapist may want to watch for it.
 
 These games are not medical devices and don't replace therapy. Please check targets and how long to play with the child's therapist.
 
@@ -980,6 +1075,7 @@ These games are not medical devices and don't replace therapy. Please check targ
 | Part | Version | Licence |
 |---|---|---|
 | [MediaPipe Tasks Vision](https://www.npmjs.com/package/@mediapipe/tasks-vision), and the hand and pose landmarker models | 1.2.2 | Apache 2.0 |
+| MediaPipe's face landmarker model, which Gobble and Grow reads the mouth with | float16, version 1 | Apache 2.0 |
 | [Three.js](https://threejs.org) | 0.187.0 | MIT |
 | [Fredoka](https://fonts.google.com/specimen/Fredoka) font | 5.3.0 (Fontsource) | SIL Open Font License |
 | Noto Sans Georgian font | 5.3.0 (Fontsource) | SIL Open Font License |
