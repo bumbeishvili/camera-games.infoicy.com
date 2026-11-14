@@ -12,7 +12,7 @@ const RESTING = 'Resting is OK. Flap when you’re ready.';
 const FINISH = 'Home safe! What a flyer!';
 const atLevel = (level, more = {}) => ({ levels: { [GAME]: level }, ...more });
 
-test('the title card shows the move in a little film, and has the way back to all the games', async ({ page }) => {
+test('the title card shows the move in a little film, has the way back to all the games, and leaves the chick in sight', async ({ page }) => {
   await openGame(page, {}, GAME);
   await expect(page.locator('h1')).toHaveText('Flap, Little Chick!');
   await expect(page.locator('#start')).toHaveText('Flap home!');
@@ -23,8 +23,18 @@ test('the title card shows the move in a little film, and has the way back to al
   expect(await film.locator('.film-arm:not(.film-arm-far) .film-hand').evaluate((node) => getComputedStyle(node).animationName)).toBe('flap-film-wrist');
   expect(await film.locator('.film-wing').first().evaluate((node) => getComputedStyle(node).animationName)).toBe('flap-film-wing');
   await expect(page.locator('#screen-welcome .all-games')).toBeVisible();
+  // On a wide screen the chick stands to the left of the card, where it can be seen. On a narrow one, where the card
+  // fills the screen, it stays where it always is.
+  const chickClear = () => page.evaluate(() => {
+    const { view, farm } = window.__game;
+    const card = document.querySelector('#screen-welcome .title-card').getBoundingClientRect();
+    return view.x(farm.chick.x) + view.unit * 0.6 < card.left;
+  });
+  await expectSoon(chickClear, { timeout: 5000 }).toBe(true);
   await page.waitForTimeout(1300);
   await shot(page, 'flap-title');
+  await page.setViewportSize({ width: 640, height: 720 });
+  await expectSoon(() => page.evaluate(() => window.__game.view.chickX / window.innerWidth), { timeout: 5000 }).toBeCloseTo(0.3, 2);
 });
 
 test('bending the wrists back flaps the wings: the chick hops over every log, leaves the fox behind, and gets home', async ({ page }) => {
