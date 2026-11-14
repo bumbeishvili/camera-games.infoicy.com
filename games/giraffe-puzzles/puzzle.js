@@ -40,8 +40,7 @@ const FRAME_MIDDLE = 0.5; // How far down the table the middle of the picture is
 // its own edges the pieces keep.
 const BOARD = { margin: 0.025, top: 0.05, bottom: 0.95, fromFrame: 0.012, pad: 0.016 };
 const SLOT_GAP = 0.02;
-// A piece's middle never leaves the table.
-const KEEP_IN = { left: 0.06, right: TABLE.width - 0.06, top: 0.08, bottom: 0.92 };
+const EDGE = 0.012; // How near the table's edge a piece can come: all of it stays on the table.
 
 const FOLLOW_RATE = 14; // How tightly a piece follows the hand that has it.
 // A hand that was open a moment ago still has its piece for this long, as the tracker can read an open hand as
@@ -427,6 +426,13 @@ export class Puzzle {
     return Boolean(magnet && magnet.state === 'on');
   }
 
+  /** Puts a piece's middle at (x, y), or as near as keeps all of it on the table, so none of it is ever out of sight. */
+  keepIn(piece, x, y) {
+    const { width, height } = this.layout.piece;
+    piece.x = clamp(x, width / 2 + EDGE, TABLE.width - width / 2 - EDGE);
+    piece.y = clamp(y, height / 2 + EDGE, TABLE.height - height / 2 - EDGE);
+  }
+
   /** How far a piece's middle is from somewhere, in table units. */
   gap(piece, at) {
     return Math.hypot(piece.x - at.x, piece.y - at.y);
@@ -509,8 +515,7 @@ export class Puzzle {
   carry(dt, glove, hand) {
     const piece = this.held;
     const blend = 1 - Math.exp(-dt * FOLLOW_RATE);
-    piece.x = clamp(piece.x + (glove.x - piece.x) * blend, KEEP_IN.left, KEEP_IN.right);
-    piece.y = clamp(piece.y + (glove.y - piece.y) * blend, KEEP_IN.top, KEEP_IN.bottom);
+    this.keepIn(piece, piece.x + (glove.x - piece.x) * blend, piece.y + (glove.y - piece.y) * blend);
     if (!hand) return;
     piece.carried += dt;
     this.carryFor += dt;
@@ -567,6 +572,8 @@ export class Puzzle {
     }
     // With friends, everyone is told it's in, for good: see report().
     if (this.shared && by === this.me) this.mine.set(piece.id, { k: piece.id * GRABS + Math.max(0, piece.last), s: 1 });
+    // Where it was, for the screen to slide it the last little way in.
+    const from = { x: piece.x, y: piece.y };
     piece.state = 'placed';
     piece.holder = null;
     piece.by = by;
@@ -580,7 +587,7 @@ export class Puzzle {
     piece.asked = null;
     this.tally.set(by, (this.tally.get(by) ?? 0) + 1);
     if (by === this.me) this.stats.placed += 1;
-    this.onEvent({ type: 'placed', piece, by, mine: by === this.me });
+    this.onEvent({ type: 'placed', piece, by, mine: by === this.me, from });
     if (piece.golden && by === this.me) this.prize('star', piece.home);
     if (piece.round === this.index && this.phase === 'play' && this.pieces.every((each) => each.state === 'placed')) this.mend();
   }
@@ -783,8 +790,7 @@ export class Puzzle {
       if (piece.state === 'held' && piece.holder !== from) continue;
       piece.state = 'loose';
       piece.holder = null;
-      piece.x = clamp(Number(x) || 0, KEEP_IN.left, KEEP_IN.right);
-      piece.y = clamp(Number(y) || 0, KEEP_IN.top, KEEP_IN.bottom);
+      this.keepIn(piece, Number(x) || 0, Number(y) || 0);
       piece.angle = Number(angle) || 0;
     }
     const inHand = Number.isInteger(h) && h >= 0 ? this.piece(Math.floor(h / GRABS)) : null;
@@ -825,8 +831,7 @@ export class Puzzle {
     const blend = 1 - Math.exp(-dt * FOLLOW_RATE);
     for (const piece of this.pieces) {
       if (piece.state !== 'held' || piece.holder !== id) continue;
-      piece.x = clamp(piece.x + (at.x - piece.x) * blend, KEEP_IN.left, KEEP_IN.right);
-      piece.y = clamp(piece.y + (at.y - piece.y) * blend, KEEP_IN.top, KEEP_IN.bottom);
+      this.keepIn(piece, piece.x + (at.x - piece.x) * blend, piece.y + (at.y - piece.y) * blend);
     }
   }
 

@@ -98,7 +98,7 @@ test('an open hand over a loose piece picks it up, and the piece goes with the h
   pickUp(puzzle, piece);
   assert.equal(said(puzzle, 'pick').length, 1);
   // It follows the hand across the table, staying loose until it's near its place.
-  const to = { x: 1, y: 0.92 };
+  const to = { x: 1, y: 0.85 };
   sweep(puzzle, start, to);
   assert.equal(puzzle.held, piece);
   assert.ok(Math.hypot(piece.x - to.x, piece.y - to.y) < 0.01, 'the piece is where the hand is');
@@ -150,7 +150,7 @@ test('a hand that closes, or goes, leaves the piece where it is: nothing is lost
   const puzzle = makePuzzle();
   const [piece] = puzzle.pieces;
   pickUp(puzzle, piece);
-  const middle = { x: 1, y: 0.9 };
+  const middle = { x: 1, y: 0.85 };
   sweep(puzzle, piece, middle);
   // The hand closes, and stays closed.
   run(puzzle, 1, closed(middle));
@@ -226,7 +226,7 @@ test('a piece carried for a while without finding its place has its place lit up
   const puzzle = makePuzzle();
   const piece = plainPiece(puzzle);
   pickUp(puzzle, piece);
-  const lost = { x: 1, y: 0.92 };
+  const lost = { x: 1, y: 0.85 };
   sweep(puzzle, piece, lost);
   run(puzzle, HINT_AFTER - 2, open(lost));
   assert.equal(piece.hint, 0, 'not at once');
@@ -242,6 +242,26 @@ test('a piece carried for a while without finding its place has its place lit up
   sweep(puzzle, lost, piece.home);
   assert.equal(piece.state, 'placed');
   assert.equal(piece.hint, 0);
+});
+
+test('however far out the hand goes, all of the piece in it stays on the table, where it can be seen and picked up again', () => {
+  for (const level of [1, 6, 9]) {
+    for (const pieces of CHOICES) {
+      const puzzle = makePuzzle({ level, pieces, reach: 'lots' });
+      const { width, height } = puzzle.layout.piece;
+      const piece = plainPiece(puzzle);
+      // Reach help lets the glove go well past the table's edges. The piece goes as far as the edge, and no further.
+      for (const out of [{ x: -0.7, y: piece.y }, { x: piece.x, y: 1.8 }, { x: TABLE.width + 0.7, y: 1.8 }, { x: TABLE.width + 0.7, y: -0.8 }]) {
+        if (piece.state === 'placed') break;
+        run(puzzle, 0.2, open(piece));
+        run(puzzle, 1.5, open(out));
+        run(puzzle, 0.5, closed(out));
+        const what = `level ${level}, ${pieces}: left at ${piece.x.toFixed(2)}, ${piece.y.toFixed(2)}`;
+        assert.ok(piece.x - width / 2 > 0 && piece.x + width / 2 < TABLE.width, what);
+        assert.ok(piece.y - height / 2 > 0 && piece.y + height / 2 < TABLE.height, what);
+      }
+    }
+  }
 });
 
 test('a pretend child finishes every level, with fewer, the usual and more pieces, steadily or with a shaking, blinking hand', () => {
@@ -777,7 +797,7 @@ test('with friends, together, a piece one child holds can\'t be taken by another
   assert.equal(ben.held, null);
   assert.equal(claims.size, 1);
   // It goes where Ana's glove goes, on Ben's computer too.
-  const to = { x: 1, y: 0.9 };
+  const to = { x: 1, y: 0.85 };
   sweep(ana, mine, to);
   for (let t = 0; t < 1; t += FRAME) ben.friendAt('aaaa', to, FRAME);
   assert.ok(Math.hypot(theirs.x - to.x, theirs.y - to.y) < 0.01);
@@ -924,13 +944,13 @@ test('with friends, what a game tells the others is only numbers: the piece in t
   sweep(ana, first, first.home);
   run(ana, 0.3, NO_HAND);
   pickUp(ana, second);
-  const to = { x: 1.013, y: 0.9004 };
+  const to = { x: 1.013, y: 0.8504 };
   sweep(ana, second, to);
   run(ana, 1, closed(to));
   const { h, d, n } = ana.report();
   assert.equal(h, -1);
   assert.equal(n, 1);
-  assert.deepEqual(d, [[first.id * GRABS, first.home.x, first.home.y, 0, 1], [second.id * GRABS, 1.013, 0.9, 0, 0]]);
+  assert.deepEqual(d, [[first.id * GRABS, first.home.x, first.home.y, 0, 1], [second.id * GRABS, 1.013, 0.85, 0, 0]]);
   assert.ok(JSON.stringify(d).length < 80);
 });
 

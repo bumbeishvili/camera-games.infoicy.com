@@ -28,7 +28,7 @@ const PLACE_HINT = 'Take it to its place in the picture!';
 const PRAISE = ['Nice one!', 'Way to go!', 'Great job!'];
 const FILM_SECONDS = 30; // The little film of what to do shows until the first piece is in, or this long.
 const STORY_SECONDS = 6; // Giraffe's words stay up this long, or until the first piece is in.
-const HINT_FROM = 3; // Seconds into a game that how to pick a piece up is said, if none has been by then.
+const HINT_FROM = 6.5; // Seconds into a game that how to pick a piece up is said, if none has been by then: once Giraffe has spoken.
 const PLACE_HINT_AFTER = 5; // Seconds the first piece has been carried before saying where to take it.
 const CLOSED_PROMPT_AFTER = 2.5; // Seconds of a closed hand before asking for it to open.
 const RESTING_AFTER = 15; // And before saying that resting is fine.
@@ -275,10 +275,7 @@ class PuzzleGame {
     if (input) input.checked = true;
   }
 
-  /**
-   * The little film of what to do goes under the easel, on the side away from the hand in play, and what the child
-   * is asked for goes just under the band, between the two boards, where it hides no piece.
-   */
+  /** The little film of what to do goes under the easel, on the side away from the hand in play. */
   placeFilm() {
     const { view, puzzle } = this;
     if (!puzzle) return;
@@ -292,8 +289,28 @@ class PuzzleGame {
     style.setProperty('--film-left', `${Math.round(below.x - wide / 2)}px`);
     style.setProperty('--film-top', `${Math.round(below.y + (room - high) / 2 - 4)}px`);
     style.setProperty('--film-width', `${Math.round(wide)}px`);
+    // Just under the band, between the two boards: where a prompt goes while Giraffe's words are in the band.
     style.setProperty('--prompt-top', `${Math.round(view.top + view.scale * 0.015)}px`);
     style.setProperty('--prompt-wide', `${Math.round((boards[1].x - boards[0].x - boards[0].width) * view.scale - 12)}px`);
+    this.placePrompt();
+  }
+
+  /**
+   * What the child is asked for goes in the band along the top, between the tally and the hand meter, so it's never
+   * over the table. If there isn't room there, as with a long row of friends, it goes just under the band instead.
+   */
+  placePrompt() {
+    const edge = (selector) => {
+      const box = document.querySelector(selector)?.getBoundingClientRect();
+      return box?.width ? box : null;
+    };
+    const left = (edge('.puzzle-hud')?.right ?? 12) + 14;
+    const right = (edge('.hands-bar')?.left ?? window.innerWidth - 12) - 14;
+    const style = document.documentElement.style;
+    document.body.dataset.prompt = right - left >= 250 ? 'band' : 'table';
+    style.setProperty('--prompt-band-left', `${Math.round((left + right) / 2)}px`);
+    style.setProperty('--prompt-band-wide', `${Math.round(right - left)}px`);
+    style.setProperty('--prompt-band-top', `${Math.round(this.band() / 2)}px`);
   }
 
   /* ---------- a new puzzle ---------- */
@@ -329,6 +346,8 @@ class PuzzleGame {
     this.story.say('giraffe', INTRO);
     this.storyFor = STORY_SECONDS;
     this.nameNewThings();
+    // The tally and the meter are on the screen by now, so the room between them is known.
+    this.placePrompt();
   }
 
   /** The newest thing the level brings is named first, then whatever else is on the table, each the first time. */
@@ -370,6 +389,7 @@ class PuzzleGame {
         break;
       case 'placed': {
         const { piece } = event;
+        view.settle(piece, event.from);
         view.burst(piece.home.x, piece.home.y, piece.golden ? '#ffd23f' : '#ffe066');
         view.cheer();
         this.story.hide();
@@ -660,6 +680,8 @@ class PuzzleGame {
       }
       return row;
     }));
+    // The row of friends takes room in the band, which a prompt may then not have.
+    this.placePrompt();
   }
 
   /* ---------- the end ---------- */

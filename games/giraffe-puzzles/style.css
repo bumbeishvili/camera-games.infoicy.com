@@ -9,6 +9,9 @@
   --film-width: 150px;
   --prompt-top: 150px;
   --prompt-wide: 46vw;
+  --prompt-band-top: 66px;
+  --prompt-band-left: 50vw;
+  --prompt-band-wide: 40vw;
 }
 
 /* The mirror, in the top right corner, by the gear. */
@@ -52,16 +55,27 @@ body[data-screen='countdown'] .puzzle-hud { display: flex; }
   transform: translateX(-62%);
   width: min(30vw, 360px);
 }
+/* With friends, they're along the top after the tally, so his words go a little further over to make room. */
+body[data-friends-race] .story { transform: translateX(-40%); }
 
-/* What the child is asked for goes just under the band, between the two boards, and small enough to fit there, so
-   it never hides a piece. main.js says how much room there is. */
-body[data-screen='playing'] .prompt,
+/* What the child is asked for goes in the band, between the tally and the hand meter, so it's never over the table.
+   While Giraffe's words are there, or when there's no room, as with a long row of friends, it goes just under the
+   band instead, between the two boards, small enough to fit there, so it still hides no piece. main.js says how much
+   room there is in each place. */
+body[data-screen='playing'] .prompt {
+  top: var(--prompt-band-top);
+  left: var(--prompt-band-left);
+  transform: translate(-50%, -50%);
+  max-width: var(--prompt-band-wide);
+  padding: 6px 18px 7px;
+  font-size: clamp(16px, 1.9vw, 26px);
+}
+body[data-screen='playing'][data-prompt='table'] .prompt,
 body[data-screen='playing']:has(.story.is-visible) .prompt {
   top: var(--prompt-top);
   left: 50%;
+  transform: translateX(-50%);
   max-width: var(--prompt-wide);
-  padding: 6px 18px 7px;
-  font-size: clamp(16px, 1.9vw, 26px);
 }
 
 /* ---------- a little film: an open hand goes to a piece, and carries it to its place in the picture ---------- */
@@ -114,7 +128,7 @@ body[data-screen='playing']:has(.story.is-visible) .prompt {
 .puzzle-scores {
   display: flex;
   flex-wrap: wrap;
-  max-width: 38vw;
+  max-width: 29vw;
   gap: 6px;
   margin: 0;
   padding: 0;

@@ -12,6 +12,7 @@ import { drawPicture, PICTURE } from './pictures.js';
 const LABEL_SECONDS = 2.6;
 const PRIZE_FLY_SECONDS = 0.9;
 const FADE_SECONDS = 0.7; // How long a picture, or its pieces, take to come and go.
+const SETTLE_SECONDS = 0.16; // How long a piece takes to slide the last little way into its place.
 const KNOB = 0.22; // How big a jigsaw piece's knob is, as a share of the piece's shorter side.
 const MARGIN = 8; // Round the table, in pixels.
 const PALM = 0.075; // The glove's palm, in table units.
@@ -19,6 +20,7 @@ const PALM = 0.075; // The glove's palm, in table units.
 // tips of his horns are. The rest of him is behind the picture.
 export const GIRAFFE = { tall: 0.4, top: 0.02 };
 const HEAD_ABOVE_FEET = 1.31; // How far above his feet the tips of his horns are, in body heights.
+const CHEER_HOP = 0.16 / 2.05; // How far up he hops in his cheering picture, in body heights: see POSES in giraffe-maze/walkers.js.
 const MARKS = { star: '⭐', gem: '💎', magnet: '🧲', eyes: '👀' };
 const COLOURS = {
   wall: '#d7ebf7',
@@ -117,6 +119,7 @@ export class PuzzleView {
     this.sprites = new Map();
     this.pictures = [];
     this.leaving = null; // The picture before, fading away.
+    this.settling = new Map(); // Pieces sliding the last little way into their places, by number, as { x, y, at }.
     this.shownAt = 0;
     this.peekFade = 0;
     this.cheerUntil = 0;
@@ -157,6 +160,7 @@ export class PuzzleView {
     this.cheerUntil = 0;
     this.peekFade = 0;
     this.leaving = null;
+    this.settling = new Map();
     this.built = null;
   }
 
@@ -188,6 +192,7 @@ export class PuzzleView {
       this.leaving.t += dt;
       if (this.leaving.t >= FADE_SECONDS) this.leaving = null;
     }
+    for (const [id, slide] of this.settling) if (this.time - slide.at >= SETTLE_SECONDS) this.settling.delete(id);
     const showing = puzzle?.phase === 'play' && puzzle.round.peek?.showing > 0.3;
     this.peekFade = clamp(this.peekFade + (showing ? dt : -dt) / 0.35, 0, 1);
   }
@@ -204,6 +209,11 @@ export class PuzzleView {
   burst(x, y, colour = '#ffe066') {
     const at = this.at(x, y);
     this.effects.push({ kind: 'burst', x: at.x, y: at.y, life: 0.8, total: 0.8, colour });
+  }
+
+  /** A piece going in slides the last little way to its place from where it was, rather than jumping there. */
+  settle(piece, from) {
+    this.settling.set(piece.id, { x: from.x, y: from.y, at: this.time });
   }
 
   /** A bubble pops: a ring, going out and fading. */
@@ -533,6 +543,9 @@ export class PuzzleView {
     const size = (GIRAFFE.tall * scale) / art.tall;
     const feet = this.at(layout.giraffe.x, GIRAFFE.top + GIRAFFE.tall * HEAD_ABOVE_FEET);
     const top = this.at(0, layout.easel.y + 0.01).y;
+    // In his cheering picture he's up on his toes. Here it's drawn that much lower, so his head stays where it
+    // was and only his arms and his face change: his whole head hopping up and down would be a lot to change at once.
+    const hop = frame === art.frames.cheer ? art.tall * CHEER_HOP : 0;
     ctx.save();
     // Only what's above the easel is drawn: the rest of him is behind it.
     ctx.beginPath();
@@ -541,7 +554,7 @@ export class PuzzleView {
     ctx.translate(feet.x, feet.y);
     ctx.scale(size, size);
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(frame, -art.foot.x, -art.foot.y);
+    ctx.drawImage(frame, -art.foot.x, -art.foot.y + hop);
     ctx.restore();
   }
 
@@ -577,7 +590,20 @@ export class PuzzleView {
       if (!sprite) continue;
       const home = this.at(piece.home.x, piece.home.y);
       if (piece.state === 'placed') {
-        ctx.drawImage(sprite.flat, home.x - sprite.wide / 2, home.y - sprite.high / 2, sprite.wide, sprite.high);
+        const slide = this.settling.get(piece.id);
+        if (slide) {
+          // Just let go: it slides the last little way in, coming down flat as it goes.
+          const share = ease(clamp((this.time - slide.at) / SETTLE_SECONDS, 0, 1));
+          const from = this.at(slide.x, slide.y);
+          const grow = 1 + 0.06 * (1 - share);
+          ctx.save();
+          ctx.translate(from.x + (home.x - from.x) * share, from.y + (home.y - from.y) * share);
+          ctx.scale(grow, grow);
+          ctx.drawImage(sprite.loose, -sprite.wide / 2, -sprite.high / 2, sprite.wide, sprite.high);
+          ctx.restore();
+        } else {
+          ctx.drawImage(sprite.flat, home.x - sprite.wide / 2, home.y - sprite.high / 2, sprite.wide, sprite.high);
+        }
         continue;
       }
       ctx.save();

@@ -128,9 +128,27 @@ test('what to do is asked for in few words: to pick a piece up, to open a closed
   await show(page, ...FIST);
   await waitForScreen(page, 'playing');
   const prompt = page.locator('#prompt-text');
-  // A closed hand is asked to open, after a moment.
+  // A closed hand is asked to open, after a moment. While Giraffe's words are in the band, that goes just under it,
+  // between the two boards, where it hides no piece.
   await leadHand(page, { target: `() => ({ x: ${SPARE.x}, y: ${SPARE.y}, hand: 'fist' })` });
   await expect(prompt).toHaveText('Open your hand to pick up a piece!', { timeout: 15_000 });
+  const placed = () => page.evaluate(() => {
+    const { view, puzzle } = window.__game;
+    const [left, right] = puzzle.layout.boards;
+    const box = document.getElementById('prompt').getBoundingClientRect();
+    return {
+      box: { left: box.left, right: box.right, top: box.top, bottom: box.bottom },
+      story: document.getElementById('story').classList.contains('is-visible'),
+      boards: { leftEnds: view.at(left.x + left.width, 0).x, rightStarts: view.at(right.x, 0).x },
+      band: { tally: document.querySelector('.puzzle-hud').getBoundingClientRect().right, meter: document.querySelector('.hands-bar').getBoundingClientRect().left, table: view.top },
+    };
+  });
+  const early = await placed();
+  if (early.story) {
+    expect(early.box.left).toBeGreaterThan(early.boards.leftEnds - 4);
+    expect(early.box.right).toBeLessThan(early.boards.rightStarts + 4);
+    expect(early.box.top).toBeGreaterThanOrEqual(early.band.table);
+  }
   // And after a good while of it, told that resting is fine. Nothing has been lost by it.
   await expect(prompt).toHaveText('Resting is OK. Open your hand when you’re ready.', { timeout: 25_000 });
   const rested = await state(page);
@@ -141,15 +159,13 @@ test('what to do is asked for in few words: to pick a piece up, to open a closed
   await expect(prompt).toHaveText('Pick up a piece with your open hand!', { timeout: 15_000 });
   await page.waitForTimeout(300);
   await shot(page, 'puzzles-hint');
-  // The prompt sits between the two boards, under the band, where it hides no piece.
-  const box = await page.locator('#prompt').boundingBox();
-  const boards = await page.evaluate(() => {
-    const { view, puzzle } = window.__game;
-    const [left, right] = puzzle.layout.boards;
-    return { leftEnds: view.at(left.x + left.width, 0).x, rightStarts: view.at(right.x, 0).x };
-  });
-  expect(box.x).toBeGreaterThan(boards.leftEnds - 4);
-  expect(box.x + box.width).toBeLessThan(boards.rightStarts + 4);
+  // Once Giraffe's words have gone, what's asked is in the band, between the tally and the hand meter, and not over
+  // the table at all.
+  const later = await placed();
+  expect(later.story).toBe(false);
+  expect(later.box.left).toBeGreaterThan(later.band.tally);
+  expect(later.box.right).toBeLessThan(later.band.meter);
+  expect(later.box.bottom).toBeLessThanOrEqual(later.band.table + 2);
   // A hand out of the picture is asked for.
   await stopHand(page);
   await show(page, ...NO_HAND);
