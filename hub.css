@@ -675,6 +675,25 @@ body.hub {
 .art-bay-smoke { fill: #fff; opacity: 0.9; }
 .art-bay-splash { fill: #fff; }
 
+/* Giraffe's Puzzles' picture. */
+.game-art-puzzles { background: #d7ebf7; }
+.art-puzzle-floor { fill: #e6c594; }
+.art-puzzle-cork { fill: #e9cfa2; stroke: #c08a50; stroke-width: 3; }
+.art-puzzle-leg { fill: none; stroke: #9b6a3a; stroke-width: 7; stroke-linecap: round; }
+.art-puzzle-frame { fill: #c08a50; stroke: var(--ink); stroke-width: 3; }
+.art-puzzle-paper { fill: #fff8e8; }
+.art-puzzle-sky { fill: #8fd3ff; }
+.art-puzzle-grass { fill: #86cf62; }
+.art-puzzle-sun { fill: #ffd23f; stroke: #dba500; stroke-width: 2; }
+.art-puzzle-cloud { fill: #fff; }
+.art-puzzle-petal { fill: #ff8ac2; }
+.art-puzzle-apple { fill: #e8433f; stroke: var(--ink); stroke-width: 1.5; }
+.art-puzzle-eye { fill: #1c1630; }
+.art-puzzle-spot { fill: #c9823f; }
+.art-puzzle-gap { fill: none; stroke: rgb(18 48 77 / 0.4); stroke-width: 2; stroke-dasharray: 5 4; }
+.art-puzzle-cut { fill: none; stroke: rgb(18 48 77 / 0.35); stroke-width: 1.5; }
+.art-puzzle-edge { fill: none; stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; }
+
 /* Each card's film, over its picture, fading in once it's playing. */
 .game-art { position: relative; }
 

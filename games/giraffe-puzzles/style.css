@@ -1,0 +1,163 @@
+/* Giraffe's Puzzles: the table fills the screen under a band along the top, with the pieces in place and the prizes
+   on the left, Giraffe's words in the middle, and the hand meter and the mirror on the right, so nothing sits over
+   the pieces. main.js works out the same band, and says where the little film and the prompts go. */
+:root {
+  --meter-size: clamp(66px, 7vw, 92px);
+  --camera-small: clamp(140px, 15vw, 230px);
+  --film-left: 16px;
+  --film-top: 70vh;
+  --film-width: 150px;
+  --prompt-top: 150px;
+  --prompt-wide: 46vw;
+  --prompt-band-top: 66px;
+  --prompt-band-left: 50vw;
+  --prompt-band-wide: 40vw;
+}
+
+/* The mirror, in the top right corner, by the gear. */
+body:not([data-screen='check']) .camera-frame { left: auto; right: 70px; transform: none; }
+
+/* The hand meter, beside the mirror. */
+.hands-bar {
+  top: 12px;
+  bottom: auto;
+  left: auto;
+  right: calc(70px + var(--camera-small) + 12px);
+  transform: none;
+}
+body[data-screen='check'] .hands-bar { top: auto; bottom: 10px; left: 50%; right: auto; transform: translateX(-50%); }
+.meter { padding: 6px 6px 4px; border-radius: 20px; }
+.meter-caption { font-size: clamp(11px, 1vw, 13px); }
+
+/* ---------- the pieces in place, and the prizes ---------- */
+.puzzle-hud {
+  display: none;
+  position: fixed;
+  z-index: 3;
+  top: 12px;
+  left: 12px;
+  align-items: center;
+  gap: 8px;
+}
+body[data-screen='playing'] .puzzle-hud,
+body[data-screen='countdown'] .puzzle-hud { display: flex; }
+.puzzle-hud .chip { min-width: clamp(64px, 7vw, 96px); padding: 4px 10px 6px; }
+.puzzle-hud .chip[hidden] { display: none; }
+.chip-pieces .chip-label::before { content: '🧩 '; }
+.chip-prizes .chip-label::before { content: '⭐ '; }
+.finish-prizes { margin: 0; font-size: clamp(20px, 2.4vw, 28px); font-weight: 600; }
+.finish-prizes:empty { display: none; }
+
+/* ---------- Giraffe's words, in the middle of the band ---------- */
+.story {
+  top: 12px;
+  left: 50%;
+  transform: translateX(-62%);
+  width: min(30vw, 360px);
+}
+/* With friends, they're along the top after the tally, so his words go a little further over to make room. */
+body[data-friends-race] .story { transform: translateX(-40%); }
+
+/* What the child is asked for goes in the band, between the tally and the hand meter, so it's never over the table.
+   While Giraffe's words are there, or when there's no room, as with a long row of friends, it goes just under the
+   band instead, between the two boards, small enough to fit there, so it still hides no piece. main.js says how much
+   room there is in each place. */
+body[data-screen='playing'] .prompt {
+  top: var(--prompt-band-top);
+  left: var(--prompt-band-left);
+  transform: translate(-50%, -50%);
+  max-width: var(--prompt-band-wide);
+  padding: 6px 18px 7px;
+  font-size: clamp(16px, 1.9vw, 26px);
+}
+body[data-screen='playing'][data-prompt='table'] .prompt,
+body[data-screen='playing']:has(.story.is-visible) .prompt {
+  top: var(--prompt-top);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: var(--prompt-wide);
+}
+
+/* ---------- a little film: an open hand goes to a piece, and carries it to its place in the picture ---------- */
+.puzzle-film { left: var(--film-left); top: var(--film-top); bottom: auto; width: var(--film-width); min-width: 0; border-width: 4px; border-radius: 18px; }
+.film-board { fill: #e9cfa2; stroke: #c08a50; stroke-width: 3; }
+.film-frame { fill: #c08a50; stroke: var(--ink); stroke-width: 3; }
+.film-paper { fill: #fff8e8; }
+.film-in { stroke: rgb(18 48 77 / 0.45); stroke-width: 1.5; }
+.film-in-a { fill: #8fd3ff; }
+.film-in-b { fill: #ffd23f; }
+.film-in-c { fill: #86cf62; }
+.film-place { fill: none; stroke: rgb(18 48 77 / 0.4); stroke-width: 2; stroke-dasharray: 5 4; }
+.film-piece { fill: #ff9a8a; stroke: var(--ink); stroke-width: 2.5; }
+.film-hand rect { fill: #3ddc84; stroke: var(--ink); stroke-width: 3; }
+.film-finger-ink { fill: none; stroke: var(--ink); stroke-width: 12; stroke-linecap: round; }
+.film-finger { fill: none; stroke: #3ddc84; stroke-width: 6.5; stroke-linecap: round; }
+.film-star { fill: #ffd23f; stroke: #d99a1f; stroke-width: 1.5; }
+
+/* The piece waits on the board, goes across with the hand, and stays in its place. */
+.film-carry { animation: film-carry 6s ease-in-out infinite; }
+/* The hand comes to the piece, stays on it all the way, and goes off once it's in. */
+.film-hand { animation: film-hand 6s ease-in-out infinite; }
+.film-star { transform-origin: 135px 80px; animation: film-star 6s ease-in-out infinite; }
+
+@keyframes film-carry {
+  0%, 26% { transform: translate(37px, 80px); opacity: 1; }
+  62%, 90% { transform: translate(135px, 105px); opacity: 1; }
+  96% { transform: translate(135px, 105px); opacity: 0; }
+  97% { transform: translate(37px, 80px); opacity: 0; }
+  100% { transform: translate(37px, 80px); opacity: 1; }
+}
+
+@keyframes film-hand {
+  0% { transform: translate(52px, 46px); }
+  20%, 66% { transform: translate(0, 6px); }
+  84%, 100% { transform: translate(-70px, 44px); }
+}
+
+@keyframes film-star {
+  0%, 60% { transform: scale(0); opacity: 0; }
+  68%, 84% { transform: scale(1); opacity: 1; }
+  92%, 100% { transform: scale(1); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .film-carry, .film-hand, .film-star { animation-duration: 9s; }
+}
+
+/* ---------- with friends: everyone along the top, after the tally ---------- */
+.puzzle-scores {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 29vw;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.puzzle-scores[hidden] { display: none; }
+.puzzle-scores li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px 3px 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 4px 14px rgba(18, 48, 77, 0.18);
+  font-size: clamp(13px, 1.3vw, 16px);
+  font-weight: 700;
+}
+.puzzle-scores li.is-you { background: var(--sun); }
+.puzzle-scores img { width: 28px; height: 28px; border-radius: 50%; background: var(--surface-soft); }
+.puzzle-score-name { max-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.puzzle-score { margin-left: 2px; font-variant-numeric: tabular-nums; }
+/* Against each other: how far through the puzzle each one is. */
+.puzzle-score-bar {
+  width: clamp(34px, 4vw, 56px);
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 2px var(--ink);
+  overflow: hidden;
+}
+.puzzle-score-bar i { display: block; height: 100%; background: var(--good); }
+.puzzle-score-flag { font-size: 1.1em; line-height: 1; }

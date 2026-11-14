@@ -869,3 +869,65 @@ test('together in Arrow Meadow, a target goes to the first to claim it, everyone
   }
   assert.equal([...games[0].tally.values()].reduce((sum, hits) => sum + hits, 0), 18);
 });
+
+/* ---------- Giraffe's Puzzles: its cleaner is brought in here, so its tests are a block of their own ---------- */
+import { cleanJigsaw } from '../../server/race-room.js';
+
+test('in Giraffe\'s Puzzles up to four share a puzzle: each one\'s glove and pieces go to the others, and a piece goes to the first hand that claims it', () => {
+  assert.equal(mostIn('giraffe-puzzles'), MAX_RACERS);
+  const { join } = makeRoom(mostIn('giraffe-puzzles'));
+  const [ana, ben, cat, dan] = ['aaaaaaaa', 'bbbbbbbb', 'cccccccc', 'dddddddd'].map(join);
+  assert.ok(ana && ben && cat && dan);
+  assert.equal(join('eeeeeeee'), null, 'a fifth is told the game is full');
+  // Whoever made the game says how it's played, and how many pieces, and everyone gets the same seed to lay it out from.
+  ana.say({ t: 'hi', name: 'Ana', level: 6, length: 16, mode: 'more', team: 1 });
+  ben.say({ t: 'hi', name: 'Ben', level: 2, length: 12, mode: 'fewer', team: 0 });
+  // A claim before the game has started is nobody's.
+  ana.say({ t: 'claim', k: 3000 });
+  assert.equal(ana.last('claimed'), undefined);
+  for (const player of [ana, ben, cat, dan]) player.say({ t: 'ready' });
+  const go = ben.last('go');
+  assert.deepEqual([go.level, go.length, go.mode, go.team], [6, 16, 'more', 1]);
+  assert.equal(dan.last('go').seed, go.seed);
+
+  const points = Array.from({ length: 42 }, (_, i) => (i % 2 ? 0.123456 : -9));
+  ana.say({ t: 'jigsaw', ms: 1500.4, x: 0.33333, y: 9, v: 1, o: 1, p: points, h: 3000, n: 2.4, d: [[1000, 1.23456, 0.5, 0, 1], [2001, 0.4, 0.90001, 90.4, 0]], picture: 'not this', name: 'Ana' });
+  for (const other of [ben, cat, dan]) {
+    const heard = other.last('jigsaw');
+    assert.deepEqual(Object.keys(heard), ['t', 'from', 'ms', 'x', 'y', 'v', 'o', 'p', 'h', 'n', 'd']);
+    assert.deepEqual([heard.t, heard.from, heard.ms, heard.x, heard.y, heard.v, heard.o, heard.h, heard.n], ['jigsaw', 'aaaaaaaa', 1500, 0.333, 1.5, 1, 1, 3000, 2]);
+    assert.deepEqual(heard.p.slice(0, 2), [-4, 0.12]);
+    assert.deepEqual(heard.d, [[1000, 1.235, 0.5, 0, 1], [2001, 0.4, 0.9, 90, 0]]);
+  }
+  assert.equal(ana.last('jigsaw'), undefined, 'nobody hears their own');
+
+  // Two hands come to the same piece: the first to claim that grab of it has it, and everyone hears whose it is.
+  ben.say({ t: 'claim', k: 5000 });
+  cat.say({ t: 'claim', k: 5000 });
+  for (const player of [ana, ben, cat, dan]) assert.deepEqual(player.heard.filter(({ t }) => t === 'claimed'), [{ t: 'claimed', k: 5000, by: 'bbbbbbbb' }]);
+  // Put down and picked up again, it's a new grab, which anyone can have.
+  cat.say({ t: 'claim', k: 5001 });
+  assert.deepEqual(ana.last('claimed'), { t: 'claimed', k: 5001, by: 'cccccccc' });
+  // Each one's finish goes to the others, as in the other games.
+  ana.say({ t: 'done', ms: 61_234, n: 7, w: 1 });
+  assert.deepEqual(ben.last('done'), { t: 'done', from: 'aaaaaaaa', ms: 61_234, n: 7, w: 1 });
+});
+
+test('a puzzle message holds only what it should, rounded and kept to the table, and well under the most a message can be', () => {
+  assert.deepEqual(cleanJigsaw({}), { ms: 0, x: 0, y: 0, v: 0, o: 0, p: [], h: -1, n: 0, d: [] });
+  // A glove that can't be seen has no points, and isn't open. A piece in the hand that isn't a number is none.
+  const points = Array(42).fill(-3.99);
+  assert.deepEqual(cleanJigsaw({ v: 0, o: 1, p: points, h: 'the lot' }), { ms: 0, x: 0, y: 0, v: 0, o: 0, p: [], h: -1, n: 0, d: [] });
+  assert.equal(cleanJigsaw({ v: 1, o: 1, p: [1, 2, 3] }).v, 0, 'without its 21 points it isn\'t seen');
+  // Anything that isn't a piece is left out, and what's left is kept to the table and to whole claims.
+  const { d } = cleanJigsaw({ d: [[1000, 99, -4, 720, 'yes'], 'a piece', [1, 2, 3], [2000.4, 'x', null, undefined, 0], { k: 1 }] });
+  assert.deepEqual(d, [[1000, 2, 0, 180, 1], [2000, 0, 0, 0, 0]]);
+  assert.equal(cleanJigsaw({ d: Array.from({ length: 500 }, (_, k) => [k, 1, 1, 0, 0]) }).d.length, 40, 'no more pieces than a game could have');
+  assert.equal(cleanJigsaw({ h: 99_999_999 }).h, 1_000_000);
+  assert.equal(cleanJigsaw({ h: -50 }).h, -1);
+  // The most a game could send: every piece of the biggest puzzle, each with its place, and the glove.
+  const most = { ms: 3_599_999, x: 1.499, y: 1.499, v: 1, o: 1, p: points, h: 999_999, n: 999, d: Array.from({ length: 24 }, (_, k) => [k * 1000 + 999, 1.999, 0.999, -180, 1]) };
+  const biggest = JSON.stringify({ t: 'jigsaw', from: 'abcdefghijkl', ...cleanJigsaw(most) });
+  assert.ok(biggest.length < 1100, `${biggest.length} characters at most`);
+  assert.ok(JSON.stringify({ t: 'jigsaw', ...most }).length < MOST_BYTES, 'and as it\'s sent, it\'s short enough to be heard');
+});
