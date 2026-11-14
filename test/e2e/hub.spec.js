@@ -19,6 +19,7 @@ const GAMES = [
   { name: 'Giraffe’s Garden', folder: 'giraffe-garden', start: 'Water the garden' },
   { name: 'Giraffe’s Goal', folder: 'giraffe-goal', start: 'Go in goal' },
   { name: 'Frost Arena', folder: 'frost-arena', start: 'Join the team' },
+  { name: 'Giraffe’s Puzzles', folder: 'giraffe-puzzles', start: 'Fix the picture' },
 ];
 
 test('the hub offers every game, and each one opens and comes back', async ({ page }) => {
@@ -207,6 +208,7 @@ test('typing in the search finds games by their name, what they\'re about and wh
     ['flowers', ['Giraffe’s Garden']],
     ['penalty', ['Giraffe’s Goal']],
     ['rifle', ['Frost Arena']],
+    ['jigsaw', ['Giraffe’s Puzzles']],
     // Capitals, accents and apostrophes don't matter, and every word has to fit.
     ['TÉNNIS', ['Bounce Back']],
     ['giraffe\'s smoothie', ['Giraffe’s Smoothie Stand']],
@@ -248,7 +250,7 @@ test('each filter narrows the games to the ones it\'s about', async ({ page }) =
     ['Racing, running and flying', ['High Five Racers', 'Leap Trail', 'Sky Wings'], ['Tank Patrol', 'Bounce Back', 'Balloon Pop']],
     ['Sports', ['Bounce Back', 'Giraffe’s Goal'], ['High Five Racers', 'Mighty Moves', 'Balloon Pop']],
     ['Fighting', ['Mighty Moves'], ['Robot Rescue', 'Bounce Back', 'Tank Patrol']],
-    ['Puzzles and thinking', ['Balloon Pop'], ['Spider Catcher', 'Tank Patrol', 'Mighty Moves']],
+    ['Puzzles and thinking', ['Balloon Pop', 'Giraffe’s Puzzles'], ['Spider Catcher', 'Tank Patrol', 'Mighty Moves']],
     ['Stories and missions', ['Giraffe’s Long Walk Home', 'The Lighthouse Keeper', 'Spider Catcher', 'Giraffe’s Smoothie Stand', 'Robot Rescue'],
       ['Balloon Pop', 'Bounce Back', 'Mighty Moves', 'High Five Racers']],
     ['Catching and popping', ['Balloon Pop', 'Spider Catcher', 'Giraffe’s Smoothie Stand', 'Giraffe’s Long Walk Home'], ['The Lighthouse Keeper', 'Tank Patrol', 'Sky Wings']],

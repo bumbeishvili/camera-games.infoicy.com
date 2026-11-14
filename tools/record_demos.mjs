@@ -725,6 +725,47 @@ const FILMS = {
       return { tags, shots, hits, reloads, walked: Math.round(walked) };
     }),
   },
+  'giraffe-puzzles': {
+    settings: { puzzleReach: 'lots', levels: { 'giraffe-puzzles': 4 } },
+    css: '.camera-frame { --camera-small: 18vw !important; } .puzzle-film { display: none !important; }',
+    async ready(page) {
+      await page.evaluate(() => window.__camera.show({ left: null, right: 'open', scale: 0.62, sameHand: true }));
+      await page.locator('#start').click();
+      await screenIs(page, 'playing');
+      await wait(page, 300);
+    },
+    async play(page) {
+      // The open hand goes to a loose piece, which comes up in it, and carries it to its place in the picture, where
+      // it snaps in, one piece after another, as a child would: a golden piece for a star, and one the wrong way up,
+      // which turns the right way up in the hand.
+      await page.evaluate(() => new Promise((done) => {
+        let x = 0;
+        let y = 0;
+        const started = performance.now();
+        const timer = setInterval(() => {
+          const { game, puzzle, view, gloves } = window.__game;
+          const glove = gloves.right;
+          const at = game.gloveOnTable('right');
+          const wanted = at ? puzzle.wants(at) : null;
+          if (glove.visible && at && wanted) {
+            const to = view.at(wanted.x, wanted.y);
+            const from = view.at(at.x, at.y);
+            x = Math.max(-780, Math.min(240, x + ((to.x - from.x) / innerWidth) * 1280 * 0.05));
+            y = Math.max(-300, Math.min(260, y + ((to.y - from.y) / innerHeight) * 720 * 0.05));
+          }
+          window.__camera.show({ left: null, right: 'open', scale: 0.62, sameHand: true, rightOffsetX: x, rightOffsetY: y });
+          if (performance.now() - started > 16_000) {
+            clearInterval(timer);
+            done();
+          }
+        }, 33);
+      }));
+    },
+    report: (page) => page.evaluate(() => {
+      const { placed, pictures, picks, prizes } = window.__game.puzzle.stats;
+      return { placed, pictures, picks, prizes };
+    }),
+  },
   'balloon-pop': {
     settings: { reach: 'none', pace: 'medium' },
     async ready(page) {
